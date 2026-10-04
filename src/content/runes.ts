@@ -1,0 +1,155 @@
+import { reg } from '../engine/registry';
+import { isEnemy } from '../engine/combat';
+
+const isAttack = (s: { tags: string[] }) => s.tags.includes('attack');
+
+/** 각인: 스킬 하나에 1개 장착 */
+reg.runes([
+  {
+    id: 'echo',
+    name: '메아리 각인',
+    icon: 'gi:echo-ripples',
+    rarity: 'rare',
+    desc: '스킬이 50% 위력으로 한 번 더 발동. 재사용 대기 +1',
+    cdMod: 1,
+    fits: (s) => !s.tags.includes('basic') && s.cd !== 99,
+  },
+  {
+    id: 'leech',
+    name: '흡혈 각인',
+    icon: 'gi:vampire-dracula',
+    rarity: 'uncommon',
+    desc: '이 스킬로 준 피해의 20%만큼 회복',
+    fits: isAttack,
+    hooks: {
+      onDamageDealt(c, _s, d) {
+        if (d.hpLoss > 0) c.heal(c.p, Math.max(1, Math.floor(d.hpLoss * 0.2)));
+      },
+    },
+  },
+  {
+    id: 'splash',
+    name: '파급 각인',
+    icon: 'gi:water-splash',
+    rarity: 'uncommon',
+    desc: '주 대상에게 준 피해의 40%가 다른 모든 적에게 퍼진다',
+    fits: (s) => isAttack(s) && s.target === 'single',
+    hooks: {
+      onDamageDealt(c, _s, d) {
+        if (d.tags.includes('splash') || !d.skill || d.tgt !== d.skill.primary) return;
+        const n = Math.floor((d.hpLoss + d.blocked) * 0.4);
+        if (n <= 0) return;
+        for (const e of c.alive) {
+          if (e === d.tgt) continue;
+          c.damage({ src: c.p, tgt: e, base: n, type: d.type, tags: ['splash'] });
+        }
+      },
+    },
+  },
+  {
+    id: 'haste',
+    name: '가속 각인',
+    icon: 'gi:running-shoe',
+    rarity: 'uncommon',
+    desc: '재사용 대기 -1',
+    cdMod: -1,
+    fits: (s) => {
+      const cd = Array.isArray(s.cd) ? s.cd[0] : s.cd;
+      return cd >= 2 && cd < 99;
+    },
+  },
+  {
+    id: 'crush',
+    name: '분쇄 각인',
+    icon: 'gi:hammer-break',
+    rarity: 'common',
+    desc: '이 스킬의 타격마다 버팀 추가 -1',
+    fits: isAttack,
+    hooks: {
+      modDamageOut(_c, _s, d) {
+        d.poiseBonus += 1;
+      },
+    },
+  },
+  {
+    id: 'bleed-rune',
+    name: '출혈 각인',
+    icon: 'gi:blood',
+    rarity: 'common',
+    desc: '피해를 줄 때마다 출혈 2',
+    fits: isAttack,
+    hooks: {
+      onDamageDealt(c, _s, d) {
+        if (d.hpLoss > 0 && isEnemy(d.tgt) && !d.killed) c.apply(d.tgt, 'bleed', 2, c.p);
+      },
+    },
+  },
+  {
+    id: 'burn-rune',
+    name: '화염 각인',
+    icon: 'gi:flame',
+    rarity: 'common',
+    desc: '피해를 줄 때마다 화상 1',
+    fits: isAttack,
+    hooks: {
+      onDamageDealt(c, _s, d) {
+        if (isEnemy(d.tgt) && !d.killed) c.apply(d.tgt, 'burn', 1, c.p);
+      },
+    },
+  },
+  {
+    id: 'mark-rune',
+    name: '인장 각인',
+    icon: 'gi:pentagram-rose',
+    rarity: 'common',
+    desc: '피해를 줄 때마다 인장 1',
+    fits: isAttack,
+    hooks: {
+      onDamageDealt(c, _s, d) {
+        if (isEnemy(d.tgt) && !d.killed && !d.tags.includes('detonate')) c.apply(d.tgt, 'mark', 1, c.p);
+      },
+    },
+  },
+  {
+    id: 'void-rune',
+    name: '공허 각인',
+    icon: 'gi:portal',
+    rarity: 'rare',
+    desc: '피해 속성이 공허로 바뀌고 통찰만큼 피해 증가. 사용 시 정신력 -2',
+    fits: isAttack,
+    hooks: {
+      beforeSkill(c, _s, u) {
+        u.type = 'void';
+        c.loseSanity(2);
+      },
+      modDamageOut(c, _s, d) {
+        d.add += c.p.insight;
+      },
+    },
+  },
+  {
+    id: 'thrift',
+    name: '절약 각인',
+    icon: 'gi:receive-money',
+    rarity: 'uncommon',
+    desc: '행동력 비용 -1, 위력 -25%',
+    costMod: -1,
+    powerMult: 0.75,
+    fits: (s) => {
+      const cost = Array.isArray(s.cost) ? s.cost[0] : s.cost;
+      return cost >= 1 && !s.tags.includes('basic');
+    },
+  },
+  {
+    id: 'ward-rune',
+    name: '수호 각인',
+    icon: 'gi:shield-echoes',
+    rarity: 'common',
+    desc: '사용 후 방어도 4',
+    hooks: {
+      afterSkill(c) {
+        c.gainBlock(c.p, 4);
+      },
+    },
+  },
+]);

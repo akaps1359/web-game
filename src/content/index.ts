@@ -1,0 +1,22 @@
+/** 모든 콘텐츠 등록. 엔진을 쓰기 전에 한 번 import 한다. */
+import './statuses';
+import './skills/basic';
+import './skills/blade';
+import './skills/firearm';
+import './skills/occult';
+import './skills/alchemy';
+import './skills/resolve';
+import './skills/forbidden';
+import './skills/neutral';
+import './equipment';
+import './relics';
+import './runes';
+import './consumables';
+import './madness';
+import './anomalies';
+import './origins';
+import './act1/enemies';
+import './act1/essences';
+import './act1/encounters';
+import './act1/floor';
+import './act1/events';

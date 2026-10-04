@@ -1,0 +1,154 @@
+import { reg } from '../../engine/registry';
+import { hit, skill } from '../lib';
+
+/** 금기 — 정신력을 대가로, 통찰 비례 */
+reg.skills([
+  skill({
+    id: 'whisper-void',
+    name: '공허의 속삭임',
+    icon: 'gi:screaming',
+    school: 'forbidden',
+    rarity: 'forbidden',
+    cost: 1,
+    cd: 1,
+    range: 'ranged',
+    target: 'single',
+    type: 'void',
+    tags: ['attack', 'sanity', 'insight'],
+    vals: { dmg: [6, 8], per: [2, 3], san: 2 },
+    desc: '정신력 {san} 소모. {D:dmg} + 통찰×{per} 공허 피해',
+    run: (c, u, t) => {
+      c.loseSanity(u.v('san'));
+      hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * c.p.insight });
+    },
+  }),
+  skill({
+    id: 'tentacle-call',
+    name: '촉수 소환',
+    icon: 'gi:tentacle-strike',
+    school: 'forbidden',
+    rarity: 'forbidden',
+    cost: [1, 0],
+    cd: 3,
+    range: 'self',
+    target: 'self',
+    tags: ['summon', 'sanity'],
+    vals: { n: 1, san: 4 },
+    desc: '정신력 {san} 소모. 촉수 {n} (턴 종료마다 무작위 적 공격)',
+    run: (c, u) => {
+      c.loseSanity(u.v('san'));
+      c.apply(c.p, 'tentacle', u.v('n'), c.p);
+    },
+  }),
+  skill({
+    id: 'mind-rend',
+    name: '정신 찢기',
+    icon: 'gi:brain-tentacle',
+    school: 'forbidden',
+    rarity: 'forbidden',
+    cost: 2,
+    cd: 3,
+    range: 'ranged',
+    target: 'single',
+    type: 'void',
+    tags: ['attack', 'sanity', 'debuff'],
+    vals: { dmg: [10, 14], madden: 2, san: 5 },
+    desc: '정신력 {san} 소모. {D:dmg} 공허 피해, 광란 {madden}',
+    run: (c, u, t) => {
+      c.loseSanity(u.v('san'));
+      hit(c, u, t);
+      if (t && !t.dead) c.apply(t, 'madden', u.v('madden'), c.p);
+    },
+  }),
+  skill({
+    id: 'eldritch-ward',
+    name: '이계의 갑주',
+    icon: 'gi:tentacles-barrier',
+    school: 'forbidden',
+    rarity: 'forbidden',
+    cost: 1,
+    cd: 3,
+    range: 'self',
+    target: 'self',
+    tags: ['barrier', 'sanity', 'insight'],
+    vals: { barrier: [8, 12], per: 2, san: 3 },
+    desc: '정신력 {san} 소모. 보호막 {barrier} + 통찰×{per}',
+    run: (c, u) => {
+      c.loseSanity(u.v('san'));
+      c.apply(c.p, 'barrier', u.v('barrier') + u.v('per') * c.p.insight, c.p);
+    },
+  }),
+  skill({
+    id: 'gaze-abyss',
+    name: '심연 응시',
+    icon: 'gi:eye-of-horus',
+    school: 'forbidden',
+    rarity: 'forbidden',
+    cost: 0,
+    cd: 99,
+    range: 'self',
+    target: 'self',
+    tags: ['insight', 'sanity'],
+    vals: { san: [6, 4] },
+    desc: '정신력 {san} 소모. 통찰 +1 (영구). 전투당 1회',
+    run: (c, u) => {
+      c.loseSanity(u.v('san'));
+      c.gainInsight(1);
+    },
+  }),
+  skill({
+    id: 'doom-word',
+    name: '파멸의 언어',
+    icon: 'gi:death-note',
+    school: 'forbidden',
+    rarity: 'forbidden',
+    cost: 1,
+    cd: 2,
+    range: 'ranged',
+    target: 'single',
+    tags: ['debuff', 'sanity', 'insight'],
+    vals: { doom: [8, 12], per: 2, san: 3 },
+    desc: '정신력 {san} 소모. 파멸 {doom} + 통찰×{per} (파멸이 체력 이상이면 턴 종료 시 즉사)',
+    run: (c, u, t) => {
+      c.loseSanity(u.v('san'));
+      if (t) c.apply(t, 'doom', u.v('doom') + u.v('per') * c.p.insight, c.p);
+    },
+  }),
+  skill({
+    id: 'blood-price',
+    name: '피의 대가',
+    icon: 'gi:bleeding-heart',
+    school: 'forbidden',
+    rarity: 'forbidden',
+    cost: 0,
+    cd: 2,
+    range: 'self',
+    target: 'self',
+    tags: ['energy', 'hp-cost'],
+    vals: { hp: [5, 3], ap: 2 },
+    desc: '체력 {hp} 소모. 행동력 +{ap}',
+    run: (c, u) => {
+      c.loseHp(c.p, u.v('hp'));
+      c.s.ap += u.v('ap');
+    },
+  }),
+  skill({
+    id: 'void-rift',
+    name: '공허 균열',
+    icon: 'gi:portal',
+    school: 'forbidden',
+    rarity: 'forbidden',
+    cost: 2,
+    cd: 4,
+    range: 'ranged',
+    target: 'all',
+    type: 'void',
+    tags: ['attack', 'aoe', 'sanity', 'insight'],
+    vals: { dmg: [12, 16], per: 2, san: 8 },
+    desc: '정신력 {san} 소모. 적 전체에 {D:dmg} + 통찰×{per} 공허 피해 (방어도 무시)',
+    run: (c, u, t) => {
+      c.loseSanity(u.v('san'));
+      hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * c.p.insight, ignoreBlock: true });
+    },
+  }),
+]);

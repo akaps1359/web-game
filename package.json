@@ -1,0 +1,38 @@
+{
+  "name": "web-game",
+  "version": "1.0.0",
+  "description": "심연행 — 코스믹 호러 로그라이크 턴제 RPG",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "vite",
+    "dev:lan": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "sim": "vitest run --config vitest.sim.config.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/akaps1359/web-game.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/akaps1359/web-game/issues"
+  },
+  "homepage": "https://github.com/akaps1359/web-game#readme",
+  "dependencies": {
+    "pixi-filters": "^6.1.5",
+    "pixi.js": "^8.22.0",
+    "preact": "^10.29.8",
+    "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "@iconify-json/game-icons": "^1.2.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  }
+}
