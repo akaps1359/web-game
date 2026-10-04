@@ -36,11 +36,25 @@ export interface IconStyle {
   flat?: boolean;
 }
 
-/** 아이콘을 그라데이션 + 림라이트 + 글로우가 있는 텍스처로 */
+/** 너무 어두운 색은 배경에 묻히므로 최소 밝기까지 끌어올린다 */
+function lift(tint: number, minLum = 120): number {
+  const r = (tint >> 16) & 255;
+  const g = (tint >> 8) & 255;
+  const b = tint & 255;
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  if (lum >= minLum) return tint;
+  const k = minLum / Math.max(1, lum);
+  const add = lum < 8 ? minLum : 0;
+  const c = (v: number) => Math.min(255, Math.round(v * k + add));
+  return (c(r) << 16) | (c(g) << 8) | c(b);
+}
+
+/** 아이콘을 그라데이션 + 림라이트 + 외곽선 + 글로우가 있는 텍스처로 */
 export function iconTexture(name: string, st: IconStyle): Promise<Texture> {
   const key = `${name}|${st.size}|${st.tint}|${st.glow ?? -1}|${st.flat ? 1 : 0}`;
   let p = cache.get(key);
   if (p) return p;
+  st = { ...st, tint: lift(st.tint), glow: st.glow === undefined ? undefined : lift(st.glow, 140) };
   p = (async () => {
     const size = Math.round(st.size);
     const pad = Math.round(size * 0.22);
@@ -57,7 +71,7 @@ export function iconTexture(name: string, st: IconStyle): Promise<Texture> {
       const grad = f.createLinearGradient(0, 0, 0, size);
       grad.addColorStop(0, shade(st.tint, 1.55));
       grad.addColorStop(0.45, shade(st.tint, 1.0));
-      grad.addColorStop(1, shade(st.tint, 0.35));
+      grad.addColorStop(1, shade(st.tint, 0.55));
       f.fillStyle = grad;
     }
     f.fillRect(0, 0, size, size);
@@ -75,14 +89,29 @@ export function iconTexture(name: string, st: IconStyle): Promise<Texture> {
     out.width = out.height = size + pad * 2;
     const o = out.getContext('2d')!;
     if (st.glow !== undefined && !st.flat) {
+      // 외곽선용 단색 실루엣
+      const rimC = document.createElement('canvas');
+      rimC.width = rimC.height = size;
+      const rc = rimC.getContext('2d')!;
+      rc.drawImage(img, 0, 0, size, size);
+      rc.globalCompositeOperation = 'source-in';
+      rc.fillStyle = hex(st.glow);
+      rc.fillRect(0, 0, size, size);
       o.shadowColor = hex(st.glow);
-      o.shadowBlur = size * 0.12;
-      o.globalAlpha = 0.85;
-      o.drawImage(fillC, pad, pad);
-      o.shadowBlur = size * 0.04;
-      o.drawImage(fillC, pad, pad);
-      o.globalAlpha = 1;
+      o.shadowBlur = size * 0.14;
+      o.globalAlpha = 0.9;
+      o.drawImage(rimC, pad, pad);
+      o.shadowBlur = size * 0.05;
+      o.drawImage(rimC, pad, pad);
       o.shadowBlur = 0;
+      // 얇은 외곽선 (8방향으로 살짝 밀어 그리기)
+      const w = Math.max(1.5, size * 0.008);
+      o.globalAlpha = 0.75;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        o.drawImage(rimC, pad + Math.cos(a) * w, pad + Math.sin(a) * w);
+      }
+      o.globalAlpha = 1;
     }
     o.drawImage(fillC, pad, pad);
     return Texture.from(out);

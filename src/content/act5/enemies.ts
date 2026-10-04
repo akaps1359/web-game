@@ -101,7 +101,7 @@ reg.enemies([
   {
     id: 'sleeper',
     name: '잠든 자',
-    icon: 'gi:octopus',
+    icon: 'gi:giant-squid',
     act: 5,
     tier: 'boss',
     hp: [280, 280],

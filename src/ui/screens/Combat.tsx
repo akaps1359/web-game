@@ -314,13 +314,21 @@ function EnemyOverlay({ e, real, a, focus, valid, onTap }: { e: Snap['e'][number
           </div>
           <Bar kind="hp" value={Math.max(0, e.hp)} max={e.maxHp} />
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {e.maxPoise > 0 && (
-              <div class={`poise ${e.broken ? 'broken' : ''}`}>
-                {Array.from({ length: e.maxPoise }, (_, i) => (
-                  <i class={i < e.poise ? '' : 'off'} />
-                ))}
-              </div>
-            )}
+            {e.maxPoise > 0 &&
+              (e.maxPoise > 8 ? (
+                <div class={`poise ${e.broken ? 'broken' : ''}`} style={{ alignItems: 'center', gap: 3 }}>
+                  <i />
+                  <span class="num" style={{ fontSize: 10.5, color: e.broken ? '#ff5a4a' : '#ffe080' }}>
+                    {e.poise}/{e.maxPoise}
+                  </span>
+                </div>
+              ) : (
+                <div class={`poise ${e.broken ? 'broken' : ''}`}>
+                  {Array.from({ length: e.maxPoise }, (_, i) => (
+                    <i class={i < e.poise ? '' : 'off'} />
+                  ))}
+                </div>
+              ))}
             <div class="weak-row">
               {real.weak.map((w) =>
                 e.known.includes(w) ? (

@@ -23,12 +23,19 @@ export function layoutEnemies(rect: Rect, list: { uid: string; row: 0 | 1; scale
     const units = alive.filter((e) => e.row === row);
     const n = units.length;
     if (!n) continue;
-    const base = row === 0 ? Math.min(rect.h * 0.36, rect.w / Math.max(2.15, n + 0.55)) : Math.min(rect.h * 0.27, rect.w / Math.max(2.6, n + 1));
+    // 큰 적(보스)은 더 넓은 자리를 차지한다
+    const weights = units.map((e) => Math.max(0.6, e.scale));
+    const W = weights.reduce((s, w) => s + w, 0);
+    const base = row === 0 ? Math.min(rect.h * 0.36, rect.w / Math.max(2.15, W + 0.55)) : Math.min(rect.h * 0.27, rect.w / Math.max(2.6, W + 1));
     const y = rect.y + rect.h * (row === 0 ? 0.82 : 0.42);
+    const usable = rect.w * (row === 0 ? 0.92 : 0.82) * Math.min(1, W / 2.2);
+    const left = rect.x + (rect.w - usable) / 2;
+    let acc = 0;
     units.forEach((e, i) => {
-      const spread = row === 0 ? 0.9 : 0.8;
-      const x = rect.x + rect.w * (0.5 + ((i + 0.5) / n - 0.5) * spread * Math.min(1, n / 2.2));
-      out.set(e.uid, { x, y, size: base * e.scale * (row === 1 ? 0.92 : 1) });
+      const x = left + ((acc + weights[i] / 2) / W) * usable;
+      acc += weights[i];
+      const size = Math.min(base * e.scale * (row === 1 ? 0.92 : 1), (usable / W) * weights[i] * 1.05, rect.h * (row === 0 ? 0.62 : 0.4));
+      out.set(e.uid, { x, y, size });
     });
   }
   return out;
@@ -62,6 +69,9 @@ class EnemyView extends Container {
   glowColor = 0xffffff;
   look = '';
   base = 1;
+  /** 이계 보스: 촉수와 오라 */
+  eldritchBoss = false;
+  tent = new Graphics();
 
   constructor(public euid: string) {
     super();
@@ -72,7 +82,47 @@ class EnemyView extends Container {
     this.flash.anchor.set(0.5, 0.847);
     this.flash.alpha = 0;
     this.flash.blendMode = 'add';
-    this.addChild(this.shadow, this.aura, this.body, this.flash);
+    this.addChild(this.shadow, this.aura, this.tent, this.body, this.flash);
+  }
+
+  /** 이계 보스 뒤로 꿈틀대는 촉수 (점점 가늘어지는 곡선) */
+  private drawTentacles(a: Anchor) {
+    const g = this.tent.clear();
+    if (!this.eldritchBoss) return;
+    const S = a.size;
+    const n = 6;
+    const N = 14;
+    for (let k = 0; k < n; k++) {
+      const side = k % 2 === 0 ? -1 : 1;
+      const tier = Math.floor(k / 2);
+      const sway = Math.sin(this.t * (0.6 + k * 0.17) + k * 1.9);
+      const sway2 = Math.cos(this.t * (0.45 + k * 0.13) + k * 0.7);
+      const p0 = { x: side * S * (0.1 + tier * 0.05), y: -S * (0.15 + tier * 0.12) };
+      const c1 = { x: side * S * (0.55 + tier * 0.12), y: -S * (0.2 + tier * 0.15) + sway * S * 0.08 };
+      const c2 = { x: side * S * (0.85 + tier * 0.1) + sway2 * S * 0.12, y: -S * (0.6 + tier * 0.22) };
+      const p3 = { x: side * S * (0.55 + tier * 0.15) + sway * S * 0.2, y: -S * (0.95 + tier * 0.25) + sway2 * S * 0.08 };
+      const pt = (u: number) => {
+        const v = 1 - u;
+        return {
+          x: v * v * v * p0.x + 3 * v * v * u * c1.x + 3 * v * u * u * c2.x + u * u * u * p3.x,
+          y: v * v * v * p0.y + 3 * v * v * u * c1.y + 3 * v * u * u * c2.y + u * u * u * p3.y,
+        };
+      };
+      const pts = Array.from({ length: N + 1 }, (_, i) => pt(i / N));
+      const w0 = S * (0.11 - tier * 0.02);
+      for (let i = 0; i < N; i++) {
+        const taper = 1 - i / N;
+        g.moveTo(pts[i].x, pts[i].y)
+          .lineTo(pts[i + 1].x, pts[i + 1].y)
+          .stroke({ width: w0 * taper + 1.5, color: 0x030807, alpha: 0.96, cap: 'round' });
+      }
+      for (let i = 0; i < N; i++) {
+        const taper = 1 - i / N;
+        g.moveTo(pts[i].x - side * w0 * 0.18 * taper, pts[i].y)
+          .lineTo(pts[i + 1].x - side * w0 * 0.18 * taper, pts[i + 1].y)
+          .stroke({ width: Math.max(1, w0 * 0.22 * taper), color: this.glowColor, alpha: 0.55, cap: 'round' });
+      }
+    }
   }
 
   async setLook(icon: string, tint: number, glow: number, fx: string[]) {
@@ -170,7 +220,12 @@ class EnemyView extends Container {
     this.flash.scale.set(this.base * sx, this.base * sy);
     this.body.skew.x = tilt;
     this.flash.skew.x = tilt;
-    this.aura.alpha = 0.14 + Math.sin(this.t * 2) * 0.04 + (this.broken ? 0.1 : 0);
+    this.aura.alpha = (this.eldritchBoss ? 0.32 : 0.14) + Math.sin(this.t * 2) * 0.04 + (this.broken ? 0.1 : 0);
+    if (this.eldritchBoss) {
+      this.aura.scale.set((a.size / 64) * 3.4);
+      this.drawTentacles(a);
+      this.tent.scale.set(sx, sy);
+    }
     this.shadow.position.set(-ox, -oy);
   }
 
@@ -228,6 +283,7 @@ export class Battle extends Container {
       }
       const def = defs(e.def);
       if (def) {
+        v.eldritchBoss = def.tier === 'boss' && !!def.eldritch;
         const form = e.form ? def.forms?.[e.form - 1] : undefined;
         const vis = form?.visual ?? def.visual;
         void v.setLook(form?.icon ?? def.icon, vis.tint, vis.glow ?? 0xffffff, vis.fx ?? []);
