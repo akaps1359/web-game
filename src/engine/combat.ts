@@ -142,8 +142,14 @@ const BUILTIN_MOVES: Record<string, MoveDef> = {
 
 export const MAX_ROW = 3;
 
+/** 층별 적 성장 배율 (밸런스 조절용) — 인덱스 = 층 */
+export const ACT_HP_MULT = [1, 1, 1.25, 1.65, 2.2, 2.0];
+export const ACT_DMG_MULT = [1, 1, 1.1, 1.3, 1.5, 1.4];
+/** 층별 적 정신 공격 배율 */
+export const ACT_SAN_MULT = [1, 1, 1, 0.75, 0.7, 0.8];
+
 /** 정신력이 이 값 이하로 떨어지면 붕괴 */
-export const BREAKDOWN_RESET = 50;
+export const BREAKDOWN_RESET = 60;
 export const MAX_MADNESS = 4;
 
 export function isEnemy(u: Unit | null | undefined): u is EnemyUnit {
@@ -385,6 +391,7 @@ export class Combat {
         if (isEnemy(d.src) && d.attack) {
           const tide = this.run.floor?.tide ?? 0;
           if (tide > 0) d.mult *= 1 + 0.05 * tide;
+          d.mult *= ACT_DMG_MULT[Math.min(5, this.defOf(d.src).act)] ?? 1;
           if (this.run.asc >= 2) d.mult *= 1.1;
         }
         this.fire(d.src, 'modDamageOut', d);
@@ -636,6 +643,10 @@ export class Combat {
     if (after === 0) delete target.st[id];
     else target.st[id] = after;
     const delta = after - before;
+    // 적의 차례에 걸린 지속형 효과는 첫 감소를 한 번 건너뛴다 (적이 건 약화/취약이 다음 적 차례까지 유지)
+    if (delta > 0 && def.decay && this.s.phase === 'enemy' && (target === this.p || (isEnemy(target) && src === target))) {
+      target.st[`_fresh_${id}`] = 1;
+    }
     if (delta !== 0) {
       this.emit({ t: 'status', uid: target.uid, id, n: delta });
       if (delta > 0) this.fire(src ?? 'all', 'onApplied', target, id, delta);
@@ -656,8 +667,11 @@ export class Combat {
 
   loseSanity(amount: number, fromEnemy = false) {
     if (amount <= 0 || this.over) return 0;
-    let n = amount * (1 + 0.05 * this.p.insight) * Math.max(0.5, 1 - 0.05 * this.p.will);
-    if (fromEnemy && (this.p.st.dread ?? 0) > 0) n *= 1.5;
+    let n = amount * (1 + 0.05 * Math.min(6, this.p.insight)) * Math.max(0.5, 1 - 0.05 * this.p.will);
+    if (fromEnemy) {
+      n *= ACT_SAN_MULT[Math.min(5, this.run.act)] ?? 1;
+      if ((this.p.st.dread ?? 0) > 0) n *= 1.5;
+    }
     for (const [h, self] of this.sources(this.p)) if (h.modSanityLoss) n = h.modSanityLoss(this, self, n);
     n = Math.max(0, Math.floor(n));
     if (n <= 0) return 0;
@@ -721,7 +735,7 @@ export class Combat {
     if (this.row(r).length >= MAX_ROW) return null;
     const asc = this.run.asc;
     const tide = this.run.floor?.tide ?? 0;
-    const hpMul = (1 + (asc >= 7 ? 0.1 : 0) + (asc >= 15 && def.tier !== 'normal' ? 0.1 : 0)) * (1 + 0.08 * tide);
+    const hpMul = (1 + (asc >= 7 ? 0.1 : 0) + (asc >= 15 && def.tier !== 'normal' ? 0.1 : 0)) * (1 + 0.08 * tide) * (ACT_HP_MULT[Math.min(5, def.act)] ?? 1);
     const hp = Math.round(this.rng.int(def.hp[0], def.hp[1]) * hpMul);
     const e: EnemyUnit = {
       uid: `e${++this.s.uidN}`,
@@ -952,6 +966,10 @@ export class Combat {
   private decay(u: Unit) {
     for (const id of Object.keys(u.st)) {
       const def = STATUSES.get(id);
+      if (u.st[`_fresh_${id}`]) {
+        delete u.st[`_fresh_${id}`];
+        continue;
+      }
       if (def?.decay && u.st[id] > 0) {
         u.st[id] -= 1;
         if (u.st[id] <= 0) delete u.st[id];
@@ -965,7 +983,10 @@ export class Combat {
     s.phase = 'player';
     s.used = 0;
     const p = this.p;
-    if (!(p.st.retain > 0)) p.block = 0;
+    if ((p.st.retain ?? 0) > 0) {
+      p.st.retain -= 1;
+      if (p.st.retain <= 0) delete p.st.retain;
+    } else p.block = 0;
     s.ap = p.maxAp + (p.st.energized ?? 0);
     delete p.st.energized;
     for (const k of Object.keys(s.cd)) {
@@ -991,7 +1012,6 @@ export class Combat {
     this.fire(p, 'onTurnEnd');
     if (this.checkEnd()) return null;
     this.tickStatuses(p, 'end');
-    this.decay(p);
     if (this.checkEnd()) return null;
 
     this.s.phase = 'enemy';
@@ -999,7 +1019,10 @@ export class Combat {
     const order = [...this.row(0), ...this.row(1)];
     for (const e of order) {
       if (e.dead) continue;
-      if (!(e.st.retain > 0)) e.block = 0;
+      if ((e.st.retain ?? 0) > 0) {
+        e.st.retain -= 1;
+        if (e.st.retain <= 0) delete e.st.retain;
+      } else e.block = 0;
       this.tickStatuses(e, 'start');
       this.fire(e, 'onUnitTurnStart');
       if (this.checkEnd()) return null;
@@ -1028,6 +1051,8 @@ export class Combat {
       this.fixRows();
       if (this.checkEnd()) return null;
     }
+    // 라운드 종료: 플레이어의 지속형 효과 감소
+    this.decay(p);
     for (const e of this.alive) if (e.broken !== 2) this.planIntent(e);
     this.startPlayerTurn();
     return null;
@@ -1106,7 +1131,7 @@ export class Combat {
 
   private checkEnd(): boolean {
     if (this.over) return true;
-    if (this.p.hp <= 0) {
+    if (this.p.hp <= 0 && !this.dying) {
       this.defeat('hp');
       return true;
     }
@@ -1119,6 +1144,11 @@ export class Combat {
 
   private victory() {
     this.s.phase = 'victory';
+    // 살아남았다는 안도
+    if (!this.dying && this.p.sanity < this.p.maxSanity) {
+      this.p.sanity = Math.min(this.p.maxSanity, this.p.sanity + 2);
+      this.emit({ t: 'sanity', delta: 2 });
+    }
     this.emit({ t: 'victory' });
     this.fire(this.p, 'onCombatEnd', true);
     this.cleanup();

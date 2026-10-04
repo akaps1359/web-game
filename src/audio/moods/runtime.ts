@@ -1,4 +1,4 @@
-import { Clock, Gain, type InputNode, type ToneAudioNode } from 'tone';
+import { Clock, Gain, ToneAudioNode, type BaseContext, type InputNode } from 'tone';
 import { Harmony, below, mtof, palette, rand, type Palette } from '../scales';
 
 /** 엔진이 무드에 넘겨주는 환경 */
@@ -57,6 +57,8 @@ export interface MoodSpec {
   palette?: (p: Palette) => Palette;
   /** 화음이 진행 대신 떠돈다 */
   wander?: boolean;
+  /** 무드 전체 음량 보정(dB) — 오프라인 렌더 측정(K-가중 음량)으로 맞춘 값 */
+  gain?: number;
   build(rt: Runtime): Layer[];
 }
 
@@ -132,14 +134,19 @@ export class Runtime implements MoodInstance {
     this.updateSanityDerived();
 
     this.out = this.bag.add(new Gain(0));
-    this.verb = this.bag.add(new Gain(0));
-    this.echo = this.bag.add(new Gain(0));
+    this.verb = this.bag.add(new Gain({ context: this.out.context, gain: 0 }));
+    this.echo = this.bag.add(new Gain({ context: this.out.context, gain: 0 }));
     this.out.connect(env.dry);
     this.verb.connect(env.verb);
     this.echo.connect(env.echo);
 
-    this.clock = this.bag.add(new Clock((time) => this.tick(time), this.clockHz()));
+    this.clock = this.bag.add(new Clock({ context: this.out.context, callback: (time) => this.tick(time), frequency: this.clockHz() }));
     this.layers = spec.build(this);
+  }
+
+  /** 이 무드의 오디오 컨텍스트 */
+  get ctx(): BaseContext {
+    return this.out.context;
   }
 
   // ---------------------------------------------------------------------
@@ -188,11 +195,12 @@ export class Runtime implements MoodInstance {
   // routing
   // ---------------------------------------------------------------------
   /** node를 무드 출력/센드에 연결. 1이 아닌 레벨은 Gain 노드를 만든다 */
-  route(node: ToneAudioNode, sends: Sends): void {
+  route(node: ToneAudioNode | { output: ToneAudioNode }, sends: Sends): void {
+    const src = node instanceof ToneAudioNode ? node : node.output;
     const link = (dest: Gain, level: number | undefined) => {
       if (!level) return;
-      if (level === 1) node.connect(dest);
-      else node.connect(this.bag.add(new Gain(level)).connect(dest));
+      if (level === 1) src.connect(dest);
+      else src.connect(this.bag.add(new Gain({ context: this.ctx, gain: level })).connect(dest));
     };
     link(this.out, sends.dry ?? 1);
     link(this.verb, sends.verb);
@@ -205,10 +213,11 @@ export class Runtime implements MoodInstance {
   start(fadeIn: number): void {
     if (this.disposed) return;
     const t = this.out.now() + 0.05;
+    const level = Math.pow(10, (this.spec.gain ?? 0) / 20);
     for (const g of [this.out, this.verb, this.echo]) {
       g.gain.cancelScheduledValues(t);
       g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(1, t + Math.max(0.01, fadeIn));
+      g.gain.linearRampToValueAtTime(level, t + Math.max(0.01, fadeIn));
     }
     for (const l of this.layers) this.safe(() => l.start?.(t));
     // 시작 시점의 정신력/강도를 레이어에 반영
@@ -305,5 +314,5 @@ export function createMood(env: MoodEnv, spec: MoodSpec): MoodInstance {
   return new Runtime(env, spec);
 }
 
-/** 템포/재생 무관 공용: 0..1 사이 무작위 팬 */
+/** -width..width 사이 무작위 팬 */
 export const randPan = (width = 0.8): number => rand(-width, width);

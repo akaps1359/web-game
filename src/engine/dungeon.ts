@@ -1,4 +1,4 @@
-import { ENCOUNTERS, EVENTS, FLOORS, type FloorSignal } from './registry';
+import { ANOMALIES, ENCOUNTERS, EVENTS, FLOORS, type FloorSignal } from './registry';
 import {
   endRun,
   log,
@@ -141,6 +141,7 @@ export function generateFloor(run: RunState, act: number): FloorState {
     start.cleared = true;
     const bosses = ENCOUNTERS.filter((e) => e.act === act && e.kind === 'boss' && !e.id.startsWith('lord'));
     f.bossEnc = bosses.length ? r.pick(bosses).id : '';
+    FLOORS.get(act)?.setup?.(run, f);
     reveal(run, f, start.id);
     if (run.relics.some((x) => x.id === 'rusty-compass')) {
       const portalRoom = f.rooms[f.portal];
@@ -452,7 +453,8 @@ export function enterRoom(run: RunState, id: number) {
     case 'elite': {
       if (!room.enc) room.enc = pickEncounter(run, f, room);
       room.cleared = true;
-      startCombat(run, room.enc, { ambush: run.light < 25 && r.chance(0.5) });
+      const anomaly = FLOORS.get(f.act)?.roomAnomaly?.(run, f, room.id) ?? (room.inverted ? 'rule-inverted' : undefined);
+      startCombat(run, room.enc, { ambush: run.light < 25 && r.chance(0.5), anomaly: anomaly ?? undefined });
       break;
     }
     case 'portal':
@@ -523,7 +525,7 @@ function treasureReward(run: RunState): RewardState {
   const items: RewardState['items'] = [];
   const gold = r.int(20, 40);
   run.player.gold += gold;
-  if (r.chance(0.7)) {
+  if (r.chance(0.45)) {
     const relic = rollRelic(run);
     if (relic) items.push({ kind: 'relic', id: relic });
   } else {
@@ -546,9 +548,10 @@ export function enterRift(run: RunState): string | null {
   const room = f.rooms[f.pos];
   if (!room.rift) return '균열이 없다';
   const r = rng(run, 'map');
-  const rules = ['rule-inverted', 'rule-revive', 'rule-tax', 'rule-doom', 'rule-fog', 'rule-frenzy'];
-  const normals = ENCOUNTERS.filter((e) => e.act === f.act && e.kind === 'normal' && !e.early);
-  const elites = ENCOUNTERS.filter((e) => e.act === f.act && e.kind === 'elite' && !e.id.startsWith('stalker'));
+  const rules = [...ANOMALIES.keys()].filter((k) => k.startsWith('rule-'));
+  const normals = ENCOUNTERS.filter((e) => e.act === f.act && e.kind === 'normal' && !e.early && (e.weight ?? 1) > 0);
+  const special = (id: string) => id.startsWith('stalker') || id.startsWith('rift') || id.startsWith('lord');
+  const elites = ENCOUNTERS.filter((e) => e.act === f.act && e.kind === 'elite' && !special(e.id));
   const guardians = ENCOUNTERS.filter((e) => e.act === f.act && e.id.startsWith('rift'));
   if (!normals.length || !guardians.length) return '균열이 불안정하다';
   const encs = [r.pick(normals).id, (r.chance(0.5) && elites.length ? r.pick(elites) : r.pick(normals)).id, r.pick(guardians).id];

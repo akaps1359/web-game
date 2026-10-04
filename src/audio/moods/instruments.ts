@@ -1,132 +1,133 @@
-import {
-  Filter,
-  FMSynth,
-  Gain,
-  MembraneSynth,
-  MetalSynth,
-  MonoSynth,
-  NoiseSynth,
-  PolySynth,
-  Synth,
-  Vibrato,
-  type ToneAudioNode,
-} from 'tone';
+import { BiquadFilter, Gain, dbToGain } from 'tone';
+import { clamp } from '../scales';
+import { DrumSynth, FmSynth, NoiseSynth, OscSynth, type Ctx, type NoiseColor, type Playable, type Wave } from '../synth';
 import type { Runtime } from './runtime';
 
-// ---------------------------------------------------------------------------
-// Envelope curves
-// Tone의 'exponential' 감쇠는 시간상수가 log로 압축돼 긴 울림이 잘 안 나온다.
-// 그래서 sustain=1 + 짧은 duration + 배열 releaseCurve 로 진짜 지수 감쇠를 만든다.
-// ---------------------------------------------------------------------------
+/**
+ * 음량 보정(dB). 프리셋의 volume 인자는 예전 Tone 악기 기준 값을 그대로 쓰고, 네이티브 구현과의 차이는 여기서 맞춘다.
+ *  - 디튠 겹침(2~3 오실레이터): Tone FatOscillator는 개당 -6-1.1n dB로 줄였으므로 약 -5dB
+ *  - 노이즈: 공유 노이즈 버퍼(RMS 0.3)가 Tone 화이트 노이즈(RMS 0.58)보다 작아 +5.7dB
+ */
+export const COMP = { stack: -5, noise: 5.7 } as const;
 
-/** 1 → 0 지수 감쇠 곡선 (k=6.9 ≈ -60dB) */
-export function expCurve(n: number, k: number): number[] {
-  const out: number[] = [];
-  const end = Math.exp(-k);
-  for (let i = 0; i < n; i++) {
-    const x = i / (n - 1);
-    out.push((Math.exp(-k * x) - end) / (1 - end));
-  }
-  return out;
+/** 나이퀴스트 아래로 자른 필터 주파수 (Tone Param은 범위를 벗어나면 예외) */
+export const fq = (ctx: Ctx, f: number): number => clamp(f, 10, ctx.sampleRate * 0.45);
+
+/** Tone.BiquadFilter (Param 기반이라 Tone.Filter보다 4배 가볍다) */
+export function biquad(rt: Runtime, type: BiquadFilterType, freq: number, q = 0.7): BiquadFilter {
+  return rt.bag.add(new BiquadFilter({ context: rt.ctx, type, frequency: fq(rt.ctx, freq), Q: q }));
 }
 
-/** 0 → 1 가속 상승 곡선 (역재생 같은 스웰) */
-export function riseCurve(n: number, k: number): number[] {
-  return expCurve(n, k).reverse();
+/** 필터 주파수를 부드럽게 이동 */
+export function sweep(f: BiquadFilter, to: number, sec: number, t: number): void {
+  f.frequency.rampTo(fq(f.context, to), Math.max(0.01, sec), t);
 }
 
-export const EXP = expCurve(40, 6.9);
-export const SOFT = expCurve(32, 4.2);
-export const RISE = riseCurve(32, 4.5);
-
 // ---------------------------------------------------------------------------
-// Presets
+// Tonal presets
 // ---------------------------------------------------------------------------
 
 export interface BellOpts {
-  /** 변조 주파수 비 — 1.4 = 묵직한 종, 3.5 = 관종, 5~7 = 오르골/첼레스타 */
+  /** 변조 주파수 비 — 1.4 = 묵직한 종, 3.5 = 관종, 4~7 = 첼레스타/오르골 */
   harmonicity?: number;
   index?: number;
-  /** 울림(초) */
+  /** 울림(초, -60dB) */
   ring?: number;
-  /** 밝은 성분이 사라지는 시간(초) */
+  /** 밝은 성분 지속(초) */
   shine?: number;
+  /** dB */
   volume?: number;
   poly?: number;
 }
 
-/** FM 종/첼레스타/오르골 */
-export function fmBell(rt: Runtime, o: BellOpts = {}): PolySynth<FMSynth> {
-  const s = rt.bag.add(
-    new PolySynth(FMSynth, {
-      harmonicity: o.harmonicity ?? 3.5,
-      modulationIndex: o.index ?? 8,
-      oscillator: { type: 'sine' },
-      modulation: { type: 'sine' },
-      envelope: { attack: 0.002, decay: 0, sustain: 1, release: o.ring ?? 4, releaseCurve: EXP },
-      modulationEnvelope: { attack: 0.002, decay: 0, sustain: 1, release: o.shine ?? 1.2, releaseCurve: EXP },
-      volume: o.volume ?? -14,
+export function fmBell(rt: Runtime, o: BellOpts = {}): FmSynth {
+  return rt.bag.add(
+    new FmSynth(rt.ctx, {
+      ratio: o.harmonicity ?? 3.5,
+      index: o.index ?? 8,
+      env: { a: 0.002, r: o.ring ?? 4 },
+      modEnv: { a: 0.002, r: o.shine ?? 1.2 },
+      level: dbToGain(o.volume ?? -14),
+      max: o.poly ?? 6,
     }),
   );
-  s.maxPolyphony = o.poly ?? 6;
-  return s;
 }
 
-/** 부드러운 전자피아노/펠트피아노 느낌 (FM 1:1) */
-export function fmKeys(rt: Runtime, o: { ring?: number; volume?: number; poly?: number; bright?: number } = {}): PolySynth<FMSynth> {
-  const s = rt.bag.add(
-    new PolySynth(FMSynth, {
-      harmonicity: 1,
-      modulationIndex: o.bright ?? 1.6,
-      oscillator: { type: 'sine' },
-      modulation: { type: 'triangle' },
-      envelope: { attack: 0.004, decay: 0, sustain: 1, release: o.ring ?? 3, releaseCurve: EXP },
-      modulationEnvelope: { attack: 0.004, decay: 0, sustain: 1, release: 0.6, releaseCurve: EXP },
-      volume: o.volume ?? -12,
+/** 부드러운 전자피아노/펠트피아노 (FM 1:1) */
+export function fmKeys(rt: Runtime, o: { ring?: number; volume?: number; poly?: number; bright?: number } = {}): FmSynth {
+  return rt.bag.add(
+    new FmSynth(rt.ctx, {
+      ratio: 1,
+      index: o.bright ?? 1.6,
+      modWave: 'triangle',
+      env: { a: 0.004, r: o.ring ?? 3 },
+      modEnv: { a: 0.004, r: 0.7 },
+      level: dbToGain(o.volume ?? -12),
+      max: o.poly ?? 8,
     }),
   );
-  s.maxPolyphony = o.poly ?? 8;
-  return s;
 }
 
 /** 하프/기타 같은 뜯는 소리 */
-export function pluck(rt: Runtime, o: { ring?: number; volume?: number; poly?: number } = {}): PolySynth<Synth> {
-  const s = rt.bag.add(
-    new PolySynth(Synth, {
-      oscillator: { type: 'custom', partials: [1, 0.5, 0.28, 0.12, 0.07, 0.03] },
-      envelope: { attack: 0.003, decay: 0, sustain: 1, release: o.ring ?? 1.8, releaseCurve: EXP },
-      volume: o.volume ?? -12,
+export function pluck(rt: Runtime, o: { ring?: number; volume?: number; poly?: number } = {}): OscSynth {
+  return rt.bag.add(
+    new OscSynth(rt.ctx, {
+      wave: [1, 0.5, 0.28, 0.12, 0.07, 0.03],
+      env: { a: 0.003, r: o.ring ?? 1.8 },
+      level: dbToGain(o.volume ?? -12),
+      max: o.poly ?? 8,
     }),
   );
-  s.maxPolyphony = o.poly ?? 8;
-  return s;
 }
 
 export interface PadOpts {
-  type?: 'fatsawtooth' | 'fattriangle' | 'fatsine' | 'fatsquare';
+  type?: 'sawtooth' | 'triangle' | 'sine' | 'square';
+  /** 겹칠 오실레이터 수 (2~3) */
   count?: number;
+  /** 디튠 폭(cents) */
   spread?: number;
   attack?: number;
   release?: number;
+  /** dB */
   volume?: number;
   poly?: number;
 }
 
-/** 지속음 패드 — 출력은 Synth 묶음 그대로 (필터는 호출자가) */
-export function padSynth(rt: Runtime, o: PadOpts = {}): PolySynth<Synth> {
-  const s = rt.bag.add(
-    new PolySynth(Synth, {
-      oscillator: { type: o.type ?? 'fatsawtooth', count: o.count ?? 2, spread: o.spread ?? 16 },
-      envelope: { attack: o.attack ?? 2.5, decay: 0, sustain: 1, release: o.release ?? 4, releaseCurve: SOFT },
-      volume: o.volume ?? -20,
+export function spreadDetunes(count: number, spread: number): number[] {
+  if (count <= 1) return [0];
+  const out: number[] = [];
+  for (let i = 0; i < count; i++) out.push(-spread / 2 + (spread * i) / (count - 1));
+  return out;
+}
+
+/** 지속음 패드 (필터는 호출자가) */
+export function padSynth(rt: Runtime, o: PadOpts = {}): OscSynth {
+  return rt.bag.add(
+    new OscSynth(rt.ctx, {
+      wave: o.type ?? 'sawtooth',
+      detunes: spreadDetunes(o.count ?? 2, o.spread ?? 16),
+      env: { a: o.attack ?? 2.5, r: o.release ?? 4 },
+      level: dbToGain((o.volume ?? -20) + COMP.stack),
+      max: o.poly ?? 10,
     }),
   );
-  s.maxPolyphony = o.poly ?? 10;
-  return s;
+}
+
+/** 금관 같은 저음 스탭/스웰 (필터는 호출자가) */
+export function brass(rt: Runtime, o: { volume?: number; attack?: number; release?: number; poly?: number } = {}): OscSynth {
+  return rt.bag.add(
+    new OscSynth(rt.ctx, {
+      wave: 'sawtooth',
+      detunes: [-11, 11],
+      env: { a: o.attack ?? 0.08, r: o.release ?? 0.9 },
+      level: dbToGain((o.volume ?? -14) + COMP.stack),
+      max: o.poly ?? 8,
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
-// Formant choir: 톱니파 → 비브라토 → 병렬 밴드패스(모음 포먼트)
+// Formant choir: 톱니파(비브라토) → 병렬 밴드패스(모음 포먼트)
 // ---------------------------------------------------------------------------
 
 export type Vowel = 'a' | 'o' | 'u' | 'e' | 'i';
@@ -140,7 +141,7 @@ const FORMANTS: Record<Vowel, readonly [number, number, number]> = {
 const FORMANT_GAIN = [1, 0.55, 0.2] as const;
 
 export interface Choir {
-  synth: PolySynth<Synth>;
+  synth: OscSynth;
   output: Gain;
   setVowel(v: Vowel, t: number, ramp: number): void;
 }
@@ -150,33 +151,31 @@ export function choir(
   o: { volume?: number; attack?: number; release?: number; vibrato?: number; poly?: number; vowel?: Vowel } = {},
 ): Choir {
   const synth = rt.bag.add(
-    new PolySynth(Synth, {
-      oscillator: { type: 'fatsawtooth', count: 2, spread: 14 },
-      envelope: { attack: o.attack ?? 1.4, decay: 0, sustain: 1, release: o.release ?? 2.8, releaseCurve: SOFT },
-      volume: o.volume ?? -10,
+    new OscSynth(rt.ctx, {
+      wave: 'sawtooth',
+      detunes: [-8, 8],
+      env: { a: o.attack ?? 1.4, r: o.release ?? 2.8 },
+      level: dbToGain((o.volume ?? -10) + COMP.stack),
+      max: o.poly ?? 10,
+      vibrato: { rate: 4.8, cents: (o.vibrato ?? 0.12) * 140 },
     }),
   );
-  synth.maxPolyphony = o.poly ?? 10;
-  const vib = rt.bag.add(new Vibrato({ frequency: 4.8, depth: o.vibrato ?? 0.12, maxDelay: 0.005, wet: 1 }));
-  synth.connect(vib);
-  const output = rt.bag.add(new Gain(3.2)); // 밴드패스로 줄어든 에너지 보상
+  const output = rt.bag.add(new Gain({ context: rt.ctx, gain: 3.2 })); // 밴드패스로 줄어든 에너지 보상
   const filters = FORMANTS[o.vowel ?? 'a'].map((f, i) => {
-    const flt = rt.bag.add(new Filter({ type: 'bandpass', frequency: f, Q: i === 0 ? 5 : 8, rolloff: -12 }));
-    const g = rt.bag.add(new Gain(FORMANT_GAIN[i]));
-    vib.connect(flt);
-    flt.connect(g);
-    g.connect(output);
+    const flt = biquad(rt, 'bandpass', f, i === 0 ? 5 : 8);
+    const g = rt.bag.add(new Gain({ context: rt.ctx, gain: FORMANT_GAIN[i] }));
+    synth.output.chain(flt, g, output);
     return flt;
   });
-  // 저역 몸통이 너무 빠지지 않게 약간의 로우패스 원음을 섞는다
-  const body = rt.bag.add(new Filter({ type: 'lowpass', frequency: 420, rolloff: -12 }));
-  const bodyGain = rt.bag.add(new Gain(0.18));
-  vib.chain(body, bodyGain, output);
+  // 저역 몸통
+  const body = biquad(rt, 'lowpass', 420, 0.7);
+  const bodyGain = rt.bag.add(new Gain({ context: rt.ctx, gain: 0.18 }));
+  synth.output.chain(body, bodyGain, output);
   return {
     synth,
     output,
     setVowel(v, t, ramp) {
-      FORMANTS[v].forEach((f, i) => filters[i].frequency.rampTo(f, ramp, t));
+      FORMANTS[v].forEach((f, i) => sweep(filters[i], f, ramp, t));
     },
   };
 }
@@ -185,98 +184,121 @@ export function choir(
 // Percussion presets
 // ---------------------------------------------------------------------------
 
-export function taiko(rt: Runtime, volume = -6): MembraneSynth {
+export function taiko(rt: Runtime, volume = -4): DrumSynth {
   return rt.bag.add(
-    new MembraneSynth({
-      pitchDecay: 0.06,
-      octaves: 3.2,
-      oscillator: { type: 'sine' },
-      envelope: { attack: 0.002, decay: 0, sustain: 1, release: 0.9, releaseCurve: EXP },
-      volume,
-    }),
+    new DrumSynth(rt.ctx, { wave: 'sine', octaves: 3.2, pitchDecay: 0.06, env: { a: 0.002, r: 0.9 }, level: dbToGain(volume) }),
   );
 }
 
-export function tom(rt: Runtime, volume = -10): MembraneSynth {
+export function tom(rt: Runtime, volume = -9): DrumSynth {
   return rt.bag.add(
-    new MembraneSynth({
-      pitchDecay: 0.03,
-      octaves: 2.2,
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.002, decay: 0, sustain: 1, release: 0.45, releaseCurve: EXP },
-      volume,
-    }),
+    new DrumSynth(rt.ctx, { wave: 'triangle', octaves: 2.2, pitchDecay: 0.03, env: { a: 0.002, r: 0.45 }, level: dbToGain(volume) }),
   );
 }
 
-/** 짧은 노이즈 타격(손바닥/스네어/쉐이커). filter로 음색 결정 */
+export function boomDrum(rt: Runtime, volume = -4, ring = 1.8): DrumSynth {
+  return rt.bag.add(
+    new DrumSynth(rt.ctx, { wave: 'sine', octaves: 2.6, pitchDecay: 0.14, env: { a: 0.003, r: ring }, level: dbToGain(volume) }),
+  );
+}
+
+/** 짧은 노이즈 타격(손바닥/스네어/쉐이커/심벌). filter로 음색 결정 */
 export function noiseHit(
   rt: Runtime,
-  o: { type?: 'white' | 'pink' | 'brown'; decay?: number; volume?: number; filter: 'bandpass' | 'highpass' | 'lowpass'; freq: number; q?: number },
-): { synth: NoiseSynth; filter: Filter } {
+  o: { color?: NoiseColor; decay?: number; volume?: number; filter: BiquadFilterType; freq: number; q?: number },
+): { synth: NoiseSynth; filter: BiquadFilter } {
   const synth = rt.bag.add(
-    new NoiseSynth({
-      noise: { type: o.type ?? 'white' },
-      envelope: { attack: 0.001, decay: 0, sustain: 1, release: o.decay ?? 0.12, releaseCurve: EXP },
-      volume: o.volume ?? -14,
-    }),
+    new NoiseSynth(rt.ctx, { color: o.color ?? 'white', env: { a: 0.001, r: o.decay ?? 0.12 }, level: dbToGain((o.volume ?? -14) + COMP.noise) }),
   );
-  const filter = rt.bag.add(new Filter({ type: o.filter, frequency: o.freq, Q: o.q ?? 1, rolloff: -12 }));
-  synth.connect(filter);
+  const filter = biquad(rt, o.filter, o.freq, o.q ?? 1);
+  synth.output.connect(filter);
   return { synth, filter };
 }
 
-/** 쇠사슬/모루/종 같은 금속 타격 */
-export function metal(rt: Runtime, o: { decay?: number; volume?: number; harmonicity?: number; index?: number; resonance?: number } = {}): MetalSynth {
-  const m = rt.bag.add(
-    new MetalSynth({
-      harmonicity: o.harmonicity ?? 5.1,
-      modulationIndex: o.index ?? 24,
-      resonance: o.resonance ?? 2200,
-      octaves: 1.2,
-      envelope: { attack: 0.001, decay: o.decay ?? 0.4, release: 0.2 },
-      volume: o.volume ?? -22,
-    }),
-  );
-  return m;
+/**
+ * 금속성 타격 (쇠사슬/모루). Tone.MetalSynth는 아이폰엔 너무 무거워서
+ * 비조화 비율의 FM 두 겹으로 '쨍' 하는 소리를 만든다.
+ */
+export interface Metal {
+  output: Gain;
+  hit(t: number, vel: number): void;
 }
 
-/** 저역 오스티나토용 모노 신스 */
-export function bassSynth(rt: Runtime, o: { volume?: number; type?: 'sawtooth' | 'square' | 'fatsawtooth'; cutoff?: number; env?: number } = {}): MonoSynth {
-  return rt.bag.add(
-    new MonoSynth({
-      oscillator: o.type === 'fatsawtooth' ? { type: 'fatsawtooth', count: 2, spread: 12 } : { type: o.type ?? 'sawtooth' },
-      filter: { type: 'lowpass', Q: 2.5, rolloff: -24 },
-      filterEnvelope: {
-        attack: 0.004,
-        decay: 0.18,
-        sustain: 0.12,
-        release: 0.2,
-        baseFrequency: o.cutoff ?? 90,
-        octaves: o.env ?? 3,
-      },
-      envelope: { attack: 0.004, decay: 0.25, sustain: 0.55, release: 0.12 },
-      volume: o.volume ?? -10,
-    }),
-  );
+export function metal(rt: Runtime, o: { freq?: number; decay?: number; volume?: number } = {}): Metal {
+  const f = o.freq ?? 380;
+  const decay = o.decay ?? 0.3;
+  const level = dbToGain(o.volume ?? -14);
+  const a = rt.bag.add(new FmSynth(rt.ctx, { ratio: 1.414, index: 14, env: { a: 0.001, r: decay }, modEnv: { a: 0.001, r: decay * 0.35 }, level, max: 3 }));
+  const b = rt.bag.add(new FmSynth(rt.ctx, { ratio: 1.73, index: 6, env: { a: 0.001, r: decay * 0.7 }, modEnv: { a: 0.001, r: decay * 0.2 }, level: level * 0.6, max: 3 }));
+  const output = rt.bag.add(new Gain({ context: rt.ctx, gain: 1 }));
+  a.output.connect(output);
+  b.output.connect(output);
+  return {
+    output,
+    hit(t, vel) {
+      const k = 1 + (Math.random() - 0.5) * 0.06;
+      a.play(f * k, 0.002, t, vel);
+      b.play(f * k * 2.76, 0.002, t, vel);
+    },
+  };
 }
 
-/** 금관 같은 저음 스탭/스웰 (필터는 호출자가 자동화) */
-export function brass(rt: Runtime, o: { volume?: number; attack?: number; release?: number; poly?: number } = {}): PolySynth<Synth> {
-  const s = rt.bag.add(
-    new PolySynth(Synth, {
-      oscillator: { type: 'fatsawtooth', count: 3, spread: 22 },
-      envelope: { attack: o.attack ?? 0.08, decay: 0, sustain: 1, release: o.release ?? 0.9, releaseCurve: SOFT },
-      volume: o.volume ?? -14,
-    }),
-  );
-  s.maxPolyphony = o.poly ?? 8;
-  return s;
+// ---------------------------------------------------------------------------
+// Bass (모노 오스티나토) — 공유 로우패스에 노트마다 필터 엔벨로프
+// ---------------------------------------------------------------------------
+
+export class BassSynth implements Playable {
+  readonly output: Gain;
+  private readonly osc: OscSynth;
+  private readonly filter: BiquadFilter;
+  private readonly base: number;
+  /** 필터 엔벨로프 폭(옥타브) */
+  octaves: number;
+  constructor(
+    private readonly rt: Runtime,
+    o: { wave?: Wave; detunes?: readonly number[]; base?: number; octaves?: number; q?: number; volume?: number },
+  ) {
+    this.base = o.base ?? 90;
+    this.octaves = o.octaves ?? 3;
+    this.osc = rt.bag.add(
+      new OscSynth(rt.ctx, {
+        wave: o.wave ?? 'sawtooth',
+        detunes: o.detunes ?? [0],
+        env: { a: 0.004, d: 0.25, s: 0.55, r: 0.12 },
+        level: dbToGain(o.volume ?? -10),
+        max: 3,
+      }),
+    );
+    this.filter = biquad(rt, 'lowpass', this.base * 4, o.q ?? 2.5);
+    this.output = rt.bag.add(new Gain({ context: rt.ctx, gain: 1 }));
+    this.osc.output.chain(this.filter, this.output);
+  }
+  setQ(v: number, t: number): void {
+    this.filter.Q.setValueAtTime(v, t);
+  }
+  triggerAttackRelease(notes: number | readonly number[], dur: number, t: number, vel = 1): void {
+    const f = typeof notes === 'number' ? notes : notes[0];
+    const ctx = this.rt.ctx;
+    const peak = fq(ctx, this.base * Math.pow(2, this.octaves * (0.5 + 0.5 * vel)));
+    const sus = fq(ctx, this.base * Math.pow(2, this.octaves * 0.15));
+    const p = this.filter.frequency;
+    p.cancelScheduledValues(t);
+    p.setValueAtTime(peak, t);
+    p.exponentialRampToValueAtTime(sus, t + 0.18);
+    this.osc.play(f, dur, t, vel);
+  }
+  releaseAll(t: number): void {
+    this.osc.releaseAll(t);
+  }
 }
 
-/** 신호 → 필터 → (반환) — 체인 편의 */
-export function lowpass(rt: Runtime, src: ToneAudioNode, freq: number, q = 0.8, rolloff: -12 | -24 = -24): Filter {
-  const f = rt.bag.add(new Filter({ type: 'lowpass', frequency: freq, Q: q, rolloff }));
-  src.connect(f);
-  return f;
+export function bassSynth(rt: Runtime, o: { volume?: number; type?: 'sawtooth' | 'square' | 'fatsawtooth'; cutoff?: number; env?: number } = {}): BassSynth {
+  const fat = o.type === 'fatsawtooth';
+  return new BassSynth(rt, {
+    wave: o.type === 'square' ? 'square' : 'sawtooth',
+    detunes: fat ? [-6, 6] : [0],
+    base: o.cutoff ?? 90,
+    octaves: o.env ?? 3,
+    volume: (o.volume ?? -10) + (fat ? COMP.stack : 0),
+  });
 }

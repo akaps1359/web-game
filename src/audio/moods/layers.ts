@@ -1,36 +1,45 @@
-import {
-  Chorus,
-  FatOscillator,
-  Filter,
-  FMSynth,
-  FrequencyShifter,
-  Gain,
-  LFO,
-  MembraneSynth,
-  Noise,
-  NoiseSynth,
-  Panner,
-  PolySynth,
-  Synth,
-  type ToneAudioNode,
-} from 'tone';
+import { Gain, Panner, dbToGain } from 'tone';
 import { addDissonance, chance, clamp, expWait, mtof, pick, rand, randInt, weighted } from '../scales';
-import { EXP, RISE, SOFT, fmBell, padSynth, type PadOpts } from './instruments';
+import {
+  DrumSynth,
+  FmSynth,
+  NoiseSynth,
+  OscSynth,
+  Sustain,
+  applyEnv,
+  cleanup,
+  noiseSource,
+  startNoise,
+  unlink,
+  type BasicWave,
+  type Playable,
+} from '../synth';
+import { biquad, fmBell, padSynth, spreadDetunes, sweep, type PadOpts } from './instruments';
 import { randPan, type Layer, type Runtime, type Sends } from './runtime';
 
-/** 화음/선율을 연주할 수 있는 폴리 신스 (PolySynth<Synth|FMSynth>) */
-export interface Playable {
-  triggerAttackRelease(notes: number | number[], duration: number, time?: number, velocity?: number): unknown;
-  releaseAll(time?: number): unknown;
-}
+export type { Playable } from '../synth';
 
 const vel = (r: readonly [number, number] | undefined, d: readonly [number, number]): number => {
   const [a, b] = r ?? d;
   return clamp(rand(a, b), 0.01, 1);
 };
 
+/** 무드가 끝날 때 정리할 네이티브 소스 */
+function holdSource(rt: Runtime, src: AudioScheduledSourceNode): void {
+  rt.bag.add({
+    dispose() {
+      try {
+        src.stop();
+      } catch {
+        /* 이미 정지 */
+      }
+      src.disconnect();
+    },
+  });
+}
+
 // ===========================================================================
-// Drone — 디튠된 톱니파 묶음 → 로우패스(느린 LFO 호흡)
+// Drone — 디튠된 톱니파 묶음 → (어두운/밝은 로우패스 크로스페이드로 '호흡')
 // ===========================================================================
 
 export interface DroneOpts {
@@ -38,12 +47,14 @@ export interface DroneOpts {
   notes: number[];
   follow?: boolean;
   octave?: number;
-  type?: 'sawtooth' | 'triangle' | 'square' | 'sine';
+  type?: BasicWave;
   count?: number;
   spread?: number;
   cutoff?: number;
   q?: number;
+  /** 호흡 속도(Hz, 대략) */
   lfoRate?: number;
+  /** 호흡 깊이 (0..1.5) */
   lfoOct?: number;
   level?: number;
   sends?: Sends;
@@ -54,49 +65,52 @@ export interface DroneOpts {
 
 export function drone(rt: Runtime, o: DroneOpts): Layer {
   const cutoff = (o.cutoff ?? 300) * rt.pal.bright;
-  const filt = rt.bag.add(new Filter({ type: 'lowpass', frequency: cutoff, Q: o.q ?? 0.9, rolloff: -24 }));
-  const amp = rt.bag.add(new Gain(0));
-  filt.connect(amp);
-  rt.route(amp, o.sends ?? { dry: 1, verb: 0.3 });
-  const depth = 1200 * (o.lfoOct ?? 0.7);
-  const cutLfo = rt.bag.add(new LFO({ frequency: o.lfoRate ?? 0.04, min: -depth, max: depth, phase: rand(0, 360) }));
-  cutLfo.connect(filt.detune);
-  // 정신력이 낮을수록 커지는 피치 흔들림
-  const wob = rt.bag.add(new LFO({ frequency: rand(0.06, 0.12), min: -38, max: 38, amplitude: 0 }));
-  const spread = o.spread ?? 14;
   const pitches = (): number[] => (o.follow ? o.notes.map((n) => rt.harmony.bass(o.octave ?? 0) + n) : o.notes);
-  const oscs = pitches().map((m) => {
-    const osc = rt.bag.add(new FatOscillator({ frequency: mtof(m), type: o.type ?? 'sawtooth', count: o.count ?? 3, spread }));
-    osc.connect(filt);
-    wob.connect(osc.detune);
-    return osc;
-  });
+  const src = rt.bag.add(
+    new Sustain(rt.ctx, o.type ?? 'sawtooth', pitches().map(mtof), spreadDetunes(o.count ?? 3, o.spread ?? 14), o.level ?? 0.5),
+  );
+  // 필터 계수를 계속 다시 계산하지 않도록 고정 필터 두 개를 게인으로 크로스페이드
+  const dark = biquad(rt, 'lowpass', cutoff * 0.65, o.q ?? 0.9);
+  const bright = biquad(rt, 'lowpass', cutoff * 1.8, o.q ?? 0.9);
+  const gDark = rt.bag.add(new Gain({ context: rt.ctx, gain: 1 }));
+  const gBright = rt.bag.add(new Gain({ context: rt.ctx, gain: 0 }));
+  const mix = rt.bag.add(new Gain({ context: rt.ctx, gain: 1 }));
+  src.output.fan(dark, bright);
+  dark.chain(gDark, mix);
+  bright.chain(gBright, mix);
+  rt.route(mix, o.sends ?? { dry: 1, verb: 0.3 });
+  const depth = clamp((o.lfoOct ?? 0.7) / 1.2, 0, 1);
+  const period = 1 / (o.lfoRate ?? 0.04);
+  let nextBreath = 0;
   let lastDegree = rt.harmony.degree;
   return {
     start(t) {
-      for (const x of oscs) x.start(t);
-      cutLfo.start(t);
-      wob.start(t);
-      amp.gain.setValueAtTime(0, t);
-      amp.gain.linearRampToValueAtTime(o.level ?? 0.5, t + 3);
+      src.start(t, 3);
+      nextBreath = t + rand(1, period * 0.3);
     },
     step(t, s) {
-      if (!o.follow || !rt.isBar(s) || rt.harmony.degree === lastDegree) return;
-      lastDegree = rt.harmony.degree;
-      pitches().forEach((m, i) => oscs[i]?.frequency.exponentialRampTo(mtof(m), o.glide ?? 1.5, t));
+      if (t >= nextBreath) {
+        const dur = (period / 2) * rand(0.6, 1.3);
+        const x = rand(0.1, 1) * depth;
+        gBright.gain.rampTo(x, dur, t);
+        gDark.gain.rampTo(1 - x * 0.6, dur, t);
+        nextBreath = t + dur;
+      }
+      if (o.follow && rt.isBar(s) && rt.harmony.degree !== lastDegree) {
+        lastDegree = rt.harmony.degree;
+        src.glide(pitches().map(mtof), t, o.glide ?? 1.5);
+      }
     },
     stop(t) {
-      for (const x of oscs) x.stop(t);
-      cutLfo.stop(t);
-      wob.stop(t);
+      src.stop(t);
     },
     sanity(_s, t) {
-      wob.amplitude.rampTo(rt.wobble, 3, t);
-      const sp = spread + rt.dissonance * 40;
-      for (const x of oscs) x.spread = sp;
+      src.spread(1 + rt.wobble * 0.8 + rt.dissonance * 3, t);
     },
     intensity(x, t) {
-      filt.frequency.rampTo(clamp(cutoff * (1 + x * (o.open ?? 1.2)), 40, 12000), 3, t);
+      const k = 1 + x * (o.open ?? 1.2);
+      sweep(dark, cutoff * 0.65 * k, 3, t);
+      sweep(bright, cutoff * 1.8 * k, 3, t);
     },
   };
 }
@@ -167,44 +181,35 @@ export function chords(rt: Runtime, synth: Playable, o: ChordOpts = {}): Layer {
 export interface PadLayerOpts extends PadOpts, ChordOpts {
   cutoff?: number;
   q?: number;
+  /** 넓게 (오실레이터 3개, 디튠 폭 확대) */
   chorus?: boolean;
   sends?: Sends;
   lfoRate?: number;
 }
 
-/** 패드 신스 + 필터 + (코러스) + 화음 진행 */
+/** 패드 신스 + 로우패스 + 화음 진행 */
 export function pad(rt: Runtime, o: PadLayerOpts = {}): Layer {
-  const synth = padSynth(rt, o);
+  const synth = padSynth(rt, o.chorus ? { ...o, count: 3, spread: Math.max(o.spread ?? 16, 26) } : o);
   const cutoff = (o.cutoff ?? 1200) * rt.pal.bright;
-  const filt = rt.bag.add(new Filter({ type: 'lowpass', frequency: cutoff, Q: o.q ?? 0.6, rolloff: -24 }));
-  const lfo = rt.bag.add(new LFO({ frequency: o.lfoRate ?? 0.03, min: -700, max: 700, phase: rand(0, 360) }));
-  lfo.connect(filt.detune);
-  synth.connect(filt);
-  let tail: ToneAudioNode = filt;
-  let chorus: Chorus | undefined;
-  if (o.chorus) {
-    chorus = rt.bag.add(new Chorus({ frequency: 0.25, delayTime: 4.5, depth: 0.6, spread: 160, wet: 0.6 }));
-    filt.connect(chorus);
-    tail = chorus;
-  }
-  rt.route(tail, o.sends ?? { dry: 1, verb: 0.55 });
+  const filt = biquad(rt, 'lowpass', cutoff, o.q ?? 0.6);
+  synth.output.connect(filt);
+  rt.route(filt, o.sends ?? { dry: 1, verb: 0.55 });
   const inner = chords(rt, synth, o);
+  const target = () => clamp(cutoff * (1 + rt.intensity * 0.8) * (1 - rt.wobble * 0.45), 80, 12000);
   return {
-    start(t) {
-      lfo.start(t);
-      chorus?.start(t);
+    step(t, s) {
+      // 화음이 바뀔 때 밝기를 조금씩 흔든다 (LFO 대신 램프)
+      if (rt.isBar(s, o.every ?? rt.chordBars)) sweep(filt, target() * rand(0.75, 1.25), rt.barDur, t);
+      inner.step?.(t, s);
     },
-    step: inner.step,
     stop(t) {
       inner.stop?.(t);
-      lfo.stop(t);
     },
     sanity(_s, t) {
-      // 정신력이 낮으면 패드가 어두워지고 탁해진다
-      filt.frequency.rampTo(clamp(cutoff * (1 - rt.wobble * 0.45), 80, 12000), 4, t);
+      sweep(filt, target(), 4, t);
     },
-    intensity(x, t) {
-      filt.frequency.rampTo(clamp(cutoff * (1 + x * 0.8) * (1 - rt.wobble * 0.45), 80, 12000), 3, t);
+    intensity(_x, t) {
+      sweep(filt, target(), 3, t);
     },
   };
 }
@@ -222,16 +227,15 @@ export interface MelodyOpts {
   phrase?: readonly [number, number];
   rest?: readonly [number, number];
   vel?: readonly [number, number];
-  /** 발음 유지 시간(초) — sustain=1 신스는 짧게 */
+  /** 발음 유지 시간(초) */
   hold?: number;
-  /** 아래 음 하나 더(3도/6도/옥타브) */
+  /** 아래 음 하나 더 */
   dyad?: number;
   /** 마디 첫 박에 화음음으로 끌리는 확률 */
   pull?: number;
   leap?: number;
   detune?: number;
   humanize?: number;
-  /** 시작 직후 쉼 여부 */
   startResting?: boolean;
 }
 
@@ -264,15 +268,11 @@ export function melody(rt: Runtime, synth: Playable, o: MelodyOpts): Layer {
       } else {
         const moveBy = chance(o.leap ?? 0.12) ? pick([-4, -3, 3, 4]) : weighted<number>([[-2, 2], [-1, 5], [0, 1], [1, 5], [2, 2]]);
         idx = clamp(idx + moveBy, 0, pool.length - 1);
-        // 가장자리에서 튕겨 돌아오기
         if (idx === 0 || idx === pool.length - 1) idx = clamp(idx + (idx === 0 ? 2 : -2), 0, pool.length - 1);
         cur = pool[idx];
       }
       const notes = [cur];
-      if (o.dyad && chance(o.dyad)) {
-        const below = pool[idx - pick([2, 3, 5])];
-        notes.push(below ?? cur - 12);
-      }
+      if (o.dyad && chance(o.dyad)) notes.push(pool[idx - pick([2, 3, 5])] ?? cur - 12);
       const v = vel(o.vel, [0.25, 0.55]) * (strong ? 1.15 : 1);
       synth.triggerAttackRelease(
         notes.map((m) => rt.hz(m, o.detune ?? 0.5)),
@@ -310,21 +310,21 @@ export interface BellLayerOpts {
   harmonicity?: number;
   index?: number;
   ring?: number;
+  /** dB */
   volume?: number;
   /** 평균 간격(초) */
   every?: number;
-  /** 연속 타종 횟수 범위 */
   strikes?: readonly [number, number];
   gap?: number;
   sends?: Sends;
-  /** 낮은 허밍 음 추가 */
+  /** 한 옥타브 아래 허밍 음 */
   hum?: boolean;
 }
 
 export function bells(rt: Runtime, o: BellLayerOpts): Layer {
   const synth = fmBell(rt, { harmonicity: o.harmonicity ?? 1.4, index: o.index ?? 6, ring: o.ring ?? 6, shine: 1.6, volume: o.volume ?? -16, poly: 6 });
-  const pan = rt.bag.add(new Panner(randPan(0.5)));
-  synth.connect(pan);
+  const pan = rt.bag.add(new Panner({ context: rt.ctx, pan: randPan(0.5) }));
+  synth.output.connect(pan);
   rt.route(pan, o.sends ?? { dry: 0.5, verb: 1, echo: 0.15 });
   let next = 0;
   return {
@@ -339,8 +339,9 @@ export function bells(rt: Runtime, o: BellLayerOpts): Layer {
       pan.pan.rampTo(randPan(0.6), 1, t);
       for (let i = 0; i < n; i++) {
         const tt = t + i * gap * rand(0.9, 1.1);
-        const notes = o.hum ? [rt.hz(note, 0.4), rt.hz(note - 12, 0.4)] : [rt.hz(note, 0.4)];
-        synth.triggerAttackRelease(notes, 0.05, tt, rand(0.45, 0.8) * (1 - i * 0.12));
+        const v = rand(0.45, 0.8) * (1 - i * 0.12);
+        synth.play(rt.hz(note, 0.4), 0.02, tt, v);
+        if (o.hum) synth.play(rt.hz(note - 12, 0.4), 0.02, tt, v * 0.6);
       }
       next = t + n * gap + expWait(o.every ?? 14) + 3;
     },
@@ -355,63 +356,70 @@ export function bells(rt: Runtime, o: BellLayerOpts): Layer {
 // ===========================================================================
 
 export function sea(rt: Runtime, o: { level?: number; cutoff?: number; sends?: Sends } = {}): Layer {
-  const noise = rt.bag.add(new Noise({ type: 'brown', volume: -4 }));
-  const lp = rt.bag.add(new Filter({ type: 'lowpass', frequency: o.cutoff ?? 380, Q: 0.4, rolloff: -12 }));
-  const amp = rt.bag.add(new Gain(0));
-  const pan = rt.bag.add(new Panner(0));
-  noise.chain(lp, amp, pan);
-  rt.route(pan, o.sends ?? { dry: 1, verb: 0.25 });
-  const L = o.level ?? 0.5;
+  const src = noiseSource(rt.ctx, 'brown');
+  holdSource(rt, src);
   const base = o.cutoff ?? 380;
+  const lp = biquad(rt, 'lowpass', base, 0.4);
+  const amp = rt.bag.add(new Gain({ context: rt.ctx, gain: 0 }));
+  const pan = rt.bag.add(new Panner({ context: rt.ctx, pan: 0 }));
+  src.connect(lp.input);
+  lp.chain(amp, pan);
+  rt.route(pan, o.sends ?? { dry: 1, verb: 0.25 });
+  const L = (o.level ?? 0.5) * 0.42;
   let next = 0;
   return {
     start(t) {
-      noise.start(t);
+      startNoise(src, t);
       amp.gain.setValueAtTime(L * 0.2, t);
       next = t;
     },
     step(t) {
       if (t < next) return;
-      // 파도 하나: 밀려오고(밝아짐) 빠져나감
+      // 파도 하나: 밀려오며 밝아지고, 빠져나가며 어두워진다
       const up = rand(1.8, 3.4);
       const down = rand(3, 5.5);
-      const peak = L * rand(0.55, 1);
       amp.gain.cancelAndHoldAtTime(t);
-      amp.gain.linearRampToValueAtTime(peak, t + up);
+      amp.gain.linearRampToValueAtTime(L * rand(0.55, 1), t + up);
       amp.gain.linearRampToValueAtTime(L * rand(0.12, 0.25), t + up + down);
-      lp.frequency.cancelAndHoldAtTime(t);
-      lp.frequency.exponentialRampToValueAtTime(base * rand(1.8, 2.8), t + up);
+      sweep(lp, base * rand(1.8, 2.8), up, t);
       lp.frequency.exponentialRampToValueAtTime(base * 0.8, t + up + down);
       pan.pan.rampTo(randPan(0.5), up + down, t);
       next = t + (up + down) * rand(0.75, 1.05);
     },
     stop(t) {
-      noise.stop(t);
+      src.stop(t + 0.05);
     },
   };
 }
 
 export function wind(rt: Runtime, o: { level?: number; freq?: number; q?: number; rate?: number; sends?: Sends; type?: 'pink' | 'white' } = {}): Layer {
-  const noise = rt.bag.add(new Noise({ type: o.type ?? 'pink', volume: -6 }));
-  const bp = rt.bag.add(new Filter({ type: 'bandpass', frequency: o.freq ?? 520, Q: o.q ?? 1.4, rolloff: -12 }));
-  const amp = rt.bag.add(new Gain(0));
-  noise.chain(bp, amp);
+  const src = noiseSource(rt.ctx, o.type ?? 'pink');
+  holdSource(rt, src);
+  const f0 = o.freq ?? 520;
+  const bp = biquad(rt, 'bandpass', f0, o.q ?? 1.4);
+  const amp = rt.bag.add(new Gain({ context: rt.ctx, gain: 0 }));
+  src.connect(bp.input);
+  bp.connect(amp);
   rt.route(amp, o.sends ?? { dry: 0.7, verb: 0.6 });
-  const sweep = rt.bag.add(new LFO({ frequency: o.rate ?? 0.045, min: -1900, max: 1900, phase: rand(0, 360) }));
-  sweep.connect(bp.detune);
-  const L = o.level ?? 0.35;
-  const gust = rt.bag.add(new LFO({ frequency: (o.rate ?? 0.045) * 2.3, min: L * 0.25, max: L, phase: rand(0, 360) }));
-  gust.connect(amp.gain);
+  const L = (o.level ?? 0.35) * 0.33;
+  const period = 1 / (o.rate ?? 0.045);
+  let next = 0;
   return {
     start(t) {
-      noise.start(t);
-      sweep.start(t);
-      gust.start(t);
+      startNoise(src, t);
+      amp.gain.setValueAtTime(L * 0.5, t);
+      next = t;
+    },
+    step(t) {
+      if (t < next) return;
+      // 돌풍: 대역과 세기를 천천히 옮긴다
+      const dur = (period / 3) * rand(0.5, 1.4);
+      sweep(bp, f0 * Math.pow(2, rand(-1.4, 1.4)), dur, t);
+      amp.gain.rampTo(L * rand(0.25, 1), dur * rand(0.5, 1), t);
+      next = t + dur;
     },
     stop(t) {
-      noise.stop(t);
-      sweep.stop(t);
-      gust.stop(t);
+      src.stop(t + 0.05);
     },
     intensity(x, t) {
       bp.Q.rampTo((o.q ?? 1.4) * (1 + x), 3, t);
@@ -421,33 +429,23 @@ export function wind(rt: Runtime, o: { level?: number; freq?: number; q?: number
 
 /** 침수된 지하의 물방울 — 위로 휘는 짧은 사인 */
 export function drips(rt: Runtime, o: { every?: number; volume?: number; lo?: number; hi?: number } = {}): Layer {
-  const voices = [0, 1].map(() => {
-    const s = rt.bag.add(
-      new Synth({
-        oscillator: { type: 'sine' },
-        envelope: { attack: 0.001, decay: 0, sustain: 1, release: 0.16, releaseCurve: EXP },
-        volume: o.volume ?? -24,
-      }),
-    );
-    const p = rt.bag.add(new Panner(0));
-    s.connect(p);
-    rt.route(p, { dry: 0.6, verb: 0.9, echo: 0.5 });
-    return { s, p };
-  });
+  const synth = rt.bag.add(new OscSynth(rt.ctx, { wave: 'sine', env: { a: 0.001, r: 0.16 }, level: dbToGain(o.volume ?? -24), max: 3 }));
+  const pan = rt.bag.add(new Panner({ context: rt.ctx, pan: 0 }));
+  synth.output.connect(pan);
+  rt.route(pan, { dry: 0.6, verb: 0.9, echo: 0.5 });
   let next = 0;
-  let vi = 0;
   return {
     start(t) {
       next = t + rand(0.5, 2);
     },
     step(t) {
       if (t < next) return;
-      const v = voices[vi++ % voices.length];
       const f = rand(o.lo ?? 900, o.hi ?? 2400);
-      v.p.pan.setValueAtTime(randPan(0.9), t);
-      v.s.triggerAttackRelease(f, 0.008, t, rand(0.3, 0.8));
-      v.s.frequency.exponentialRampToValueAtTime(f * rand(1.5, 2.1), t + rand(0.035, 0.07));
-      // 가끔 연달아 두 방울
+      pan.pan.setValueAtTime(randPan(0.9), t);
+      for (const osc of synth.play(f, 0.008, t, rand(0.3, 0.8))) {
+        osc.frequency.setValueAtTime(f, t);
+        osc.frequency.exponentialRampToValueAtTime(f * rand(1.5, 2.1), t + rand(0.035, 0.07));
+      }
       next = t + (chance(0.25) ? rand(0.15, 0.35) : expWait(o.every ?? 2.5) + 0.2);
     },
   };
@@ -456,45 +454,43 @@ export function drips(rt: Runtime, o: { every?: number; volume?: number; lo?: nu
 /** 모닥불: 낮은 웅웅거림 + 무작위 탁탁 소리 */
 export function fire(rt: Runtime, o: { level?: number } = {}): Layer {
   const L = o.level ?? 1;
-  const rumble = rt.bag.add(new Noise({ type: 'brown', volume: -10 }));
-  const rlp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 260, Q: 0.7, rolloff: -12 }));
-  const ramp = rt.bag.add(new Gain(0.5 * L));
-  rumble.chain(rlp, ramp);
+  const rumble = noiseSource(rt.ctx, 'brown');
+  holdSource(rt, rumble);
+  const rlp = biquad(rt, 'lowpass', 260, 0.7);
+  const ramp = rt.bag.add(new Gain({ context: rt.ctx, gain: 0.1 * L }));
+  rumble.connect(rlp.input);
+  rlp.connect(ramp);
   rt.route(ramp, { dry: 1, verb: 0.1 });
-  const crack = [0, 1, 2].map(() => {
-    const synth = rt.bag.add(
-      new NoiseSynth({
-        noise: { type: 'white' },
-        envelope: { attack: 0.0005, decay: 0, sustain: 1, release: 0.02, releaseCurve: EXP },
-        volume: -14,
-      }),
-    );
-    const hp = rt.bag.add(new Filter({ type: 'highpass', frequency: 2500, Q: 0.8, rolloff: -12 }));
-    const p = rt.bag.add(new Panner(0));
-    synth.chain(hp, p);
+  const chans = [0, 1].map(() => {
+    const synth = rt.bag.add(new NoiseSynth(rt.ctx, { color: 'white', env: { a: 0.0005, r: 0.02 }, level: dbToGain(-8.3), max: 4 }));
+    const hp = biquad(rt, 'highpass', 2500, 0.8);
+    const p = rt.bag.add(new Panner({ context: rt.ctx, pan: 0 }));
+    synth.output.chain(hp, p);
     rt.route(p, { dry: L, verb: 0.15 });
     return { synth, hp, p };
   });
   let next = 0;
   let ci = 0;
   let burst = 0;
+  let lastFlicker = 0;
   return {
     start(t) {
-      rumble.start(t);
+      startNoise(rumble, t);
       next = t + 0.3;
     },
     step(t) {
-      // 불꽃 일렁임
-      ramp.gain.rampTo(L * rand(0.3, 0.65), rand(0.15, 0.5), t);
-      rlp.frequency.rampTo(rand(180, 360), 0.4, t);
+      // 불꽃 일렁임 (게인만 — 필터 계수 재계산을 줄인다)
+      if (t - lastFlicker > 0.4) {
+        lastFlicker = t;
+        ramp.gain.rampTo(L * rand(0.07, 0.14), rand(0.15, 0.5), t);
+      }
       while (next < t + rt.stepDur) {
-        const c = crack[ci++ % crack.length];
+        const c = chans[ci++ % chans.length];
         const tt = Math.max(next, t);
         const pop = chance(0.12);
         c.hp.frequency.setValueAtTime(pop ? rand(700, 1400) : rand(2200, 6000), tt);
         c.p.pan.setValueAtTime(randPan(0.6), tt);
-        c.synth.envelope.release = pop ? rand(0.03, 0.07) : rand(0.006, 0.025);
-        c.synth.triggerAttackRelease(0.002, tt, pop ? rand(0.6, 1) : rand(0.08, 0.5));
+        c.synth.hit(tt, 0.002, pop ? rand(0.6, 1) : rand(0.08, 0.5), { a: 0.0005, r: pop ? rand(0.03, 0.07) : rand(0.006, 0.025) });
         if (burst > 0) {
           burst--;
           next = tt + rand(0.02, 0.07);
@@ -505,7 +501,7 @@ export function fire(rt: Runtime, o: { level?: number } = {}): Layer {
       }
     },
     stop(t) {
-      rumble.stop(t);
+      rumble.stop(t + 0.05);
     },
   };
 }
@@ -513,14 +509,10 @@ export function fire(rt: Runtime, o: { level?: number } = {}): Layer {
 /** 멀리서 들리는 안개 경적 */
 export function foghorn(rt: Runtime, o: { note?: number; every?: number; volume?: number } = {}): Layer {
   const horn = rt.bag.add(
-    new Synth({
-      oscillator: { type: 'fatsawtooth', count: 2, spread: 9 },
-      envelope: { attack: 0.6, decay: 0, sustain: 1, release: 2.4, releaseCurve: SOFT },
-      volume: o.volume ?? -12,
-    }),
+    new OscSynth(rt.ctx, { wave: 'sawtooth', detunes: [-5, 5], env: { a: 0.6, r: 2.4 }, level: dbToGain((o.volume ?? -12) - 5), max: 2 }),
   );
-  const lp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 220, Q: 1.6, rolloff: -24 }));
-  horn.connect(lp);
+  const lp = biquad(rt, 'lowpass', 200, 1.6);
+  horn.output.connect(lp);
   rt.route(lp, { dry: 0.5, verb: 1, echo: 0.25 });
   let next = 0;
   return {
@@ -531,16 +523,19 @@ export function foghorn(rt: Runtime, o: { note?: number; every?: number; volume?
       if (t < next) return;
       const f = rt.hz(o.note ?? rt.pal.root, 0.3);
       const len = rand(2.2, 3.2);
-      horn.triggerAttackRelease(f, len, t, rand(0.6, 0.9));
-      horn.frequency.setValueAtTime(f, t + len - 0.4);
-      horn.frequency.exponentialRampToValueAtTime(f * 0.9, t + len + 0.9);
-      lp.frequency.cancelAndHoldAtTime(t);
-      lp.frequency.exponentialRampToValueAtTime(420, t + 0.9);
-      lp.frequency.exponentialRampToValueAtTime(180, t + len + 1.5);
+      for (const osc of horn.play(f, len, t, rand(0.6, 0.9))) {
+        osc.frequency.setValueAtTime(f, t + len - 0.4);
+        osc.frequency.exponentialRampToValueAtTime(f * 0.9, t + len + 0.9);
+      }
+      const p = lp.frequency;
+      p.cancelScheduledValues(t);
+      p.setValueAtTime(180, t);
+      p.exponentialRampToValueAtTime(420, t + 0.9);
+      p.exponentialRampToValueAtTime(180, t + len + 1.5);
       next = t + len + expWait(o.every ?? 26) + 8;
     },
     stop(t) {
-      horn.triggerRelease(t);
+      horn.releaseAll(t);
     },
   };
 }
@@ -551,45 +546,39 @@ export function foghorn(rt: Runtime, o: { note?: number; every?: number; volume?
 
 export function swells(rt: Runtime, o: { prob?: number; lo?: number; hi?: number; volume?: number; every?: number } = {}): Layer {
   const synth = rt.bag.add(
-    new PolySynth(Synth, {
-      oscillator: { type: 'fattriangle', count: 2, spread: 24 },
-      envelope: { attack: 2, attackCurve: RISE, decay: 0, sustain: 1, release: 0.06 },
-      volume: o.volume ?? -16,
-    }),
+    new OscSynth(rt.ctx, { wave: 'triangle', detunes: [-12, 12], env: { a: 2, rise: true, r: 0.06 }, level: dbToGain((o.volume ?? -16) - 5), max: 8 }),
   );
-  synth.maxPolyphony = 8;
-  const air = rt.bag.add(
-    new NoiseSynth({
-      noise: { type: 'pink' },
-      envelope: { attack: 2, attackCurve: RISE, decay: 0, sustain: 1, release: 0.05 },
-      volume: -22,
-    }),
-  );
-  const bp = rt.bag.add(new Filter({ type: 'bandpass', frequency: 1400, Q: 0.9, rolloff: -12 }));
-  air.connect(bp);
+  const air = rt.bag.add(new NoiseSynth(rt.ctx, { color: 'pink', env: { a: 2, rise: true, r: 0.05 }, level: dbToGain(-25.5), max: 2 }));
+  const bp = biquad(rt, 'bandpass', 1400, 0.9);
+  air.output.connect(bp);
   rt.route(synth, { dry: 1, verb: 0.2 });
   rt.route(bp, { dry: 1, verb: 0.15 });
   return {
     step(t, s) {
       if (!rt.isBar(s, o.every ?? 2)) return;
-      const p = (o.prob ?? 0.15) + rt.dissonance * 0.4;
-      if (!chance(p)) return;
+      if (!chance((o.prob ?? 0.15) + rt.dissonance * 0.4)) return;
       const len = rand(1.6, 3.4);
-      synth.set({ envelope: { attack: len } });
-      air.envelope.attack = len;
       const lo = o.lo ?? rt.pal.root + 24;
       const hi = o.hi ?? rt.pal.root + 40;
       const tones = rt.harmony.chordTonesIn(lo, hi);
       const notes = addDissonance(tones.length > 3 ? tones.slice(0, 3) : tones, rt.dissonance + 0.2);
       if (!notes.length) return;
-      synth.triggerAttackRelease(notes.map((m) => rt.hz(m)), len, t, rand(0.4, 0.7));
-      bp.frequency.cancelAndHoldAtTime(t);
-      bp.frequency.setValueAtTime(400, t);
-      bp.frequency.exponentialRampToValueAtTime(rand(2500, 5000), t + len);
-      air.triggerAttackRelease(len, t, rand(0.3, 0.6));
+      synth.env = { ...synth.env, a: len };
+      synth.triggerAttackRelease(
+        notes.map((m) => rt.hz(m)),
+        len,
+        t,
+        rand(0.4, 0.7),
+      );
+      const p = bp.frequency;
+      p.cancelScheduledValues(t);
+      p.setValueAtTime(400, t);
+      p.exponentialRampToValueAtTime(rand(2500, 5000), t + len);
+      air.hit(t, len, rand(0.3, 0.6), { a: len, rise: true, r: 0.05 });
     },
     stop(t) {
       synth.releaseAll(t);
+      air.releaseAll(t);
     },
   };
 }
@@ -600,46 +589,35 @@ export function swells(rt: Runtime, o: { prob?: number; lo?: number; hi?: number
 
 export function shimmer(rt: Runtime, o: { density?: number; lo?: number; hi?: number; volume?: number; shift?: boolean } = {}): Layer {
   const synth = rt.bag.add(
-    new PolySynth(FMSynth, {
-      harmonicity: 2.01,
-      modulationIndex: 1.6,
-      oscillator: { type: 'sine' },
-      modulation: { type: 'sine' },
-      envelope: { attack: 0.9, decay: 0, sustain: 1, release: 3.5, releaseCurve: SOFT },
-      modulationEnvelope: { attack: 1.4, decay: 0, sustain: 1, release: 2, releaseCurve: SOFT },
-      volume: o.volume ?? -26,
+    new FmSynth(rt.ctx, {
+      ratio: 2.01,
+      index: 1.6,
+      env: { a: 0.9, r: 3.5 },
+      modEnv: { a: 1.4, r: 2 },
+      level: dbToGain(o.volume ?? -26),
+      max: 6,
     }),
   );
-  synth.maxPolyphony = 8;
-  const pan = rt.bag.add(new Panner(0));
-  const panLfo = rt.bag.add(new LFO({ frequency: 0.05, min: -0.75, max: 0.75 }));
-  panLfo.connect(pan.pan);
-  let shifter: FrequencyShifter | undefined;
-  if (o.shift) {
-    shifter = rt.bag.add(new FrequencyShifter({ frequency: 0, wet: 0.5 }));
-    synth.chain(shifter, pan);
-  } else {
-    synth.connect(pan);
-  }
+  const pan = rt.bag.add(new Panner({ context: rt.ctx, pan: 0 }));
+  synth.output.connect(pan);
   rt.route(pan, { dry: 0.35, verb: 1, echo: 0.45 });
   return {
-    start(t) {
-      panLfo.start(t);
-    },
     step(t, s) {
       if (!rt.isBeat(s) || !chance(o.density ?? 0.18)) return;
       const lo = o.lo ?? rt.pal.root + 48;
       const hi = o.hi ?? rt.pal.root + 64;
       const note = pick(rt.harmony.scaleIn(lo, hi));
       if (note === undefined) return;
-      synth.triggerAttackRelease(rt.hz(note, 1.2), rand(0.6, 1.6), rt.human(t, 0.2), rand(0.2, 0.5));
+      const at = rt.human(t, 0.2);
+      const d = rand(0.6, 1.6);
+      const v = rand(0.2, 0.5);
+      pan.pan.rampTo(randPan(0.75), 2, at);
+      synth.play(rt.hz(note, 1.2), d, at, v);
+      // 꿈의 일렁임: 살짝 어긋난 두 번째 음이 맥놀이를 만든다
+      if (o.shift || rt.wobble > 0.3) synth.play(rt.hz(note, 1.2) * Math.pow(2, (6 + rt.dissonance * 30) / 1200), d, at + 0.03, v * 0.7);
     },
     stop(t) {
       synth.releaseAll(t);
-      panLfo.stop(t);
-    },
-    sanity(_s, t) {
-      shifter?.frequency.rampTo(rt.wobble * 3 + rt.dissonance * 9, 4, t);
     },
   };
 }
@@ -649,26 +627,21 @@ export function shimmer(rt: Runtime, o: { density?: number; lo?: number; hi?: nu
 // ===========================================================================
 
 export function pipes(rt: Runtime, o: { lo?: number; hi?: number; volume?: number; prob?: number; noteSteps?: number } = {}): Layer {
+  const level = dbToGain(o.volume ?? -24);
   const voices = [0, 1].map(() => {
-    const s = rt.bag.add(
-      new Synth({
-        oscillator: { type: 'triangle' },
-        envelope: { attack: 0.14, decay: 0, sustain: 1, release: 0.6, releaseCurve: SOFT },
-        portamento: 0.07,
-        volume: o.volume ?? -24,
-      }),
-    );
-    const vib = rt.bag.add(new LFO({ frequency: rand(4.6, 6.4), min: -16, max: 16, amplitude: 0.7 }));
-    vib.connect(s.detune);
-    const hp = rt.bag.add(new Filter({ type: 'highpass', frequency: 320, rolloff: -12 }));
-    const p = rt.bag.add(new Panner(randPan(0.7)));
-    s.chain(hp, p);
+    const out = rt.bag.add(new Gain({ context: rt.ctx, gain: 1 }));
+    const hp = biquad(rt, 'highpass', 320, 0.7);
+    const p = rt.bag.add(new Panner({ context: rt.ctx, pan: randPan(0.7) }));
+    out.chain(hp, p);
     rt.route(p, { dry: 0.55, verb: 0.9, echo: 0.3 });
-    return { s, vib };
+    // 비브라토 LFO (네이티브, 피리마다 하나) — 프레이즈마다 깊이 게인을 거쳐 주파수에 연결
+    const lfo = rt.ctx.createOscillator();
+    lfo.frequency.value = rand(4.6, 6.4);
+    holdSource(rt, lfo);
+    return { out, lfo, busy: 0, started: false };
   });
   let motif: number[] = [];
   let reps = 0;
-  const busy = [0, 0];
   const newMotif = () => {
     const pool = rt.harmony.scaleIn(o.lo ?? rt.pal.root + 48, o.hi ?? rt.pal.root + 62);
     const start = randInt(0, Math.max(0, pool.length - 4));
@@ -682,24 +655,43 @@ export function pipes(rt: Runtime, o: { lo?: number; hi?: number; volume?: numbe
     reps = randInt(3, 7);
   };
   const playPhrase = (vi: number, t: number, transpose: number) => {
-    // 모노 신스라 이전 프레이즈가 끝나기 전엔 겹쳐 예약하지 않는다
-    if (t < busy[vi]) return;
     const v = voices[vi];
+    if (t < v.busy || !motif.length) return;
+    if (!v.started) {
+      v.lfo.start(t);
+      v.started = true;
+    }
+    const lfo = v.lfo;
+    const ctx = rt.ctx;
     const nd = rt.stepDur * (o.noteSteps ?? 2);
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    osc.connect(g);
+    g.connect(v.out.input);
     let tt = t;
+    const f0 = mtof(motif[0] + transpose);
     motif.forEach((m, i) => {
       const f = mtof(m + transpose + rt.detune(0.3) / 100);
-      if (i === 0) v.s.triggerAttack(f, tt, rand(0.5, 0.8));
-      else v.s.setNote(f, tt);
+      if (i === 0) osc.frequency.setValueAtTime(f, tt);
+      else osc.frequency.setTargetAtTime(f, tt, 0.025); // 포르타멘토
       tt += nd * pick([1, 1, 1, 2]);
     });
-    v.s.triggerRelease(tt);
-    busy[vi] = tt + 0.7;
+    const end = applyEnv(g.gain, t, rand(0.5, 0.8) * level, { a: 0.14, r: 0.6 }, tt - t);
+    // 비브라토 깊이 ≈ ±16 cents
+    const vg = ctx.createGain();
+    vg.gain.value = f0 * 0.0093;
+    lfo.connect(vg);
+    vg.connect(osc.frequency);
+    osc.start(t);
+    osc.stop(end);
+    cleanup([osc], [g, vg], () => unlink(lfo, vg));
+    v.busy = end + 0.1;
   };
   return {
-    start(t) {
+    start() {
       newMotif();
-      for (const v of voices) v.vib.start(t);
     },
     step(t, s) {
       if (!rt.isBar(s) || !chance(o.prob ?? 0.6)) return;
@@ -707,12 +699,6 @@ export function pipes(rt: Runtime, o: { lo?: number; hi?: number; volume?: numbe
       playPhrase(0, t, 0);
       // 두 번째 피리: 반음/삼전음 위에서 엇갈려 따라온다
       if (chance(0.35 + rt.dissonance * 0.4)) playPhrase(1, t + rt.stepDur * pick([1, 2, 3]), pick([1, 6, -5, 0.5]));
-    },
-    stop(t) {
-      for (const v of voices) {
-        v.s.triggerRelease(t);
-        v.vib.stop(t);
-      }
     },
   };
 }
@@ -723,16 +709,10 @@ export function pipes(rt: Runtime, o: { lo?: number; hi?: number; volume?: numbe
 
 export function heartbeat(rt: Runtime, o: { bpm?: number; volume?: number; note?: number; prob?: number } = {}): Layer {
   const s = rt.bag.add(
-    new MembraneSynth({
-      pitchDecay: 0.05,
-      octaves: 1.8,
-      oscillator: { type: 'sine' },
-      envelope: { attack: 0.004, decay: 0, sustain: 1, release: 0.38, releaseCurve: EXP },
-      volume: o.volume ?? -8,
-    }),
+    new DrumSynth(rt.ctx, { wave: 'sine', octaves: 1.8, pitchDecay: 0.05, env: { a: 0.004, r: 0.38 }, level: dbToGain(o.volume ?? -8) }),
   );
-  const lp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 150, rolloff: -24 }));
-  s.connect(lp);
+  const lp = biquad(rt, 'lowpass', 150, 0.7);
+  s.output.connect(lp);
   rt.route(lp, { dry: 1, verb: 0.12 });
   let next = 0;
   return {
@@ -746,8 +726,8 @@ export function heartbeat(rt: Runtime, o: { bpm?: number; volume?: number; note?
         const bpm = (o.bpm ?? 56) * (1 + rt.dissonance * 0.6 + rt.intensity * 0.25);
         if (chance(o.prob ?? 1)) {
           const f = mtof(o.note ?? 28);
-          s.triggerAttackRelease(f, 0.02, tt, 0.85);
-          s.triggerAttackRelease(f * 0.94, 0.02, tt + 0.27, 0.55);
+          s.hit(f, tt, 0.85);
+          s.hit(f * 0.94, tt + 0.27, 0.55);
         }
         next = tt + 60 / bpm;
       }
@@ -758,29 +738,21 @@ export function heartbeat(rt: Runtime, o: { bpm?: number; volume?: number; note?
 /** 4막 "역겨운 북소리" — 멀고 둔한, 박자가 어긋난 북 */
 export function distantDrums(rt: Runtime, o: { volume?: number; pattern?: string } = {}): Layer {
   const s = rt.bag.add(
-    new MembraneSynth({
-      pitchDecay: 0.08,
-      octaves: 2.5,
-      envelope: { attack: 0.003, decay: 0, sustain: 1, release: 0.9, releaseCurve: EXP },
-      volume: o.volume ?? -12,
-    }),
+    new DrumSynth(rt.ctx, { wave: 'sine', octaves: 2.5, pitchDecay: 0.08, env: { a: 0.003, r: 0.9 }, level: dbToGain(o.volume ?? -12) }),
   );
-  const lp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 380, rolloff: -24 }));
-  s.connect(lp);
+  const lp = biquad(rt, 'lowpass', 380, 0.7);
+  s.output.connect(lp);
   rt.route(lp, { dry: 0.5, verb: 0.8 });
   // 8분음표 단위 패턴 (5+7 = 12박 순환)
   const pat = o.pattern ?? 'x..x.x..x.x.' + 'x...x..x.xx.';
   let i = 0;
-  let last = 0;
   return {
     step(t, s2) {
       const eighth = Math.max(1, rt.stepsPerBeat / 2);
       if (s2 % eighth !== 0) return;
       const c = pat[i++ % pat.length];
       if (c !== 'x' || !chance(0.85)) return;
-      const tt = Math.max(rt.human(t, 0.03), last + 0.01);
-      last = tt;
-      s.triggerAttackRelease(rt.hz(rt.pal.root - 12 + pick([0, 0, 0, 7]), 0.3), 0.02, tt, rand(0.4, 0.9));
+      s.hit(rt.hz(rt.pal.root - 12 + pick([0, 0, 0, 7]), 0.3), rt.human(t, 0.03), rand(0.4, 0.9));
     },
   };
 }

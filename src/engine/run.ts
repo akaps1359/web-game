@@ -249,8 +249,8 @@ export function gainXp(run: RunState, n: number): number {
     p.xp -= xpToNext(p.level);
     p.level++;
     ups++;
-    p.maxHp += 3;
-    p.hp += 3;
+    p.maxHp += 2;
+    p.hp += 2;
     if ([3, 6, 9].includes(p.level) && run.slots.length < MAX_SLOTS) run.slots.push(null);
     log(run, `레벨 ${p.level} — 정수 흡수 한도 ${essenceCap(run)}`);
   }
@@ -325,9 +325,12 @@ export function essenceUsed(run: RunState): number {
 
 export function essenceStats(id: string, guardian = false): EssenceStats {
   const def = need(ESSENCES, id, '정수');
-  if (!guardian) return def.stats;
   const out: EssenceStats = {};
-  for (const [k, v] of Object.entries(def.stats)) out[k as keyof EssenceStats] = Math.round((v as number) * 1.5);
+  for (const [k, v] of Object.entries(def.stats)) {
+    // 최대 체력 보너스는 60%만 (체력 인플레이션 억제)
+    const base = k === 'maxHp' ? (v as number) * 0.6 : (v as number);
+    out[k as keyof EssenceStats] = Math.round(base * (guardian ? 1.5 : 1));
+  }
   return out;
 }
 
@@ -513,7 +516,7 @@ export function gainSanityRun(run: RunState, n: number): number {
 /** 전투 밖 정신력 손실. 붕괴 시 광기 id 반환 */
 export function loseSanityRun(run: RunState, n: number): { lost: number; madness?: string; fatal?: boolean } {
   const p = run.player;
-  const amt = Math.max(0, Math.floor(n * (1 + 0.05 * p.insight) * Math.max(0.5, 1 - 0.05 * p.will)));
+  const amt = Math.max(0, Math.floor(n * (1 + 0.05 * Math.min(6, p.insight)) * Math.max(0.5, 1 - 0.05 * p.will)));
   p.sanity -= amt;
   run.stats.sanityLost += amt;
   if (p.sanity > 0) return { lost: amt };
@@ -573,6 +576,23 @@ export function rollRelic(run: RunState, tier: 'common' | 'uncommon' | 'rare' | 
   }
   if (!pool.length) return null;
   return r.weighted(pool, (x) => ({ common: 55, uncommon: 33, rare: 12 })[x.rarity as 'common'] ?? 10).id;
+}
+
+/** 보스 유물 선택지: 행동력 유물은 최대 1개 (행동력 5 이상이면 제외) */
+export function rollBossRelics(run: RunState, n: number): string[] {
+  const r = rng(run, 'loot');
+  const owned = new Set(run.relics.map((x) => x.id));
+  const pool = [...RELICS.values()].filter((x) => x.rarity === 'boss' && !owned.has(x.id));
+  const isAp = (d: { desc: string }) => d.desc.startsWith('행동력 +1');
+  const ap = pool.filter(isAp);
+  const rest = r.shuffle(pool.filter((d) => !isAp(d)));
+  const out: string[] = [];
+  if (ap.length && run.player.maxAp < 5 && r.chance(0.7)) out.push(r.pick(ap).id);
+  for (const d of rest) {
+    if (out.length >= n) break;
+    out.push(d.id);
+  }
+  return r.shuffle(out);
 }
 
 export function rollEquip(run: RunState, tier: 'normal' | 'elite' | 'shop' = 'normal'): string | null {
@@ -695,11 +715,9 @@ export function finishCombat(run: RunState): RewardState | null {
   }
   if (cs.kind === 'boss' && !lordFight) {
     run.stats.bosses++;
-    const bossRelics = [rollRelic(run, 'boss'), rollRelic(run, 'boss'), rollRelic(run, 'boss')].filter(Boolean) as string[];
-    reward.choice = [...new Set(bossRelics)].map((id) => ({ kind: 'relic', id }));
+    reward.choice = rollBossRelics(run, 3).map((id) => ({ kind: 'relic', id }));
     if (!reward.choice.length) reward.choice = rollChoice(run, 'boss');
-    reward.next = run.act >= 4 ? 'final' : 'haven';
-    if (run.act >= 5) reward.next = 'final';
+    reward.next = run.act >= 5 ? 'final' : 'haven';
   } else {
     reward.choice = rollChoice(run, cs.kind === 'elite' ? 'elite' : 'normal');
   }
@@ -711,7 +729,13 @@ export function finishCombat(run: RunState): RewardState | null {
     const c = rollConsumable(run);
     if (c) reward.items.push({ kind: 'consumable', id: c });
   }
-  if (run.rift) reward.next = isRiftBoss ? 'dungeon' : 'rift';
+  if (run.rift) {
+    reward.next = isRiftBoss ? 'dungeon' : 'rift';
+    if (isRiftBoss) {
+      run.rift = null;
+      log(run, '균열이 닫혔다');
+    }
+  }
 
   run.player.gold += gold;
   gainXp(run, xp);

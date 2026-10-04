@@ -39,7 +39,6 @@ export function below(s: number, from: number, to = 0): number {
 
 /** MIDI(실수 허용 → 미분음) → Hz */
 export const mtof = (m: number): number => 440 * Math.pow(2, (m - 69) / 12);
-export const cents = (c: number): number => Math.pow(2, c / 1200);
 
 export const MODES = {
   aeolian: [0, 2, 3, 5, 7, 8, 10],

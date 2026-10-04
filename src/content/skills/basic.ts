@@ -208,7 +208,7 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'basic', 'mark'],
-    vals: { dmg: [4, 5, 6], mark: [1, 1, 2] },
+    vals: { dmg: [5, 6, 7], mark: [1, 1, 2] },
     desc: '{D:dmg} 비전 피해, 인장 {mark}',
     run: (c, u, t) => {
       hit(c, u, t);

@@ -59,6 +59,8 @@ export function SettingsSheet() {
         <div class="muted" style={{ fontSize: 11, lineHeight: 1.6 }}>
           아이콘: game-icons.net (Lorc, Delapouite 외 기여자, CC BY 3.0)
           <br />
+          음악: 「Haunting piano」 Emma_MA · 「Dramatic Boss Encounter」「Epic Endgame Cinematic」 cynicmusic · 「The Beach Where Dreams Die」 Chloe Wolfe (OpenGameArt, CC0). 그 외 음악·효과음은 실시간 생성
+          <br />
           진행 상황은 이 기기의 브라우저에 자동 저장된다.
         </div>
       </div>

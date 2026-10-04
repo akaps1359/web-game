@@ -32,11 +32,15 @@ export function DungeonScreen() {
       const boss = ENCOUNTERS.find((e) => e.id === f.bossEnc);
       if (boss) lines.push({ label: '층 수호자', value: ENEMIES.get(boss.enemies[0].id)?.name ?? '???' });
     }
+    const notes: string[] = [];
+    if (r.flooded) notes.push('침수됨 — 들어가는 데 2시간');
+    if (r.inverted) notes.push('회복 반전 구역 — 이곳의 전투에선 회복이 피해가 된다');
+    if (r.meteor !== undefined && !f.vars['meteor' + r.id]) notes.push(`유성 낙하 지점 — ${r.meteor}시에 떨어진다 (현재 ${f.hours}시)`);
     showTip({
       title: ROOM_NAME[r.type] + (r.rift ? ' · 균열' : ''),
       icon: r.rift ? 'gi:magic-portal' : ROOM_ICON[r.type],
       color: r.rift ? '#c08cff' : ROOM_COLOR[r.type],
-      body: roomDesc(r) + (r.cleared && r.type !== 'merchant' && r.type !== 'shrine' ? '\n(이미 지나간 곳)' : ''),
+      body: roomDesc(r) + (r.cleared && r.type !== 'merchant' && r.type !== 'shrine' ? '\n(이미 지나간 곳)' : '') + (notes.length ? '\n\n' + notes.join('\n') : ''),
       lines,
     });
   };
@@ -132,6 +136,13 @@ export function DungeonScreen() {
                 >
                   {r.scouted && r.type === 'empty' && !r.rift ? <i class="dot" /> : <Icon name={icon} size={22} color={color} />}
                   {cur && <span class="me" />}
+                  {(r.flooded || r.inverted || (r.meteor !== undefined && !f.vars['meteor' + r.id])) && (
+                    <span class="mods">
+                      {r.flooded && <Icon name="gi:water-drop" size={11} color="#6fb6ea" />}
+                      {r.inverted && r.scouted && <Icon name="gi:cycle" size={11} color="#ff80c0" />}
+                      {r.meteor !== undefined && !f.vars['meteor' + r.id] && <Icon name="gi:burning-meteor" size={11} color="#ff9a4a" />}
+                    </span>
+                  )}
                   {showStalker && (
                     <span class="stalker">
                       <Icon name="gi:evil-eyes" size={16} color="#ff3040" />

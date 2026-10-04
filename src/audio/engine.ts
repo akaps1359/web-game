@@ -1,7 +1,7 @@
 import {
+  BiquadFilter,
   Compressor,
   Convolver,
-  Filter,
   Gain,
   Limiter,
   PingPongDelay,
@@ -108,9 +108,9 @@ export class AudioEngine {
 
     // 공용 리버브 (음악/효과음 공유)
     const reverbIn = new Gain(1);
-    const verbHp = new Filter({ type: 'highpass', frequency: 180, rolloff: -12 });
-    const verbLp = new Filter({ type: 'lowpass', frequency: 6500, rolloff: -12 });
-    const convolver = new Convolver(makeImpulse(ctx, 5));
+    const verbHp = new BiquadFilter({ type: 'highpass', frequency: 180, Q: 0.7 });
+    const verbLp = new BiquadFilter({ type: 'lowpass', frequency: 6500, Q: 0.7 });
+    const convolver = new Convolver(makeImpulse(ctx, 4.2));
     const verbReturn = new Gain(0.75);
     reverbIn.chain(verbHp, verbLp, convolver, verbReturn, master);
 
@@ -122,13 +122,13 @@ export class AudioEngine {
     const musicDry = new Gain(1);
     const musicWet = new Gain(1);
     musicWet.connect(musicWetFader);
-    const sanity = new SanityFx(musicFader, musicWet);
+    const sanity = new SanityFx(ctx, musicFader, musicWet);
     musicDry.connect(sanity.input);
 
     // 음악 전용 에코 (핑퐁, 반복음이 점점 어두워지도록 앞단 필터)
     const musicEcho = new Gain(1);
-    const echoHp = new Filter({ type: 'highpass', frequency: 260, rolloff: -12 });
-    const echoLp = new Filter({ type: 'lowpass', frequency: 3200, rolloff: -12 });
+    const echoHp = new BiquadFilter({ type: 'highpass', frequency: 260, Q: 0.7 });
+    const echoLp = new BiquadFilter({ type: 'lowpass', frequency: 3200, Q: 0.7 });
     const echo = new PingPongDelay({ delayTime: 0.43, feedback: 0.38, wet: 1 });
     musicEcho.chain(echoHp, echoLp, echo, musicDry);
     const echoToVerb = new Gain(0.35);
@@ -143,10 +143,10 @@ export class AudioEngine {
     sfxDry.connect(sfxFader);
     const sfxWet = new Gain(1);
     sfxWet.connect(sfxWetFader);
-    const sfx = new SfxPlayer(sfxDry, sfxWet);
+    const sfx = new SfxPlayer(ctx, sfxDry, sfxWet);
 
     this.g = { ctx, master, musicDry, musicWet, musicEcho, musicFader, musicWetFader, sfxFader, sfxWetFader, sanity, sfx };
-    this.applyLevels(0.05);
+    this.applyLevels(0.05, false);
     const t = immediate();
     master.gain.setValueAtTime(0, t);
     master.gain.linearRampToValueAtTime(this.masterTarget(), t + 0.4);
@@ -162,6 +162,11 @@ export class AudioEngine {
   // -------------------------------------------------------------------------
 
   play(mood: Mood, act: number): void {
+    // 문자열로 넘어오는 호출부(예: 사운드 파사드)를 위해 런타임에도 확인
+    if (mood !== 'silence' && !Object.prototype.hasOwnProperty.call(MOODS, mood)) {
+      console.warn('[audio] unknown mood', mood);
+      return;
+    }
     const a = clamp(Math.round(Number.isFinite(act) ? act : this.act), 1, 5);
     this.act = a;
     const key = ACT_INDEPENDENT.has(mood) ? mood : `${mood}:${a}`;
@@ -260,6 +265,7 @@ export class AudioEngine {
   sfx(name: Sfx, pitch: number, volume: number): void {
     const g = this.g;
     if (!g || this.hidden || g.ctx.state !== 'running') return;
+    if (!Number.isFinite(pitch) || !Number.isFinite(volume)) return;
     try {
       g.sfx.play(name, immediate() + 0.012, pitch, volume);
     } catch (e) {
@@ -284,12 +290,12 @@ export class AudioEngine {
     return this.settings.muted || this.hidden ? 0 : 1;
   }
 
-  private applyLevels(ramp: number): void {
+  private applyLevels(ramp: number, master = true): void {
     const g = this.g;
     if (!g) return;
     const t = immediate();
-    // 지각 볼륨에 가깝게 제곱 커브
-    const m = this.settings.music * this.settings.music;
+    // 지각 볼륨에 가깝게 제곱 커브 (+3dB 음악 보정)
+    const m = this.settings.music * this.settings.music * 1.4;
     const f = this.settings.sfx * this.settings.sfx;
     for (const [node, v] of [
       [g.musicFader, m],
@@ -299,7 +305,7 @@ export class AudioEngine {
     ] as const) {
       node.gain.rampTo(v, ramp, t);
     }
-    g.master.gain.rampTo(this.masterTarget(), ramp, t);
+    if (master) g.master.gain.rampTo(this.masterTarget(), ramp, t);
   }
 
   /** 페이지가 가려지면 짧게 페이드 후 AudioContext 일시정지 */

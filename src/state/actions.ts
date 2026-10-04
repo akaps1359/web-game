@@ -15,6 +15,8 @@ import { play, syncBattle } from '../director';
 import { stage } from '../render/stage';
 import { sound } from '../sound';
 import { absorbRun, knownWeak, saveMeta } from './meta';
+import { essenceCap } from '../engine/run';
+import { tipOnce } from '../ui/tips';
 import { loadRun, saveRun } from './save';
 import { store } from './store';
 
@@ -93,7 +95,15 @@ export async function refresh() {
     store.emit();
     const evs = store.combat.drain();
     await play(evs);
+    // 음악 긴장도: 체력이 낮거나 수호자가 반쯤 쓰러졌을 때
+    if (store.combat && !store.combat.over) {
+      const c = store.combat;
+      const boss = c.alive.find((e) => c.defOf(e).tier === 'boss');
+      const low = Math.max(0, 1 - c.p.hp / c.p.maxHp);
+      sound.intensity(Math.min(1, low * 0.6 + (boss && boss.hp < boss.maxHp / 2 ? 0.4 : 0)));
+    }
     if (store.combat?.over) await combatOver();
+    else tips();
   } else {
     if (store.combat) {
       store.combat = null;
@@ -103,12 +113,15 @@ export async function refresh() {
     if (r) saveRun(r);
     if (r?.over) endOfRun();
     store.emit();
+    tips();
   }
 }
 
 async function combatOver() {
   const r = run();
   const won = r.combat?.phase === 'victory';
+  const lv = r.player.level;
+  const slots = r.slots.length;
   finishCombat(r);
   store.combat = null;
   stage.showBattle(false);
@@ -116,8 +129,26 @@ async function combatOver() {
   if (won) {
     absorbRun(store.meta, r, false);
     saveMeta(store.meta);
+    if (r.player.level > lv) {
+      sound.sfx('levelUp');
+      store.toast(`레벨 ${r.player.level}! 정수 흡수 한도 ${essenceCap(r)}`, 'good', 3000);
+      if (r.slots.length > slots) store.toast('스킬 슬롯 +1', 'good', 3000);
+    }
   }
   await refresh();
+}
+
+function tips() {
+  const r = store.run;
+  if (!r) return;
+  if (r.screen === 'dungeon') {
+    tipOnce('dungeon');
+    if (r.light < 25) tipOnce('dark');
+    if (r.player.sanity < 40) tipOnce('sanity');
+  } else if (r.screen === 'combat') {
+    tipOnce('combat');
+    if ((r.player.st.dying ?? 0) > 0) tipOnce('dying');
+  } else if (r.screen === 'reward' && r.reward?.items.some((i) => i.kind === 'essence')) tipOnce('essence');
 }
 
 function endOfRun() {

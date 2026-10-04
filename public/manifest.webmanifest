@@ -1,0 +1,17 @@
+{
+  "name": "심연행 — Abyssbound",
+  "short_name": "심연행",
+  "description": "코스믹 호러 로그라이크 턴제 RPG",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07090c",
+  "theme_color": "#07090c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

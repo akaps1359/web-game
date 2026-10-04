@@ -55,7 +55,7 @@ export function HavenScreen() {
               </div>
               <div class="body">
                 <div class="name">하룻밤 묵는다</div>
-                <div class="desc">체력 전부 회복, 정신력 +30 {run.innUsed ? '(이미 쉬었다)' : ''}</div>
+                <div class="desc">체력과 정신력 전부 회복 {run.innUsed ? '(이미 쉬었다)' : ''}</div>
               </div>
             </button>
             <button

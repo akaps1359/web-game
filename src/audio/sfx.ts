@@ -1,61 +1,74 @@
-import {
-  Filter,
-  FMSynth,
-  Gain,
-  MembraneSynth,
-  MetalSynth,
-  NoiseSynth,
-  Panner,
-  Synth,
-  type InputNode,
-} from 'tone';
-import { EXP, RISE } from './moods/instruments';
+import { BiquadFilter, Gain, Panner, dbToGain, type BaseContext, type InputNode } from 'tone';
 import { chance, clamp, rand } from './scales';
+import { applyEnv, cleanup, makeOsc, noiseSource, startNoise, type BasicWave } from './synth';
 import type { Sfx } from './types';
 import { WhisperVoice } from './whisper';
 
 // ===========================================================================
-// 보이스 풀 — 모든 노드는 처음 한 번만 만들고 재사용한다
+// 효과음 채널 풀
+//   채널(필터 → 음량 보정 → 팬 → 드라이/리버브 센드)은 처음에 한 번만 만들어 재사용하고,
+//   트리거마다 1회용 소스(오실레이터/노이즈 버퍼)와 엔벨로프 게인만 만든다(끝나면 연결 해제 → GC).
 // ===========================================================================
 
 type Keep = <T extends { dispose(): unknown }>(x: T) => T;
-const hz = (f: number): number => clamp(f, 20, 18000);
 const v01 = (v: number): number => clamp(v, 0.001, 1);
 
-abstract class Voice {
-  /** 마지막 트리거 시각 (모노 악기는 같은 시각 재트리거 금지) */
-  private last = 0;
+/** 예전 Tone 보이스와 같은 기준 음량 */
+const LEVEL = {
+  noise: dbToGain(-2.3),
+  sine: dbToGain(-10),
+  buzz: dbToGain(-16),
+  fm: dbToGain(-16),
+  drum: dbToGain(-3),
+} as const;
+
+class Channel {
   /** 이 시각까지 소리가 남 */
   busy = 0;
-  /** 레시피별 음량 보정(1 초과 가능) — 벨로시티는 음색에만 쓰도록 분리 */
-  protected readonly amp: Gain;
-  protected readonly panner: Panner;
-  protected readonly send: Gain;
-  /** 다음 트리거에 적용할 음량 배율 */
-  gain = 1;
-
-  constructor(keep: Keep, dry: InputNode, verb: InputNode) {
-    this.amp = keep(new Gain(1));
-    this.panner = keep(new Panner(0));
-    this.send = keep(new Gain(0));
-    this.amp.connect(this.panner);
+  private readonly filter: BiquadFilter;
+  private readonly amp: Gain;
+  private readonly panner: Panner;
+  private readonly send: Gain;
+  constructor(
+    private readonly ctx: BaseContext,
+    keep: Keep,
+    dry: InputNode,
+    verb: InputNode,
+  ) {
+    const context = ctx;
+    this.filter = keep(new BiquadFilter({ context, type: 'lowpass', frequency: this.hz(18000), Q: 0.7 }));
+    this.amp = keep(new Gain({ context, gain: 1 }));
+    this.panner = keep(new Panner({ context, pan: 0 }));
+    this.send = keep(new Gain({ context, gain: 0 }));
+    this.filter.chain(this.amp, this.panner);
     this.panner.connect(dry);
     this.panner.chain(this.send, verb);
   }
-
-  protected begin(t: number, pan: number, verb: number, length: number): number {
-    const tt = Math.max(t, this.last + 0.003);
-    this.last = tt;
-    this.busy = tt + length;
-    this.amp.gain.setValueAtTime(this.gain, tt);
-    this.panner.pan.setValueAtTime(clamp(pan, -1, 1), tt);
-    this.send.gain.setValueAtTime(clamp(verb, 0, 1), tt);
-    return tt;
+  hz(f: number): number {
+    return clamp(f, 20, this.ctx.sampleRate * 0.45);
+  }
+  get input(): AudioNode {
+    return this.filter.input;
+  }
+  setup(
+    t: number,
+    o: { gain: number; pan: number; verb: number; length: number; filter?: BiquadFilterType; f0?: number; f1?: number; glide?: number; q?: number },
+  ): void {
+    this.busy = t + o.length;
+    this.amp.gain.setValueAtTime(o.gain, t);
+    this.panner.pan.setValueAtTime(clamp(o.pan, -1, 1), t);
+    this.send.gain.setValueAtTime(clamp(o.verb, 0, 1), t);
+    this.filter.type = o.filter ?? 'lowpass';
+    const p = this.filter.frequency;
+    p.cancelScheduledValues(t);
+    p.setValueAtTime(this.hz(o.f0 ?? 18000), t);
+    if (o.f1) p.exponentialRampToValueAtTime(this.hz(o.f1), t + (o.glide ?? o.length));
+    this.filter.Q.setValueAtTime(o.q ?? 0.7, t);
   }
 }
 
 export interface NoiseP {
-  filter?: 'lowpass' | 'highpass' | 'bandpass';
+  filter?: BiquadFilterType;
   f0: number;
   f1?: number;
   glide?: number;
@@ -67,39 +80,6 @@ export interface NoiseP {
   vel: number;
   pan?: number;
   verb?: number;
-}
-
-class NoiseVoice extends Voice {
-  private readonly synth: NoiseSynth;
-  private readonly filter: Filter;
-  constructor(keep: Keep, dry: InputNode, verb: InputNode) {
-    super(keep, dry, verb);
-    this.synth = keep(
-      new NoiseSynth({
-        noise: { type: 'white' },
-        envelope: { attack: 0.002, decay: 0, sustain: 1, release: 0.1, releaseCurve: EXP },
-        volume: -8,
-      }),
-    );
-    this.filter = keep(new Filter({ type: 'bandpass', frequency: 1000, Q: 1, rolloff: -12 }));
-    this.synth.chain(this.filter, this.amp);
-  }
-  play(t: number, p: NoiseP): void {
-    const attack = p.attack ?? 0.002;
-    const hold = p.hold ?? 0.004;
-    const tt = this.begin(t, p.pan ?? rand(-0.1, 0.1), p.verb ?? 0.1, attack + hold + p.release);
-    const f = this.filter;
-    f.type = p.filter ?? 'bandpass';
-    f.Q.setValueAtTime(p.q ?? 1, tt);
-    f.frequency.cancelScheduledValues(tt);
-    f.frequency.setValueAtTime(hz(p.f0), tt);
-    if (p.f1) f.frequency.exponentialRampToValueAtTime(hz(p.f1), tt + (p.glide ?? attack + hold + p.release));
-    const env = this.synth.envelope;
-    env.attack = attack;
-    env.attackCurve = p.rise ? RISE : 'linear';
-    env.release = p.release;
-    this.synth.triggerAttackRelease(attack + hold, tt, v01(p.vel));
-  }
 }
 
 export interface ToneP {
@@ -114,46 +94,6 @@ export interface ToneP {
   vel: number;
   pan?: number;
   verb?: number;
-}
-
-type Wave = 'sine' | 'square' | 'sawtooth' | 'triangle';
-
-class ToneVoice extends Voice {
-  private readonly synth: Synth;
-  private readonly filter: Filter;
-  constructor(
-    keep: Keep,
-    dry: InputNode,
-    verb: InputNode,
-    readonly wave: Wave,
-  ) {
-    super(keep, dry, verb);
-    this.synth = keep(
-      new Synth({
-        oscillator: { type: wave },
-        envelope: { attack: 0.002, decay: 0, sustain: 1, release: 0.1, releaseCurve: EXP },
-        volume: wave === 'sine' || wave === 'triangle' ? -10 : -16,
-      }),
-    );
-    this.filter = keep(new Filter({ type: 'lowpass', frequency: 8000, Q: 0.8, rolloff: -12 }));
-    this.synth.chain(this.filter, this.amp);
-  }
-  play(t: number, p: ToneP): void {
-    const attack = p.attack ?? 0.002;
-    const hold = p.hold ?? 0.01;
-    const len = attack + hold + p.release;
-    const tt = this.begin(t, p.pan ?? 0, p.verb ?? 0.1, len);
-    const f = this.filter.frequency;
-    f.cancelScheduledValues(tt);
-    f.setValueAtTime(hz(p.cutoff ?? 9000), tt);
-    if (p.cutoff1) f.exponentialRampToValueAtTime(hz(p.cutoff1), tt + len);
-    this.synth.frequency.cancelScheduledValues(tt);
-    const env = this.synth.envelope;
-    env.attack = attack;
-    env.release = p.release;
-    this.synth.triggerAttackRelease(hz(p.f0), attack + hold, tt, v01(p.vel));
-    if (p.f1) this.synth.frequency.exponentialRampToValueAtTime(hz(p.f1), tt + (p.glide ?? len));
-  }
 }
 
 export interface FmP {
@@ -173,39 +113,6 @@ export interface FmP {
   verb?: number;
 }
 
-class FmVoice extends Voice {
-  private readonly synth: FMSynth;
-  constructor(keep: Keep, dry: InputNode, verb: InputNode) {
-    super(keep, dry, verb);
-    this.synth = keep(
-      new FMSynth({
-        oscillator: { type: 'sine' },
-        modulation: { type: 'sine' },
-        envelope: { attack: 0.002, decay: 0, sustain: 1, release: 0.5, releaseCurve: EXP },
-        modulationEnvelope: { attack: 0.002, decay: 0, sustain: 1, release: 0.3, releaseCurve: EXP },
-        volume: -6,
-      }),
-    );
-    this.synth.connect(this.amp);
-  }
-  play(t: number, p: FmP): void {
-    const attack = p.attack ?? 0.002;
-    const hold = p.hold ?? 0.01;
-    const len = attack + hold + p.release;
-    const tt = this.begin(t, p.pan ?? rand(-0.15, 0.15), p.verb ?? 0.25, len);
-    const s = this.synth;
-    s.harmonicity.setValueAtTime(p.h, tt);
-    s.modulationIndex.setValueAtTime(p.index, tt);
-    s.frequency.cancelScheduledValues(tt);
-    s.envelope.attack = attack;
-    s.envelope.release = p.release;
-    s.modulationEnvelope.attack = attack;
-    s.modulationEnvelope.release = p.shine ?? p.release * 0.4;
-    s.triggerAttackRelease(hz(p.f0), attack + hold, tt, v01(p.vel));
-    if (p.f1) s.frequency.exponentialRampToValueAtTime(hz(p.f1), tt + (p.glide ?? len));
-  }
-}
-
 export interface DrumP {
   f: number;
   pitchDecay?: number;
@@ -217,55 +124,7 @@ export interface DrumP {
   verb?: number;
 }
 
-class DrumVoice extends Voice {
-  private readonly synth: MembraneSynth;
-  private readonly filter: Filter;
-  constructor(keep: Keep, dry: InputNode, verb: InputNode) {
-    super(keep, dry, verb);
-    this.synth = keep(
-      new MembraneSynth({
-        pitchDecay: 0.05,
-        octaves: 3,
-        envelope: { attack: 0.002, decay: 0, sustain: 1, release: 0.3, releaseCurve: EXP },
-        volume: -3,
-      }),
-    );
-    this.filter = keep(new Filter({ type: 'lowpass', frequency: 2000, rolloff: -12 }));
-    this.synth.chain(this.filter, this.amp);
-  }
-  play(t: number, p: DrumP): void {
-    const tt = this.begin(t, p.pan ?? 0, p.verb ?? 0.15, p.release + 0.01);
-    this.filter.frequency.setValueAtTime(hz(p.cutoff ?? 2000), tt);
-    this.synth.pitchDecay = p.pitchDecay ?? 0.05;
-    this.synth.octaves = p.octaves ?? 3;
-    this.synth.envelope.release = p.release;
-    this.synth.triggerAttackRelease(hz(p.f), 0.005, tt, v01(p.vel));
-  }
-}
-
-class MetalVoice extends Voice {
-  private readonly synth: MetalSynth;
-  constructor(keep: Keep, dry: InputNode, verb: InputNode) {
-    super(keep, dry, verb);
-    // 파라미터 세터는 lookAhead 뒤에 적용되므로 프리셋은 고정하고 음높이/감쇠만 바꾼다
-    this.synth = keep(
-      new MetalSynth({
-        harmonicity: 5.1,
-        modulationIndex: 22,
-        resonance: 2600,
-        octaves: 1.1,
-        envelope: { attack: 0.001, decay: 0.3, release: 0.2 },
-        volume: -16,
-      }),
-    );
-    this.synth.connect(this.amp);
-  }
-  play(t: number, f: number, vel: number, decay: number, pan: number, verb: number): void {
-    const tt = this.begin(t, pan, verb, decay + 0.05);
-    this.synth.envelope.decay = decay;
-    this.synth.triggerAttackRelease(hz(f), 0.005, tt, v01(vel));
-  }
-}
+type Wave = BasicWave;
 
 // ===========================================================================
 // 레시피
@@ -285,12 +144,12 @@ const TRIM: Partial<Record<Sfx, number>> = {
   fire: 2.75,
   arcane: 4.5,
   void: 1.19,
-  block: 0.92,
+  block: 1.4,
   heal: 4.9,
   buff: 5.2,
   debuff: 5.6,
   break: 0.97,
-  enemyDeath: 3.8,
+  enemyDeath: 2.7,
   playerHit: 1.07,
   sanityLoss: 1.3,
   whisper: 1.33,
@@ -309,13 +168,8 @@ const TRIM: Partial<Record<Sfx, number>> = {
   breakdown: 0.98,
 };
 
+/** 레시피가 쓰는 도구 (음높이 배율·시간 배율·음량 보정은 이미 적용되어 있다). dt = 시작 시각으로부터의 지연(초) */
 interface Kit {
-  /** 시작 시각(초) */
-  t: number;
-  /** 음높이 배율 */
-  k: number;
-  /** 볼륨 배율 */
-  g: number;
   noise(p: NoiseP, dt?: number): void;
   tone(wave: Wave, p: ToneP, dt?: number): void;
   fm(p: FmP, dt?: number): void;
@@ -505,32 +359,121 @@ const RECIPES: Record<Sfx, (x: Kit) => void> = {
 
 export class SfxPlayer {
   private readonly nodes: { dispose(): unknown }[] = [];
-  private readonly noises: NoiseVoice[];
-  private readonly tones: ToneVoice[];
-  private readonly fms: FmVoice[];
-  private readonly drums: DrumVoice[];
-  private readonly metal: MetalVoice;
+  private readonly chans: Channel[];
   private readonly whisperV: WhisperVoice;
   private readonly lastPlayed = new Map<Sfx, number>();
 
-  constructor(dry: InputNode, verb: InputNode) {
+  constructor(
+    private readonly ctx: BaseContext,
+    dry: InputNode,
+    verb: InputNode,
+  ) {
     const keep: Keep = (x) => {
       this.nodes.push(x);
       return x;
     };
-    this.noises = [0, 1, 2, 3].map(() => new NoiseVoice(keep, dry, verb));
-    this.tones = (['sine', 'sine', 'square', 'sawtooth'] as const).map((w) => new ToneVoice(keep, dry, verb, w));
-    this.fms = [0, 1, 2, 3].map(() => new FmVoice(keep, dry, verb));
-    this.drums = [0, 1].map(() => new DrumVoice(keep, dry, verb));
-    this.metal = new MetalVoice(keep, dry, verb);
-    this.whisperV = keep(new WhisperVoice(dry, verb));
+    this.chans = Array.from({ length: 10 }, () => new Channel(ctx, keep, dry, verb));
+    this.whisperV = keep(new WhisperVoice(ctx, dry, verb));
   }
 
-  /** 가장 먼저 비는 보이스 (모두 바쁘면 가장 오래된 것을 빼앗는다) */
-  private static pick<V extends Voice>(list: readonly V[]): V {
-    let best = list[0];
-    for (const v of list) if (v.busy < best.busy) best = v;
+  /** 가장 먼저 비는 채널 (모두 바쁘면 가장 오래된 것을 빼앗는다) */
+  private chan(): Channel {
+    let best = this.chans[0];
+    for (const c of this.chans) if (c.busy < best.busy) best = c;
     return best;
+  }
+
+  /** 1회용 엔벨로프 게인 → 채널 */
+  private envGain(ch: Channel, t: number, peak: number, attack: number, hold: number, release: number, rise = false): { g: GainNode; end: number } {
+    const g = this.ctx.createGain();
+    g.gain.value = 0;
+    g.connect(ch.input);
+    const end = applyEnv(g.gain, t, peak, { a: attack, r: release, rise }, attack + hold);
+    return { g, end };
+  }
+
+  private noise(t: number, gain: number, p: NoiseP): void {
+    const attack = p.attack ?? 0.002;
+    const hold = p.hold ?? 0.004;
+    const ch = this.chan();
+    ch.setup(t, { gain, pan: p.pan ?? rand(-0.1, 0.1), verb: p.verb ?? 0.1, length: attack + hold + p.release, filter: p.filter ?? 'bandpass', f0: p.f0, f1: p.f1, glide: p.glide, q: p.q ?? 1 });
+    const { g, end } = this.envGain(ch, t, v01(p.vel) * LEVEL.noise, attack, hold, p.release, p.rise);
+    const src = noiseSource(this.ctx, 'white');
+    src.connect(g);
+    startNoise(src, t);
+    src.stop(end);
+    cleanup([src], [g]);
+  }
+
+  private tone(t: number, gain: number, wave: Wave, p: ToneP): void {
+    const attack = p.attack ?? 0.002;
+    const hold = p.hold ?? 0.01;
+    const len = attack + hold + p.release;
+    const ch = this.chan();
+    ch.setup(t, { gain, pan: p.pan ?? 0, verb: p.verb ?? 0.1, length: len, filter: 'lowpass', f0: p.cutoff ?? 9000, f1: p.cutoff1, glide: len, q: 0.8 });
+    const level = wave === 'sine' || wave === 'triangle' ? LEVEL.sine : LEVEL.buzz;
+    const { g, end } = this.envGain(ch, t, v01(p.vel) * level, attack, hold, p.release);
+    const osc = makeOsc(this.ctx, wave, ch.hz(p.f0));
+    if (p.f1) {
+      osc.frequency.setValueAtTime(ch.hz(p.f0), t);
+      osc.frequency.exponentialRampToValueAtTime(ch.hz(p.f1), t + (p.glide ?? len));
+    }
+    osc.connect(g);
+    osc.start(t);
+    osc.stop(end);
+    cleanup([osc], [g]);
+  }
+
+  private fm(t: number, gain: number, p: FmP): void {
+    const attack = p.attack ?? 0.002;
+    const hold = p.hold ?? 0.01;
+    const len = attack + hold + p.release;
+    const ch = this.chan();
+    ch.setup(t, { gain, pan: p.pan ?? rand(-0.15, 0.15), verb: p.verb ?? 0.25, length: len });
+    const v = v01(p.vel);
+    const { g, end } = this.envGain(ch, t, v * LEVEL.fm, attack, hold, p.release);
+    const f0 = ch.hz(p.f0);
+    const car = makeOsc(this.ctx, 'sine', f0);
+    const mod = makeOsc(this.ctx, 'sine', f0 * p.h);
+    const mg = this.ctx.createGain();
+    mg.gain.value = 0;
+    applyEnv(mg.gain, t, f0 * p.index * 0.32 * (0.4 + 0.6 * v), { a: attack, r: p.shine ?? p.release * 0.4 }, attack + hold);
+    if (p.f1) {
+      const f1 = ch.hz(p.f1);
+      const at = t + (p.glide ?? len);
+      car.frequency.setValueAtTime(f0, t);
+      car.frequency.exponentialRampToValueAtTime(f1, at);
+      mod.frequency.setValueAtTime(f0 * p.h, t);
+      mod.frequency.exponentialRampToValueAtTime(f1 * p.h, at);
+    }
+    mod.connect(mg);
+    mg.connect(car.frequency);
+    car.connect(g);
+    car.start(t);
+    mod.start(t);
+    car.stop(end);
+    mod.stop(end);
+    cleanup([car, mod], [g, mg]);
+  }
+
+  private drum(t: number, gain: number, p: DrumP): void {
+    const ch = this.chan();
+    ch.setup(t, { gain, pan: p.pan ?? 0, verb: p.verb ?? 0.15, length: p.release + 0.01, filter: 'lowpass', f0: p.cutoff ?? 2000, q: 0.7 });
+    const { g, end } = this.envGain(ch, t, v01(p.vel) * LEVEL.drum, 0.002, 0, p.release);
+    const f = ch.hz(p.f);
+    const osc = makeOsc(this.ctx, 'sine', f);
+    osc.frequency.setValueAtTime(ch.hz(f * (p.octaves ?? 3)), t);
+    osc.frequency.exponentialRampToValueAtTime(f, t + (p.pitchDecay ?? 0.05));
+    osc.connect(g);
+    osc.start(t);
+    osc.stop(end);
+    cleanup([osc], [g]);
+  }
+
+  /** 금속성 타격: 비조화 FM 두 겹 (MetalSynth 대체) */
+  private metal(t: number, gain: number, f: number, vel: number, decay: number, pan: number, verb: number): void {
+    this.fm(t, gain, { f0: f, h: 1.414, index: 14, release: decay, shine: decay * 0.35, vel, pan, verb });
+    this.fm(t, gain, { f0: f * 2.76, h: 1.73, index: 6, release: decay * 0.7, shine: decay * 0.2, vel: vel * 0.6, pan, verb });
   }
 
   play(name: Sfx, t: number, pitch = 1, volume = 1): void {
@@ -546,58 +489,50 @@ export class SfxPlayer {
     if (g <= 0) return;
     const ts = clamp(1 / k, 0.5, 2); // 피치가 높으면 짧게 (재생속도처럼)
     const at = (dt = 0) => t + dt * ts;
-    const use = <V extends Voice>(v: V): V => {
-      v.gain = g;
-      return v;
-    };
+    const sc = (x: number | undefined) => (x === undefined ? undefined : x * ts);
     const kit: Kit = {
-      t,
-      k,
-      g,
       noise: (p, dt) =>
-        use(SfxPlayer.pick(this.noises)).play(at(dt), {
+        this.noise(at(dt), g, {
           ...p,
           f0: p.f0 * k,
           f1: p.f1 && p.f1 * k,
-          glide: p.glide && p.glide * ts,
-          attack: p.attack && p.attack * ts,
-          hold: p.hold && p.hold * ts,
+          glide: sc(p.glide),
+          attack: sc(p.attack),
+          hold: sc(p.hold),
           release: p.release * ts,
         }),
-      tone: (wave, p, dt) => {
-        const pool = this.tones.filter((v) => v.wave === wave);
-        use(SfxPlayer.pick(pool.length ? pool : this.tones)).play(at(dt), {
+      tone: (wave, p, dt) =>
+        this.tone(at(dt), g, wave, {
           ...p,
           f0: p.f0 * k,
           f1: p.f1 && p.f1 * k,
           cutoff: p.cutoff && p.cutoff * k,
           cutoff1: p.cutoff1 && p.cutoff1 * k,
-          glide: p.glide && p.glide * ts,
-          attack: p.attack && p.attack * ts,
-          hold: p.hold && p.hold * ts,
+          glide: sc(p.glide),
+          attack: sc(p.attack),
+          hold: sc(p.hold),
           release: p.release * ts,
-        });
-      },
+        }),
       fm: (p, dt) =>
-        use(SfxPlayer.pick(this.fms)).play(at(dt), {
+        this.fm(at(dt), g, {
           ...p,
           f0: p.f0 * k,
           f1: p.f1 && p.f1 * k,
-          glide: p.glide && p.glide * ts,
-          attack: p.attack && p.attack * ts,
-          hold: p.hold && p.hold * ts,
+          glide: sc(p.glide),
+          attack: sc(p.attack),
+          hold: sc(p.hold),
           release: p.release * ts,
-          shine: p.shine && p.shine * ts,
+          shine: sc(p.shine),
         }),
       drum: (p, dt) =>
-        use(SfxPlayer.pick(this.drums)).play(at(dt), {
+        this.drum(at(dt), g, {
           ...p,
           f: p.f * k,
           cutoff: p.cutoff && p.cutoff * k,
-          pitchDecay: p.pitchDecay && p.pitchDecay * ts,
+          pitchDecay: sc(p.pitchDecay),
           release: p.release * ts,
         }),
-      metal: (f, vel, dt, decay = 0.3, verb = 0.2) => use(this.metal).play(at(dt), f * k, vel, decay * ts, rand(-0.2, 0.2), verb),
+      metal: (f, vel, dt, decay = 0.3, verb = 0.2) => this.metal(at(dt), g, f * k, vel, decay * ts, rand(-0.2, 0.2), verb),
       whisper: (dur, vel, dt) => this.whisperV.speak(at(dt), dur * ts, 0.55 * vel * g, rand(-0.8, 0.8), 0.5),
     };
     recipe(kit);

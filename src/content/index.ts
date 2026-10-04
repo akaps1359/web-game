@@ -20,3 +20,8 @@ import './act1/essences';
 import './act1/encounters';
 import './act1/floor';
 import './act1/events';
+import './act2';
+import './act3';
+import './act4';
+import './act5';
+import './extra';

@@ -1,11 +1,19 @@
-import { FatOscillator, Filter, Gain } from 'tone';
+import { Gain } from 'tone';
 import { MODES, clamp, mtof, rand } from '../scales';
-import { choir, fmKeys, type Vowel } from './instruments';
+import { Sustain } from '../synth';
+import { biquad, choir, fmKeys, sweep, type Vowel } from './instruments';
 import { bells, chords, drone, melody, pad, pipes, shimmer, swells } from './layers';
 import { drumKit, glassArp, ostinato, riser, stabs, type DrumVoice, type KitOpts, type OstinatoOpts } from './rhythm';
 import { createMood, type Layer, type MoodFactory, type Runtime } from './runtime';
 
 type Kind = 'combat' | 'elite' | 'boss';
+
+/** 막별 음량 보정(dB) — 측정한 K-가중 음량을 일반 -19 / 보스 -17.5 근처로 */
+const KIND_GAIN: Record<Kind, readonly number[]> = {
+  combat: [1.5, 1.5, 3, 0.5, 0.5],
+  elite: [1.5, 0.5, 3, 0, 0],
+  boss: [0, 0, 0, 0, 1],
+};
 
 interface BattleAct {
   /** 일반 전투 템포 */
@@ -51,35 +59,25 @@ function choirChords(rt: Runtime, o: { volume: number; octave: number; vowels: r
 
 /** 반음 군집 드론이 8마디에 걸쳐 가라앉았다 되돌아온다 (영주) */
 function sinkingDrone(rt: Runtime, level = 0.35): Layer {
-  const lp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 240, Q: 1.2, rolloff: -24 }));
-  const amp = rt.bag.add(new Gain(level));
-  lp.connect(amp);
+  const notes = [rt.pal.root - 12, rt.pal.root - 11, rt.pal.root - 6].map(mtof);
+  const src = rt.bag.add(new Sustain(rt.ctx, 'sawtooth', notes, [-12, 12], level));
+  const lp = biquad(rt, 'lowpass', 240, 1.2);
+  const amp = rt.bag.add(new Gain({ context: rt.ctx, gain: 1 }));
+  src.output.chain(lp, amp);
   rt.route(amp, { dry: 1, verb: 0.2 });
-  const notes = [rt.pal.root - 12, rt.pal.root - 11, rt.pal.root - 6];
-  const oscs = notes.map((m) => {
-    const o = rt.bag.add(new FatOscillator({ frequency: mtof(m), type: 'sawtooth', count: 2, spread: 24 }));
-    o.connect(lp);
-    return o;
-  });
+  const sunk = notes.map((f) => f * Math.pow(2, -1.2 / 12));
   return {
     start(t) {
-      for (const o of oscs) o.start(t);
+      src.start(t, 2);
     },
     step(t, s) {
-      if (!rt.isBar(s, 8)) return;
-      const len = rt.barDur * 8;
-      oscs.forEach((o, i) => {
-        const f = mtof(notes[i]);
-        o.frequency.cancelAndHoldAtTime(t);
-        o.frequency.setValueAtTime(f, t);
-        o.frequency.exponentialRampToValueAtTime(f * Math.pow(2, -1.2 / 12), t + len - 0.05);
-      });
+      if (rt.isBar(s, 8)) src.ramp(notes, sunk, t, rt.barDur * 8 - 0.05);
     },
     stop(t) {
-      for (const o of oscs) o.stop(t);
+      src.stop(t);
     },
     intensity(x, t) {
-      lp.frequency.rampTo(240 * (1 + x * 1.5), 2, t);
+      sweep(lp, 240 * (1 + x * 1.5), 2, t);
     },
   };
 }
@@ -120,7 +118,7 @@ const ACTS: Record<number, BattleAct> = {
       rt.route(keys, { dry: 0.8, verb: 0.5, echo: 0.2 });
       return [
         pad(rt, {
-          type: 'fatsawtooth',
+          type: 'sawtooth',
           count: 2,
           spread: 18,
           cutoff: 700,
@@ -203,7 +201,7 @@ const ACTS: Record<number, BattleAct> = {
     color(rt, kind) {
       return [
         pad(rt, {
-          type: 'fattriangle',
+          type: 'triangle',
           count: 3,
           spread: 30,
           cutoff: 1500,
@@ -293,7 +291,8 @@ const ACTS: Record<number, BattleAct> = {
 
 function battle(kind: Kind): MoodFactory {
   return (env) => {
-    const act = ACTS[clamp(Math.round(env.act), 1, 5)];
+    const ai = clamp(Math.round(env.act), 1, 5);
+    const act = ACTS[ai];
     const mult = kind === 'boss' ? 1.12 : kind === 'elite' ? 1.06 : 1;
     return createMood(env, {
       bpm: act.bpm * mult,
@@ -302,6 +301,7 @@ function battle(kind: Kind): MoodFactory {
       chordBars: 2,
       rhythmic: true,
       tempoGain: kind === 'boss' ? 0.1 : 0.06,
+      gain: KIND_GAIN[kind][ai - 1],
       build: (rt) => {
         const kit: KitOpts =
           kind === 'boss'
@@ -359,6 +359,7 @@ export const lord: MoodFactory = (env) =>
     chordBars: 2,
     rhythmic: true,
     tempoGain: 0.08,
+    gain: -0.5,
     palette: (p) => ({ ...p, micro: p.micro + 18 }),
     build: (rt) => [
       drumKit(rt, {
@@ -394,7 +395,7 @@ export const lord: MoodFactory = (env) =>
     ],
   });
 
-/** 차원의 균열 — 5/4, 일렁이는 템포, 주파수 시프트된 북, 온음음계 */
+/** 차원의 균열 — 5/4, 일렁이는 템포, 늘어진 테이프처럼 휘는 북, 온음음계 */
 export const rift: MoodFactory = (env) =>
   createMood(env, {
     bpm: 112,
@@ -403,6 +404,7 @@ export const rift: MoodFactory = (env) =>
     chordBars: 1,
     rhythmic: true,
     tempoGain: 0.08,
+    gain: 1.5,
     wander: true,
     palette: (p) => ({ ...p, mode: MODES.wholeTone, micro: Math.max(p.micro, 20) + 10, bright: 1.1 }),
     build: (rt) => [
@@ -433,7 +435,7 @@ export const rift: MoodFactory = (env) =>
       swells(rt, { prob: 0.35, every: 1 }),
       tempoDrift(rt, 0.14, 2),
       pad(rt, {
-        type: 'fatsine',
+        type: 'sine',
         count: 3,
         spread: 40,
         cutoff: 2000,

@@ -14,7 +14,7 @@ export function incoming(c: Combat): number {
   return sum;
 }
 
-function score(before: RunState, after: RunState, need: number): number {
+function score(before: RunState, after: RunState, need: number, cost = 0): number {
   const b = before.combat!;
   const a = after.combat!;
   if (a.phase === 'victory') return 1000;
@@ -49,7 +49,7 @@ function score(before: RunState, after: RunState, need: number): number {
     (st.str ?? 0) * 6 + (st.dex ?? 0) * 4 + (st.ritual ?? 0) * 12 + (st.tentacle ?? 0) * 8 + (st.aim ?? 0) * 4 + (st.energized ?? 0) * 6 + (st.evasive ?? 0) * 5 + (st.counter ?? 0) * 1 + (st.retain ?? 0) * 2 + (st.ward ?? 0) * 3 + (st.frenzy ?? 0) * 0.1;
   s += buff(pa.st) - buff(pb.st);
   s += (pa.insight - pb.insight) * 6;
-  s += (a.ap - b.ap) * 4;
+  s += (a.ap - b.ap + cost) * 4;
   if (b.ammo !== a.ammo && a.ammo > b.ammo) s += (a.ammo - b.ammo) * 0.8;
   return s;
 }
@@ -70,7 +70,8 @@ export function autoTurn(c: Combat) {
         const sim = new Combat(clone);
         sim.snapshots = false;
         if (sim.useSkill(ref, t)) continue;
-        const s = score(run, clone, need) - c.costOf(info) * 0.5;
+        const cost = c.costOf(info);
+        const s = score(run, clone, need, cost) - cost * 0.3;
         if (!best || s > best.s) best = { ref, t, s };
       }
     }

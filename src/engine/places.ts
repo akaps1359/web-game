@@ -20,7 +20,7 @@ export type CampAction = 'sleep' | 'meditate' | 'train' | 'tinker';
 
 export const CAMP_INFO: Record<CampAction, { name: string; desc: string; hours: number }> = {
   sleep: { name: '수면', desc: '체력 30% 회복', hours: 6 },
-  meditate: { name: '명상', desc: '정신력 25 회복', hours: 4 },
+  meditate: { name: '명상', desc: '정신력 30 회복', hours: 4 },
   train: { name: '수련', desc: '스킬 하나 강화', hours: 4 },
   tinker: { name: '정비', desc: '장비 하나 강화', hours: 4 },
 };
@@ -63,7 +63,7 @@ export function camp(run: RunState, act: CampAction, target?: string): string | 
       break;
     }
     case 'meditate': {
-      const n = gainSanityRun(run, 25);
+      const n = gainSanityRun(run, 30);
       log(run, `마음을 가다듬었다 (정신력 +${n})`);
       break;
     }
@@ -161,7 +161,7 @@ export function inn(run: RunState): string | null {
   if (run.innUsed) return '이미 쉬었다';
   run.innUsed = true;
   run.player.hp = run.player.maxHp;
-  gainSanityRun(run, 30);
+  run.player.sanity = run.player.maxSanity;
   log(run, '여관에서 푹 쉬었다');
   return null;
 }

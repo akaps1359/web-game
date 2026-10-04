@@ -67,7 +67,7 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['barrier'],
-    vals: { barrier: [6, 9] },
+    vals: { barrier: [7, 10] },
     desc: '보호막 {barrier} (턴이 지나도 유지)',
     run: (c, u) => void c.apply(c.p, 'barrier', u.v('barrier'), c.p),
   }),

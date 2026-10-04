@@ -1,6 +1,7 @@
-import { Filter, NoiseSynth, Vibrato } from 'tone';
+import { Gain, dbToGain } from 'tone';
 import { MODES, chance, clamp, mtof, pick, rand, randInt, type Palette } from '../scales';
-import { EXP, brass, choir, fmBell, fmKeys, padSynth, pluck, type Vowel } from './instruments';
+import { NativeLfo, NoiseSynth } from '../synth';
+import { biquad, brass, choir, fmBell, fmKeys, padSynth, pluck, type Vowel } from './instruments';
 import {
   bells,
   chords,
@@ -70,11 +71,12 @@ export const explore: MoodFactory = (env) => {
       return createMood(env, {
         bpm: 58,
         chordBars: 4,
+        gain: 1,
         build: (rt) => [
           sea(rt, { level: 0.32, cutoff: 340 }),
           drips(rt, { every: 2.8 }),
           drone(rt, { notes: [0, 7], follow: true, cutoff: 230, level: 0.26, lfoRate: 0.035 }),
-          pad(rt, { type: 'fattriangle', count: 2, spread: 12, cutoff: 900, attack: 3.5, release: 5, volume: -23, octave: 1, every: 4, color: 0.3 }),
+          pad(rt, { type: 'triangle', count: 2, spread: 12, cutoff: 900, attack: 3.5, release: 5, volume: -23, octave: 1, every: 4, color: 0.3 }),
           keysMelody(rt, { lo: rt.pal.root + 24, hi: rt.pal.root + 43 }),
           foghorn(rt, { every: 30 }),
         ],
@@ -84,6 +86,7 @@ export const explore: MoodFactory = (env) => {
       return createMood(env, {
         bpm: 52,
         chordBars: 4,
+        gain: -1,
         build: (rt) => {
           const cantor = choir(rt, { volume: -12, attack: 0.35, release: 2.2, vibrato: 0.14, vowel: 'o' });
           rt.route(cantor.output, { dry: 0.8, verb: 0.9, echo: 0.15 });
@@ -113,16 +116,17 @@ export const explore: MoodFactory = (env) => {
       return createMood(env, {
         bpm: 66,
         chordBars: 2,
+        gain: 3,
         build: (rt) => {
           const glass = fmBell(rt, { harmonicity: 5.01, index: 2.5, ring: 2.6, shine: 0.5, volume: -17 });
           rt.route(glass, { dry: 0.6, verb: 0.7, echo: 0.55 });
           return [
-            pad(rt, { type: 'fatsine', count: 3, spread: 35, cutoff: 2400, attack: 2.5, release: 4, volume: -22, octave: 2, chorus: true }),
+            pad(rt, { type: 'sine', count: 3, spread: 35, cutoff: 2400, attack: 2.5, release: 4, volume: -22, octave: 2, chorus: true }),
             shimmer(rt, { density: 0.22, shift: true }),
             melody(rt, glass, { lo: rt.pal.root + 36, hi: rt.pal.root + 55, grid: 2, density: 0.3, phrase: [1, 3], rest: [1, 3], detune: 1.2 }),
             swells(rt, { prob: 0.3, every: 2 }),
             wind(rt, { level: 0.18, freq: 1400, q: 2.2, rate: 0.03 }),
-            drone(rt, { notes: [rt.pal.root - 12], type: 'sine', count: 2, spread: 10, cutoff: 400, level: 0.3 }),
+            drone(rt, { notes: [rt.pal.root, rt.pal.root + 7], type: 'triangle', count: 2, spread: 10, cutoff: 500, level: 0.16 }),
             tempoDrift(rt, 0.04, 2),
           ];
         },
@@ -132,12 +136,13 @@ export const explore: MoodFactory = (env) => {
       return createMood(env, {
         bpm: 54,
         chordBars: 4,
+        gain: 3,
         build: (rt) => [
           drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 11, rt.pal.root - 5], count: 3, spread: 24, cutoff: 260, level: 0.36, lfoRate: 0.02, lfoOct: 1 }),
           pipes(rt, { prob: 0.5, volume: -23 }),
           distantDrums(rt, { volume: -13 }),
           shimmer(rt, { density: 0.15 }),
-          pad(rt, { type: 'fatsawtooth', count: 2, cutoff: 600, octave: 1, unease: 0.4, volume: -26, attack: 4, release: 6, every: 4 }),
+          pad(rt, { type: 'sawtooth', count: 2, cutoff: 600, octave: 1, unease: 0.4, volume: -26, attack: 4, release: 6, every: 4 }),
           wind(rt, { level: 0.14, freq: 300, q: 3, rate: 0.02, type: 'white' }),
         ],
       });
@@ -183,13 +188,13 @@ function titleTheme(rt: Runtime): Layer {
   rt.route(keys, { dry: 0.8, verb: 0.75, echo: 0.25 });
   const celesta = fmBell(rt, { harmonicity: 4, index: 2.2, ring: 2.8, shine: 0.6, volume: -19 });
   rt.route(celesta, { dry: 0.6, verb: 0.8, echo: 0.4 });
-  const padS = padSynth(rt, { type: 'fatsawtooth', count: 2, spread: 14, attack: 2.8, release: 5, volume: -23, poly: 12 });
-  const lp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 850, Q: 0.5, rolloff: -24 }));
-  padS.connect(lp);
+  const padS = padSynth(rt, { type: 'sawtooth', count: 2, spread: 14, attack: 2.8, release: 5, volume: -23, poly: 12 });
+  const lp = biquad(rt, 'lowpass', 850, 0.5);
+  padS.output.connect(lp);
   rt.route(lp, { dry: 1, verb: 0.6 });
   const horn = brass(rt, { volume: -21, attack: 2.2, release: 3.5 });
-  const hlp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 520, Q: 0.7, rolloff: -24 }));
-  horn.connect(hlp);
+  const hlp = biquad(rt, 'lowpass', 520, 0.7);
+  horn.output.connect(hlp);
   rt.route(hlp, { dry: 1, verb: 0.7 });
   let pass = 0;
   const play = (p: Playable, notes: number[], dur: number, t: number, v: number) =>
@@ -241,6 +246,7 @@ export const title: MoodFactory = (env) =>
   createMood(env, {
     bpm: 56,
     chordBars: 8,
+    gain: 0.5,
     palette: (p: Palette) => ({ ...p, root: 38, mode: MODES.aeolian, micro: 0 }),
     build: (rt) => [
       drone(rt, { notes: [26, 38, 45], type: 'sawtooth', cutoff: 210, level: 0.26, lfoRate: 0.03 }),
@@ -292,10 +298,11 @@ export const event: MoodFactory = (env) => {
   return createMood(env, {
     bpm: 60,
     chordBars: 4,
+    gain: [-3, -2.5, -5, -3, -1][act - 1],
     build: (rt) => {
       const L: Layer[] = [
         drone(rt, { notes: [0, 12], follow: true, type: 'triangle', cutoff: 420, level: 0.3, lfoRate: 0.04 }),
-        pad(rt, { type: 'fatsine', count: 2, spread: 18, cutoff: 1400, attack: 4, release: 5, volume: -24, octave: 1, every: 4, unease: 0.2 }),
+        pad(rt, { type: 'sine', count: 2, spread: 18, cutoff: 1400, attack: 4, release: 5, volume: -24, octave: 1, every: 4, unease: 0.2 }),
         questions(rt),
       ];
       if (act === 1) L.push(sea(rt, { level: 0.2, cutoff: 300 }));
@@ -317,14 +324,15 @@ export const camp: MoodFactory = (env) => {
   return createMood(env, {
     bpm: 56,
     chordBars: 4,
+    gain: 7.5,
     build: (rt) => {
-      const guitar = pluck(rt, { ring: 2.2, volume: -15 });
-      const glp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 2200, rolloff: -12 }));
-      guitar.connect(glp);
+      const guitar = pluck(rt, { ring: 2.2, volume: -9 });
+      const glp = biquad(rt, 'lowpass', 2200, 0.7);
+      guitar.output.connect(glp);
       rt.route(glp, { dry: 0.9, verb: 0.45, echo: 0.1 });
       const L: Layer[] = [
         fire(rt),
-        pad(rt, { type: 'fattriangle', count: 2, spread: 10, cutoff: 1000, attack: 3, release: 5, volume: -22, octave: 1, color: 0.5, unease: 0.12, every: 4 }),
+        pad(rt, { type: 'triangle', count: 2, spread: 10, cutoff: 1000, attack: 3, release: 5, volume: -22, octave: 1, color: 0.5, unease: 0.12, every: 4 }),
         melody(rt, guitar, { lo: rt.pal.root + 19, hi: rt.pal.root + 36, grid: 2, density: 0.26, phrase: [2, 3], rest: [2, 4], dyad: 0.35, vel: [0.25, 0.5] }),
       ];
       // 멀리서 들려오는 불안의 기척
@@ -373,16 +381,17 @@ export const haven: MoodFactory = (env) => {
     stepsPerBeat: 3,
     beatsPerBar: 2,
     chordBars: 2,
+    gain: 4,
     build: (rt) => {
-      const harp = pluck(rt, { ring: 2.4, volume: -14 });
-      const hlp = rt.bag.add(new Filter({ type: 'lowpass', frequency: 2600 * rt.pal.bright, rolloff: -12 }));
-      harp.connect(hlp);
+      const harp = pluck(rt, { ring: 2.4, volume: -8 });
+      const hlp = biquad(rt, 'lowpass', 2600 * rt.pal.bright, 0.7);
+      harp.output.connect(hlp);
       rt.route(hlp, { dry: 0.9, verb: 0.55, echo: 0.15 });
       const L: Layer[] = [
         sea(rt, { level: 0.36 }),
         bells(rt, { notes: [36, 43], harmonicity: 3.5, index: 4, ring: 4, every: 18, strikes: [1, 2], gap: 1.1, volume: -21 }),
         harpArp(rt, harp),
-        pad(rt, { type: 'fatsawtooth', count: 2, spread: 12, cutoff: 900, attack: 3, release: 5, volume: -27, octave: 1, every: 2 }),
+        pad(rt, { type: 'sawtooth', count: 2, spread: 12, cutoff: 900, attack: 3, release: 5, volume: -27, octave: 1, every: 2 }),
         keysMelody(rt, { lo: rt.pal.root + 24, hi: rt.pal.root + 41, grid: 3, density: 0.45, volume: -15, rest: [2, 4] }),
       ];
       if (act === 2) L.push(hum(rt, { volume: -19, octave: 1, vowels: ['u', 'o'], every: 4 }));
@@ -410,19 +419,19 @@ const WALTZ_RHYTHMS: readonly (readonly number[])[] = [
 ];
 
 function musicBox(rt: Runtime): Layer {
-  const box = fmBell(rt, { harmonicity: 5.07, index: 3, ring: 1.7, shine: 0.22, volume: -11, poly: 10 });
-  const vib = rt.bag.add(new Vibrato({ frequency: 0.7, depth: 0.12, maxDelay: 0.01, wet: 1 }));
-  box.connect(vib);
-  rt.route(vib, { dry: 0.9, verb: 0.45, echo: 0.25 });
-  const ticker = rt.bag.add(
-    new NoiseSynth({
-      noise: { type: 'white' },
-      envelope: { attack: 0.001, decay: 0, sustain: 1, release: 0.012, releaseCurve: EXP },
-      volume: -24,
-    }),
-  );
-  const thp = rt.bag.add(new Filter({ type: 'highpass', frequency: 3200, rolloff: -12 }));
-  ticker.connect(thp);
+  const box = fmBell(rt, { harmonicity: 5.07, index: 3, ring: 1.7, shine: 0.22, volume: -8, poly: 10 });
+  // 낡은 태엽의 음정 흔들림: 지연시간 변조 (네이티브)
+  const delay = rt.ctx.createDelay(0.05);
+  delay.delayTime.value = 0.012;
+  rt.bag.add({ dispose: () => delay.disconnect() });
+  const wobbled = rt.bag.add(new Gain({ context: rt.ctx, gain: 1 }));
+  box.output.connect(delay);
+  delay.connect(wobbled.input);
+  const lfo = rt.bag.add(new NativeLfo(rt.ctx, 0.7, 0.0012, delay.delayTime));
+  rt.route(wobbled, { dry: 0.9, verb: 0.45, echo: 0.25 });
+  const ticker = rt.bag.add(new NoiseSynth(rt.ctx, { color: 'white', env: { a: 0.001, r: 0.012 }, level: dbToGain(-14), max: 2 }));
+  const thp = biquad(rt, 'highpass', 3200, 0.7);
+  ticker.output.connect(thp);
   rt.route(thp, { dry: 1, verb: 0.2 });
 
   let rhythm = WALTZ_RHYTHMS[0];
@@ -431,10 +440,12 @@ function musicBox(rt: Runtime): Layer {
   let windDown = randInt(12, 20);
   let windingBars = 0;
   let lastTick = 0;
-  const note = (m: number, t: number, v: number) =>
-    box.triggerAttackRelease(mtof(m + (rt.detune(1.4) + sag) / 100), 0.04, t, clamp(v, 0.01, 1));
+  const note = (m: number, t: number, v: number) => box.play(mtof(m + (rt.detune(1.4) + sag) / 100), 0.04, t, clamp(v, 0.01, 1));
 
   return {
+    start(t) {
+      lfo.start(t);
+    },
     step(t, s) {
       const i = rt.inBar(s);
       if (i === 0) {
@@ -457,7 +468,7 @@ function musicBox(rt: Runtime): Layer {
       // 태엽 감는 소리
       if (windingBars === 1 && t > lastTick + 0.02) {
         lastTick = t;
-        ticker.triggerAttackRelease(0.003, t, rand(0.4, 0.8));
+        ticker.hit(t, 0.003, rand(0.4, 0.8));
         return;
       }
       // 반주: 1박 베이스, 2·3박 화음
@@ -484,7 +495,7 @@ function musicBox(rt: Runtime): Layer {
       box.releaseAll(t);
     },
     sanity(_s, t) {
-      vib.depth.rampTo(0.12 + rt.wobble * 0.5, 2, t);
+      lfo.depth.gain.setTargetAtTime(0.0012 + rt.wobble * 0.003, t, 0.7);
     },
   };
 }
@@ -499,7 +510,7 @@ export const merchant: MoodFactory = (env) => {
     palette: (p: Palette) => ({ ...p, mode: MB_MODES[act - 1], micro: p.micro + 8 }),
     build: (rt) => [
       musicBox(rt),
-      pad(rt, { type: 'fatsine', count: 2, spread: 20, cutoff: 900, attack: 3, release: 4, volume: -30, octave: 1, every: 4, unease: 0.15 }),
+      pad(rt, { type: 'sine', count: 2, spread: 20, cutoff: 900, attack: 3, release: 4, volume: -30, octave: 1, every: 4, unease: 0.15 }),
     ],
   });
 };

@@ -383,6 +383,8 @@ export interface EnemyDef {
   dread?: number;
   eldritch?: boolean;
   traits?: string[];
+  /** 분류 태그 (예: 'cult', 'deep', 'beast', 'dream', 'star', 'undead') — 층의 법칙·패시브가 참조 */
+  tags?: string[];
   moves: Record<string, MoveDef>;
   /** 다음 행동 결정 */
   ai(c: Combat, e: EnemyUnit): string;

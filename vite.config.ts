@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import type { Plugin, ViteDevServer } from 'vite';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -48,6 +48,22 @@ function gameIcons(): Plugin {
       return `export default ${JSON.stringify(out)};`;
     },
     configureServer(server: ViteDevServer) {
+      // 개발 전용: 브라우저에서 만든 앱 아이콘 PNG를 public/에 저장
+      server.middlewares.use('/__save-asset', (req, res) => {
+        const name = new URL(req.url ?? '', 'http://x').searchParams.get('name') ?? '';
+        if (req.method !== 'POST' || !/^icon-\d+\.png$/.test(name)) {
+          res.statusCode = 400;
+          res.end('bad');
+          return;
+        }
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', () => {
+          const b64 = body.replace(/^data:image\/png;base64,/, '');
+          writeFileSync(join('public', name), Buffer.from(b64, 'base64'));
+          res.end('ok');
+        });
+      });
       server.watcher.on('change', (file) => {
         if (!/[\\/]src[\\/].*\.(ts|tsx)$/.test(file)) return;
         const mod = server.moduleGraph.getModuleById(RESOLVED);

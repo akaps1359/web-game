@@ -24,7 +24,7 @@ export function layoutEnemies(rect: Rect, list: { uid: string; row: 0 | 1; scale
     const n = units.length;
     if (!n) continue;
     const base = row === 0 ? Math.min(rect.h * 0.36, rect.w / Math.max(2.15, n + 0.55)) : Math.min(rect.h * 0.27, rect.w / Math.max(2.6, n + 1));
-    const y = rect.y + rect.h * (row === 0 ? 0.8 : 0.47);
+    const y = rect.y + rect.h * (row === 0 ? 0.82 : 0.42);
     units.forEach((e, i) => {
       const spread = row === 0 ? 0.9 : 0.8;
       const x = rect.x + rect.w * (0.5 + ((i + 0.5) / n - 0.5) * spread * Math.min(1, n / 2.2));

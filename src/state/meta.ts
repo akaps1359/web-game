@@ -15,12 +15,14 @@ export interface Meta {
   /** 해금된 최고 심연 단계 */
   abyss: number;
   speed: 1 | 2;
+  /** 이미 본 도움말 */
+  tips: string[];
 }
 
 const KEY = 'abyss.meta';
 
 export function defaultMeta(): Meta {
-  return { v: 1, unlocked: ['soldier'], codex: {}, essences: [], relics: [], runs: 0, wins: 0, bestAct: 1, abyss: 0, speed: 1 };
+  return { v: 1, unlocked: ['soldier'], codex: {}, essences: [], relics: [], runs: 0, wins: 0, bestAct: 1, abyss: 0, speed: 1, tips: [] };
 }
 
 export function loadMeta(): Meta {

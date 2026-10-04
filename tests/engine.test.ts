@@ -32,13 +32,18 @@ describe('콘텐츠 무결성', () => {
 });
 
 describe('전투', () => {
-  it('모든 1층 조우를 봇이 끝까지 진행할 수 있다', () => {
-    for (const enc of ENCOUNTERS.filter((e) => e.act === 1)) {
+  it('모든 조우를 봇이 끝까지 진행할 수 있다', () => {
+    for (const enc of ENCOUNTERS) {
       const run = newRun({ seed: 42, origin: 'soldier' });
-      run.player.maxHp = run.player.hp = 999;
-      const c = startCombat(run, enc.id);
+      run.act = enc.act;
+      run.player.maxHp = run.player.hp = 99999;
+      run.player.sanity = run.player.maxSanity = 99999;
+      // 층에 걸맞은 성장치 (시작 장비만으로는 후반 적을 상대할 수 없다)
+      run.player.str = (enc.act - 1) * 4;
+      run.player.maxAp = 3 + (enc.act >= 3 ? 1 : 0);
+      const c = startCombat(run, enc.id, { anomaly: enc.anomaly ?? null });
       let guard = 0;
-      while (!c.over && guard++ < 200) autoTurn(c);
+      while (!c.over && guard++ < 300) autoTurn(c);
       expect(c.over, enc.id).toBe(true);
       expect(c.s.phase, enc.id).toBe('victory');
     }

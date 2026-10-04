@@ -95,8 +95,7 @@ reg.statuses([
     name: '굳건함',
     icon: 'gi:stone-wall',
     kind: 'buff',
-    decay: true,
-    desc: '방어도가 턴 시작 시 사라지지 않음 ({n}턴)',
+    desc: '턴이 시작될 때 방어도가 사라지지 않는다 ({n}회)',
   },
   {
     id: 'energized',

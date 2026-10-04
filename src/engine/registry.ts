@@ -87,6 +87,10 @@ export interface FloorDef {
   hooks?: Hooks;
   /** 이동할 때마다 */
   onMove?(run: RunState, f: FloorState): void;
+  /** 층 생성 직후 (침수된 방, 회복 반전 구역, 유성 낙하 지점 표시 등) */
+  setup?(run: RunState, f: FloorState): void;
+  /** 조우 시작 시 전장 규칙 추가 (예: 회복 반전 구역) — 반환한 anomaly id 적용 */
+  roomAnomaly?(run: RunState, f: FloorState, roomId: number): string | null;
   lord?: LordDef;
 }
 

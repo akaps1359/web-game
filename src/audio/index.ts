@@ -37,7 +37,7 @@ export interface AbyssAudio {
 // ---------------------------------------------------------------------------
 
 const STORAGE_KEY = 'abyss.audio';
-const DEFAULTS: AudioSettings = { music: 0.7, sfx: 0.8, muted: false };
+const DEFAULTS: AudioSettings = { music: 0.7, sfx: 0.85, muted: false };
 
 function sanitize(s: Partial<AudioSettings>, base: AudioSettings): AudioSettings {
   const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, 0, 1) : d);
