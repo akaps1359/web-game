@@ -63,6 +63,8 @@ export interface FloorState {
   /** 층별 법칙 변수 */
   vars: Record<string, number>;
   shops?: Record<string, ShopState>;
+  /** 신전 방마다 한 번 정해진 금기의 봉헌 후보 (다시 들어와도 같다) */
+  offers?: Record<string, string[]>;
 }
 
 export const GRID_W = 7;

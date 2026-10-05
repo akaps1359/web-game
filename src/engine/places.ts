@@ -137,7 +137,9 @@ export function forbiddenOffer(run: RunState): string[] | string {
   if (!f) return '제단이 없다';
   const key = `offer${f.pos}`;
   if (f.vars[key]) return '제단이 침묵한다';
-  const opts = rollForbidden(run, 2);
+  // 같은 신전에서는 몇 번을 다시 열어도 같은 후보 (처음 정해진 것을 기억한다)
+  f.offers ??= {};
+  const opts = (f.offers[key] ??= rollForbidden(run, 2));
   if (!opts.length) return '제단이 응답하지 않는다';
   return opts;
 }
@@ -147,6 +149,7 @@ export function acceptForbidden(run: RunState, skillId: string): string | null {
   if (!f) return '제단이 없다';
   const key = `offer${f.pos}`;
   if (f.vars[key]) return '제단이 침묵한다';
+  if (f.offers?.[key] && !f.offers[key].includes(skillId)) return '제단이 내민 지식이 아니다';
   f.vars[key] = 1;
   run.player.maxSanity = Math.max(10, run.player.maxSanity - 8);
   run.player.sanity = Math.min(run.player.sanity, run.player.maxSanity);

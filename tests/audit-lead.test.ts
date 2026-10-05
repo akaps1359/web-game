@@ -145,3 +145,21 @@ describe('점검: 지속 피해는 행동 전에 정산', () => {
     });
   }
 });
+
+describe('점검: 신전 금기의 봉헌', () => {
+  it('같은 신전에서는 다시 열어도 후보가 같고, 다른 신전은 따로 정해진다', async () => {
+    const { forbiddenOffer } = await import('../src/engine/places');
+    const run = newRun({ seed: 31, origin: 'occultist' });
+    const f = run.floor!;
+    f.pos = 1;
+    const a = forbiddenOffer(run);
+    const b = forbiddenOffer(run);
+    expect(Array.isArray(a)).toBe(true);
+    expect(b).toEqual(a);
+    f.pos = 2;
+    const c = forbiddenOffer(run);
+    expect(Array.isArray(c)).toBe(true);
+    f.pos = 1;
+    expect(forbiddenOffer(run)).toEqual(a);
+  });
+});
