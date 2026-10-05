@@ -54,7 +54,7 @@ reg.skills([
     desc: '방어도 {B:blk} + 모든 적이 가진 출혈 합의 {pct}%',
     run: (c, u) => {
       const total = c.alive.reduce((sum, e) => sum + (e.st.bleed ?? 0), 0);
-      guard(c, u, u.v('blk') + Math.floor((total * u.v('pct')) / 100));
+      guard(c, u, u.v('blk') + Math.floor((total * u.v('pct') * u.power) / 100));
     },
   }),
   skill({
@@ -92,7 +92,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'combo'],
     vals: { dmg: [6, 7] },
-    desc: '{D:dmg} 참격 피해. 연계 2 이상이면 행동력 +1',
+    desc: '{D:dmg} 참격 피해. 이번 턴 앞서 스킬을 2개 이상 썼으면 행동력 +1',
     run: (c, u, t) => {
       const flowing = combo(c) >= 2;
       hit(c, u, t);
@@ -181,7 +181,7 @@ reg.skills([
     run: (c, u) => {
       const before = c.s.ammo;
       reload(c);
-      guard(c, u, u.v('blk') + Math.max(0, c.s.ammo - before) * u.v('per'));
+      guard(c, u, u.v('blk') + Math.floor(Math.max(0, c.s.ammo - before) * u.v('per') * u.power));
     },
   }),
   skill({
@@ -340,7 +340,7 @@ reg.skills([
     run: (c, u, t) => {
       const b = c.p.st.barrier ?? 0;
       if (b > 0) c.apply(c.p, 'barrier', -b);
-      hit(c, u, t, { dmg: u.v('dmg') + b });
+      hit(c, u, t, { dmg: u.v('dmg') + Math.floor(b * u.power) });
     },
   }),
   skill({
@@ -356,11 +356,12 @@ reg.skills([
     type: 'arcane',
     tags: ['attack', 'mark', 'detonate'],
     vals: { base: [4, 6], per: [5, 6] },
-    desc: '인장을 터뜨려 {base} + 인장당 {per} 비전 피해. 터뜨린 인장의 절반을 다른 모든 적에게 새긴다',
+    desc: '대상의 인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해. 터뜨린 인장의 절반(올림)을 다른 모든 적에게 새긴다',
     run: (c, u, t) => {
       if (!t) return;
       const marks = t.st.mark ?? 0;
-      detonate(c, u, t, u.v('per'), u.v('base'));
+      // 기본 + 인장당 피해 전체가 위력(메아리·절약 각인)을 따른다
+      detonate(c, u, t, 0, Math.floor((u.v('base') + marks * u.v('per')) * u.power));
       const spread = Math.ceil(marks / 2);
       if (spread > 0) for (const e of c.alive) if (e !== t) c.apply(e, 'mark', spread, c.p);
     },
@@ -421,12 +422,12 @@ reg.skills([
     type: 'fire',
     tags: ['attack', 'aoe', 'poison', 'burn'],
     vals: { dmg: [4, 5] },
-    desc: '전열에 {D:dmg} 화염 피해. 독에 걸린 적은 독 수치의 절반만큼 추가 피해',
+    desc: '전열의 모든 적에게 {D:dmg} 화염 피해. 독에 걸린 적은 독 수치의 절반만큼 추가 피해',
     run: (c, u) => {
       const row = c.row(0).length ? c.row(0) : c.row(1);
       for (const e of [...row]) {
         if (c.over) break;
-        const extra = Math.floor((e.st.poison ?? 0) / 2);
+        const extra = Math.floor(((e.st.poison ?? 0) / 2) * u.power);
         c.damage({ src: c.p, tgt: e, base: u.v('dmg') + extra, type: u.type ?? 'fire', attack: true, skill: u });
       }
     },
@@ -536,7 +537,7 @@ reg.skills([
     tags: ['attack'],
     vals: { dmg: [5, 6], pct: [20, 30] },
     desc: '{D:dmg} + 잃은 체력의 {pct}% 타격 피해',
-    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor(((c.p.maxHp - c.p.hp) * u.v('pct')) / 100) }),
+    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor(((c.p.maxHp - c.p.hp) * u.v('pct') * u.power) / 100) }),
   }),
   skill({
     id: 'x-thorn-mail',
@@ -614,7 +615,7 @@ reg.skills([
     desc: '정신력 {san} 소모. {D:dmg} + 촉수 1개당 {per} 공허 피해',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
-      hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * (c.p.st.tentacle ?? 0) });
+      hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * (c.p.st.tentacle ?? 0) * u.power) });
     },
   }),
   skill({
@@ -696,7 +697,7 @@ reg.skills([
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
       const lost = Math.max(0, c.p.maxSanity - c.p.sanity);
-      hit(c, u, t, { dmg: u.v('dmg') + Math.floor((lost * u.v('pct')) / 100) });
+      hit(c, u, t, { dmg: u.v('dmg') + Math.floor((lost * u.v('pct') * u.power) / 100) });
     },
   }),
 ]);
@@ -717,7 +718,7 @@ reg.skills([
     type: 'pierce',
     tags: ['attack', 'pull', 'debuff'],
     vals: { dmg: [4, 6], vuln: [1, 2] },
-    desc: '{D:dmg} 관통 피해. 후열의 적이면 전열로 끌어당기고 취약 {vuln}',
+    desc: '{D:dmg} 관통 피해. 대상이 후열에 있으면 전열로 끌어당기고 취약 {vuln} (전열에 자리가 있을 때)',
     run: (c, u, t) => {
       hit(c, u, t);
       if (t && !t.dead && t.row === 1 && c.moveRow(t, 0)) c.apply(t, 'vuln', u.v('vuln'), c.p);
@@ -776,7 +777,7 @@ reg.skills([
     tags: ['block', 'combo'],
     vals: { blk: [2, 3], per: [3, 4] },
     desc: '방어도 {B:blk} + 이번 턴 앞서 쓴 스킬 1개당 {per}',
-    run: (c, u) => void guard(c, u, u.v('blk') + u.v('per') * combo(c)),
+    run: (c, u) => void guard(c, u, u.v('blk') + Math.floor(u.v('per') * combo(c) * u.power)),
   }),
   skill({
     id: 'x-opportunist',
@@ -795,7 +796,7 @@ reg.skills([
     run: (c, u, t) => {
       if (!t) return;
       const kinds = Object.keys(t.st).filter((id) => (t.st[id] ?? 0) > 0 && STATUSES.get(id)?.kind === 'debuff').length;
-      hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * kinds });
+      hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * kinds * u.power) });
     },
   }),
 ]);

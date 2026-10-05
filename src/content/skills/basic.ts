@@ -73,7 +73,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'basic', 'bleed'],
     vals: { dmg: [4, 5, 6], bleed: [1, 2, 2] },
-    desc: '{D:dmg} 참격 피해, 출혈 {bleed}',
+    desc: '{D:dmg} 참격 피해. 체력 피해를 주면 출혈 {bleed}',
     run: (c, u, t) => {
       const ds = hit(c, u, t);
       if (t && !t.dead && ds.some((d) => d.hpLoss > 0)) c.apply(t, 'bleed', u.v('bleed'), c.p);
@@ -93,7 +93,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'basic'],
     vals: { dmg: [5, 7, 9], bonus: [3, 4, 5] },
-    desc: '{D:dmg} 참격 피해. 출혈 중인 적에게 +{bonus}',
+    desc: '{D:dmg} 참격 피해. 대상이 출혈 중이면 피해 +{bonus}',
     run: (c, u, t) => {
       const extra = t && (t.st.bleed ?? 0) > 0 ? u.v('bonus') : 0;
       hit(c, u, t, { dmg: u.v('dmg') + extra });
@@ -111,9 +111,9 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     type: 'pierce',
-    tags: ['attack', 'basic', 'ammo', 'gun'],
+    tags: ['attack', 'basic', 'ammo', 'gun', 'multi'],
     vals: { dmg: [7, 9, 11] },
-    desc: '탄약 1 소모, {D:dmg} 관통 피해. 탄약이 없으면 재장전',
+    desc: '탄약 1 소모, {D:dmg} 관통 피해. 탄약이 없으면 쏘지 않고 재장전',
     run: (c, u, t) => {
       if (c.s.ammo <= 0) return reload(c);
       spendAmmo(c, 1);
@@ -132,9 +132,9 @@ reg.skills([
     range: 'ranged',
     target: 'front',
     type: 'pierce',
-    tags: ['attack', 'basic', 'ammo', 'gun'],
+    tags: ['attack', 'basic', 'ammo', 'gun', 'multi'],
     vals: { dmg: [3, 4, 5], hits: 2 },
-    desc: '탄약 1 소모, 전열에 {D:dmg} 관통 피해 {hits}회. 탄약이 없으면 재장전',
+    desc: '탄약 1 소모, 전열의 모든 적에게 {D:dmg} 관통 피해 {hits}회. 탄약이 없으면 쏘지 않고 재장전',
     run: (c, u, t) => {
       if (c.s.ammo <= 0) return reload(c);
       spendAmmo(c, 1);
@@ -155,7 +155,7 @@ reg.skills([
     type: 'pierce',
     tags: ['attack', 'basic', 'pull'],
     vals: { dmg: [6, 8, 10] },
-    desc: '{D:dmg} 관통 피해. 후열의 적이면 전열로 끌어당긴다',
+    desc: '{D:dmg} 관통 피해. 대상이 후열에 있으면 전열로 끌어당긴다 (전열에 자리가 있을 때)',
     run: (c, u, t) => {
       hit(c, u, t);
       if (t && !t.dead && t.row === 1) c.moveRow(t, 0);
@@ -321,7 +321,7 @@ reg.skills([
     target: 'self',
     tags: ['block', 'basic'],
     vals: { blk: [5, 6, 8], thorns: [2, 3, 3] },
-    desc: '방어도 {B:blk}, 이번 턴 반격 {thorns}',
+    desc: '방어도 {B:blk}, 반격 {thorns} (다음 내 턴까지)',
     run: (c, u) => {
       guard(c, u);
       c.apply(c.p, 'counter', u.v('thorns'), c.p);

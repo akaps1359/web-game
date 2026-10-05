@@ -1,7 +1,7 @@
 import { reg } from '../../engine/registry';
 import { lightCost, reveal } from '../../engine/dungeon';
 import type { FloorState } from '../../engine/dungeon';
-import { log, rng, type RunState } from '../../engine/run';
+import { log, loseSanityRun, rng, type RunState } from '../../engine/run';
 import { FROST } from './common';
 import { FROZEN_ROOM, THAWED_ROOM } from './anomalies';
 
@@ -77,7 +77,17 @@ reg.floors([
     onMove(run, f) {
       // 혹한: 등불이 더 닳는다 (엔진이 기본 소모를 뺀 뒤)
       const extra = coldExtra(run, f);
-      if (extra > 0) run.light = Math.max(0, run.light - extra);
+      if (extra > 0) {
+        const before = run.light;
+        run.light = Math.max(0, run.light - extra);
+        // 엔진은 기본 소모만 뺀 등불로 '어둠 속 이동(정신력 -2)'을 판정한다. 혹한의 추가 소모로 어둠에 들어섰다면
+        // 이동 확인 화면이 미리 알려 준 대로 여기서 같은 대가를 치른다
+        if (before >= 25 && run.light < 25) {
+          const res = loseSanityRun(run, 2);
+          if (res.madness) log(run, '어둠이 정신을 갉아먹는다… 광기에 사로잡혔다');
+          if (run.over) return;
+        }
+      }
       if (!f.vars.coldTold) {
         f.vars.coldTold = 1;
         log(run, `숨이 얼어붙는다 — 추위 속에서 등불이 빨리 닳는다 (이동마다 등불 -${extra} 더)`);

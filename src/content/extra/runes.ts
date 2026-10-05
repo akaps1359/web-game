@@ -44,7 +44,7 @@ reg.runes([
     name: '독 각인',
     icon: 'gi:poison',
     rarity: 'common',
-    desc: '피해를 줄 때마다 독 2',
+    desc: '체력 피해를 줄 때마다 독 2',
     fits: isAttack,
     hooks: {
       onDamageDealt(c, _s, d) {

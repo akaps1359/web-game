@@ -122,7 +122,7 @@ reg.anomalies([
     id: 'a5-dream-backward',
     name: '거꾸로 흐르는 꿈',
     icon: 'gi:backward-time',
-    desc: '태아의 꿈 — 모든 것이 거꾸로 흐른다. 회복이 피해로 바뀐다 (탯줄이 태아에게 먹이는 별빛도). 내 턴이 시작될 때마다 꿈이 바뀐다',
+    desc: '태아의 꿈 — 모든 것이 거꾸로 흐른다. 당신의 회복이 피해로 바뀌고, 탯줄이 태아에게 먹이는 별빛도 상처가 된다. 내 턴이 시작될 때마다 꿈이 바뀐다',
     hooks: {
       onTurnStart: rotateDream,
       modHeal: (_c, _s, n) => -n,
@@ -364,7 +364,7 @@ reg.enemies([
         },
       },
       tremor: mv.horror('알이 떤다', 16, { then: lull, desc: '정신 피해, 졸음 +1' }),
-      harden: mv.block('껍질이 굳는다', 26),
+      harden: mv.block('껍질이 굳는다', 26, { desc: '방어도 26' }),
       throb: mv.charge('알이 맥동한다', 56),
       burst: release(mv.attack('별자리가 터진다', 56, { melee: false, type: 'arcane' })),
       // ── 3. 태어난 것 ──

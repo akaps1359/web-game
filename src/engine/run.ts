@@ -262,7 +262,8 @@ export function gainXp(run: RunState, n: number): number {
     ups++;
     p.maxHp += 2;
     p.hp += 2;
-    if ([3, 6, 9].includes(p.level) && run.slots.length < MAX_SLOTS) run.slots.push(null);
+    const cap = MAX_SLOTS + (run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0);
+    if ([3, 6, 9].includes(p.level) && run.slots.length < cap) run.slots.push(null);
     log(run, `레벨 ${p.level} — 정수 흡수 한도 ${essenceCap(run)}`);
   }
   return ups;
@@ -389,7 +390,8 @@ export function absorbEssence(run: RunState, drop: { id: string; color: number; 
   const es: OwnedEssence = { uid: uid(run), id: drop.id, color: drop.color, guardian: drop.guardian };
   run.essences.push(es);
   applyStats(run, essenceStats(drop.id, drop.guardian), 1);
-  if (def.eldritch) {
+  // 같은 정수를 수호자판으로 바꿔 흡수할 때는 이계의 대가(최대 정신력 -5, 통찰 +1)를 다시 치르지 않는다
+  if (def.eldritch && !same) {
     run.player.maxSanity = Math.max(10, run.player.maxSanity - 5);
     run.player.sanity = Math.min(run.player.sanity, run.player.maxSanity);
     run.player.insight += 1;

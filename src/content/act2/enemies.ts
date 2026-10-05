@@ -23,6 +23,19 @@ export function eatCorpse(c: Combat): boolean {
   return true;
 }
 
+/**
+ * 적이 제 편을 해치운다 (제물 봉헌, 새끼 삼키기). c.kill은 플레이어가 처치한 것으로 쳐서
+ * '적을 처치하면' 유물·정수·경험치가 붙으므로, 보상 없이 치운다 (시체도 남지 않는다).
+ */
+function consume(c: Combat, x: EnemyUnit) {
+  if (x.dead) return;
+  x.hp = 0;
+  x.dead = true;
+  x.fled = true;
+  x.block = 0;
+  c.emit({ t: 'death', uid: x.uid });
+}
+
 /** 체력 비율이 가장 낮은 아군 */
 function mostHurt(c: Combat): EnemyUnit | null {
   let best: EnemyUnit | null = null;
@@ -125,7 +138,7 @@ reg.traits([
   {
     id: 'a2-possessed',
     name: '빙의',
-    desc: '체력이 절반 이하가 되면 몸속의 악령이 빠져나온다 (수도사는 힘 -2)',
+    desc: '체력이 절반 이하가 되면 몸속의 악령이 빠져나온다 (수도사는 힘 -2, 당신은 정신력 -3)',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -270,7 +283,7 @@ reg.traits([
         if (!isEnemy(s.unit) || !s.unit.dead) return;
         for (const b of c.alive.filter((x) => x.def === 'great-bell')) {
           c.emit({ t: 'text', uid: b.uid, text: '종이 마지막으로 울리고 떨어진다', tone: 'eldritch' });
-          c.kill(b);
+          c.kill(b, false);
         }
       },
     },
@@ -363,7 +376,7 @@ reg.enemies([
         },
         { extra: ['heal'], desc: '모든 아군 힘 +1, 체력 4 회복' },
       ),
-      curse: mv.horror('저주의 설교', 6, { then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      curse: mv.horror('저주의 설교', 6, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       smite: mv.attack('재의 인장', 7, { melee: false, type: 'arcane' }),
     },
     ai: (c, e) => (e.mem.rite ? pick(c, e, { smite: 3, curse: 2, communion: others(c, e).length ? 2 : 1 }) : 'rite'),
@@ -393,7 +406,7 @@ reg.enemies([
         { desc: '체력 5를 잃고 힘 +2' },
       ),
       chain: mv.attack('가시 사슬', 9, { type: 'slash' }),
-      embrace: mv.attack('피의 포옹', 5, { then: (c, e) => void c.apply(c.p, 'bleed', 2, e) }),
+      embrace: mv.attack('피의 포옹', 5, { then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
     },
     ai: (c, e) => pick(c, e, { chain: 3, embrace: 2, scourge: e.hp > 15 && (e.mem.sc ?? 0) < 2 ? 2 : 0 }),
     visual: { tint: 0x7a4a48, glow: 0xff5040 },
@@ -412,7 +425,7 @@ reg.enemies([
     traits: ['a2-corpse-eater'],
     desc: '개를 닮은 얼굴로 납골당의 뼈를 갉는 것. 갓 쓰러진 것을 가장 좋아한다.',
     moves: {
-      claw: mv.attack('할퀴기', 7, { type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e) }),
+      claw: mv.attack('할퀴기', 7, { type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e), desc: '출혈 1' }),
       gnaw: mv.attack('뼈 갉기', 3, { hits: 3, type: 'slash' }),
       feast: {
         name: '시체 포식',
@@ -451,8 +464,8 @@ reg.enemies([
     desc: '녹은 촛농을 제 몸에 부어 상처를 봉한 수사. 굳은 밀랍이 얼굴의 반을 덮었지만 아침 기도는 거르지 않는다.',
     moves: {
       spike: mv.attack('쇠 촛대 찌르기', 9, { type: 'pierce' }),
-      grip: mv.attack('밀랍 손아귀', 6, { then: (c, e) => void c.apply(c.p, 'frail', 2, e) }),
-      harden: mv.block('밀랍 굳히기', 10),
+      grip: mv.attack('밀랍 손아귀', 6, { then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
+      harden: mv.block('밀랍 굳히기', 10, { desc: '방어도 10' }),
     },
     ai: (c, e) => opener(c, e, ['spike']) ?? pick(c, e, { spike: 3, grip: 2, harden: hpPct(e) < 0.6 ? 2 : 1 }),
     visual: { tint: 0x8a7a5a, glow: 0xffd070, fx: ['flicker'] },
@@ -475,7 +488,7 @@ reg.enemies([
       spasm: mv.attack('발작', 4, { hits: 2 }),
       voice: mv.horror('낯선 목소리', 6),
       fist: mv.attack('뒤틀린 주먹', 9),
-      pray: mv.block('흐느끼는 기도', 8),
+      pray: mv.block('흐느끼는 기도', 8, { desc: '방어도 8' }),
     },
     ai: (c, e) =>
       e.mem.exorcised ? pick(c, e, { fist: 2, pray: 2, spasm: 1 }) : pick(c, e, { spasm: 2, voice: 2, fist: 2 }),
@@ -526,7 +539,7 @@ reg.enemies([
     tags: ['undead'],
     desc: '수도원이 바쳐지던 밤, 그들은 스스로를 벽 속에 쌓아 넣었다. 회벽 너머의 기도는 아직 끝나지 않았다.',
     moves: {
-      lament: mv.horror('벽 속의 기도', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      lament: mv.horror('벽 속의 기도', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       brick: mv.buff(
         '벽돌 쌓기',
         (c, e) => {
@@ -535,7 +548,7 @@ reg.enemies([
         },
         { desc: '가장 다친 아군에게 보호막 8' },
       ),
-      touch: mv.attack('벽 틈의 손길', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
+      touch: mv.attack('벽 틈의 손길', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
     },
     ai: (c, e) => pick(c, e, { touch: 3, lament: 2, brick: c.alive.some((a) => hpPct(a) < 0.8) ? 2 : 0 }),
     visual: { tint: 0x6a6460, glow: 0xe8dcc0, fx: ['flicker'] },
@@ -638,7 +651,7 @@ reg.enemies([
     tags: ['cult'],
     desc: '모든 죄를 들어주고, 모든 죄를 기록한다. 그 장부는 아래의 목소리에게 바쳐진다.',
     moves: {
-      penance: mv.attack('참회의 매', 8, { then: (c, e) => void c.apply(c.p, 'vuln', 1, e) }),
+      penance: mv.attack('참회의 매', 8, { then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
       confess: {
         ...mv.horror('고해 강요', 4, { desc: '이번 턴 당신이 쓴 스킬 1개당 정신 피해 +1 (최대 +5)' }),
         run(c, e) {
@@ -677,7 +690,7 @@ reg.enemies([
         desc: '부식 1 — 받는 피해 +1 (전투 동안)',
         then: (c, e) => void c.apply(c.p, 'corrode', 1, e),
       }),
-      clutch: mv.attack('움켜쥐기', 3, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      clutch: mv.attack('움켜쥐기', 3, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
     },
     ai: (_c, e) => cycle(e, ['reach', 'baptize', 'clutch', 'reach']),
     visual: { tint: 0x2a1a1a, glow: 0xff5a40, fx: ['float'] },
@@ -709,8 +722,8 @@ reg.enemies([
         },
         { desc: '체력 8을 잃고 힘 +2, 가시 2 (근접 공격하면 반사 피해)' },
       ),
-      lash: mv.attack('가시 채찍', 3, { hits: 3, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e) }),
-      sermon: mv.horror('참회하라', 7, { then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      lash: mv.attack('가시 채찍', 3, { hits: 3, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e), desc: '출혈 1' }),
+      sermon: mv.horror('참회하라', 7, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       windup: mv.charge('백 번의 채찍질', 5, { hits: 4 }),
       rain: release(mv.attack('백 번의 채찍질', 5, { hits: 4, type: 'slash' })),
     },
@@ -740,7 +753,7 @@ reg.enemies([
       conduct2: conduct(2),
       conduct3: conduct(3),
       solo: mv.horror('독창', 6),
-      baton: mv.attack('지휘봉', 8, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      baton: mv.attack('지휘봉', 8, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
       gather: mv.summon(
         '성가대 소집',
         (c, e) => {
@@ -792,9 +805,9 @@ reg.enemies([
     traits: ['a2-adaptive'],
     desc: '성인의 유골을 모신 함. 수백 년의 기도를 받아먹고 눈을 떴다.',
     moves: {
-      lid: mv.attack('뚜껑 물기', 11, { then: (c, e) => void c.apply(c.p, 'vuln', 1, e) }),
+      lid: mv.attack('뚜껑 물기', 11, { then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
       shards: mv.attack('뼛조각 분출', 4, { hits: 3, melee: false, type: 'pierce' }),
-      gaze: mv.horror('성인의 눈', 8, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      gaze: mv.horror('성인의 눈', 8, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       bless: mv.buff(
         '성유물의 축복',
         (c, e) => {
@@ -827,7 +840,7 @@ reg.enemies([
     desc: '잿빛 수도원의 마지막 대사제. 수도원을 아래의 목소리에 바친 대가로, 그의 목숨은 향로의 불처럼 꺼지지 않게 되었다.',
     moves: {
       blade: mv.attack('제례검', 11, { type: 'slash' }),
-      sermon: mv.horror('심연의 설교', 7, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      sermon: mv.horror('심연의 설교', 7, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       offer: mv.buff(
         '봉헌',
         (c, e) => {
@@ -837,7 +850,7 @@ reg.enemies([
             return;
           }
           c.emit({ t: 'text', uid: o.uid, text: '제물의 비명', tone: 'eldritch' });
-          c.kill(o);
+          consume(c, o);
           c.apply(e, 'str', 2, e);
           c.heal(e, 18);
           c.loseSanity(5, true);
@@ -917,7 +930,7 @@ reg.enemies([
     traits: ['a2-corpse-eater', 'a2-pack-lord'],
     desc: '납골당 깊은 곳, 뼈로 쌓은 왕좌에 앉은 것. 수도원의 모든 죽음은 결국 그의 식탁에 오른다.',
     moves: {
-      rend: mv.attack('왕의 손톱', 6, { hits: 2, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e) }),
+      rend: mv.attack('왕의 손톱', 6, { hits: 2, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e), desc: '출혈 1' }),
       howl: mv.horror('굶주린 포효', 7, {
         desc: '새끼들 힘 +2',
         then(c, e) {
@@ -928,7 +941,7 @@ reg.enemies([
         name: '왕의 만찬',
         intent: 'heal',
         extra: ['buff'],
-        desc: '시체를 먹어 체력 16 회복, 힘 +1. 시체가 없으면 제 새끼를 산 채로 삼킨다',
+        desc: '시체를 먹어 체력 16 회복, 힘 +1. 시체가 없으면 제 새끼를 산 채로 삼킨다 (체력 24 회복, 힘 +1, 당신은 정신력 -4)',
         run(c, e) {
           e.mem.feasts = (e.mem.feasts ?? 0) + 1;
           if (eatCorpse(c)) {
@@ -943,8 +956,7 @@ reg.enemies([
             return;
           }
           c.emit({ t: 'text', uid: e.uid, text: '제 새끼를 산 채로 삼킨다', tone: 'eldritch' });
-          c.kill(pup);
-          c.s.vars.a2eaten = (c.s.vars.a2eaten ?? 0) + 1;
+          consume(c, pup);
           c.heal(e, 24);
           c.apply(e, 'str', 1, e);
           c.loseSanity(4, true);
@@ -1011,7 +1023,7 @@ reg.enemies([
     desc: '수백 년 동안 향로에서 떨어진 재가 납골당 바닥에 쌓였다. 그 재 아래에서 무언가가 자랐다. 교단은 그것을 파내지 않고 매일 새 재를 덮어 주었다.',
     moves: {
       rib: mv.attack('갈비뼈 찌르기', 10, { type: 'pierce' }),
-      sweep: mv.attack('재 휩쓸기', 5, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
+      sweep: mv.attack('재 휩쓸기', 5, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
       prep: mv.charge('잿더미를 끌어올린다', 27),
       collapse: release(mv.attack('무너지는 잿더미', 27, { melee: false })),
       burrow: {
@@ -1032,7 +1044,7 @@ reg.enemies([
         },
       },
       spew: mv.attack('잿가루 분출', 8, { melee: false }),
-      song: mv.horror('재 밑의 노래', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      song: mv.horror('재 밑의 노래', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       rise: {
         name: '솟아오름',
         intent: 'advance',
@@ -1087,7 +1099,7 @@ reg.enemies([
     desc: '재에 묻힌 것의 몸에서 떨어져 나온 유충. 쉬지 않고 재를 날라 어미를 덮는다.',
     moves: {
       gnaw: mv.attack('갉아먹기', 5, { type: 'slash' }),
-      curl: mv.block('재 속에 웅크림', 6),
+      curl: mv.block('재 속에 웅크림', 6, { desc: '방어도 6' }),
     },
     ai: (c, e) => pick(c, e, { gnaw: 3, curl: 1 }),
     visual: { tint: 0x8a8478, glow: 0xffb060, scale: 0.7 },
@@ -1132,7 +1144,7 @@ reg.enemies([
         },
       }),
       flurry: mv.attack('광란의 종추', 5, { hits: 3 }),
-      dirge: mv.horror('깨진 종의 장송곡', 8, { then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      dirge: mv.horror('깨진 종의 장송곡', 8, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
     },
     onSpawn: (c) => void c.spawn('great-bell', 1),
     ai: (c, e) => {
@@ -1224,8 +1236,8 @@ reg.enemies([
     traits: ['a2-miracle'],
     desc: '균열 너머의 수도원에선 모든 것이 뒤집혀 있다. 그곳의 성인은 거꾸로 매달린 채 거꾸로 된 기적을 행한다.',
     moves: {
-      hymn: mv.horror('거꾸로 된 찬송', 8, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
-      nails: mv.attack('성흔의 못', 4, { hits: 3, melee: false, type: 'pierce', then: (c, e) => void c.apply(c.p, 'bleed', 2, e) }),
+      hymn: mv.horror('거꾸로 된 찬송', 8, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      nails: mv.attack('성흔의 못', 4, { hits: 3, melee: false, type: 'pierce', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
       invert: {
         name: '뒤집힌 축복',
         intent: 'debuff',
@@ -1255,7 +1267,7 @@ reg.enemies([
       miracle: release({
         name: '거꾸로 된 기적',
         intent: 'heal',
-        desc: '체력 40 회복, 해로운 효과 제거',
+        desc: '체력 40 회복, 해로운 효과 제거. 당신은 정신력 -4',
         run(c, e) {
           for (const id of ['weak', 'vuln', 'frail', 'bleed', 'poison', 'burn', 'mark', 'madden', 'corrode', 'doom']) c.clear(e, id);
           c.heal(e, 40);

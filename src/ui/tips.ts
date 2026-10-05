@@ -32,7 +32,7 @@ const TIPS: Record<string, { title: string; icon: string; body: string }> = {
   dying: {
     title: '사경',
     icon: 'gi:heart-beats',
-    body: '체력이 0이 되었지만 아직 끝나지 않았다. 지금부터 받는 피해와 매 턴이 정신력을 깎는다.\n\n정신력까지 0이 되면 죽는다. 회복하면 사경에서 벗어난다.',
+    body: '체력이 0이 되었지만 아직 끝나지 않았다. 지금부터 받는 피해의 절반만큼, 그리고 매 턴 정신력이 깎인다.\n\n정신력까지 0이 되면 죽는다. 회복하면 사경에서 벗어난다.',
   },
 };
 

@@ -316,7 +316,7 @@ reg.relics([
     name: 'No.12 시간 도둑의 시계',
     icon: 'gi:stopwatch',
     rarity: 'boss',
-    desc: '행동력 +1. 기본기 외 스킬의 재사용 대기 +1',
+    desc: '행동력 +1. 기본기 외 모든 스킬의 재사용 대기 +1 (대기가 없던 스킬도 턴당 1번만)',
     onGain(run) {
       run.player.maxAp += 1;
     },
@@ -327,7 +327,7 @@ reg.relics([
     name: 'No.13 쌍둥이 달',
     icon: 'gi:moon-orbit',
     rarity: 'boss',
-    desc: '매 턴 첫 스킬(기본기·행동력 스킬·전투당 1회 스킬 제외)이 50% 위력으로 한 번 더 발동. 모든 적의 체력 +15%',
+    desc: '매 턴 처음 쓰는 스킬(기본기·행동력 스킬·전투당 1회 스킬 제외)이 50% 위력으로 한 번 더 발동 (탄약이 바닥났으면 불발). 전투 시작 시 모든 적의 체력 +15%',
     hooks: {
       onCombatStart(c) {
         for (const e of c.alive) {
@@ -342,6 +342,8 @@ reg.relics([
         const def = u.def;
         if (def.tags.includes('energy') || lvlVal(def.cd, u.owned.lvl) >= 99) return;
         c.s.vars.xTwinTurn = c.s.turn;
+        // 메아리 각인과 같은 규칙: 탄약을 쓰는 스킬은 탄약이 남아 있을 때만 (빈 총으로 공짜 사격 방지) — 이번 턴 몫은 불발로 끝난다
+        if (def.tags.includes('ammo') && c.s.ammo <= 0) return;
         let t = u.primary && !u.primary.dead ? u.primary : null;
         if (def.target === 'single' && !t) t = c.validTargets(def)[0] ?? null;
         if (def.target === 'single' && !t) return;

@@ -229,7 +229,7 @@ reg.enemies([
     traits: ['a4-aligned'],
     moves: {
       claw: mv.attack('별의 손아귀', 12, { type: 'slash' }),
-      dream: mv.horror('꿈의 송신', 10, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      dream: mv.horror('꿈의 송신', 10, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       rise: mv.charge('거대한 팔을 치켜든다', 40),
       crush: release(mv.attack('짓누르기', 40)),
     },
@@ -292,7 +292,7 @@ reg.enemies([
     traits: ['a4-rooted'],
     moves: {
       lash: mv.attack('촉수 채찍', 4, { hits: 3 }),
-      grab: mv.attack('휘감기', 9, { then: (c, e) => void c.apply(c.p, 'frail', 2, e) }),
+      grab: mv.attack('휘감기', 9, { then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
       bleat: mv.horror('검은 숲의 울음', 9),
       rear: mv.charge('뒷발로 일어선다', 40),
       trample: release(mv.attack('짓밟기', 40)),
@@ -362,8 +362,8 @@ reg.enemies([
     tags: ['migo'],
     traits: ['flying'],
     moves: {
-      scalpel: mv.attack('전기 메스', 9, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'vuln', 1, e) }),
-      extract: mv.horror('뇌 적출', 11, { then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      scalpel: mv.attack('전기 메스', 9, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
+      extract: mv.horror('뇌 적출', 11, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       suture: {
         name: '봉합',
         intent: 'heal',
@@ -408,7 +408,7 @@ reg.enemies([
     tags: ['outer'],
     moves: {
       engulf: mv.attack('늘어나 삼키기', 10, { melee: false, type: 'void' }),
-      acid: mv.attack('산성 체액', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'vuln', 1, e) }),
+      acid: mv.attack('산성 체액', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
       pipe: mv.horror('외신의 피리', 9),
       dance: {
         name: '혼돈의 춤',
@@ -438,8 +438,8 @@ reg.enemies([
     dread: 3,
     tags: ['cult'],
     moves: {
-      flame: mv.attack('검은 불꽃', 7, { melee: false, type: 'fire', then: (c, e) => void c.apply(c.p, 'burn', 2, e) }),
-      unmask: mv.horror('얼굴을 보여준다', 13, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      flame: mv.attack('검은 불꽃', 7, { melee: false, type: 'fire', then: (c, e) => void c.apply(c.p, 'burn', 2, e), desc: '화상 2' }),
+      unmask: mv.horror('얼굴을 보여준다', 13, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       bless: mv.block('이름 없는 축복', 0, {
         then(c) {
           for (const a of c.alive) c.gainBlock(a, 9);
@@ -478,7 +478,7 @@ reg.enemies([
     traits: ['a4-leech'],
     moves: {
       drain: mv.attack('생기 흡수', 9, { melee: false, type: 'void' }),
-      glare: mv.horror('형언할 수 없는 빛', 11, { then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      glare: mv.horror('형언할 수 없는 빛', 11, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       taint: mv.debuff('색채 오염', (c, e) => void c.apply(c.p, 'corrode', 1, e), { desc: '부식 1 — 받는 공격 피해 +1 (전투 내내)' }),
     },
     ai: (c, e) => cycle(e, ['drain', 'glare', 'drain', 'taint']),
@@ -558,7 +558,7 @@ reg.enemies([
         extra: ['debuff'],
         dmg: 9,
         melee: false,
-        desc: '방어도를 모두 흩어 버린 뒤 9 피해',
+        desc: '당신의 방어도를 모두 흩어 버린 뒤 공격한다',
         run(c, e) {
           if (c.p.block > 0) {
             c.p.block = 0;
@@ -596,7 +596,11 @@ reg.enemies([
           const lord = c.alive.find((x) => x.def === 'starspawn-lord');
           if (lord) c.heal(lord, 12);
           c.emit({ t: 'text', uid: e.uid, text: '군주의 몸속으로 녹아든다', tone: 'eldritch' });
-          c.kill(e);
+          // c.kill은 플레이어가 처치한 것으로 쳐서 '적을 처치하면' 유물·경험치가 붙는다 — 설명대로 보상 없이 사라지게 한다
+          e.dead = true;
+          e.fled = true;
+          e.block = 0;
+          c.emit({ t: 'death', uid: e.uid });
         },
       },
     },
@@ -770,7 +774,7 @@ reg.enemies([
         intent: 'attack',
         melee: false,
         dmg: (_c, e) => echoDmg(e),
-        desc: '지난 턴 당신이 가한 가장 강한 일격을 그대로 되돌려준다 (8~32)',
+        desc: '지난 턴 당신이 가한 가장 강한 일격을 되돌려준다 (그 피해를 8~32 사이로 맞춘 뒤 이 층 적의 힘이 더해진다)',
         run(c, e) {
           c.enemyAttack(e, { type: DMG_TYPES[e.mem.echoPlanType ?? -1] ?? 'void' });
         },
@@ -788,7 +792,7 @@ reg.enemies([
           c.emit({ t: 'text', uid: e.uid, text: '가면이 바뀌었다 — 약점이 달라졌다', tone: 'eldritch' });
         },
       },
-      whisper: mv.horror('혼돈의 속삭임', 13, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      whisper: mv.horror('혼돈의 속삭임', 13, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       rise: mv.charge('기어오는 혼돈', 44),
       crawl: release(mv.attack('천 개의 팔', 44, { melee: false, type: 'void' })),
     },
@@ -840,8 +844,8 @@ reg.enemies([
         },
         { desc: '모든 새끼 체력 10 회복, 힘 +2' },
       ),
-      vines: mv.attack('휘감는 덩굴', 7, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
-      bleat: mv.horror('천 개의 울음', 12, { then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      vines: mv.attack('휘감는 덩굴', 7, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
+      bleat: mv.horror('천 개의 울음', 12, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       rear: mv.charge('숲이 일어선다', 42),
       trample: release(mv.attack('검은 숲의 짓밟기', 42)),
     },
@@ -922,7 +926,7 @@ reg.enemies([
     desc: '모든 시간과 공간이 맞닿는 문. 무지갯빛 구체들이 그것을 감싼다.',
     moves: {
       rays: mv.attack('구체의 빛', 6, { hits: 3, melee: false, type: 'arcane' }),
-      oneness: mv.horror('모든 것이 하나', 14, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      oneness: mv.horror('모든 것이 하나', 14, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       open: mv.summon(
         '문이 열린다',
         (c, e) => {
@@ -980,11 +984,11 @@ reg.enemies([
         '검은 풍뎅이 떼 둘을 부른다',
       ),
       wind: mv.attack('사막의 열풍', 8, { hits: 2, melee: false, type: 'fire' }),
-      kneel: mv.horror('무릎 꿇어라', 13, { then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      kneel: mv.horror('무릎 꿇어라', 13, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       rise: mv.charge('피라미드의 그림자', 44),
       pyramid: release(mv.attack('어둠의 피라미드', 44, { melee: false, type: 'void' })),
       thousand: mv.attack('천 개의 형상', 5, { hits: 4, melee: false, type: 'void' }),
-      laugh: mv.horror('혼돈의 웃음', 15, { then: (c, e) => void c.apply(c.p, 'dread', 2, e) }),
+      laugh: mv.horror('혼돈의 웃음', 15, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
     },
     onSpawn: (c) => {
       c.spawn('pharaoh-scarab', 0);
@@ -1039,7 +1043,7 @@ reg.enemies([
         },
         '별의 유충 둘을 낳는다',
       ),
-      transmit: mv.horror('꿈의 송신', 14, { then: (c, e) => void c.apply(c.p, 'dread', 2, e) }),
+      transmit: mv.horror('꿈의 송신', 14, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
       rise: mv.charge('별의 무게를 끌어내린다', 46),
       fall: release(mv.attack('별이 떨어진다', 46, { melee: false })),
       awaken: mv.buff(
@@ -1146,9 +1150,9 @@ reg.enemies([
     tags: ['star'],
     traits: ['a4-relentless'],
     moves: {
-      claw: mv.attack('얼어붙은 손톱', 12, { type: 'slash', then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
+      claw: mv.attack('얼어붙은 손톱', 12, { type: 'slash', then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
       gale: mv.attack('별바람', 5, { hits: 3, melee: false }),
-      howl: mv.horror('바람의 울부짖음', 12, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      howl: mv.horror('바람의 울부짖음', 12, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       rise: mv.charge('하늘로 솟구친다', 44),
       pounce: release(mv.attack('하늘에서 덮친다', 44, { melee: false, type: 'slash' })),
     },
@@ -1173,7 +1177,7 @@ reg.enemies([
     tags: ['outer'],
     traits: ['flying', 'a4-lightshy'],
     moves: {
-      coil: mv.attack('휘감기', 10, { then: (c, e) => void c.apply(c.p, 'frail', 2, e) }),
+      coil: mv.attack('휘감기', 10, { then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
       swoop: mv.attack('급습', 6, { hits: 3, melee: false, type: 'slash' }),
       wings: mv.debuff(
         '빛을 가리는 날개',
@@ -1185,7 +1189,7 @@ reg.enemies([
         { desc: '등불 -15, 약화 1, 방어도 10', extra: ['block'] },
       ),
       rise: mv.charge('아가리를 벌린다', 44),
-      devour: release(mv.attack('포식', 44, { then: (c, e) => void c.heal(e, 12) })),
+      devour: release(mv.attack('포식', 44, { then: (c, e) => void c.heal(e, 12), desc: '체력 12 회복' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'devour';

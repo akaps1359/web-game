@@ -35,9 +35,10 @@ reg.skills([
     type: 'arcane',
     tags: ['attack', 'mark', 'detonate'],
     vals: { base: [5, 7], per: [5, 7] },
-    desc: '인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해',
+    desc: '대상의 인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해',
     run: (c, u, t) => {
-      if (t) detonate(c, u, t, u.v('per'), u.v('base'));
+      // 기본·인장당 피해도 위력(메아리·절약 각인)을 따른다
+      if (t) detonate(c, u, t, Math.floor(u.v('per') * u.power), Math.floor(u.v('base') * u.power));
     },
   }),
   skill({
@@ -69,7 +70,7 @@ reg.skills([
     tags: ['barrier'],
     vals: { barrier: [7, 10] },
     desc: '보호막 {barrier} (턴이 지나도 유지)',
-    run: (c, u) => void c.apply(c.p, 'barrier', u.v('barrier'), c.p),
+    run: (c, u) => void c.apply(c.p, 'barrier', Math.floor(u.v('barrier') * u.power), c.p),
   }),
   skill({
     id: 'chant',
@@ -120,7 +121,8 @@ reg.skills([
     vals: { per: [6, 8] },
     desc: '모든 적의 인장을 터뜨려 인장당 {per} 비전 피해',
     run: (c, u) => {
-      for (const e of [...c.alive]) detonate(c, u, e, u.v('per'));
+      const per = Math.floor(u.v('per') * u.power);
+      for (const e of [...c.alive]) detonate(c, u, e, per);
     },
   }),
   skill({

@@ -7,14 +7,14 @@ reg.anomalies([
     id: 'rule-inverted',
     name: '회복 반전',
     icon: 'gi:cycle',
-    desc: '모든 회복이 피해로 바뀐다',
+    desc: '내가 받는 회복이 모두 피해로 바뀐다',
     hooks: { modHeal: (_c, _s, n) => -n },
   },
   {
     id: 'rule-revive',
     name: '망자의 귀환',
     icon: 'gi:raise-zombie',
-    desc: '처음 쓰러진 적은 체력 50%로 다시 일어선다',
+    desc: '적은 처음 쓰러질 때 한 번, 체력 50%로 다시 일어선다 (하수인 제외)',
     hooks: {
       onAnyDeath(c, _s, victim) {
         if (!isEnemy(victim) || victim.mem.revived || victim.minion || victim.fled) return;
@@ -57,7 +57,7 @@ reg.anomalies([
     id: 'rule-fog',
     name: '짙은 안개',
     icon: 'gi:fog',
-    desc: '원거리 공격 피해 -40%, 근접 공격 피해 +20%',
+    desc: '내 원거리 공격 피해 -40%, 근접 공격 피해 +20%',
     hooks: {
       modDamageOut(_c, _s, d) {
         if (!d.attack || d.src !== _c.p) return;
@@ -69,7 +69,7 @@ reg.anomalies([
     id: 'rule-frenzy',
     name: '광란의 장',
     icon: 'gi:enrage',
-    desc: '모든 공격 피해 +30%',
+    desc: '나와 적 모두 공격 피해 +30%',
     hooks: {
       modDamageOut(_c, _s, d) {
         if (d.attack) d.mult *= 1.3;

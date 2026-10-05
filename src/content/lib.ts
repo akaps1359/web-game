@@ -54,7 +54,7 @@ export function detonate(c: Combat, u: SkillUse, t: EnemyUnit, per: number, base
   const dmg = base + marks * per;
   if (dmg <= 0) return null;
   c.emit({ t: 'fx', name: 'detonate', tgt: t.uid });
-  return c.damage({ src: c.p, tgt: t, base: dmg, type: 'arcane', attack: true, skill: u, tags: ['detonate'] });
+  return c.damage({ src: c.p, tgt: t, base: dmg, type: u.type ?? 'arcane', attack: true, skill: u, tags: ['detonate'] });
 }
 
 /** 이 스킬로 피해를 준 총합 */

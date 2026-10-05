@@ -2,6 +2,27 @@ import { reg } from '../engine/registry';
 import { gainSanityRun, healRun } from '../engine/run';
 import { isEnemy } from '../engine/combat';
 
+/**
+ * 붉은 영약이 없애는 해로운 상태: 공용 디버프 + 층마다 플레이어에게 걸리는 것.
+ * 별의 심판(a4-doom)·첫 울음(a5-cry) 같은 보스의 카운트다운은 대응법이 따로 있으므로 남긴다.
+ */
+const ELIXIR_CURES = [
+  'weak',
+  'vuln',
+  'frail',
+  'bleed',
+  'poison',
+  'burn',
+  'corrode',
+  'dread',
+  'silence',
+  'a3-timeworn',
+  'a3-frostbite',
+  'a5-snare',
+  'a5-drowsy',
+  'a5-slumber',
+];
+
 reg.consumables([
   {
     id: 'bandage',
@@ -130,14 +151,14 @@ reg.consumables([
     name: '붉은 영약',
     icon: 'gi:heart-bottle',
     rarity: 'rare',
-    desc: '체력 40% 회복, 해로운 효과 제거',
+    desc: '체력 40% 회복. 전투 중이면 해로운 상태이상도 모두 없앤다 (카운트다운 제외)',
     combat: false,
     target: 'self',
     use(run, c) {
       const n = Math.floor(run.player.maxHp * 0.4);
       if (c) {
         c.heal(c.p, n);
-        for (const id of ['weak', 'vuln', 'frail', 'bleed', 'poison', 'burn', 'dread', 'silence']) c.clear(c.p, id);
+        for (const id of ELIXIR_CURES) c.clear(c.p, id);
       } else healRun(run, n);
     },
   },
@@ -173,7 +194,7 @@ reg.consumables([
     name: '다이너마이트',
     icon: 'gi:dynamite',
     rarity: 'uncommon',
-    desc: '전열에 18 타격 피해 (버팀 -2)',
+    desc: '전열의 모든 적에게 18 타격 피해 (버팀 추가 -2)',
     combat: true,
     target: 'all',
     use(_run, c) {

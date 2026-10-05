@@ -19,7 +19,7 @@ reg.relics([
     name: 'No.88 낡은 담요',
     icon: 'gi:blanket',
     rarity: 'common',
-    desc: '야영지 수면 회복량 +15%',
+    desc: '야영지에서 잠들면 체력을 30% 대신 45% 회복',
   },
   {
     id: 'bloody-kerchief',
@@ -51,7 +51,7 @@ reg.relics([
     name: 'No.70 양철 병정',
     icon: 'gi:chess-knight',
     rarity: 'common',
-    desc: '매 턴 첫 공격 피해 +3',
+    desc: '매 턴 첫 공격 피해 +3 (여러 번 때리는 공격은 첫 타격만)',
     hooks: {
       onTurnStart(_c, s) {
         if (s.ref) s.ref.n = 1;
@@ -93,7 +93,7 @@ reg.relics([
     name: 'No.64 선원의 부적',
     icon: 'gi:anchor',
     rarity: 'common',
-    desc: '정신력이 붕괴할 때 체력 15 회복',
+    desc: '전투 중 정신력이 붕괴하면 체력 15 회복',
     hooks: {
       onBreakdown(c) {
         if (c) c.heal(c.p, 15);
@@ -116,7 +116,7 @@ reg.relics([
     name: 'No.58 상인 조합 주화',
     icon: 'gi:coins',
     rarity: 'common',
-    desc: '상점 가격 20% 할인',
+    desc: '상점 물건값 20% 할인 (이미 둘러본 상점은 그대로)',
   },
   {
     id: 'grave-dirt',
@@ -263,7 +263,7 @@ reg.relics([
     name: 'No.31 맹인의 지팡이',
     icon: 'gi:walking-scout',
     rarity: 'rare',
-    desc: '등불이 25 미만이면 모든 피해 +25%',
+    desc: '등불이 25 미만이면 주는 피해 +25%',
     hooks: {
       modDamageOut(c, _s, d) {
         if (c.run.light < 25) d.mult *= 1.25;
@@ -395,7 +395,7 @@ reg.relics([
     name: 'No.3 계약의 인장',
     icon: 'gi:wax-seal',
     rarity: 'boss',
-    desc: '모든 피해 +20%. 최대 체력 -12',
+    desc: '주는 피해 +20%. 최대 체력 -12',
     onGain(run) {
       run.player.maxHp = Math.max(10, run.player.maxHp - 12);
       run.player.hp = Math.min(run.player.hp, run.player.maxHp);

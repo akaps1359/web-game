@@ -42,7 +42,7 @@ reg.equips([
     slot: 'weapon',
     rarity: 'uncommon',
     skill: 'w-shotgun',
-    desc: '기본 공격: 전열 관통 2회(탄약 1)',
+    desc: '기본 공격: 전열의 모든 적에게 관통 2회(탄약 1)',
   },
   {
     id: 'harpoon',
@@ -140,9 +140,13 @@ reg.equips([
     icon: 'gi:pocket-watch',
     slot: 'trinket',
     rarity: 'uncommon',
-    desc: '3의 배수 턴 시작 시 행동력 +1',
+    desc: '3의 배수 턴 시작 시 행동력 +1 (강화마다 전투 첫 턴 행동력 +1)',
     hooks: {
-      onTurnStart(c) {
+      onTurnStart(c, s) {
+        if (c.s.turn === 1 && s.n > 0) {
+          c.s.ap += s.n;
+          c.emit({ t: 'text', uid: 'p', text: `째깍 — 행동력 +${s.n}`, tone: 'good' });
+        }
         if (c.s.turn % 3 === 0) {
           c.s.ap += 1;
           c.emit({ t: 'text', uid: 'p', text: '째깍 — 행동력 +1', tone: 'good' });
@@ -165,10 +169,10 @@ reg.equips([
     icon: 'gi:ammo-box',
     slot: 'trinket',
     rarity: 'common',
-    desc: '최대 탄약 +2. 전투 시작 시 조준 1',
+    desc: '최대 탄약 +2 (강화마다 +1). 전투 시작 시 조준 1',
     hooks: {
-      onCombatStart(c) {
-        c.s.maxAmmo += 2;
+      onCombatStart(c, s) {
+        c.s.maxAmmo += 2 + s.n;
         c.s.ammo = c.s.maxAmmo;
         c.apply(c.p, 'aim', 1, c.p);
       },
@@ -193,7 +197,7 @@ reg.equips([
     icon: 'gi:two-coins',
     slot: 'trinket',
     rarity: 'common',
-    desc: '전투 승리 시 골드 +8',
+    desc: '전투 승리 시 골드 +8 (강화마다 +4)',
     hooks: {
       onCombatEnd(c, s, won) {
         if (won) c.s.bonusGold += 8 + 4 * s.n;
@@ -232,12 +236,12 @@ reg.equips([
     icon: 'gi:eye-shield',
     slot: 'trinket',
     rarity: 'common',
-    desc: '전투 시작 시 모든 적의 약점 1개 공개',
+    desc: '전투 시작 시 모든 적의 약점 1개 공개 (강화마다 1개 더)',
     hooks: {
-      onCombatStart(c) {
+      onCombatStart(c, s) {
         for (const e of c.alive) {
           const hidden = e.weak.filter((w) => !e.known.includes(w));
-          if (hidden.length) e.known.push(hidden[0]);
+          e.known.push(...hidden.slice(0, 1 + s.n));
         }
       },
     },
@@ -248,7 +252,7 @@ reg.equips([
     icon: 'gi:old-lantern',
     slot: 'trinket',
     rarity: 'common',
-    desc: '이동 시 등불 소모 -3',
+    desc: '이동 시 등불 소모 -3 (강화마다 1 더)',
   },
   {
     id: 'rosary',
@@ -321,7 +325,7 @@ reg.equips([
     icon: 'gi:crystal-shine',
     slot: 'trinket',
     rarity: 'rare',
-    desc: '공허 피해 +3. 매 전투 시작 시 정신력 -2',
+    desc: '공허 피해 +3 (강화마다 +1). 매 전투 시작 시 정신력 -2',
     hooks: {
       onCombatStart(c) {
         c.loseSanity(2);

@@ -1,11 +1,25 @@
 import { reg } from '../../engine/registry';
-import { isEnemy } from '../../engine/combat';
+import { isEnemy, lvlVal, type Combat } from '../../engine/combat';
 import { combo, dealt, guard, hit, skill } from '../lib';
 import type { SkillDef } from '../../engine/types';
 import { flipRows } from './common';
 
 const ess = (d: Omit<SkillDef, 'school' | 'pool' | 'tags' | 'vals'> & { tags?: string[]; vals?: SkillDef['vals'] }) =>
   skill({ school: 'essence', pool: false, ...d });
+
+/**
+ * 재사용 대기를 줄이거나 없애도 되는 기술인가.
+ * 전투당 1회 기술(대기 99 — 매 턴 1씩 줄어 98, 97…이 된다)과 표본으로 빼앗긴 기술(대기 99로 잠김)은 건드리지 않는다.
+ */
+function refreshable(c: Combat, uid: string): boolean {
+  const left = c.s.cd[uid] ?? 0;
+  if (left <= 0) return false;
+  const info = c.skillInfo(uid);
+  if (!info) return left < 90;
+  if (lvlVal(info.def.cd, info.owned.lvl) >= 90) return false;
+  const slot = c.run.slots.indexOf(uid);
+  return !c.alive.some((e) => e.mem.specimen && e.mem.specimen - 1 === slot);
+}
 
 // ───────────── 정수 액티브 ─────────────
 
@@ -138,10 +152,10 @@ reg.skills([
     target: 'self',
     tags: ['heal'],
     vals: { heal: [10, 14] },
-    desc: '체력 {heal} 회복. 재사용 대기 중인 다른 스킬 하나의 대기 시간을 초기화',
+    desc: '체력 {heal} 회복. 재사용 대기 중인 다른 스킬 하나의 대기 시간을 초기화 (전투당 1회 스킬 제외)',
     run: (c, u) => {
       c.heal(c.p, u.v('heal'));
-      const keys = Object.keys(c.s.cd).filter((k) => k !== u.owned.uid && c.s.cd[k] > 0 && c.s.cd[k] < 99);
+      const keys = Object.keys(c.s.cd).filter((k) => k !== u.owned.uid && refreshable(c, k));
       if (keys.length) {
         delete c.s.cd[c.rng.pick(keys)];
         c.emit({ t: 'text', uid: 'p', text: '시간이 되감긴다', tone: 'good' });
@@ -337,7 +351,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'pull'],
     vals: { dmg: [10, 13] },
-    desc: '{D:dmg} 참격 피해. 대상의 열을 바꾼다 (전열↔후열)',
+    desc: '{D:dmg} 참격 피해. 대상의 열을 바꾼다 (전열↔후열, 옮길 열에 자리가 있을 때)',
     run: (c, u, t) => {
       hit(c, u, t);
       if (t && !t.dead) c.moveRow(t, t.row === 0 ? 1 : 0);
@@ -374,7 +388,7 @@ reg.skills([
     type: 'blunt',
     tags: ['attack', 'aoe'],
     vals: { dmg: [6, 8] },
-    desc: '모든 적의 방어도를 흩어 버린 뒤 {D:dmg} 타격 피해',
+    desc: '모든 적의 방어도를 흩어 버린 뒤 적 전체에 {D:dmg} 타격 피해',
     run: (c, u, t) => {
       for (const e of c.alive) e.block = 0;
       hit(c, u, t);
@@ -422,7 +436,7 @@ reg.skills([
     target: 'single',
     tags: ['attack', 'poise'],
     vals: { dmg: [5, 7], poise: [2, 3] },
-    desc: '대상의 약점을 모두 드러내고, 그 약점 속성으로 {D:dmg} 피해. 버팀 추가 -{poise}',
+    desc: '대상의 약점을 모두 드러내고, 그 약점 중 한 속성으로 {D:dmg} 피해 (약점이 없으면 타격). 버팀 추가 -{poise}',
     run: (c, u, t) => {
       if (!t) return;
       for (const w of t.weak) {
@@ -579,7 +593,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'multi', 'bleed'],
     vals: { dmg: [3, 4], hits: 5 },
-    desc: '무작위 적에게 {D:dmg} 참격 피해 {hits}회. 맞을 때마다 출혈 1',
+    desc: '무작위 적에게 {D:dmg} 참격 피해 {hits}회. 체력 피해를 줄 때마다 출혈 1',
     run: (c, u, t) => {
       for (const d of hit(c, u, t)) if (d.hpLoss > 0 && isEnemy(d.tgt) && !d.tgt.dead) c.apply(d.tgt, 'bleed', 1, c.p);
     },
@@ -723,7 +737,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack'],
     vals: { dmg: [20, 26] },
-    desc: '{D:dmg} 참격 피해. 후열의 적이면 50% 증가',
+    desc: '{D:dmg} 참격 피해. 대상이 후열에 있으면 피해 1.5배',
     run: (c, u, t) => void hit(c, u, t, { dmg: Math.floor(u.v('dmg') * (t && t.row === 1 ? 1.5 : 1)) }),
   }),
   // 사냥하는 공포
@@ -763,6 +777,7 @@ reg.skills([
 ]);
 
 // ───────────── 정수 정의 ─────────────
+// 수호자·계층군주와 균열 수호자의 정수는 언제나 수호자 정수(s.n = 2) — 패시브 설명에는 2배 한 실제 수치를 적는다.
 
 reg.essences([
   {
@@ -946,7 +961,7 @@ reg.essences([
     stats: { maxHp: 10, dex: 1, will: 1 },
     passive: {
       name: '틈새 걸음',
-      desc: '후열의 적에게 주는 공격 피해 +3',
+      desc: '후열에 있는 적을 공격하면 피해 +3',
       hooks: {
         modDamageOut(c, s, d) {
           if (d.src === c.p && d.attack && isEnemy(d.tgt) && d.tgt.row === 1) d.add += 3 * s.n;
@@ -1024,11 +1039,11 @@ reg.essences([
     stats: { maxHp: 12, will: 2, dex: 1, insight: 1 },
     passive: {
       name: '시간 표류',
-      desc: '내 턴 시작 시 재사용 대기 중인 스킬 하나의 대기 -1',
+      desc: '내 턴 시작 시 재사용 대기 중인 스킬 하나의 대기 -1 (전투당 1회 스킬 제외)',
       hooks: {
         onTurnStart(c, s) {
           for (let i = 0; i < s.n; i++) {
-            const keys = Object.keys(c.s.cd).filter((k) => c.s.cd[k] > 0 && c.s.cd[k] < 99);
+            const keys = Object.keys(c.s.cd).filter((k) => refreshable(c, k));
             if (!keys.length) return;
             const k = c.rng.pick(keys);
             c.s.cd[k] -= 1;
@@ -1049,7 +1064,7 @@ reg.essences([
     stats: { maxHp: 14, will: 2, insight: 1 },
     passive: {
       name: '구체의 가호',
-      desc: '전투 시작 시 보호막 8',
+      desc: '전투 시작 시 보호막 16',
       hooks: {
         onCombatStart(c, s) {
           c.apply(c.p, 'barrier', 8 * s.n, c.p);
@@ -1068,7 +1083,7 @@ reg.essences([
     stats: { maxHp: 12, str: 2, will: 2 },
     passive: {
       name: '왕의 저주',
-      desc: '전투 시작 시 모든 적에게 파멸 5. 내가 거는 파멸 +2',
+      desc: '전투 시작 시 모든 적에게 파멸 10. 내가 거는 파멸 +4',
       hooks: {
         onCombatStart(c, s) {
           for (const e of c.alive) c.apply(e, 'doom', 5 * s.n, c.p);
@@ -1090,7 +1105,7 @@ reg.essences([
     stats: { maxHp: 18, str: 2 },
     passive: {
       name: '별의 정렬',
-      desc: '심연의 조수 1단계마다 공격 피해 +1 (최대 +4)',
+      desc: '심연의 조수 1단계마다 공격 피해 +2 (최대 +8)',
       hooks: {
         modDamageOut(c, s, d) {
           if (d.src === c.p && d.attack) d.add += Math.min(4, c.run.floor?.tide ?? 0) * s.n;
@@ -1110,7 +1125,7 @@ reg.essences([
     stats: { maxHp: 20, str: 3, will: 2, insight: 1 },
     passive: {
       name: '검은 별의 인력',
-      desc: '내 턴 시작 시 모든 적의 방어도가 절반이 된다. 전투 시작 시 의식 1 (턴이 끝날 때마다 힘 +1)',
+      desc: '내 턴 시작 시 모든 적의 방어도가 절반이 된다. 전투 시작 시 의식 2 (턴이 끝날 때마다 힘 +2)',
       hooks: {
         onCombatStart(c, s) {
           c.apply(c.p, 'ritual', s.n, c.p);
@@ -1154,7 +1169,7 @@ reg.essences([
     stats: { maxHp: 14, dex: 2, str: 1 },
     passive: {
       name: '밤의 사냥꾼',
-      desc: '등불이 50 미만이면 공격 피해 +3, 50 이상이면 내 턴 시작 시 방어도 4',
+      desc: '등불이 50 미만이면 공격 피해 +6, 50 이상이면 내 턴 시작 시 방어도 8',
       hooks: {
         modDamageOut(c, s, d) {
           if (d.src === c.p && d.attack && c.run.light < 50) d.add += 3 * s.n;

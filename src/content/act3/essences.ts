@@ -44,7 +44,7 @@ reg.skills([
     type: 'blunt',
     tags: ['attack', 'push'],
     vals: { dmg: [9, 12] },
-    desc: '{D:dmg} 타격 피해. 전열의 적이면 후열로 날려 보낸다',
+    desc: '{D:dmg} 타격 피해. 대상이 전열에 있으면 후열로 날려 보낸다 (후열에 자리가 있을 때)',
     run: (c, u, t) => {
       hit(c, u, t);
       if (t && !t.dead && t.row === 0) c.moveRow(t, 1);
@@ -98,7 +98,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack'],
     vals: { dmg: [9, 12] },
-    desc: '{D:dmg} 참격 피해. 후열의 적에게는 1.5배',
+    desc: '{D:dmg} 참격 피해. 대상이 후열에 있으면 피해 1.5배',
     run: (c, u, t) => void hit(c, u, t, { dmg: Math.floor(u.v('dmg') * (t && t.row === 1 ? 1.5 : 1)) }),
   }),
   ess({
@@ -392,11 +392,11 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'retain'],
-    vals: { blk: [8, 11] },
-    desc: '방어도 {B:blk}. 다음 턴까지 방어도 유지',
+    vals: { blk: [8, 11], retain: 2 },
+    desc: '방어도 {B:blk}. 다음 {retain}턴 동안 방어도 유지',
     run: (c, u) => {
       guard(c, u);
-      c.apply(c.p, 'retain', 2, c.p);
+      c.apply(c.p, 'retain', u.v('retain'), c.p);
     },
   }),
 
@@ -590,7 +590,7 @@ reg.skills([
     range: 'melee',
     target: 'single',
     type: 'slash',
-    tags: ['attack', 'bleed'],
+    tags: ['attack', 'multi', 'bleed'],
     vals: { dmg: [4, 5], hits: 2, bleed: 2 },
     desc: '{D:dmg} 참격 피해 {hits}회, 출혈 {bleed}',
     run: (c, u, t) => {
@@ -669,9 +669,9 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'insight'],
-    vals: { dmg: [8, 10], per: 2 },
-    desc: '{D:dmg} 공허 피해. 통찰 1당 피해 +{per}',
-    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * Math.min(8, c.p.insight) }),
+    vals: { dmg: [8, 10], per: 2, cap: 8 },
+    desc: '{D:dmg} 공허 피해. 통찰 1당 피해 +{per} (통찰 {cap}까지)',
+    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * Math.min(u.v('cap'), c.p.insight) }),
   }),
   ess({
     id: 'ess-beyond-peaks-mist',
@@ -772,7 +772,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack'],
     vals: { dmg: [18, 23] },
-    desc: '{D:dmg} 참격 피해. 붕괴한 적에게는 1.5배',
+    desc: '{D:dmg} 참격 피해. 대상이 붕괴 상태면 피해 1.5배',
     run: (c, u, t) => void hit(c, u, t, { dmg: Math.floor(u.v('dmg') * (t && t.broken > 0 ? 1.5 : 1)) }),
   }),
   ess({
@@ -801,6 +801,7 @@ reg.skills([
 ]);
 
 // ───────────── 정수 정의 ─────────────
+// 수호자·계층군주와 균열 수호자의 정수는 언제나 수호자 정수(s.n = 2) — 패시브 설명에는 2배 한 실제 수치를 적는다.
 
 reg.essences([
   {
@@ -812,7 +813,7 @@ reg.essences([
     stats: { maxHp: 8, dex: 1 },
     passive: {
       name: '얼굴 없는 사냥',
-      desc: '후열의 적에게 주는 공격 피해 +3',
+      desc: '후열에 있는 적을 공격하면 피해 +3',
       hooks: {
         modDamageOut(c, s, d) {
           if (d.attack && d.src === c.p && isEnemy(d.tgt) && d.tgt.row === 1) d.add += 3 * s.n;
@@ -958,7 +959,7 @@ reg.essences([
     stats: { maxHp: 16, str: 1, will: 1 },
     passive: {
       name: '원형질 재생',
-      desc: '턴 종료 시 체력 2 회복',
+      desc: '턴 종료 시 체력 4 회복',
       hooks: {
         onTurnEnd(c, s) {
           c.heal(c.p, 2 * s.n);
@@ -977,7 +978,7 @@ reg.essences([
     stats: { maxHp: 15, str: 2 },
     passive: {
       name: '모서리 사냥',
-      desc: '매 턴 첫 공격의 피해 +4',
+      desc: '매 턴 첫 공격의 피해 +8',
       hooks: {
         onTurnStart(_c, s) {
           s.unit.st._a3corner = 1;
@@ -1129,7 +1130,7 @@ reg.essences([
     stats: { maxHp: 8, str: 1 },
     passive: {
       name: '무리의 냄새',
-      desc: '적이 쓰러질 때마다 이번 전투 동안 힘 +1 (최대 3)',
+      desc: '적을 처치할 때마다 이번 전투 동안 힘 +1 (최대 3)',
       hooks: {
         onKill(c, s) {
           const n = c.s.vars.a3pack ?? 0;
@@ -1170,7 +1171,7 @@ reg.essences([
     stats: { maxHp: 14, will: 2, insight: 1 },
     passive: {
       name: '눈을 감은 자',
-      desc: '정신력을 잃을 때마다 그만큼 방어도를 얻는다 (전투마다 최대 30)',
+      desc: '정신력을 잃을 때마다 그만큼 방어도를 얻는다 (전투마다 최대 60)',
       hooks: {
         modSanityLoss(c, s, amount) {
           if (!c || amount <= 0) return amount;

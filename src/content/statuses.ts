@@ -52,7 +52,7 @@ reg.statuses([
     name: '반격',
     icon: 'gi:sword-clash',
     kind: 'buff',
-    desc: '공격을 받을 때마다 공격자에게 {n} 타격 피해 (턴 종료 시 사라짐)',
+    desc: '공격을 받을 때마다 공격자에게 {n} 타격 피해 (다음 내 턴이 시작되면 사라짐)',
     hooks: {
       onDamageTaken(c, s, d) {
         if (d.attack && d.src && d.src !== s.unit && d.src.hp > 0) {
@@ -219,7 +219,7 @@ reg.statuses([
     name: '사경',
     icon: 'gi:heart-beats',
     kind: 'debuff',
-    desc: '체력 0. 받는 피해와 매 턴이 정신력을 깎는다. 정신력 0이면 사망. 회복하면 벗어난다.',
+    desc: '체력 0. 받는 피해의 절반만큼, 그리고 매 턴 정신력이 깎인다. 정신력 0이면 사망. 회복하면 벗어난다.',
   },
   {
     id: 'weak',
@@ -287,7 +287,7 @@ reg.statuses([
     name: '화상',
     icon: 'gi:flame',
     kind: 'debuff',
-    desc: '턴 종료 시 {n} 화염 피해. 화염 공격을 받으면 +2',
+    desc: '턴 종료 시 {n} 피해 (줄어들지 않음). 화염 공격을 받으면 +2',
     tickEnd(c, u, n) {
       c.damage({ src: null, tgt: u, base: n, type: 'true', tags: ['dot', 'burn'] });
     },
@@ -345,7 +345,7 @@ reg.statuses([
     name: '부식',
     icon: 'gi:acid-blob',
     kind: 'debuff',
-    desc: '받는 피해 +{n} (방어도 흡수 전)',
+    desc: '받는 공격 피해가 타격마다 +{n} (방어도 흡수 전)',
     hooks: {
       modDamageIn(_c, s, d) {
         if (d.attack) d.add += s.n;
@@ -357,7 +357,7 @@ reg.statuses([
     name: '파멸',
     icon: 'gi:death-zone',
     kind: 'debuff',
-    desc: '파멸 수치가 체력 이상이 되면 즉사',
+    desc: '자기 턴이 끝날 때 파멸 수치가 체력 이상이면 즉사',
     tickEnd(c, u, n) {
       if (n >= u.hp && isEnemy(u)) {
         c.emit({ t: 'text', uid: u.uid, text: '파멸', tone: 'eldritch' });

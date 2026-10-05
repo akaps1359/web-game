@@ -16,7 +16,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'combo', 'multi'],
     vals: { dmg: [3, 4], hits: 2 },
-    desc: '{D:dmg} 참격 피해 {hits}회. 연계 2 이상이면 1회 추가',
+    desc: '{D:dmg} 참격 피해 {hits}회. 이번 턴 앞서 스킬을 2개 이상 썼으면 1회 추가',
     run: (c, u, t) => void hit(c, u, t, { hits: u.v('hits') + (combo(c) >= 2 ? 1 : 0) }),
   }),
   skill({
@@ -71,7 +71,8 @@ reg.skills([
     tags: ['attack', 'combo'],
     vals: { dmg: [8, 10], per: [4, 5] },
     desc: '{D:dmg} 참격 피해. 이번 턴 앞서 사용한 스킬 1개당 +{per}',
-    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * combo(c) }),
+    // 연계 추가 피해도 위력(메아리·절약 각인)을 따른다
+    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * combo(c) * u.power) }),
   }),
   skill({
     id: 'hemorrhage',
@@ -86,10 +87,10 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'bleed'],
     vals: { mul: [2, 3] },
-    desc: '대상의 출혈 × {mul} 참격 피해',
+    desc: '대상의 출혈 × {mul} 참격 피해 (출혈은 남는다)',
     run: (c, u, t) => {
       const b = t?.st.bleed ?? 0;
-      if (b > 0) hit(c, u, t, { dmg: b * u.v('mul') });
+      if (b > 0) hit(c, u, t, { dmg: Math.floor(b * u.v('mul') * u.power) });
       else c.emit({ t: 'text', uid: t?.uid, text: '출혈 없음', tone: 'info' });
     },
   }),
@@ -125,7 +126,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'combo', 'multi'],
     vals: { dmg: [2, 3], hits: 3 },
-    desc: '무작위 적에게 {D:dmg} 참격 피해 {hits}회 + 연계 1당 1회',
+    desc: '{D:dmg} 참격 피해 {hits}회, 매번 무작위 적(후열 포함)에게. 이번 턴 앞서 쓴 스킬 1개당 1회 추가',
     run: (c, u, t) => void hit(c, u, t, { hits: u.v('hits') + combo(c) }),
   }),
   skill({
@@ -140,7 +141,7 @@ reg.skills([
     target: 'self',
     tags: ['block', 'counter'],
     vals: { blk: [6, 8], counter: [5, 7] },
-    desc: '방어도 {B:blk}, 반격 {counter}',
+    desc: '방어도 {B:blk}, 반격 {counter} (다음 내 턴까지)',
     run: (c, u) => {
       guard(c, u);
       c.apply(c.p, 'counter', u.v('counter'), c.p);

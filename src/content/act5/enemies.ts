@@ -191,7 +191,7 @@ reg.traits([
   {
     id: 'a5-dream-glutton',
     name: '꿈의 포식자',
-    desc: '잠든 이를 삼켜 회복하고 강해진다. 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오른다',
+    desc: '잠든 이를 삼켜 회복하고 강해진다. 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오른다. 일부 행동은 읽을 수 없다 (통찰 5 이상이면 보인다)',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -230,7 +230,7 @@ reg.traits([
   {
     id: 'a5-cradle',
     name: '별의 요람',
-    desc: `몸속에서 별을 키운다 — ${GESTATION}턴마다 갓 태어난 별을 낳는다 (${MAX_BIRTHS}번까지)`,
+    desc: `몸속에서 별을 키운다 — 잉태(${GESTATION}턴)가 끝나면 다음 차례에 갓 태어난 별을 낳는다 (${MAX_BIRTHS}번까지)`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
@@ -828,7 +828,7 @@ reg.enemies([
         { desc: '침묵 1 (다음 턴 기본기만 쓸 수 있다), 허약 2' },
       ),
       hush: mv.horror('요람의 자장가', 15, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
-      wall: mv.block('기하학의 벽', 26),
+      wall: mv.block('기하학의 벽', 26, { desc: '방어도 26' }),
       open: mv.charge('요람의 문을 연다', 56),
       starfall: release(mv.attack('쏟아지는 별무리', 56, { melee: false, type: 'void' })),
     },

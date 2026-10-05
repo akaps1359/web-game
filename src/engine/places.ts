@@ -33,6 +33,7 @@ function campRoom(run: RunState) {
 export function campBlock(run: RunState, act: CampAction, target?: string): string | null {
   const room = campRoom(run);
   if (!room || room.type !== 'camp' || room.cleared) return '야영지가 아니다';
+  if (act === 'sleep' && run.relics.some((r) => r.id === 'sleeper-scale')) return '비늘이 꿈틀거려 잠들 수 없다';
   if (act === 'train') {
     const s = run.skills.find((x) => x.uid === target);
     if (!target) return null;

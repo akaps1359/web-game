@@ -422,7 +422,9 @@ export class Combat {
   damage(o: DamageOpts): DamageCtx {
     const d = this.makeDamage(o);
     const t = o.tgt;
-    if (t.hp <= 0 || (isEnemy(t) && t.dead) || this.over) return d;
+    // 사경(체력 0)인 나는 여전히 맞는다 — 받는 피해만큼 정신력이 깎인다
+    const dyingTarget = t === this.p && this.dying;
+    if ((t.hp <= 0 && !dyingTarget) || (isEnemy(t) && t.dead) || this.over) return d;
     this.computeDamage(d);
     let amt = d.amount;
 
@@ -486,7 +488,8 @@ export class Combat {
     this.fire(t, 'onDamageTaken', d);
 
     if (dying) {
-      if (amt > 0) this.drainMind(amt);
+      // 사경 중 받은 피해는 그 절반(올림)만큼 정신력을 깎는다
+      if (amt > 0) this.drainMind(Math.ceil(amt / 2));
     } else if (t.hp <= 0) this.handleDeath(t, d);
     return d;
   }
@@ -517,7 +520,7 @@ export class Combat {
     return this.damage({ src: null, tgt: u, base: n, type: 'true', ignoreBlock: true, tags: [tag] });
   }
 
-  private handleDeath(t: Unit, d: DamageCtx | null) {
+  private handleDeath(t: Unit, d: DamageCtx | null, byPlayer = true) {
     if (t === this.p) {
       if (this.p.hp > 0 || this.dying) return;
       if (d) {
@@ -548,14 +551,15 @@ export class Combat {
       return;
     }
     if (!t.minion) this.run.stats.kills++;
-    if (!d || d.src === this.p || d.src === null) this.fire(this.p, 'onKill', t, d);
+    if (d ? d.src === this.p || d.src === null : byPlayer) this.fire(this.p, 'onKill', t, d);
     this.fire('all', 'onAnyDeath', t);
   }
 
-  kill(e: EnemyUnit) {
+  /** 즉사. byPlayer=false면 내 처치로 치지 않는다 (처치 보상·유물·정수 효과 없음) */
+  kill(e: EnemyUnit, byPlayer = true) {
     if (e.dead) return;
     e.hp = 0;
-    this.handleDeath(e, null);
+    this.handleDeath(e, null, byPlayer);
   }
 
   flee(e: EnemyUnit) {
@@ -664,6 +668,16 @@ export class Combat {
   }
 
   // ── 정신력 / 통찰 ──
+
+  /** 적이 깎을 정신력의 실제 값 미리보기 (통찰·의지·층 배율·공포·유물/광기 효과 반영) */
+  previewSanityLoss(amount: number): number {
+    if (amount <= 0) return 0;
+    let n = amount * (1 + 0.05 * Math.min(6, this.p.insight)) * Math.max(0.5, 1 - 0.05 * this.p.will);
+    n *= ACT_SAN_MULT[Math.min(5, this.run.act)] ?? 1;
+    if ((this.p.st.dread ?? 0) > 0) n *= 1.5;
+    for (const [h, self] of this.sources(this.p)) if (h.modSanityLoss) n = h.modSanityLoss(this, self, n);
+    return Math.max(0, Math.floor(n));
+  }
 
   loseSanity(amount: number, fromEnemy = false) {
     if (amount <= 0 || this.over) return 0;
@@ -870,7 +884,9 @@ export class Combat {
 
     this.runSkill(info, target, 1, false);
     const hasEcho = info.owned.runes.includes('echo');
-    if (hasEcho && !this.over) {
+    // 메아리: 탄약을 쓰는 스킬은 탄약이 남아 있을 때만 (빈 총으로 공짜 사격·재장전 방지)
+    const echoAmmoOk = !(def.tags ?? []).includes('ammo') || this.s.ammo > 0;
+    if (hasEcho && echoAmmoOk && !this.over) {
       const t2 = target && !target.dead ? target : def.target === 'single' ? (this.validTargets(def)[0] ?? null) : null;
       if (def.target !== 'single' || t2) this.runSkill(info, t2, 0.5, true);
     }

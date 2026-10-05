@@ -19,7 +19,8 @@ reg.skills([
     desc: '정신력 {san} 소모. {D:dmg} + 통찰×{per} 공허 피해',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
-      hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * c.p.insight });
+      // 통찰 비례 피해도 위력(메아리·절약 각인)을 따른다
+      hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * c.p.insight * u.power) });
     },
   }),
   skill({
@@ -75,7 +76,7 @@ reg.skills([
     desc: '정신력 {san} 소모. 보호막 {barrier} + 통찰×{per}',
     run: (c, u) => {
       c.loseSanity(u.v('san'));
-      c.apply(c.p, 'barrier', u.v('barrier') + u.v('per') * c.p.insight, c.p);
+      c.apply(c.p, 'barrier', Math.floor((u.v('barrier') + u.v('per') * c.p.insight) * u.power), c.p);
     },
   }),
   skill({
@@ -108,7 +109,7 @@ reg.skills([
     target: 'single',
     tags: ['debuff', 'sanity', 'insight'],
     vals: { doom: [8, 12], per: 2, san: 3 },
-    desc: '정신력 {san} 소모. 파멸 {doom} + 통찰×{per} (파멸이 체력 이상이면 턴 종료 시 즉사)',
+    desc: '정신력 {san} 소모. 파멸 {doom} + 통찰×{per} (파멸이 체력 이상이면 그 적의 차례가 끝날 때 즉사)',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
       if (t) c.apply(t, 'doom', u.v('doom') + u.v('per') * c.p.insight, c.p);
@@ -148,7 +149,7 @@ reg.skills([
     desc: '정신력 {san} 소모. 적 전체에 {D:dmg} + 통찰×{per} 공허 피해 (방어도 무시)',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
-      hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * c.p.insight, ignoreBlock: true });
+      hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * c.p.insight * u.power), ignoreBlock: true });
     },
   }),
 ]);

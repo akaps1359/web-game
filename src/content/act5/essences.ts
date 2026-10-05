@@ -213,7 +213,7 @@ reg.skills([
     target: 'single',
     tags: ['debuff', 'block'],
     vals: { blk: [6, 8] },
-    desc: '대상의 방어도를 모두 빼앗아 내 방어도로 삼는다 (빼앗은 것이 없어도 방어도 {B:blk})',
+    desc: '대상의 방어도를 모두 빼앗아 내 방어도로 삼고, 추가로 방어도 {B:blk}',
     run: (c, u, t) => {
       const n = t && !t.dead ? t.block : 0;
       if (t && n > 0) {
@@ -276,6 +276,7 @@ reg.skills([
 ]);
 
 // ───────────── 정수 정의 ─────────────
+// 수호자·계층군주와 균열 수호자의 정수는 언제나 수호자 정수(s.n = 2) — 패시브 설명에는 2배 한 실제 수치를 적는다.
 
 reg.essences([
   {
@@ -287,7 +288,7 @@ reg.essences([
     stats: { maxHp: 20, str: 3, will: 3 },
     passive: {
       name: '태어나지 않은 꿈',
-      desc: '전투 시작 시 보호막 10, 결계 1',
+      desc: '전투 시작 시 보호막 20, 결계 1',
       hooks: {
         onCombatStart(c, s) {
           c.apply(c.p, 'barrier', 10 * s.n, c.p);
@@ -550,12 +551,12 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'sanity', 'retain'],
-    vals: { blk: [7, 9], san: [6, 8] },
-    desc: '방어도 {B:blk}, 정신력 +{san}. 다음 턴까지 방어도 유지',
+    vals: { blk: [7, 9], san: [6, 8], retain: 2 },
+    desc: '방어도 {B:blk}, 정신력 +{san}. 다음 {retain}턴 동안 방어도 유지',
     run: (c, u) => {
       guard(c, u);
       c.gainSanity(u.v('san'));
-      c.apply(c.p, 'retain', 2, c.p);
+      c.apply(c.p, 'retain', u.v('retain'), c.p);
     },
   }),
   // 장막 직조자
@@ -642,7 +643,7 @@ reg.skills([
     type: 'void',
     tags: ['attack'],
     vals: { dmg: [18, 23] },
-    desc: '{D:dmg} 공허 피해. 힘을 모으는(차지 중인) 적에게는 2배',
+    desc: '{D:dmg} 공허 피해. 대상이 힘을 모으는 중(차지)이면 피해 2배',
     run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') * (t?.mem.charge ? 2 : 1) }),
   }),
   ess({
@@ -905,7 +906,7 @@ reg.essences([
     stats: { maxHp: 18, str: 2, will: 2 },
     passive: {
       name: '악몽 포식',
-      desc: '적을 처치할 때마다 정신력 +4, 체력 4 회복',
+      desc: '적을 처치할 때마다 정신력 +8, 체력 8 회복',
       hooks: {
         onKill(c, s) {
           c.gainSanity(4 * s.n);
@@ -925,7 +926,7 @@ reg.essences([
     stats: { maxHp: 14, will: 2 },
     passive: {
       name: '문턱의 걸음',
-      desc: '홀수 턴에는 참격·관통·타격, 짝수 턴에는 화염·비전·공허 공격 피해 +20%',
+      desc: '홀수 턴에는 참격·관통·타격, 짝수 턴에는 화염·비전·공허 공격 피해 +40%',
       hooks: {
         modDamageOut(c, s, d) {
           if (!d.attack || d.src !== c.p || d.type === 'true') return;

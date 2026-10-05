@@ -288,7 +288,7 @@ reg.skills([
     type: 'pierce',
     tags: ['attack', 'pull'],
     vals: { dmg: [6, 8] },
-    desc: '{D:dmg} 관통 피해. 후열의 적을 전열로 끌어당긴다',
+    desc: '{D:dmg} 관통 피해. 대상이 후열에 있으면 전열로 끌어당긴다 (전열에 자리가 있을 때)',
     run: (c, u, t) => {
       hit(c, u, t);
       if (t && !t.dead && t.row === 1) c.moveRow(t, 0);
@@ -648,6 +648,8 @@ reg.skills([
 ]);
 
 // ───────────── 정수 정의 ─────────────
+// 수호자·계층군주(tier 'boss')와 균열 수호자의 정수는 언제나 '수호자 정수'로 떨어져 패시브 훅의 s.n = 2 다.
+// 그런 정수의 패시브 설명에는 s.n = 2 를 곱한 실제 수치를 적는다 (tests/audit-essences.test.ts).
 
 reg.essences([
   {
@@ -715,7 +717,9 @@ reg.essences([
       desc: '여러 번 타격하는 스킬의 타격당 피해 +1',
       hooks: {
         modDamageOut(_c, s, d) {
-          if (d.skill?.def.tags.includes('multi')) d.add += s.n;
+          // multi 태그가 없어도 타격 횟수(hits)가 2 이상이면 여러 번 타격하는 스킬이다 (산탄 발사 등)
+          const u = d.skill;
+          if (u && (u.def.tags.includes('multi') || u.v('hits') > 1)) d.add += s.n;
         },
       },
     },
@@ -938,7 +942,7 @@ reg.essences([
     stats: { maxHp: 8, will: 1 },
     passive: {
       name: '아가미',
-      desc: '턴 종료 시 체력 1 회복',
+      desc: '턴 종료 시 체력 2 회복',
       hooks: {
         onTurnEnd(c, s) {
           c.heal(c.p, s.n);
@@ -998,7 +1002,7 @@ reg.essences([
     stats: { maxSanity: 5, will: 1 },
     passive: {
       name: '망령의 냉기',
-      desc: '매 턴 첫 공격이 약화 1을 부여',
+      desc: '매 턴 첫 공격이 대상에게 약화 1을 건다',
       hooks: {
         onTurnStart(_c, s) {
           s.unit.st._chill = 1;

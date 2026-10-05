@@ -17,7 +17,8 @@ reg.skills([
     tags: ['attack', 'block'],
     vals: { dmg: [4, 5], pct: [50, 75] },
     desc: '{D:dmg} + 현재 방어도의 {pct}% 타격 피해',
-    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor((c.p.block * u.v('pct')) / 100) }),
+    // 방어도 비례 피해도 위력(메아리·절약 각인)을 따른다
+    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor((c.p.block * u.v('pct') * u.power) / 100) }),
   }),
   skill({
     id: 'steady',
@@ -67,7 +68,7 @@ reg.skills([
     target: 'self',
     tags: ['block', 'counter'],
     vals: { blk: [7, 10], counter: [3, 4] },
-    desc: '방어도 {B:blk}, 반격 {counter}',
+    desc: '방어도 {B:blk}, 반격 {counter} (다음 내 턴까지)',
     run: (c, u) => {
       guard(c, u);
       c.apply(c.p, 'counter', u.v('counter'), c.p);
@@ -101,7 +102,7 @@ reg.skills([
     tags: ['block'],
     vals: { pct: [35, 50] },
     desc: '잃은 체력의 {pct}%만큼 방어도',
-    run: (c, u) => void guard(c, u, Math.floor(((c.p.maxHp - c.p.hp) * u.v('pct')) / 100)),
+    run: (c, u) => void guard(c, u, Math.floor(((c.p.maxHp - c.p.hp) * u.v('pct') * u.power) / 100)),
   }),
   skill({
     id: 'rally',
@@ -134,7 +135,7 @@ reg.skills([
     type: 'blunt',
     tags: ['attack', 'block'],
     vals: { poise: [0, 1] },
-    desc: '현재 방어도만큼 타격 피해',
-    run: (c, u, t) => void hit(c, u, t, { dmg: c.p.block }),
+    desc: '현재 방어도만큼 타격 피해. 버팀 추가 -{poise}',
+    run: (c, u, t) => void hit(c, u, t, { dmg: Math.floor(c.p.block * u.power) }),
   }),
 ]);

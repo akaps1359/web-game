@@ -270,15 +270,17 @@ function intentView(e: EnemyUnit, it: Intent | null): { icon: string; color: str
   if (it.hidden && c.p.insight < 5) return { icon: 'gi:help', color: '#8a8f96', text: '???' };
   const color = INTENT_COLOR[it.kind];
   if (it.kind === 'stunned') return { icon: INTENT_ICON.stunned, color, text: '붕괴', sub: '행동 불가' };
+  // 기절(얼어붙음 등)이면 계획한 행동 대신 쉰다는 것을 보여 준다
+  if ((e.st.stun ?? 0) > 0) return { icon: INTENT_ICON.stunned, color: INTENT_COLOR.stunned, text: '기절', sub: '행동 불가' };
   if (it.dmg && (it.kind === 'attack' || it.kind === 'charge' || it.extra?.includes('attack') || it.kind === 'horror' || it.kind === 'debuff')) {
     const dmg = c.preview(e, c.p, it.dmg, 'blunt');
     const hits = it.hits ?? 1;
     const txt = hits > 1 ? `${dmg}×${hits}` : `${dmg}`;
     if (it.charging) return { icon: INTENT_ICON.charge, color, text: txt, sub: '다음 턴', charging: true };
-    if (it.kind === 'horror') return { icon: INTENT_ICON.horror, color, text: `${txt}`, sub: `정신 ${it.sanity ?? 0}` };
+    if (it.kind === 'horror') return { icon: INTENT_ICON.horror, color, text: `${txt}`, sub: `정신 ${c.previewSanityLoss(it.sanity ?? 0)}` };
     return { icon: INTENT_ICON.attack, color: INTENT_COLOR.attack, text: txt, sub: it.extra?.length ? '+효과' : undefined };
   }
-  if (it.kind === 'horror') return { icon: INTENT_ICON.horror, color, text: `${it.sanity ?? 0}`, sub: '정신' };
+  if (it.kind === 'horror') return { icon: INTENT_ICON.horror, color, text: `${c.previewSanityLoss(it.sanity ?? 0)}`, sub: '정신' };
   return { icon: INTENT_ICON[it.kind], color, text: '', sub: it.label };
 }
 

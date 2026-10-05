@@ -57,7 +57,9 @@ reg.skills([
     run: (c, u, t) => {
       if (!t) return;
       const p = t.st.poison ?? 0;
-      if (p > 0) c.apply(t, 'poison', p * (u.v('mul') - 1), c.p);
+      // 메아리(50%)·절약(75%)이면 늘어나는 양도 그만큼만 (x-arterial 과 같은 방식)
+      const add = Math.floor(p * (u.v('mul') - 1) * Math.min(1, u.power));
+      if (add > 0) c.apply(t, 'poison', add, c.p);
     },
   }),
   skill({
@@ -73,7 +75,7 @@ reg.skills([
     type: 'fire',
     tags: ['attack', 'aoe', 'debuff'],
     vals: { dmg: [3, 4], corrode: [1, 2] },
-    desc: '전열에 {D:dmg} 화염 피해, 부식 {corrode}',
+    desc: '전열의 모든 적에게 {D:dmg} 화염 피해, 부식 {corrode}',
     run: (c, u, t) => {
       const units = new Set(hit(c, u, t).map((d) => d.tgt));
       for (const e of units) if (e.hp > 0) c.apply(e, 'corrode', u.v('corrode'), c.p);
@@ -131,8 +133,9 @@ reg.skills([
     desc: '적 전체에 {D:dmg} 화염 피해. 화상 중인 적은 화상 수치만큼 추가 피해',
     run: (c, u) => {
       for (const e of [...c.alive]) {
-        const extra = e.st.burn ?? 0;
-        c.damage({ src: c.p, tgt: e, base: u.v('dmg') + extra, type: 'fire', attack: true, skill: u });
+        // 화상 추가 피해도 위력(메아리·절약 각인)을, 속성은 공허 각인을 따른다
+        const extra = Math.floor((e.st.burn ?? 0) * u.power);
+        c.damage({ src: c.p, tgt: e, base: u.v('dmg') + extra, type: u.type ?? 'fire', attack: true, skill: u });
       }
     },
   }),
@@ -149,11 +152,11 @@ reg.skills([
     tags: ['attack', 'poison', 'burn'],
     type: 'fire',
     vals: { pct: [100, 150] },
-    desc: '대상의 독 + 화상의 {pct}%만큼 즉시 화염 피해',
+    desc: '대상의 (독 + 화상) × {pct}%만큼 즉시 화염 피해 (독·화상은 남는다)',
     run: (c, u, t) => {
       if (!t) return;
-      const n = Math.floor((((t.st.poison ?? 0) + (t.st.burn ?? 0)) * u.v('pct')) / 100);
-      if (n > 0) c.damage({ src: c.p, tgt: t, base: n, type: 'fire', attack: true, skill: u });
+      const n = Math.floor((((t.st.poison ?? 0) + (t.st.burn ?? 0)) * u.v('pct') * u.power) / 100);
+      if (n > 0) c.damage({ src: c.p, tgt: t, base: n, type: u.type ?? 'fire', attack: true, skill: u });
     },
   }),
 ]);

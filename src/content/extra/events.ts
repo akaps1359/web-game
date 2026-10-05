@@ -136,7 +136,7 @@ reg.events([
             },
             {
               label: '정신을 바친다',
-              hint: '정신력 -15, 장착 장비 하나 강화',
+              hint: '정신력 -15, 장착한 장비 중 무작위 하나 강화',
               disabled: !canGear && '강화할 장비가 없다',
               go: (r, e) => {
                 const items = Object.values(r.equip).filter((x): x is NonNullable<typeof x> => !!x && x.lvl < 2);
@@ -167,7 +167,7 @@ reg.events([
         choices: [
           {
             label: '대국을 받아들인다',
-            hint: '이기면 스킬 2개 강화, 지면 정신력 -15 (통찰이 높을수록 유리)',
+            hint: '이기면 무작위 스킬 2개 강화, 지면 정신력 -15 (통찰이 높을수록 유리)',
             go: (r, e) => {
               const win = rng(r, 'event').chance(Math.min(0.75, 0.45 + 0.05 * r.player.insight));
               if (win) {
@@ -210,7 +210,7 @@ reg.events([
         choices: [
           {
             label: '유물을 맞바꾼다',
-            hint: '유물 1개를 잃고 더 귀한 유물',
+            hint: '무작위 유물 1개를 잃고 한 단계 귀한 유물 (희귀는 다른 희귀)',
             disabled: !tradeableRelics(run).length && '내놓을 유물이 없다',
             go: (r, e) => {
               const old = rng(r, 'event').pick(tradeableRelics(r));
@@ -227,7 +227,7 @@ reg.events([
           },
           {
             label: '장비를 맞바꾼다',
-            hint: '가방의 장비 1개 → 강화된 다른 장비',
+            hint: '가방의 무작위 장비 1개 → 다른 장비 (+1 강화)',
             disabled: !run.bag.length && '가방이 비어 있다',
             go: (r, e) => {
               const id = rollEquip(r, 'elite');

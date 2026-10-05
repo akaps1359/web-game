@@ -386,7 +386,7 @@ reg.skills([
     target: 'self',
     tags: ['heal', 'sanity', 'cleanse'],
     vals: { heal: [6, 9], san: [4, 6] },
-    desc: '체력 {heal}, 정신력 {san} 회복. 해로운 효과 하나를 없앤다',
+    desc: '체력 {heal}, 정신력 {san} 회복. 취약·약화·허약·출혈·독·화상·부식·공포·광란 중 하나를 없앤다 (앞의 것부터)',
     run: (c, u) => {
       c.heal(c.p, u.v('heal'));
       c.gainSanity(u.v('san'));
@@ -482,7 +482,7 @@ reg.skills([
     type: 'arcane',
     tags: ['attack', 'aoe'],
     vals: { dmg: [5, 7], per: 3 },
-    desc: '적 전체에 {D:dmg} 비전 피해. 이번 전투에서 쓸 때마다 피해 +{per}',
+    desc: '적 전체에 {D:dmg} 비전 피해. 이번 전투에서 쓸 때마다 이 기술의 피해가 {per}씩 늘어난다',
     run: (c, u, t) => {
       const k = c.s.vars.a2cres ?? 0;
       hit(c, u, t, { dmg: u.v('dmg') + k * u.v('per') });
@@ -783,7 +783,7 @@ reg.skills([
     type: 'pierce',
     tags: ['attack', 'multi', 'bleed'],
     vals: { dmg: [3, 4], hits: 3, bleed: 1 },
-    desc: '무작위 적에게 {D:dmg} 관통 피해 {hits}회, 맞은 적 출혈 {bleed}',
+    desc: '무작위 적에게 {D:dmg} 관통 피해 {hits}회, 맞을 때마다 출혈 {bleed}',
     run: (c, u, t) => {
       for (const d of hit(c, u, t)) if (isEnemy(d.tgt) && !d.tgt.dead) c.apply(d.tgt, 'bleed', u.v('bleed'), c.p);
     },
@@ -814,6 +814,7 @@ reg.skills([
 ]);
 
 // ───────────── 정수 정의 ─────────────
+// 수호자·계층군주와 균열 수호자의 정수는 언제나 수호자 정수(s.n = 2) — 패시브 설명에는 2배 한 실제 수치를 적는다.
 
 reg.essences([
   {
@@ -1108,7 +1109,7 @@ reg.essences([
     stats: { maxHp: 12, str: 1, will: 2 },
     passive: {
       name: '제물',
-      desc: '적을 처치할 때마다 힘 +1 (전투 동안)',
+      desc: '적을 처치할 때마다 힘 +2 (전투 동안)',
       hooks: {
         onKill(c, s) {
           c.apply(c.p, 'str', s.n, c.p);
@@ -1126,7 +1127,7 @@ reg.essences([
     stats: { maxHp: 14, str: 2 },
     passive: {
       name: '뼈 왕좌',
-      desc: '전투 시작 시 방어도 10, 굳건함 1 (첫 턴 동안 방어도 유지)',
+      desc: '전투 시작 시 방어도 20, 굳건함 1 (첫 턴 동안 방어도 유지)',
       hooks: {
         onCombatStart(c, s) {
           c.gainBlock(c.p, 10 * s.n);
@@ -1146,7 +1147,7 @@ reg.essences([
     stats: { maxHp: 12, str: 1, will: 2 },
     passive: {
       name: '쌓이는 재',
-      desc: '심연의 조수 1단계당 공격 피해 +1',
+      desc: '심연의 조수 1단계당 공격 피해 +2',
       hooks: {
         modDamageOut(c, s, d) {
           if (d.attack && d.src === c.p) d.add += (c.run.floor?.tide ?? 0) * s.n;
@@ -1166,7 +1167,7 @@ reg.essences([
     stats: { maxHp: 18, str: 2, will: 2 },
     passive: {
       name: '대종의 울림',
-      desc: '3번째 턴마다 시작 시 대종이 울려 적 전체에 비전 피해 6, 약화 1',
+      desc: '3번째 턴마다 시작 시 대종이 울려 적 전체에 비전 피해 12, 약화 1',
       hooks: {
         onTurnStart(c, s) {
           if (c.s.turn % 3 !== 0 || !c.alive.length) return;
@@ -1210,7 +1211,7 @@ reg.essences([
     stats: { maxHp: 10, will: 2 },
     passive: {
       name: '거꾸로 된 기적',
-      desc: '전투당 한 번, 쓰러질 피해를 받으면 체력 12로 버틴다',
+      desc: '전투당 한 번, 쓰러질 피해를 받으면 체력 24로 버틴다',
       hooks: {
         onLethal(c, s) {
           if (c.s.vars.a2saint) return false;

@@ -362,7 +362,8 @@ export function moveTo(run: RunState, to: number): string | null {
 export function lightCost(run: RunState): number {
   const has = (id: string) => Object.values(run.equip).some((x) => x?.id === id);
   let cost = LIGHT_PER_MOVE;
-  if (has('storm-lantern')) cost -= 3;
+  const lantern = Object.values(run.equip).find((x) => x?.id === 'storm-lantern');
+  if (lantern) cost -= 3 + lantern.lvl;
   if (has('diving')) cost += 2;
   if (run.relics.some((r) => r.id === 'lighthouse-lens')) cost *= 2;
   return Math.max(1, cost);

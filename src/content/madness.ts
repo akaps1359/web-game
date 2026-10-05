@@ -19,8 +19,10 @@ reg.madness([
     icon: 'gi:blood',
     desc: '출혈 상태로 턴을 시작하면 정신력 -3',
     hooks: {
-      onTurnStart(c) {
-        if ((c.p.st.bleed ?? 0) > 0) c.loseSanity(3);
+      // 출혈은 턴 시작 처리(onTurnStart 이전)에 피해를 주고 1 줄어들므로, 출혈 1이면 onTurnStart에서는 이미 사라져 있다.
+      // 그래서 "턴 시작 시 출혈 피해를 받았다"를 기준으로 한다.
+      onDamageTaken(c, _s, d) {
+        if (d.tgt === c.p && d.tags.includes('bleed') && d.tags.includes('dot')) c.loseSanity(3);
       },
     },
   },
@@ -50,7 +52,7 @@ reg.madness([
     id: 'tremor',
     name: '손떨림',
     icon: 'gi:shaking-hands',
-    desc: '매 턴 첫 공격의 피해 -3',
+    desc: '매 턴 첫 공격 피해 -3 (여러 번 때리는 공격은 첫 타격만)',
     hooks: {
       onTurnStart(_c, s) {
         s.unit.st._tremor = 1;

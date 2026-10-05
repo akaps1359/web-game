@@ -1,7 +1,6 @@
 import { reg } from '../../engine/registry';
 import { finish } from '../../engine/events';
 import {
-  addConsumable,
   gainSanityRun,
   healRun,
   hurtRun,
@@ -218,7 +217,8 @@ reg.events([
               finish(e, '입이 저절로 그들의 말을 따라 했다. 머릿속에 무언가가 새겨졌다.' + sanity(r, 12));
             },
           },
-          { label: '기습한다', hint: '전투', go: (_r, e) => finish(e, '촛불을 걷어차며 뛰어들었다!', { fight: 'a1-cult' }) },
+          // 2층에서는 그 층의 교단 신도들과 싸운다 (1층 조우를 그대로 쓰면 2층에 1층 적이 나와 너무 쉽다)
+          { label: '기습한다', hint: '전투', go: (r, e) => finish(e, '촛불을 걷어차며 뛰어들었다!', { fight: r.act >= 2 ? 'a2-cell' : 'a1-cult' }) },
           { label: '조용히 빠져나간다', go: (_r, e) => finish(e, '기도 소리가 등 뒤에서 점점 커졌다.') },
         ],
       }),
@@ -425,8 +425,8 @@ reg.events([
               if (rng(r, 'event').chance(0.5)) {
                 const s = gainSanityRun(r, 15);
                 const c = rollConsumable(r);
-                if (c) addConsumable(r, c);
-                finish(e, `아이는 길 잃은 소년이었다. 소년이 쥐여준 물건을 받았다. (정신력 +${s})`);
+                // 보상 화면으로 넘긴다 (소모품 칸이 가득 차 있어도 조용히 사라지지 않게)
+                finish(e, `아이는 길 잃은 소년이었다. 소년이 쥐여준 물건을 받았다. (정신력 +${s})`, { loot: c ? [{ kind: 'consumable', id: c }] : [] });
               } else {
                 finish(e, '아이의 얼굴엔 눈이 없었다.' + sanity(r, 14));
               }

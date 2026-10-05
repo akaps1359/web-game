@@ -24,7 +24,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'basic', 'multi', 'combo'],
     vals: { dmg: [2, 3, 4], hits: 2 },
-    desc: '{D:dmg} 참격 피해 {hits}회. 연계 2 이상이면 1회 추가',
+    desc: '{D:dmg} 참격 피해 {hits}회. 이번 턴 앞서 스킬을 2개 이상 썼으면 1회 추가',
     run: (c, u, t) => void hit(c, u, t, { hits: u.v('hits') + (combo(c) >= 2 ? 1 : 0) }),
   }),
   skill({
@@ -41,7 +41,7 @@ reg.skills([
     type: 'pierce',
     tags: ['attack', 'basic', 'ammo', 'gun'],
     vals: { dmg: [6, 8, 10], bonus: [3, 4, 5] },
-    desc: '탄약 1 소모, {D:dmg} 관통 피해. 후열의 적에게 +{bonus}. 탄약이 없으면 재장전',
+    desc: '탄약 1 소모, 적 하나에게 {D:dmg} 관통 피해. 후열의 적을 쏘면 피해 +{bonus}. 탄약이 없으면 쏘지 않고 재장전',
     run: (c, u, t) => {
       if (c.s.ammo <= 0) return reload(c);
       spendAmmo(c, 1);
@@ -152,7 +152,7 @@ reg.equips([
     slot: 'weapon',
     rarity: 'uncommon',
     skill: 'w-x-twin',
-    desc: '기본 공격: 참격 2회 (연계 2 이상이면 3회)',
+    desc: '기본 공격: 참격 2회 (이번 턴 앞서 스킬을 2개 이상 썼으면 3회)',
   },
   {
     id: 'x-hunting-rifle',
@@ -161,7 +161,7 @@ reg.equips([
     slot: 'weapon',
     rarity: 'uncommon',
     skill: 'w-x-rifle',
-    desc: '기본 공격: 원거리 관통(탄약 1), 후열의 적에게 추가 피해',
+    desc: '기본 공격: 적 하나에게 원거리 관통(탄약 1). 후열의 적을 쏘면 피해 증가',
   },
   {
     id: 'x-ember-censer',

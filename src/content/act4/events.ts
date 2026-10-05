@@ -230,7 +230,7 @@ reg.events([
           },
           {
             label: '지나간 싸움을 복기한다',
-            hint: '스킬 1개 강화, 6시간이 흐른다 (조수가 차오른다)',
+            hint: '스킬 1개 강화, 6시간이 흐른다 (조수가 차오를 수 있다)',
             disabled: !upgradable(run).length && '더 갈고닦을 기술이 없다',
             go: (r, e) => {
               const s = rng(r, 'event').pick(upgradable(r));

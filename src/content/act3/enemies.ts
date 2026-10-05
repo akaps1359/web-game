@@ -138,7 +138,7 @@ reg.traits([
   {
     id: 'a3-burrower',
     name: '땅굴 벌레',
-    desc: '얼음 밑으로 파고들면 회피 2를 얻고, 얼음 밑에서의 움직임은 읽을 수 없다',
+    desc: '얼음 밑으로 파고들면 회피 2를 얻는다. 얼음 밑에서 일으키는 땅울림은 읽을 수 없다 (솟구치기 전의 준비는 보인다)',
     hooks: {},
   },
   // ── 얼어붙은 고대 도시의 새 특성 ──
@@ -151,12 +151,13 @@ reg.traits([
   {
     id: 'a3-refreeze',
     name: '다시 어는 시신',
-    desc: '처음 쓰러지면 얼어붙은 채 다시 일어선다 (체력 40%). 타격이나 화염으로 쓰러뜨리면 산산조각 나 다시 일어서지 못한다',
+    desc: '처음 쓰러지면 얼어붙은 채 다시 일어선다 (체력 40%). 타격이나 화염(화상 포함)으로 쓰러뜨리면 산산조각 나 다시 일어서지 못한다',
     hooks: {
       onDeath(c, s, d) {
         const e = s.unit;
         if (!isEnemy(e) || e.mem.revived) return;
-        if (d && (d.type === 'blunt' || d.type === 'fire')) {
+        // 화상(burn 태그가 붙은 고정 피해)도 화염으로 친다 — '끝없는 재생'·'검은 수액'도 그렇게 센다
+        if (d && (d.type === 'blunt' || d.type === 'fire' || d.tags.includes('burn'))) {
           e.mem.revived = 1;
           c.emit({ t: 'text', uid: e.uid, text: '산산조각 났다', tone: 'good' });
           return;
@@ -422,7 +423,7 @@ reg.enemies([
       absorb: {
         name: '흡수',
         intent: 'heal',
-        desc: '원형질 조각을 삼켜 조각마다 체력 10 회복, 힘 +1',
+        desc: '원형질 조각을 최대 2개 삼켜 조각마다 체력 10 회복, 힘 +1 (조각이 없으면 방어도 8)',
         run: (c, e) => absorbBlobs(c, e, 10, 2),
       },
     },
@@ -499,9 +500,9 @@ reg.enemies([
         name: '소리를 쫓는 부리',
         intent: 'attack',
         dmg: 3,
-        hits: (c) => Math.max(1, c.s.used),
+        // 횟수는 실행할 때 센다 — 의도를 정하는 시점(라운드 끝)의 c.s.used는 지난 턴 값이라 '×N'으로 보여 주면 틀린다
         melee: true,
-        desc: '이번 턴 당신이 쓴 기술 하나마다 한 번씩 쫀다 (기술을 하나도 쓰지 않으면 당신을 찾지 못한다)',
+        desc: '이번 턴 당신이 쓴 기술 하나마다 한 번씩 쫀다 (표시된 피해는 한 번 쫄 때의 피해. 기술을 하나도 쓰지 않으면 당신을 찾지 못한다)',
         run(c, e) {
           const n = c.s.used;
           if (n <= 0) {
@@ -596,7 +597,7 @@ reg.enemies([
         extra: ['attack'],
         dmg: 6,
         melee: false,
-        desc: '장착한 기술 하나를 빼앗아 간다 — 쓰러뜨리면 되찾는다',
+        desc: '장착한 기술 하나를 빼앗아 간다 (장착한 기술이 둘 이상일 때) — 쓰러뜨리면 되찾는다',
         run(c, e) {
           c.enemyAttack(e, { type: 'pierce' });
           if (!c.over && !e.dead) seizeSkill(c, e);
@@ -729,7 +730,7 @@ reg.enemies([
       revolt: {
         name: '주인을 덮친다',
         intent: 'special',
-        desc: '옛 주인에게 덤벼든다 (원로에게 피해 18)',
+        desc: '옛 주인(깨어난 원로)에게 덤벼들어 피해를 입힌다',
         run(c, e) {
           const m = c.alive.find((x) => x.def === 'awakened-elder');
           if (!m) return;
@@ -890,7 +891,7 @@ reg.enemies([
         },
         { desc: '약화 2, 허약 2' },
       ),
-      suture: mv.heal('스스로 꿰매기', 22),
+      suture: { ...mv.heal('스스로 꿰매기', 22), desc: '체력 22 회복' },
       table: mv.charge('해부대를 펼친다', 34),
       vivisect: release(mv.attack('생체 해부', 34, { then: (c, e) => void c.apply(c.p, 'bleed', 4, e), desc: '출혈 4' })),
     },
@@ -938,7 +939,7 @@ reg.enemies([
       absorb: {
         name: '흡수',
         intent: 'heal',
-        desc: '원형질 조각을 모두 삼켜 조각마다 체력 12 회복, 힘 +1',
+        desc: '원형질 조각을 모두 삼켜 조각마다 체력 12 회복, 힘 +1 (조각이 없으면 방어도 8)',
         run: (c, e) => absorbBlobs(c, e, 12, 6),
       },
       surge: mv.charge('원형질이 부풀어 오른다', 36),
@@ -1142,7 +1143,7 @@ reg.enemies([
       quell: {
         name: '반란 진압',
         intent: 'special',
-        desc: '반란을 일으킨 쇼고스를 벌한다 (쇼고스에게 피해 24)',
+        desc: '반란을 일으킨 쇼고스 노예를 피리 소리로 찢는다 (노예에게 피해)',
         run(c, e) {
           const t = rebelThrall(c);
           if (!t) return;

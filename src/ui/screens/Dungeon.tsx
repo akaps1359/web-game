@@ -87,7 +87,7 @@ export function DungeonScreen() {
               title: '심연의 조수',
               icon: 'gi:high-tide',
               color: '#6fb6ea',
-              body: `이동할 때마다 1시간이 흐른다. 12시간마다 조수가 한 단계 차올라 적이 강해진다. 조수 2단계부터 균열이 열리고, 4단계에는 무언가가 당신을 쫓기 시작한다.\n\n경과 ${hours(f.hours)} · 조수 ${f.tide}단계`,
+              body: `이동할 때마다 1시간이 흐른다. 12시간마다 조수가 ${(f.vars.tideMul ?? 1) > 1 ? `${f.vars.tideMul} 단계씩` : '한 단계'} 차올라 적이 강해진다. 조수 2단계부터 균열이 열리고, 4단계에는 무언가가 당신을 쫓기 시작한다.\n\n경과 ${hours(f.hours)} · 조수 ${f.tide}단계`,
             })
           }
         >

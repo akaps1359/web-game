@@ -13,7 +13,7 @@ import {
 import { continueRift, distances, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
 import { chooseEvent, eventView, leaveEvent } from '../engine/events';
 import { camp, campRefuel, cureMadness, inn, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
-import { buy } from '../engine/shop';
+import { buy, priceOf } from '../engine/shop';
 import { endRun, winRun } from '../engine/run';
 import { autoTurn } from './bot';
 import type { Rarity } from '../engine/types';
@@ -260,14 +260,14 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
       case 'merchant': {
         const shop = run.shop!;
         shop.items.forEach((it, i) => {
-          if (it.kind === 'relic' && !it.sold && run.player.gold >= it.price) buy(run, i);
+          if (it.kind === 'relic' && !it.sold && run.player.gold >= priceOf(run, it)) buy(run, i);
         });
         shop.items.forEach((it, i) => {
-          if (it.kind === 'consumable' && !it.sold && run.player.gold >= it.price + 40) buy(run, i);
+          if (it.kind === 'consumable' && !it.sold && run.player.gold >= priceOf(run, it) + 40) buy(run, i);
         });
         if (run.light < 60) {
           const oil = shop.items.findIndex((x) => x.kind === 'oil');
-          if (oil >= 0 && run.player.gold >= shop.items[oil].price) buy(run, oil);
+          if (oil >= 0 && run.player.gold >= priceOf(run, shop.items[oil])) buy(run, oil);
         }
         leavePlace(run);
         break;
@@ -301,8 +301,14 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
         }
         const path = bfsPath(run, target);
         if (!path || !path.length) {
-          res.reason = '경로 없음';
-          endRun(run, false, '길을 잃었다');
+          // 아는 길이 끊겼으면(눈보라·회랑 비틀림으로 정찰 정보가 지워짐) 사람처럼 옆방으로 더듬어 나간다
+          const next = here.links.find((id) => !f.rooms[id].visited) ?? here.links[(f.hours + here.links.length) % here.links.length];
+          if (next === undefined) {
+            res.reason = '경로 없음';
+            endRun(run, false, '길을 잃었다');
+            break;
+          }
+          moveTo(run, next);
           break;
         }
         moveTo(run, path[0]);

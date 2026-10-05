@@ -9,7 +9,7 @@ reg.traits([
   {
     id: 'swarm',
     name: '무리',
-    desc: '한 번에 받는 피해가 최대 7',
+    desc: '한 번에 받는 피해가 최대 7 (출혈·독·화상 같은 지속 피해는 제외)',
     hooks: {
       modDamageIn(_c, _s, d) {
         d.cap = 7;
@@ -70,7 +70,7 @@ reg.traits([
   {
     id: 'veiled',
     name: '안개 장막',
-    desc: '자기 턴이 끝날 때 회피 1',
+    desc: '자기 턴이 끝날 때 회피 1 (중첩되지 않음)',
     hooks: {
       onUnitTurnEnd(c, s) {
         if (!(s.unit.st.evasive > 0)) c.apply(s.unit, 'evasive', 1, s.unit);
@@ -114,7 +114,7 @@ reg.traits([
   {
     id: 'lamp-bound',
     name: '등명기',
-    desc: '등명기가 켜져 있는 동안 등대지기는 매 턴 방어도를 얻는다',
+    desc: '등명기가 켜져 있는 동안 등대지기는 매 턴 방어도 10을 얻는다. 꺼진 등명기는 두 번까지 다시 밝힌다',
     hooks: {},
   },
 ]);
@@ -169,6 +169,7 @@ reg.enemies([
         { extra: ['block'], desc: '방어도 6, 약화 1' },
       ),
       pickpocket: mv.attack('소매치기', 4, {
+        desc: '골드를 최대 10 훔친다 (처치하면 돌려받는다)',
         then(c, e) {
           const n = Math.min(10, c.p.gold);
           if (n > 0) {
@@ -193,7 +194,7 @@ reg.enemies([
     weak: ['slash', 'blunt'],
     row: 0,
     moves: {
-      bite: mv.attack('물어뜯기', 6, { then: (c, e) => void c.apply(c.p, 'bleed', 1, e) }),
+      bite: mv.attack('물어뜯기', 6, { then: (c, e) => void c.apply(c.p, 'bleed', 1, e), desc: '출혈 1' }),
       pack: mv.attack('포위 공격', 4, { hits: 2 }),
     },
     ai: (c, e) => pick(c, e, { bite: 2, pack: countDef(c, 'dog') > 1 ? 2 : 0 }),
@@ -243,7 +244,7 @@ reg.enemies([
     row: 0,
     moves: {
       bottle: mv.attack('병 휘두르기', 11),
-      stagger: mv.block('비틀거림', 5),
+      stagger: mv.block('비틀거림', 5, { desc: '방어도 5' }),
       roar: mv.buff(
         '고함',
         (c, e) => {
@@ -290,7 +291,7 @@ reg.enemies([
     dread: 2,
     traits: ['risen'],
     moves: {
-      grasp: mv.attack('움켜쥐기', 8, { then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
+      grasp: mv.attack('움켜쥐기', 8, { then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
       vomit: mv.debuff(
         '검은 물 토하기',
         (c, e) => {
@@ -332,7 +333,7 @@ reg.enemies([
     weak: ['slash', 'arcane'],
     row: 0,
     moves: {
-      hook: mv.attack('갈고리 걸기', 9, { type: 'pierce', then: (c, e) => void c.apply(c.p, 'vuln', 1, e) }),
+      hook: mv.attack('갈고리 걸기', 9, { type: 'pierce', then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
       windup: mv.charge('내려찍기 준비', 22),
       slam: release(mv.attack('내려찍기', 22)),
     },
@@ -374,7 +375,7 @@ reg.enemies([
     weak: ['pierce', 'fire'],
     row: 0,
     moves: {
-      hack: mv.attack('난도질', 4, { hits: 3, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 2, e) }),
+      hack: mv.attack('난도질', 4, { hits: 3, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
       prep: mv.charge('도축 준비', 24),
       chop: release(mv.attack('토막내기', 24, { type: 'slash' })),
       scent: mv.buff('피 냄새', (c, e) => void c.apply(e, 'str', (c.p.st.bleed ?? 0) > 0 ? 3 : 2, e), {
@@ -425,7 +426,7 @@ reg.enemies([
     row: 0,
     moves: {
       claw: mv.attack('집게', 13),
-      shell: mv.block('껍질 닫기', 15),
+      shell: mv.block('껍질 닫기', 15, { desc: '방어도 15' }),
       bubble: mv.debuff(
         '거품',
         (c, e) => {
@@ -451,6 +452,7 @@ reg.enemies([
     weak: ['pierce', 'void'],
     row: 0,
     dread: 4,
+    traits: ['lamp-bound'],
     moves: {
       swing: mv.attack('랜턴 휘두르기', 14),
       beam: mv.horror('눈먼 광선', 8, { dmg: 8, type: 'fire' }),
@@ -544,9 +546,9 @@ reg.enemies([
       ),
       gaff: mv.attack('갈고리 장대', 9, { type: 'pierce' }),
       mutter: mv.horror('중얼거림', 3, { desc: '알아들을 수 없는 기도' }),
-      maw: mv.attack('심해의 아가리', 16, { then: (c, e) => void c.heal(e, 6) }),
+      maw: mv.attack('심해의 아가리', 16, { then: (c, e) => void c.heal(e, 6), desc: '체력 6 회복' }),
       tide: mv.attack('조수', 7, { hits: 2 }),
-      song: mv.horror('심연의 노래', 8, { then: (c, e) => void c.apply(c.p, 'dread', 2, e) }),
+      song: mv.horror('심연의 노래', 8, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
     },
     ai: (c, e) => (e.form ? cycle(e, ['maw', 'tide', 'song'], 'c2') : cycle(e, ['gaff', 'net', 'gaff', 'mutter'])),
     visual: { tint: 0x5a5a50, glow: 0x80c0b0, scale: 1.3 },
@@ -571,7 +573,7 @@ reg.enemies([
       muster: mv.summon('선원 소집', (c) => void c.spawn('drowned', 0), '익사체 소환'),
       ready: mv.charge('닻을 들어올린다', 26),
       anchor: release(mv.attack('닻 내려치기', 26)),
-      shanty: mv.horror('익사자의 뱃노래', 10, { then: (c, e) => void c.apply(c.p, 'dread', 2, e) }),
+      shanty: mv.horror('익사자의 뱃노래', 10, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'anchor';
@@ -596,7 +598,7 @@ reg.enemies([
     moves: {
       strike: mv.attack('그림자 일격', 13, { type: 'slash' }),
       rend: mv.attack('찢기', 5, { hits: 3, type: 'slash' }),
-      vanish: mv.block('안개 속으로', 10),
+      vanish: mv.block('안개 속으로', 10, { desc: '방어도 10' }),
     },
     ai: (c, e) => cycle(e, ['strike', 'rend', 'vanish']),
     visual: { tint: 0x8a9aa0, glow: 0xd0f0ff, scale: 1.2, fx: ['flicker', 'float'] },
@@ -615,9 +617,9 @@ reg.enemies([
     eldritch: true,
     traits: ['incorporeal'],
     moves: {
-      chill: mv.attack('냉기의 손길', 10, { type: 'void', then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
-      wail: mv.horror('울부짖음', 7, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
-      drain: mv.attack('생명 흡수', 8, { type: 'void', then: (c, e) => void c.heal(e, 8) }),
+      chill: mv.attack('냉기의 손길', 10, { type: 'void', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
+      wail: mv.horror('울부짖음', 7, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      drain: mv.attack('생명 흡수', 8, { type: 'void', then: (c, e) => void c.heal(e, 8), desc: '체력 8 회복' }),
       curse: mv.debuff(
         '망자의 저주',
         (c, e) => {
@@ -646,7 +648,7 @@ reg.enemies([
     row: 1,
     moves: {
       shot: mv.attack('엄호 사격', 4, { melee: false, type: 'pierce' }),
-      cover: mv.block('엄폐', 5),
+      cover: mv.block('엄폐', 5, { desc: '방어도 5' }),
     },
     ai: (c, e) => pick(c, e, { shot: 2, cover: 1 }),
     visual: { tint: 0x4d5a66, glow: 0x8aa0b0, scale: 0.8 },

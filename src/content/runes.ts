@@ -10,7 +10,7 @@ reg.runes([
     name: '메아리 각인',
     icon: 'gi:echo-ripples',
     rarity: 'rare',
-    desc: '스킬이 50% 위력으로 한 번 더 발동. 재사용 대기 +1',
+    desc: '스킬이 50% 위력으로 한 번 더 발동 (탄약이 바닥났으면 불발). 재사용 대기 +1',
     cdMod: 1,
     fits: (s) => !s.tags.includes('basic') && s.cd !== 99,
   },
@@ -19,7 +19,7 @@ reg.runes([
     name: '흡혈 각인',
     icon: 'gi:vampire-dracula',
     rarity: 'uncommon',
-    desc: '이 스킬로 준 피해의 20%만큼 회복',
+    desc: '이 스킬로 준 체력 피해의 20%만큼 회복 (타격마다 최소 1)',
     fits: isAttack,
     hooks: {
       onDamageDealt(c, _s, d) {
@@ -76,7 +76,7 @@ reg.runes([
     name: '출혈 각인',
     icon: 'gi:blood',
     rarity: 'common',
-    desc: '피해를 줄 때마다 출혈 2',
+    desc: '체력 피해를 줄 때마다 출혈 2',
     fits: isAttack,
     hooks: {
       onDamageDealt(c, _s, d) {
@@ -89,7 +89,7 @@ reg.runes([
     name: '화염 각인',
     icon: 'gi:flame',
     rarity: 'common',
-    desc: '피해를 줄 때마다 화상 1',
+    desc: '타격마다 화상 1 (방어도에 막혀도)',
     fits: isAttack,
     hooks: {
       onDamageDealt(c, _s, d) {
@@ -102,8 +102,9 @@ reg.runes([
     name: '인장 각인',
     icon: 'gi:pentagram-rose',
     rarity: 'common',
-    desc: '피해를 줄 때마다 인장 1',
-    fits: isAttack,
+    desc: '타격마다 인장 1 (인장 폭발 스킬에는 새길 수 없다)',
+    // 폭발 스킬은 폭발 피해만 주므로(인장을 다시 새기지 않는다) 새겨도 아무 일도 일어나지 않는다
+    fits: (s) => isAttack(s) && !s.tags.includes('detonate'),
     hooks: {
       onDamageDealt(c, _s, d) {
         if (isEnemy(d.tgt) && !d.killed && !d.tags.includes('detonate')) c.apply(d.tgt, 'mark', 1, c.p);

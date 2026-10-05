@@ -1,5 +1,5 @@
 import { EQUIPS } from '../../engine/registry';
-import { buy, sell, sellPrice, sellSkill, skillLockReason, skillSellPrice, SKILL_SELL_RATE } from '../../engine/shop';
+import { buy, priceOf, sell, sellPrice, sellSkill, skillLockReason, skillSellPrice, SKILL_SELL_RATE } from '../../engine/shop';
 import { SKILLS } from '../../engine/registry';
 import { leavePlace } from '../../engine/places';
 import { store } from '../../state/store';
@@ -16,7 +16,8 @@ export function ShopList() {
   return (
     <div class="list">
       {shop.items.map((it, i) => {
-        const afford = run.player.gold >= it.price;
+        const cost = priceOf(run, it);
+        const afford = run.player.gold >= cost;
         return (
           <LootCard
             it={{ kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined }}
@@ -26,7 +27,7 @@ export function ShopList() {
               const loot = { kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined } as Parameters<typeof lootInfo>[0];
               const info = lootInfo(loot);
               if (!afford) return void store.toast('골드가 모자라다', 'bad');
-              void applyAsk({ title: `${lootName(loot)} 구매`, icon: info.icon, color: info.color, body: info.desc || info.meta, lines: [{ label: '가격', value: `${it.price} 골드` }, { label: '남는 골드', value: `${run.player.gold - it.price} 골드` }], ok: '산다' }, (r) => {
+              void applyAsk({ title: `${lootName(loot)} 구매`, icon: info.icon, color: info.color, body: info.desc || info.meta, lines: [{ label: '가격', value: `${cost} 골드` }, { label: '남는 골드', value: `${run.player.gold - cost} 골드` }], ok: '산다' }, (r) => {
                 const why = buy(r, i);
                 if (!why) sound.sfx('coin');
                 return why;
@@ -34,7 +35,7 @@ export function ShopList() {
             }}
             right={
               <span class="chip num" style={{ color: it.sold ? 'var(--ink-3)' : afford ? 'var(--brass-2)' : 'var(--bad)' }}>
-                {it.sold ? '판매됨' : `${it.price}G`}
+                {it.sold ? '판매됨' : `${cost}G`}
               </span>
             }
           />

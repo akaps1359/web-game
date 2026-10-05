@@ -58,8 +58,7 @@ function price(run: RunState, kind: ShopItem['kind'], id: string): number {
   const base = PRICE[kind][rarityOf(kind, id)] ?? PRICE[kind].common ?? 50;
   const act = 1 + 0.1 * (Math.min(run.act, 5) - 1);
   const jitter = 0.9 + r.next() * 0.2;
-  const discount = run.relics.some((x) => x.id === 'membership-coin') ? 0.8 : 1;
-  return Math.round(base * act * jitter * discount);
+  return Math.round(base * act * jitter);
 }
 
 function stock(run: RunState, kind: 'merchant' | 'haven'): ShopItem[] {
@@ -88,12 +87,19 @@ export function openShop(run: RunState, kind: 'merchant' | 'haven', room = -1) {
   if (kind === 'merchant') run.screen = 'merchant';
 }
 
+/** 지금 내야 하는 값 (상인 조합 주화는 언제 얻었든 바로 20% 할인) */
+export function priceOf(run: RunState, it: ShopItem): number {
+  const discount = run.relics.some((x) => x.id === 'membership-coin') ? 0.8 : 1;
+  return Math.round(it.price * discount);
+}
+
 export function buy(run: RunState, idx: number): string | null {
   const shop = run.shop;
   const it = shop?.items[idx];
   if (!shop || !it) return '물건이 없다';
   if (it.sold && it.kind !== 'oil') return '이미 팔렸다';
-  if (run.player.gold < it.price) return '골드가 부족하다';
+  const cost = priceOf(run, it);
+  if (run.player.gold < cost) return '골드가 부족하다';
   switch (it.kind) {
     case 'skill':
       if (!learnSkill(run, it.id)) return '이미 아는 기술이다';
@@ -115,7 +121,7 @@ export function buy(run: RunState, idx: number): string | null {
       run.light = Math.min(100, run.light + 30);
       break;
   }
-  run.player.gold -= it.price;
+  run.player.gold -= cost;
   if (it.kind !== 'oil') it.sold = true;
   return null;
 }

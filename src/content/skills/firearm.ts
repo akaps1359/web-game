@@ -54,7 +54,7 @@ reg.skills([
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'multi'],
     vals: { dmg: [3, 4], hits: 4 },
-    desc: '탄약 3: 무작위 적에게 {D:dmg} 관통 피해 {hits}회',
+    desc: '탄약 3: {D:dmg} 관통 피해 {hits}회, 매번 무작위 적에게',
     canUse: needAmmo(3),
     run: (c, u, t) => {
       spendAmmo(c, 3);
@@ -92,14 +92,15 @@ reg.skills([
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun'],
     vals: { dmg: [12, 15], behind: [6, 8] },
-    desc: '탄약 1: {D:dmg} 관통 피해. 관통해 다른 열의 무작위 적에게 {behind}',
+    desc: '탄약 1: {D:dmg} 관통 피해. 총알이 관통해 대상과 다른 열의 무작위 적 하나에게도 {behind} 관통 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
       spendAmmo(c, 1);
       hit(c, u, t);
       if (!t) return;
       const other = c.row(t.row === 0 ? 1 : 0);
-      if (other.length) c.damage({ src: c.p, tgt: c.rng.pick(other), base: u.v('behind'), type: 'pierce', attack: true, skill: u });
+      // 관통 피해도 위력(메아리·절약 각인)과 속성 변환(공허 각인)을 따른다
+      if (other.length) c.damage({ src: c.p, tgt: c.rng.pick(other), base: Math.floor(u.v('behind') * u.power), type: u.type ?? 'pierce', attack: true, skill: u });
     },
   }),
   skill({

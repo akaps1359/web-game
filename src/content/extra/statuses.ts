@@ -14,8 +14,9 @@ reg.statuses([
     kind: 'buff',
     desc: '이번 턴 스킬을 쓸 때마다 무작위 적에게 {n} 참격 피해',
     hooks: {
-      afterSkill(c, s) {
-        if (c.over) return;
+      afterSkill(c, s, u) {
+        // 잔영을 건 그 스킬(과 그 메아리)에는 반응하지 않는다 — "이후" 쓰는 스킬부터
+        if (c.over || u.def.id === 'x-afterimage') return;
         const pool = c.alive;
         if (!pool.length) return;
         const t = c.rng.pick(pool);
