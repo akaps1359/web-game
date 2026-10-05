@@ -421,7 +421,11 @@ export function removeEssence(run: RunState, essenceUid: string, free = false): 
     run.essenceRemovals++;
   }
   applyStats(run, essenceStats(es.id, es.guardian), -1);
-  if (def.eldritch && !free) run.player.maxSanity += 5;
+  // 돈을 내고 지우면 이계의 흔적(최대 정신력 -5, 통찰 +1)도 함께 사라진다
+  if (def.eldritch && !free) {
+    run.player.maxSanity += 5;
+    run.player.insight = Math.max(0, run.player.insight - 1);
+  }
   for (const s of run.skills.filter((x) => x.from === es.uid)) {
     const slot = run.slots.indexOf(s.uid);
     if (slot >= 0) run.slots[slot] = null;

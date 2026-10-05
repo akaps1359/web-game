@@ -385,8 +385,7 @@ describe('정수 감사 — 모든 정수 흡수·사용·제거', () => {
       for (const k of ['maxHp', 'str', 'dex', 'will'] as const) expect(after[k], `${es.id} ${k}`).toBe(before[k]);
       if (!es.lord) {
         expect(after.maxSanity, `${es.id} maxSanity`).toBe(before.maxSanity);
-        // 이계 정수의 통찰 +1은 흡수의 대가로 남는다
-        expect(after.insight, `${es.id} insight`).toBe(before.insight + (es.eldritch ? 1 : 0));
+        expect(after.insight, `${es.id} insight`).toBe(before.insight); // 돈을 내고 지우면 이계의 통찰 +1도 사라진다
       }
     }
   });

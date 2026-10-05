@@ -256,16 +256,17 @@ describe('스킬 감사 — 설명대로 동작', () => {
     expect(t.st.bleed).toBe(1);
   });
 
-  it('칼날 폭풍: 근접이지만 후열의 적도 맞을 수 있다', () => {
+  it('칼날 폭풍: 근접이라 전열에 적이 있으면 전열만 맞는다', () => {
     const seen = new Set<string>();
-    for (let seed = 0; seed < 10 && seen.size < 2; seed++) {
+    for (let seed = 0; seed < 10; seed++) {
       const c = arena('flurry');
       c.s.used = 5;
       for (let i = 0; i < seed; i++) c.rng.next();
       expect(c.useSkill('sk')).toBeNull();
       for (const h of hits(c)) seen.add(c.s.enemies.find((e) => e.uid === h.tgt)!.row === 0 ? 'front' : 'back');
     }
-    expect(seen.has('back')).toBe(true);
+    expect(seen.has('front')).toBe(true);
+    expect(seen.has('back')).toBe(false);
   });
 
   it('몸통 박치기+: 강화하면 버팀 추가 -1 (설명에 드러남)', () => {

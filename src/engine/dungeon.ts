@@ -536,7 +536,7 @@ export function enterRift(run: RunState): string | null {
   const room = f.rooms[f.pos];
   if (!room.rift) return '균열이 없다';
   const r = rng(run, 'map');
-  const rules = [...ANOMALIES.keys()].filter((k) => k.startsWith('rule-'));
+  const rules = [...ANOMALIES.keys()].filter((k) => /^(x-)?rule-/.test(k));
   const { normals, elites, guardians } = riftPools(f.act);
   if (!normals.length || !guardians.length) {
     // 균열 수호자가 없는 층: 들어갈 수 없는 균열은 닫아 버린다 (막힌 채로 두지 않음)

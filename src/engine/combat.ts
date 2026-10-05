@@ -930,7 +930,8 @@ export class Combat {
     };
     if (mode === 'random') {
       for (let i = 0; i < hits; i++) {
-        const pool = this.alive;
+        // 근접 스킬의 무작위 타격도 근접 규칙을 따른다 (전열에 적이 있으면 전열만)
+        const pool = melee ? this.validTargets(u.def) : this.alive;
         if (!pool.length) break;
         hitOne(this.rng.pick(pool));
       }

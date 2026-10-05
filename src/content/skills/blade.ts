@@ -126,7 +126,7 @@ reg.skills([
     type: 'slash',
     tags: ['attack', 'combo', 'multi'],
     vals: { dmg: [2, 3], hits: 3 },
-    desc: '{D:dmg} 참격 피해 {hits}회, 매번 무작위 적(후열 포함)에게. 이번 턴 앞서 쓴 스킬 1개당 1회 추가',
+    desc: '{D:dmg} 참격 피해 {hits}회, 매번 전열의 무작위 적에게. 이번 턴 앞서 쓴 스킬 1개당 1회 추가',
     run: (c, u, t) => void hit(c, u, t, { hits: u.v('hits') + combo(c) }),
   }),
   skill({

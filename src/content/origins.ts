@@ -20,7 +20,7 @@ reg.origins([
     icon: 'gi:hunter-eyes',
     desc: '안개 속 짐승을 쫓아 살아왔다. 칼과 약품을 다룬다.',
     hp: 76,
-    sanity: 95,
+    sanity: 105,
     gold: 50,
     skills: ['serrate', 'quick-cut', 'fire-flask', 'smoke-veil'],
     equip: { weapon: 'knife', armor: 'leather', trinket1: 'whetstone' },

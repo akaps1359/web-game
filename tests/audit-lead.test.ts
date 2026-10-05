@@ -89,3 +89,27 @@ describe('점검: 엔진 (아이템 감사에서 나온 것)', () => {
     expect(lightCost(run)).toBe(Math.max(1, c0 - 2));
   });
 });
+
+describe('점검: 판단 반영', () => {
+  it('돈을 내고 이계 정수를 지우면 통찰 +1도 사라진다', async () => {
+    const { absorbEssence, removeEssence } = await import('../src/engine/run');
+    const run = newRun({ seed: 12, origin: 'soldier' });
+    run.player.level = 10;
+    run.player.gold = 999;
+    const ins = run.player.insight;
+    const san = run.player.maxSanity;
+    absorbEssence(run, { id: 'lurker', color: 0 });
+    expect(run.player.insight).toBe(ins + 1);
+    expect(removeEssence(run, run.essences[0].uid)).toBeNull();
+    expect(run.player.insight).toBe(ins);
+    expect(run.player.maxSanity).toBe(san);
+  });
+
+  it('균열에는 공용 전장 규칙(x-rule-*)도 나온다', async () => {
+    const { ANOMALIES } = await import('../src/engine/registry');
+    const rules = [...ANOMALIES.keys()].filter((k) => /^(x-)?rule-/.test(k));
+    expect(rules).toContain('x-rule-bloodmoon');
+    expect(rules).toContain('x-rule-darkness');
+    expect(rules).toContain('x-rule-escalation');
+  });
+});
