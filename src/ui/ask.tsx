@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { store } from '../state/store';
-import { Icon } from './components';
+import { Icon, KeywordList } from './components';
 import { apply } from '../state/actions';
 
 /** 행동 확인 창 — 사고, 고르고, 떠나는 모든 행동 전에 한 번 묻는다 (설정에서 끌 수 있음) */
@@ -51,6 +51,7 @@ export function AskView() {
           </div>
         </div>
         {a.body && <div class="tip-body">{a.body}</div>}
+        {typeof a.body === 'string' && <KeywordList text={a.body} exclude={a.title} />}
         {a.lines && (
           <div class="tip-lines">
             {a.lines.map((l) => (

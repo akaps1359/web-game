@@ -7,6 +7,8 @@ import { stage } from './render/stage';
 import { refresh } from './state/actions';
 import { sound } from './sound';
 import { attachAudio } from './audioBridge';
+import { setOnLook } from './render/battle';
+import { store } from './state/store';
 
 // iOS: 핀치 확대 / 길게 눌러 선택 방지
 document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -39,6 +41,8 @@ function registerTracks(audio: { registerTrack(mood: string, url: string, opts?:
 
 async function boot() {
   render(<App />, document.getElementById('app')!);
+  // 적 그림이 늦게 불러와지면 의도 표시 위치를 다시 잡는다
+  setOnLook(() => store.emit());
   if (import.meta.env.DEV) {
     // 개발용 디버그 핸들 (브라우저 콘솔에서 상태 확인)
     const [{ store }, actions] = await Promise.all([import('./state/store'), import('./state/actions')]);

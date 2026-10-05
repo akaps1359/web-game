@@ -62,12 +62,22 @@ export interface Anchor {
 }
 
 /** 전열/후열 배치 — DOM 오버레이와 공유 */
+/** 적 그림이 바뀌었을 때 (화면의 의도 표시 위치를 다시 잡도록) */
+let onLook: (() => void) | undefined;
+export function setOnLook(fn: () => void) {
+  onLook = fn;
+}
+
 export function layoutEnemies(rect: Rect, list: { uid: string; row: 0 | 1; scale: number; dead: boolean }[]): Map<string, Anchor> {
   const out = new Map<string, Anchor>();
   const alive = list.filter((e) => !e.dead);
-  // 후열이 있으면 전열 그림의 머리가 후열의 이름표를 가리지 않도록 전열을 낮게 묶고 후열을 조금 올린다
+  // 두 줄일 때 세로 공간 나누기 (위에서부터): 후열 의도 ─ 후열 그림 ─ 후열 이름표 ─ 전열 의도 ─ 전열 그림 ─ 전열 이름표.
+  // 그림의 머리 높이는 크기의 약 1.25배, 의도 표시는 약 32px, 이름표는 약 52px.
   const hasBack = alive.some((e) => e.row === 1);
-  const frontCap = hasBack ? 0.25 : 0.36;
+  const frontY = rect.h * 0.84;
+  const backY = rect.h * 0.31;
+  const frontMax = hasBack ? Math.max(rect.h * 0.16, (frontY - backY - 52 - 32) / 1.25) : rect.h * 0.62;
+  const backMax = Math.max(rect.h * 0.14, (backY - 32) / 1.25);
   for (const row of [1, 0] as const) {
     const units = alive.filter((e) => e.row === row);
     const n = units.length;
@@ -75,15 +85,15 @@ export function layoutEnemies(rect: Rect, list: { uid: string; row: 0 | 1; scale
     // 큰 적(보스)은 더 넓은 자리를 차지한다
     const weights = units.map((e) => Math.max(0.6, e.scale));
     const W = weights.reduce((s, w) => s + w, 0);
-    const base = row === 0 ? Math.min(rect.h * frontCap, rect.w / Math.max(2.15, W + 0.55)) : Math.min(rect.h * 0.22, rect.w / Math.max(2.6, W + 1));
-    const y = rect.y + rect.h * (row === 0 ? 0.84 : 0.34);
+    const base = row === 0 ? Math.min(hasBack ? frontMax : rect.h * 0.36, rect.w / Math.max(2.15, W + 0.55)) : Math.min(rect.h * 0.22, backMax, rect.w / Math.max(2.6, W + 1));
+    const y = rect.y + (row === 0 ? frontY : backY);
     const usable = rect.w * (row === 0 ? 0.92 : 0.82) * Math.min(1, W / 2.2);
     const left = rect.x + (rect.w - usable) / 2;
     let acc = 0;
     units.forEach((e, i) => {
       const x = left + ((acc + weights[i] / 2) / W) * usable;
       acc += weights[i];
-      const size = Math.min(base * e.scale * (row === 1 ? 0.92 : 1), (usable / W) * weights[i] * 1.05, rect.h * (row === 0 ? (hasBack ? 0.3 : 0.62) : 0.36));
+      const size = Math.min(base * e.scale * (row === 1 ? 0.92 : 1), (usable / W) * weights[i] * 1.05, row === 0 ? frontMax : backMax);
       out.set(e.uid, { x, y, size });
     });
   }
@@ -231,9 +241,10 @@ class EnemyView extends Container {
     this.aura.tint = glow;
     let tex: Texture;
     let white: Texture;
+    let top = 0.15;
     if (art) {
       try {
-        ({ tex, white } = await artTextures(art));
+        ({ tex, white, top } = await artTextures(art));
       } catch {
         // 그림을 못 불러오면 아이콘으로
         [tex, white] = await Promise.all([iconTexture(icon, { size: 300, tint, glow }), iconTexture(icon, { size: 300, tint, flat: true })]);
@@ -245,6 +256,8 @@ class EnemyView extends Container {
     if (this.look !== key) return;
     this.isArt = !!art;
     const ay = this.isArt ? 0.97 : 0.847;
+    // 발에서 형체 윗단까지의 높이 (크기 대비) — 의도 표시를 머리 위에 띄우는 데 쓴다
+    this.headroom = this.isArt ? (ay - top) * 1.32 : 1.08;
     this.body.anchor.set(0.5, ay);
     this.flash.anchor.set(0.5, ay);
     this.body.texture = tex;
@@ -253,7 +266,11 @@ class EnemyView extends Container {
     this.sized = -1;
     this.applySize();
     if (this.shell) this.ensureShell();
+    onLook?.();
   }
+
+  /** 발에서 형체 윗단까지의 높이 ÷ 크기 */
+  headroom = 1.08;
 
   /** 마지막으로 크기를 맞춘 기준 (-1이면 아직) */
   sized = -1;
@@ -796,6 +813,13 @@ export class Battle extends Container {
 
   anchor(uid: string): Anchor | null {
     return this.anchors.get(uid) ?? this.views.get(uid)?.cur ?? null;
+  }
+
+  /** 발에서 형체 윗단까지 높이 ÷ 크기 (떠 있는 적은 그만큼 더) */
+  headroom(uid: string): number {
+    const v = this.views.get(uid);
+    if (!v) return 1.08;
+    return v.headroom + (v.fx.includes('float') ? 0.14 : 0.04);
   }
 
   /** 플레이어 위치 (화면 아래 중앙) */

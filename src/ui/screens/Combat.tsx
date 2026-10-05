@@ -292,7 +292,7 @@ function EnemyOverlay({ e, real, a, focus, valid, onTap }: { e: Snap['e'][number
     <>
       <div class={`enemy-hit ${focus ? 'focus' : ''} ${valid ? 'valid' : ''}`} style={{ left: a.x, top: a.y, width: w, height: h }} {...press(onTap, tip)} />
       {iv && (
-        <div class="enemy-ui" style={{ left: a.x, top: a.y - a.size * 1.08 - 26 }}>
+        <div class="enemy-ui" style={{ left: a.x, top: Math.max(stage.battle.rect.y - 4, a.y - a.size * stage.battle.headroom(e.uid) - 30) }}>
           <span class={`intent ${iv.charging ? 'charging' : ''}`} style={{ color: iv.color }}>
             <Icon name={iv.icon} size={17} color={iv.color} />
             {iv.text}

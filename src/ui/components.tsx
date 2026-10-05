@@ -3,6 +3,7 @@ import { useRef } from 'preact/hooks';
 import ICONS from 'virtual:icons';
 import { store, type Tip } from '../state/store';
 import type { Seg } from './text';
+import { keywordsIn } from './glossary';
 
 export function Icon({ name, size = 22, color, class: cls, style }: { name: string; size?: number; color?: string; class?: string; style?: Record<string, string | number> }) {
   const svg = ICONS[name.replace(/^gi:/, '')] ?? ICONS['help'] ?? '';
@@ -15,6 +16,8 @@ export function press(onTap?: () => void, onLong?: () => void) {
   let fired = false;
   let sx = 0;
   let sy = 0;
+  /** 안쪽의 다른 단추(빼기·해제 등)를 누른 것이면 바깥 카드의 탭/길게 누르기는 무시 */
+  let inner = false;
   const clear = () => {
     if (timer) clearTimeout(timer);
     timer = 0;
@@ -25,6 +28,9 @@ export function press(onTap?: () => void, onLong?: () => void) {
       sx = e.clientX;
       sy = e.clientY;
       clear();
+      const own = (e.target as Element | null)?.closest?.('button, a, .chip');
+      inner = !!own && own !== e.currentTarget;
+      if (inner) return;
       if (onLong)
         timer = window.setTimeout(() => {
           fired = true;
@@ -39,7 +45,7 @@ export function press(onTap?: () => void, onLong?: () => void) {
     onPointerUp() {
       const had = !!timer || !onLong;
       clear();
-      if (!fired && had) onTap?.();
+      if (!fired && had && !inner) onTap?.();
     },
     onPointerCancel: clear,
     onContextMenu(e: Event) {
@@ -73,6 +79,7 @@ export function TipView() {
           </div>
         </div>
         <div class="tip-body">{t.body}</div>
+        <KeywordList text={t.body} exclude={t.title} />
         {t.lines && (
           <div class="tip-lines">
             {t.lines.map((l) => (
@@ -145,5 +152,23 @@ export function Stat({ icon, color, value, sub, onClick }: { icon: string; color
       </span>
       {sub && <span class="muted" style={{ fontSize: 11 }}>{sub}</span>}
     </button>
+  );
+}
+
+/** 설명에 나온 상태이상·규칙 용어 풀이 (길게 누른 설명, 확인 창 아래에 붙는다) */
+export function KeywordList({ text, exclude }: { text: string; exclude?: string }) {
+  const ks = keywordsIn(text, exclude).slice(0, 6);
+  if (!ks.length) return null;
+  return (
+    <div class="kw-list">
+      {ks.map((k) => (
+        <div class="kw">
+          <Icon name={k.icon} size={16} color={k.color} />
+          <div>
+            <b style={{ color: k.color }}>{k.name}</b> {k.desc}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

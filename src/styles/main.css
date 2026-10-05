@@ -714,3 +714,30 @@ h2.title {
   transform: scale(0.97);
   filter: brightness(1.18);
 }
+
+/* ───────── 용어 풀이 ───────── */
+.tip,
+.ask {
+  max-height: 78vh;
+  overflow-y: auto;
+}
+.kw-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.kw {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.kw > svg,
+.kw > .icon {
+  flex: none;
+  margin-top: 2px;
+}

@@ -3,7 +3,7 @@ import { CONSUMABLES, EQUIPS, ESSENCES, RELICS, RUNES, SKILLS } from '../engine/
 import { essenceStats, type LootItem } from '../engine/run';
 import { lvlVal } from '../engine/combat';
 import type { EssenceStats } from '../engine/types';
-import { Icon, Segs } from './components';
+import { Icon, Segs, press, showTip } from './components';
 import { DMG_NAME, RARITY_COLOR, RARITY_NAME, SCHOOL_COLOR, SCHOOL_NAME, skillDesc } from './text';
 
 const RANGE = { melee: '근접', ranged: '원거리', self: '자신' } as const;
@@ -14,7 +14,22 @@ export function SkillCard({ id, lvl = 0, runes = [], sel, off, onClick, right }:
   const cost = lvlVal(def.cost, lvl);
   const cd = lvlVal(def.cd, lvl);
   return (
-    <button class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''}`} onClick={onClick}>
+    <button
+      class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''}`}
+      {...press(onClick, () =>
+        showTip({
+          title: def.name + (lvl > 0 ? '+' : ''),
+          icon: def.icon,
+          color: SCHOOL_COLOR[def.school],
+          sub: `${SCHOOL_NAME[def.school]} · ${RARITY_NAME[def.rarity]}`,
+          body: skillDesc(def, lvl).map((x) => x.t).join(''),
+          lines: [
+            { label: '행동력', value: String(cost) },
+            { label: '재사용 대기', value: cd >= 99 ? '전투당 1회' : cd > 0 ? `${cd}턴` : '없음' },
+          ],
+        }),
+      )}
+    >
       <div class="badge" style={{ borderColor: SCHOOL_COLOR[def.school] + '55' }}>
         <Icon name={def.icon} size={28} color={SCHOOL_COLOR[def.school]} />
       </div>
@@ -206,7 +221,7 @@ export function LootCard({ it, sel, off, onClick, right }: { it: LootItem; sel?:
   if (it.kind === 'skill') return <SkillCard id={it.id} sel={sel} off={off} onClick={onClick} right={right} />;
   const { icon, color, meta, desc } = lootInfo(it);
   return (
-    <button class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''}`} onClick={onClick}>
+    <button class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''}`} {...press(onClick, () => showTip({ title: lootName(it), icon, color, sub: meta, body: desc || meta }))}>
       <div class="badge">
         <Icon name={icon} size={28} color={color} />
       </div>

@@ -21,10 +21,11 @@ function loadUrl(url: string): Promise<HTMLImageElement> {
   });
 }
 
-const artCache = new Map<string, Promise<{ tex: Texture; white: Texture }>>();
+const artCache = new Map<string, Promise<{ tex: Texture; white: Texture; top: number }>>();
 
 /** 몬스터 그림 + 피격 플래시용 흰 실루엣 */
-export function artTextures(key: string): Promise<{ tex: Texture; white: Texture }> {
+/** 적 그림: 본 텍스처, 흰 실루엣, 형체 윗단의 높이 비율(0=그림 맨 위, 1=맨 아래 — 의도 표시를 머리 위에 놓는 데 씀) */
+export function artTextures(key: string): Promise<{ tex: Texture; white: Texture; top: number }> {
   let p = artCache.get(key);
   if (p) return p;
   p = (async () => {
@@ -42,7 +43,20 @@ export function artTextures(key: string): Promise<{ tex: Texture; white: Texture
     wg.globalCompositeOperation = 'source-in';
     wg.fillStyle = '#ffffff';
     wg.fillRect(0, 0, w.width, w.height);
-    return { tex: Texture.from(c), white: Texture.from(w) };
+    // 형체의 윗단: 작게 줄인 사본에서 불투명한 첫 줄을 찾는다
+    const N = 96;
+    const s = document.createElement('canvas');
+    s.width = N;
+    s.height = N;
+    const sg = s.getContext('2d', { willReadFrequently: true })!;
+    sg.drawImage(img, 0, 0, N, N);
+    const px = sg.getImageData(0, 0, N, N).data;
+    let top = 0;
+    find: for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (px[(y * N + x) * 4 + 3] > 90) {
+      top = y / N;
+      break find;
+    }
+    return { tex: Texture.from(c), white: Texture.from(w), top };
   })();
   artCache.set(key, p);
   return p;
