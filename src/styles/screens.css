@@ -319,10 +319,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  max-width: 100%;
 }
 .eplate .bar {
-  width: 92px;
+  width: 100%;
+  max-width: 92px;
   height: 11px;
 }
 .eplate .bar > span {

@@ -301,7 +301,7 @@ function EnemyOverlay({ e, real, a, focus, valid, onTap }: { e: Snap['e'][number
         </div>
       )}
       <div class="enemy-ui" style={{ left: a.x, top: a.y + 4 }}>
-        <div class="eplate">
+        <div class="eplate" style={{ width: Math.max(64, Math.min(116, (a.slot ?? 116) - 4)) }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span class="ename">{real.name}</span>
             {e.block > 0 && (
@@ -340,7 +340,7 @@ function EnemyOverlay({ e, real, a, focus, valid, onTap }: { e: Snap['e'][number
               )}
             </div>
           </div>
-          <StatusRow st={e.st} max={130} />
+          <StatusRow st={e.st} max={Math.max(64, Math.min(130, (a.slot ?? 130) - 4))} />
           {def?.traits?.length ? null : null}
         </div>
       </div>

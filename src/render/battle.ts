@@ -59,44 +59,54 @@ export interface Anchor {
   /** 발 위치 */
   y: number;
   size: number;
+  /** 이 적이 차지한 가로 칸 너비 (이름표 폭) */
+  slot?: number;
 }
 
-/** 전열/후열 배치 — DOM 오버레이와 공유 */
 /** 적 그림이 바뀌었을 때 (화면의 의도 표시 위치를 다시 잡도록) */
 let onLook: (() => void) | undefined;
 export function setOnLook(fn: () => void) {
   onLook = fn;
 }
 
+/**
+ * 적 배치 — 한 줄에 칸을 나눠 겹치지 않게 (DOM 오버레이와 공유).
+ * 후열은 전열 사이사이에 끼워 넣고, 조금 위로 올리고 작게 그려 뒤에 있는 느낌만 준다.
+ * 세로로 두 줄을 쌓으면 폰(사파리 주소창·툴바가 있는 화면)에서 이름표·의도가 서로 겹친다.
+ */
 export function layoutEnemies(rect: Rect, list: { uid: string; row: 0 | 1; scale: number; dead: boolean }[]): Map<string, Anchor> {
   const out = new Map<string, Anchor>();
   const alive = list.filter((e) => !e.dead);
-  // 두 줄일 때 세로 공간 나누기 (위에서부터): 후열 의도 ─ 후열 그림 ─ 후열 이름표 ─ 전열 의도 ─ 전열 그림 ─ 전열 이름표.
-  // 그림의 머리 높이는 크기의 약 1.25배, 의도 표시는 약 32px, 이름표는 약 52px.
-  const hasBack = alive.some((e) => e.row === 1);
-  const frontY = rect.h * 0.84;
-  const backY = rect.h * 0.31;
-  const frontMax = hasBack ? Math.max(rect.h * 0.16, (frontY - backY - 52 - 32) / 1.25) : rect.h * 0.62;
-  const backMax = Math.max(rect.h * 0.14, (backY - 32) / 1.25);
-  for (const row of [1, 0] as const) {
-    const units = alive.filter((e) => e.row === row);
-    const n = units.length;
-    if (!n) continue;
-    // 큰 적(보스)은 더 넓은 자리를 차지한다
-    const weights = units.map((e) => Math.max(0.6, e.scale));
-    const W = weights.reduce((s, w) => s + w, 0);
-    const base = row === 0 ? Math.min(hasBack ? frontMax : rect.h * 0.36, rect.w / Math.max(2.15, W + 0.55)) : Math.min(rect.h * 0.22, backMax, rect.w / Math.max(2.6, W + 1));
-    const y = rect.y + (row === 0 ? frontY : backY);
-    const usable = rect.w * (row === 0 ? 0.92 : 0.82) * Math.min(1, W / 2.2);
-    const left = rect.x + (rect.w - usable) / 2;
-    let acc = 0;
-    units.forEach((e, i) => {
-      const x = left + ((acc + weights[i] / 2) / W) * usable;
-      acc += weights[i];
-      const size = Math.min(base * e.scale * (row === 1 ? 0.92 : 1), (usable / W) * weights[i] * 1.05, row === 0 ? frontMax : backMax);
-      out.set(e.uid, { x, y, size });
-    });
+  if (!alive.length) return out;
+  const front = alive.filter((e) => e.row === 0);
+  const back = alive.filter((e) => e.row === 1);
+  // 왼쪽부터: 전열·후열을 번갈아, 남는 쪽은 뒤에 (가운데가 비지 않게 바깥 → 안쪽 순서는 그대로)
+  const order: typeof alive = [];
+  for (let i = 0; i < Math.max(front.length, back.length); i++) {
+    if (back[i] && i % 2 === 1) order.push(back[i]);
+    if (front[i]) order.push(front[i]);
+    if (back[i] && i % 2 === 0) order.push(back[i]);
   }
+  const PLATE = 68; // 발밑 이름표·체력·버팀·상태 높이
+  const INTENT = 34; // 머리 위 의도 표시
+  const HEAD = 1.25; // 형체 높이 ÷ 크기 (그림 기준)
+  const feet = rect.y + rect.h - PLATE;
+  const lift = Math.min(rect.h * 0.13, 46);
+  const weights = order.map((e) => Math.max(0.6, e.scale) * (e.row === 1 ? 0.82 : 1));
+  const W = weights.reduce((a, b) => a + b, 0);
+  const usable = rect.w * 0.96;
+  const left = rect.x + (rect.w - usable) / 2;
+  let acc = 0;
+  order.forEach((e, i) => {
+    const slot = (usable / W) * weights[i];
+    const x = left + ((acc + weights[i] / 2) / W) * usable;
+    acc += weights[i];
+    const y = feet - (e.row === 1 ? lift : 0);
+    const room = (y - rect.y - INTENT) / HEAD; // 의도 표시가 화면 위로 넘치지 않을 만큼
+    const base = Math.min(rect.h * 0.5, rect.w * 0.42) * Math.max(0.6, e.scale) * (e.row === 1 ? 0.84 : 1);
+    const size = Math.max(36, Math.min(base, slot * 1.02, room));
+    out.set(e.uid, { x, y, size, slot });
+  });
   return out;
 }
 
