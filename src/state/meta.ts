@@ -17,12 +17,14 @@ export interface Meta {
   speed: 1 | 2;
   /** 이미 본 도움말 */
   tips: string[];
+  /** 행동 전에 확인 창을 띄운다 */
+  confirm: boolean;
 }
 
 const KEY = 'abyss.meta';
 
 export function defaultMeta(): Meta {
-  return { v: 1, unlocked: ['soldier'], codex: {}, essences: [], relics: [], runs: 0, wins: 0, bestAct: 1, abyss: 0, speed: 1, tips: [] };
+  return { v: 1, unlocked: ['soldier'], codex: {}, essences: [], relics: [], runs: 0, wins: 0, bestAct: 1, abyss: 0, speed: 1, tips: [], confirm: true };
 }
 
 export function loadMeta(): Meta {

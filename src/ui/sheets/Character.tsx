@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { EQUIPS, MADNESS, RELICS, RUNES, SKILLS } from '../../engine/registry';
 import { equipFromBag, equipSkill, essenceCap, essenceUsed, socketRune, unequip, xpToNext } from '../../engine/run';
 import type { EquipSlot } from '../../engine/types';
-import { apply } from '../../state/actions';
+import { applyAsk } from '../ask';
 import { store } from '../../state/store';
 import { EssenceCard, LootCard, SkillCard } from '../cards';
 import { Icon, Sheet, showTip } from '../components';
@@ -68,7 +68,8 @@ function SkillsTab() {
           const pick = () => {
             if (lock) return;
             if (rune !== null && s) {
-              void apply((r) => (socketRune(r, s.uid, rune) ? null : '이 스킬에는 넣을 수 없는 각인이다'), '각인을 새겼다');
+              const rd = RUNES.get(run.runes[rune]);
+              void applyAsk({ title: `${SKILLS.get(s.id)?.name}에 ${rd?.name} 새기기`, icon: rd?.icon, color: '#c08cff', body: rd?.desc, ok: '새긴다' }, (r) => (socketRune(r, s.uid, rune) ? null : '이 스킬에는 넣을 수 없는 각인이다'), '각인을 새겼다');
               setRune(null);
               return;
             }
@@ -87,7 +88,7 @@ function SkillsTab() {
                     class="chip"
                     onClick={(e) => {
                       e.stopPropagation();
-                      void apply((r) => equipSkill(r, i, null));
+                      void applyAsk({ title: `${SKILLS.get(s.id)?.name} 빼기`, icon: SKILLS.get(s.id)?.icon, body: '슬롯에서 빼서 스킬 목록으로 돌려놓는다.', ok: '뺀다' }, (r) => equipSkill(r, i, null));
                     }}
                   >
                     빼기
@@ -141,7 +142,8 @@ function SkillsTab() {
                 store.toast('먼저 바꿀 슬롯을 고르세요', 'info');
                 return;
               }
-              void apply((r) => equipSkill(r, target, s.uid));
+              const cur = run.slots[target] ? run.skills.find((x) => x.uid === run.slots[target]) : null;
+              void applyAsk({ title: `${SKILLS.get(s.id)?.name} 장착`, icon: SKILLS.get(s.id)?.icon, body: cur ? `${SKILLS.get(cur.id)?.name} 대신 넣는다.` : '빈 슬롯에 넣는다.', ok: '장착한다' }, (r) => equipSkill(r, target, s.uid));
               setSlot(null);
             }}
             right={s.from ? <span class="chip" style={{ color: '#ff9ab0' }}>정수</span> : undefined}
@@ -192,7 +194,7 @@ function EquipTab() {
                       class="chip"
                       onClick={(e) => {
                         e.stopPropagation();
-                        void apply((r) => (unequip(r, slot) ? null : '가방이 가득 찼다'));
+                        void applyAsk({ title: `${EQUIPS.get(it.id)?.name} 해제`, icon: EQUIPS.get(it.id)?.icon, body: '가방으로 옮긴다.', ok: '해제한다' }, (r) => (unequip(r, slot) ? null : '가방이 가득 찼다'));
                       }}
                     >
                       해제
@@ -213,7 +215,7 @@ function EquipTab() {
         {run.bag.map((it) => (
           <LootCard
             it={{ kind: 'equip', id: it.id, n: it.lvl }}
-            onClick={() => !lock && apply((r) => (equipFromBag(r, it.uid) ? null : '장착할 수 없다'), `${EQUIPS.get(it.id)?.name} 장착`)}
+            onClick={() => !lock && applyAsk({ title: `${EQUIPS.get(it.id)?.name} 장착`, icon: EQUIPS.get(it.id)?.icon, body: EQUIPS.get(it.id)?.desc, ok: '장착한다' }, (r) => (equipFromBag(r, it.uid) ? null : '장착할 수 없다'), `${EQUIPS.get(it.id)?.name} 장착`)}
           />
         ))}
       </div>

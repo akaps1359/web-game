@@ -308,19 +308,16 @@ export class AudioEngine {
     if (master) g.master.gain.rampTo(this.masterTarget(), ramp, t);
   }
 
-  /** 페이지가 가려지면 짧게 페이드 후 AudioContext 일시정지 */
+  /** 페이지가 가려지면 짧게 페이드아웃 */
   pause(): void {
     if (this.hidden) return;
     this.hidden = true;
     const g = this.g;
     if (!g) return;
     const t = immediate();
+    // 컨텍스트를 직접 suspend하지 않는다 — iOS는 스크립트가 멈춘 컨텍스트를 돌아와도 스스로 되살리지 않아 소리가 끊긴 채로 남는다.
+    // 소리만 끄고, 백그라운드 중단(interrupted)은 브라우저에 맡긴 뒤 돌아온 첫 터치에서 index.ts가 다시 깨운다.
     g.master.gain.rampTo(0, 0.06, t);
-    setTimeout(() => {
-      if (!this.hidden) return;
-      const raw = g.ctx.rawContext;
-      if ('close' in raw && raw.state === 'running') raw.suspend().catch(() => undefined);
-    }, 90);
   }
 
   /** 다시 보이면 재개 (iOS에서 실패하면 다음 터치 때 index.ts의 제스처 리스너가 재시도) */

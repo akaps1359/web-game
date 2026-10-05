@@ -535,3 +535,167 @@ h2.title {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ───────── 행동 확인 창 ───────── */
+.ask {
+  width: min(92vw, 420px);
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 16px;
+  animation: sheet-up 0.18s;
+}
+.ask-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.ask-btns .btn {
+  flex: 1;
+}
+.ask-btns .btn:last-child {
+  flex: 1.6;
+}
+
+/* ───────── 스킬 강화 ───────── */
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.skill-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(20, 24, 30, 0.7);
+  min-height: 78px;
+}
+.skill-tile .nm {
+  font-size: 11.5px;
+  line-height: 1.2;
+  text-align: center;
+  word-break: keep-all;
+}
+.skill-tile.sel {
+  border-color: var(--brass-2);
+  box-shadow: 0 0 0 2px rgba(240, 207, 122, 0.55), 0 0 18px rgba(240, 207, 122, 0.35);
+  background: rgba(60, 50, 34, 0.45);
+}
+.skill-tile.off {
+  opacity: 0.35;
+}
+.upfx {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  animation: fade 0.2s;
+  overflow: hidden;
+}
+.upfx .card-wrap {
+  position: relative;
+  width: min(88vw, 380px);
+  animation: upfx-pop 0.7s cubic-bezier(0.2, 1.4, 0.3, 1);
+}
+.upfx .card-wrap .card {
+  width: 100%;
+  border-color: var(--brass-2);
+  box-shadow: 0 0 30px rgba(240, 207, 122, 0.6), 0 0 80px rgba(240, 207, 122, 0.25);
+}
+.upfx .card-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 236, 180, 0.7) 50%, transparent 65%);
+  background-size: 260% 100%;
+  background-position: 160% 0;
+  mix-blend-mode: screen;
+  animation: upfx-shine 0.9s 0.25s ease-out forwards;
+}
+.upfx .label {
+  font-family: var(--serif);
+  font-weight: 800;
+  font-size: 30px;
+  color: var(--brass-2);
+  text-shadow: 0 0 18px rgba(240, 207, 122, 0.9);
+  animation: upfx-label 0.6s 0.1s both;
+}
+.upfx .burst {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 224, 150, 0.6), transparent 62%);
+  animation: upfx-burst 0.9s ease-out forwards;
+  pointer-events: none;
+}
+.upfx .spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: 50%;
+  background: #ffe6a0;
+  box-shadow: 0 0 10px #ffd070;
+  animation: upfx-spark var(--d) 0.05s ease-out forwards;
+  opacity: 0;
+}
+@keyframes upfx-pop {
+  0% {
+    transform: scale(0.7) translateY(20px);
+    opacity: 0;
+    filter: brightness(3);
+  }
+  60% {
+    transform: scale(1.06);
+    opacity: 1;
+    filter: brightness(1.6);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+@keyframes upfx-shine {
+  to {
+    background-position: -100% 0;
+  }
+}
+@keyframes upfx-label {
+  from {
+    transform: translateY(12px) scale(0.8);
+    opacity: 0;
+  }
+}
+@keyframes upfx-burst {
+  from {
+    transform: scale(0.2);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+@keyframes upfx-spark {
+  0% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateX(170px);
+  }
+}

@@ -1,9 +1,19 @@
 import { absorbBlock } from '../../engine/run';
 import { choose, leaveReward, take } from '../../state/actions';
 import { store } from '../../state/store';
-import { EssenceCard, LootCard } from '../cards';
+import { EssenceCard, LootCard, lootInfo, lootName } from '../cards';
+import { ask, confirmThen } from '../ask';
+import { ESSENCES } from '../../engine/registry';
+import type { LootItem } from '../../engine/run';
 import { Icon } from '../components';
 import { RunHud } from '../Hud';
+
+/** 전리품을 가질지 묻는다 (골드·등유는 묻지 않음) */
+function askLoot(it: LootItem, verb: string) {
+  if (it.kind === 'gold' || it.kind === 'oil') return Promise.resolve(true);
+  const info = lootInfo(it);
+  return ask({ title: `${lootName(it)} — ${verb}`, icon: info.icon, color: info.color, body: [info.meta, info.desc].filter(Boolean).join('\n'), ok: verb });
+}
 
 const TITLE: Record<string, string> = {
   normal: '전투 승리',
@@ -62,7 +72,16 @@ export function RewardScreen() {
                   ) : (
                     <div style={{ display: 'grid', gap: 6 }}>
                       {why && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{why}</div>}
-                      <button class="btn eldritch wide" disabled={!!why} onClick={() => take(it)}>
+                      <button
+                        class="btn eldritch wide"
+                        disabled={!!why}
+                        onClick={() =>
+                          confirmThen(
+                            { title: `${ESSENCES.get(it.id)?.name ?? '정수'} 흡수`, icon: 'gi:heart-beats', color: 'var(--eldritch)', body: '흡수한 정수는 정수 한도를 차지한다. 지우려면 거점이나 성소에서 대가를 치러야 한다.', ok: '흡수한다' },
+                            () => take(it),
+                          )
+                        }
+                      >
                         <Icon name="gi:heart-beats" size={18} />
                         흡수한다
                       </button>
@@ -80,7 +99,9 @@ export function RewardScreen() {
             <LootCard
               it={it}
               off={it.taken}
-              onClick={() => !it.taken && take(it)}
+              onClick={() => !it.taken && askLoot(it, '줍기').then((ok) => {
+                  if (ok) void take(it);
+                })}
               right={<span class="chip">{it.taken ? '획득' : '줍기'}</span>}
             />
           ))}
@@ -100,7 +121,9 @@ export function RewardScreen() {
                     if (it.kind === 'upgrade') {
                       store.sheet = { kind: 'pick', title: '강화할 스킬', purpose: 'upgrade-reward', idx: i };
                       store.emit();
-                    } else void choose(i);
+                    } else void askLoot(it, '고르기').then((ok) => {
+                      if (ok) void choose(i);
+                    });
                   }}
                 />
               ))}
@@ -109,7 +132,10 @@ export function RewardScreen() {
         )}
       </div>
       <div class="footer">
-        <button class={`btn wide ${pending ? 'ghost' : ''}`} onClick={() => leaveReward()}>
+        <button
+          class={`btn wide ${pending ? 'ghost' : ''}`}
+          onClick={() => (pending ? confirmThen({ title: '남은 보상을 두고 떠날까요?', icon: 'gi:exit-door', body: '가져가지 않은 보상은 사라진다.', ok: '떠난다', danger: true }, leaveReward) : leaveReward())}
+        >
           {pending ? '남기고 떠난다' : '계속'}
         </button>
       </div>

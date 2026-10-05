@@ -12,6 +12,7 @@ import { leavePlace } from '../../engine/places';
 import { openShop } from '../../engine/shop';
 import { refresh } from '../../state/actions';
 import { sound } from '../../sound';
+import { confirmThen } from '../ask';
 
 export function DungeonScreen() {
   const run = store.run!;
@@ -188,13 +189,10 @@ export function DungeonScreen() {
               class="slot-item"
               onClick={() =>
                 def &&
-                showTip({
-                  title: def.name,
-                  icon: def.icon,
-                  body: def.desc + (def.combat ? '\n(전투 중에만 사용)' : ''),
-                })
+                (def.combat
+                  ? showTip({ title: def.name, icon: def.icon, body: def.desc + '\n(전투 중에만 사용)' })
+                  : confirmThen({ title: `${def.name} 사용`, icon: def.icon, body: def.desc, ok: '사용한다' }, () => useItem(i)))
               }
-              onDblClick={() => def && !def.combat && useItem(i)}
             >
               {def ? <Icon name={def.icon} size={22} color="var(--brass-2)" /> : <span class="muted">·</span>}
             </button>
@@ -301,7 +299,7 @@ function RoomPanel() {
   let action = null;
   if (here.rift) {
     action = (
-      <button class="btn eldritch wide" onClick={() => riftEnter()}>
+      <button class="btn eldritch wide" onClick={() => confirmThen({ title: '균열에 들어갈까요?', icon: 'gi:magic-portal', color: 'var(--eldritch)', body: '균열 속 전투를 연달아 치르고, 균열 수호자를 쓰러뜨려야 나올 수 있다.', ok: '들어간다', danger: true }, riftEnter)}>
         <Icon name="gi:magic-portal" size={18} />
         균열에 들어간다 (수호자를 쓰러뜨려야 나올 수 있다)
       </button>
@@ -310,14 +308,14 @@ function RoomPanel() {
     const boss = ENCOUNTERS.find((e) => e.id === f.bossEnc);
     const name = boss ? ENEMIES.get(boss.enemies[0].id)?.name : '';
     action = (
-      <button class="btn danger wide" onClick={() => fightGuardian()}>
+      <button class="btn danger wide" onClick={() => confirmThen({ title: `「${name}」에게 도전할까요?`, icon: 'gi:dungeon-gate', body: f.act >= FINAL_ACT ? '마지막 싸움이다. 준비가 되었는지 확인하라.' : '층 수호자와 싸운다. 이기면 거점으로 간다.', ok: '도전한다', danger: true }, fightGuardian)}>
         <Icon name="gi:dungeon-gate" size={18} />
         {f.act >= FINAL_ACT ? `최후의 수호자 「${name}」에게 다가간다` : `층 수호자 「${name}」에게 도전`}
       </button>
     );
   } else if (here.type === 'lord' && !here.cleared) {
     action = (
-      <button class="btn danger wide" onClick={() => fightGuardian()}>
+      <button class="btn danger wide" onClick={() => confirmThen({ title: '계층군주에게 도전할까요?', icon: 'gi:crowned-skull', body: '이 층에서 가장 강한 존재다.', ok: '도전한다', danger: true }, fightGuardian)}>
         <Icon name="gi:crowned-skull" size={18} />
         계층군주에게 도전
       </button>

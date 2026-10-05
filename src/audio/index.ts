@@ -111,17 +111,34 @@ function waitRunning(ctx: BaseContext, ms: number): Promise<boolean> {
 }
 
 let listenersInstalled = false;
-/** 앱 전환/전화 등으로 'interrupted'·'suspended'가 되면 다음 터치에서 재개 */
+/** 백그라운드에서 돌아온 뒤 첫 터치에서 오디오를 다시 깨워야 하는가 */
+let kick = false;
+/**
+ * 앱 전환/전화 등으로 'interrupted'·'suspended'가 되면 다음 터치에서 재개.
+ * iOS 사파리는 돌아온 뒤 상태가 'running'인데도 소리가 안 나는 경우가 있어,
+ * 백그라운드에서 돌아온 첫 터치에서는 상태와 상관없이 suspend→resume을 한 번 돌리고 무음 버퍼로 오디오 세션을 깨운다.
+ */
 function installResumeListeners(): void {
   if (listenersInstalled || !hasDom) return;
   listenersInstalled = true;
   const ctx = getContext();
   const onGesture = () => {
-    if (document.hidden || engine.isHidden) return;
-    if (!isRunning(ctx)) {
-      ctx.resume().catch(() => undefined);
-      playSilentBuffer(ctx);
+    if (document.hidden) return;
+    if (engine.isHidden) engine.resume();
+    if (!kick && isRunning(ctx)) return;
+    kick = false;
+    const raw = ctx.rawContext as AudioContext;
+    try {
+      if (raw.state === 'running') void raw.suspend().catch(() => undefined);
+      void raw.resume().catch(() => undefined);
+    } catch {
+      /* 무시 */
     }
+    playSilentBuffer(ctx);
+    // 그래도 안 깨어났으면 다음 터치에서 다시
+    setTimeout(() => {
+      if (!isRunning(ctx)) kick = true;
+    }, 500);
   };
   for (const ev of ['touchend', 'pointerup', 'click', 'keydown']) {
     document.addEventListener(ev, onGesture, { capture: true, passive: true });
@@ -135,11 +152,19 @@ function installResumeListeners(): void {
 if (hasDom) {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) engine.pause();
-    else engine.resume();
+    else {
+      kick = true;
+      engine.resume();
+    }
   });
   window.addEventListener('pagehide', () => engine.pause());
   window.addEventListener('pageshow', () => {
-    if (!document.hidden) engine.resume();
+    if (document.hidden) return;
+    kick = true;
+    engine.resume();
+  });
+  window.addEventListener('focus', () => {
+    if (!document.hidden && !isRunning(getContext())) kick = true;
   });
 }
 

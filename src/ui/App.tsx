@@ -13,6 +13,7 @@ import { CharacterSheet } from './sheets/Character';
 import { SettingsSheet } from './sheets/Settings';
 import { PickSkillSheet } from './sheets/PickSkill';
 import { CodexSheet } from './sheets/Codex';
+import { AskView } from './ask';
 
 export function App() {
   const s = useStore();
@@ -59,6 +60,7 @@ export function App() {
       {sheet?.kind === 'codex' && <CodexSheet />}
       <Toasts />
       <TipView />
+      <AskView />
     </>
   );
 }

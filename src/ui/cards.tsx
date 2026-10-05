@@ -129,13 +129,16 @@ export function lootName(it: LootItem): string {
   }
 }
 
-/** 스킬 외 전리품 카드 */
-export function LootCard({ it, sel, off, onClick, right }: { it: LootItem; sel?: boolean; off?: boolean; onClick?: () => void; right?: ComponentChildren }) {
-  if (it.kind === 'skill') return <SkillCard id={it.id} sel={sel} off={off} onClick={onClick} right={right} />;
+/** 전리품의 아이콘·색·분류·설명 (카드와 확인 창이 같이 쓴다) */
+export function lootInfo(it: LootItem): { icon: string; color: string; meta: string; desc: string } {
   let icon = 'gi:help';
   let color = '#cfc8b8';
   let meta = '';
   let desc = '';
+  if (it.kind === 'skill') {
+    const d = SKILLS.get(it.id);
+    if (d) return { icon: d.icon, color: SCHOOL_COLOR[d.school], meta: `스킬 · ${SCHOOL_NAME[d.school]}`, desc: skillDesc(d, 0).map((x) => x.t).join('') };
+  }
   switch (it.kind) {
     case 'relic': {
       const d = RELICS.get(it.id)!;
@@ -195,6 +198,13 @@ export function LootCard({ it, sel, off, onClick, right }: { it: LootItem; sel?:
       meta = '정수';
       break;
   }
+  return { icon, color, meta, desc };
+}
+
+/** 스킬 외 전리품 카드 */
+export function LootCard({ it, sel, off, onClick, right }: { it: LootItem; sel?: boolean; off?: boolean; onClick?: () => void; right?: ComponentChildren }) {
+  if (it.kind === 'skill') return <SkillCard id={it.id} sel={sel} off={off} onClick={onClick} right={right} />;
+  const { icon, color, meta, desc } = lootInfo(it);
   return (
     <button class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''}`} onClick={onClick}>
       <div class="badge">

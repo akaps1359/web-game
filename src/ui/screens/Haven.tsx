@@ -2,7 +2,8 @@ import { useState } from 'preact/hooks';
 import { ESSENCES, EQUIPS, FLOORS, MADNESS } from '../../engine/registry';
 import { CURE_COST, cureMadness, inn, leaveHaven, purgeEssence, removalCost, smith, smithCost, TRAIN_COST } from '../../engine/places';
 import { openShop } from '../../engine/shop';
-import { apply, refresh } from '../../state/actions';
+import { refresh } from '../../state/actions';
+import { applyAsk } from '../ask';
 import { store } from '../../state/store';
 import { EssenceCard } from '../cards';
 import { Icon } from '../components';
@@ -49,7 +50,7 @@ export function HavenScreen() {
       <div class="scroll" style={{ flex: 1, padding: '6px 12px 12px' }}>
         {tab === 'inn' && (
           <div class="list">
-            <button class={`card ${run.innUsed ? 'off' : ''}`} onClick={() => !run.innUsed && apply((r) => inn(r))}>
+            <button class={`card ${run.innUsed ? 'off' : ''}`} onClick={() => !run.innUsed && applyAsk({ title: '여관에서 쉴까요?', icon: 'gi:bed', ok: '쉰다' }, (r) => inn(r))}>
               <div class="badge">
                 <Icon name="gi:wood-cabin" size={28} color="#ffb070" />
               </div>
@@ -89,7 +90,7 @@ export function HavenScreen() {
               const def = EQUIPS.get(it.id)!;
               const max = it.lvl >= 2;
               return (
-                <button class={`card ${max ? 'off' : ''}`} onClick={() => !max && apply((r) => smith(r, slot), `${def.name} 강화`)}>
+                <button class={`card ${max ? 'off' : ''}`} onClick={() => !max && applyAsk({ title: `${def.name} 강화`, icon: def.icon, body: `+${it.lvl} → +${it.lvl + 1}`, lines: [{ label: '비용', value: `${smithCost(it.lvl)} 골드` }], ok: '강화한다' }, (r) => smith(r, slot), `${def.name} 강화`)}>
                   <div class="badge">
                     <Icon name={def.icon} size={28} />
                   </div>
@@ -112,7 +113,7 @@ export function HavenScreen() {
             {mad.map((m) => {
               const d = MADNESS.get(m)!;
               return (
-                <button class="card" onClick={() => apply((r) => cureMadness(r, m))}>
+                <button class="card" onClick={() => applyAsk({ title: `${MADNESS.get(m)?.name ?? '광기'} 치료`, icon: MADNESS.get(m)?.icon, body: `${CURE_COST} 골드`, ok: '치료한다' }, (r) => cureMadness(r, m))}>
                   <div class="badge">
                     <Icon name={d.icon} size={26} color="#b99bff" />
                   </div>
@@ -130,7 +131,7 @@ export function HavenScreen() {
                 color={es.color}
                 guardian={es.guardian}
                 footer={
-                  <button class="btn danger wide" disabled={ESSENCES.get(es.id)?.lord || run.player.gold < removalCost(run)} onClick={() => apply((r) => purgeEssence(r, es.uid), '정수를 지웠다')}>
+                  <button class="btn danger wide" disabled={ESSENCES.get(es.id)?.lord || run.player.gold < removalCost(run)} onClick={() => applyAsk({ title: `${ESSENCES.get(es.id)?.name ?? '정수'}를 지울까요?`, icon: 'gi:heart-beats', body: `${removalCost(run)} 골드. 이 정수가 준 스탯·패시브·스킬이 모두 사라지고 되돌릴 수 없다.`, ok: '지운다', danger: true }, (r) => purgeEssence(r, es.uid), '정수를 지웠다')}>
                     지운다
                   </button>
                 }
@@ -140,7 +141,7 @@ export function HavenScreen() {
         )}
       </div>
       <div class="footer">
-        <button class="btn danger wide" onClick={() => apply((r) => leaveHaven(r))}>
+        <button class="btn danger wide" onClick={() => applyAsk({ title: '다음 층으로 내려갈까요?', icon: 'gi:stairs', body: '거점을 떠나면 다음 수호자를 쓰러뜨릴 때까지 돌아올 수 없다.', ok: '내려간다', danger: true }, (r) => leaveHaven(r))}>
           <Icon name="gi:dungeon-gate" size={18} />
           {`${run.act + 1}층으로 내려간다${next ? ` · ${next.name}` : ''}`}
         </button>

@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { ESSENCES, MADNESS, EQUIPS } from '../../engine/registry';
 import { CAMP_INFO, camp, campRefuel, cureMadness, CURE_COST, forbiddenOffer, acceptForbidden, leavePlace, purgeEssence, removalCost, shrinePray, type CampAction } from '../../engine/places';
-import { apply } from '../../state/actions';
+import { applyAsk } from '../ask';
 import { store } from '../../state/store';
 import { EssenceCard, SkillCard } from '../cards';
 import { Icon, showTip } from '../components';
@@ -45,7 +45,7 @@ export function CampScreen() {
                     store.sheet = { kind: 'pick', title: '수련할 스킬', purpose: 'train-camp' };
                     store.emit();
                   } else if (k === 'tinker') setTinker(true);
-                  else void apply((r) => camp(r, k));
+                  else void applyAsk({ title: CAMP_INFO[k].name, icon: CAMP_ICON[k], body: `${CAMP_INFO[k].desc} · ${CAMP_INFO[k].hours}시간이 흐른다. 야영지에선 한 가지만 할 수 있다.`, ok: '한다' }, (r) => camp(r, k));
                 }}
               >
                 <div class="badge">
@@ -69,7 +69,7 @@ export function CampScreen() {
               if (!it) return null;
               const def = EQUIPS.get(it.id)!;
               return (
-                <button class={`card ${it.lvl >= 2 ? 'off' : ''}`} onClick={() => apply((r) => camp(r, 'tinker', slot)).then(() => setTinker(false))}>
+                <button class={`card ${it.lvl >= 2 ? 'off' : ''}`} onClick={() => applyAsk({ title: `${def.name} 손질`, icon: def.icon, body: `+${it.lvl} → +${it.lvl + 1}. ${CAMP_INFO.tinker.hours}시간이 흐른다.`, ok: '손질한다' }, (r) => camp(r, 'tinker', slot)).then(() => setTinker(false))}>
                   <div class="badge">
                     <Icon name={def.icon} size={26} />
                   </div>
@@ -89,11 +89,11 @@ export function CampScreen() {
         )}
       </div>
       <div class="footer">
-        <button class="btn ghost" disabled={refueled || run.light >= 100} onClick={() => apply((r) => campRefuel(r), '등불을 채웠다 (+30)')}>
+        <button class="btn ghost" disabled={refueled || run.light >= 100} onClick={() => applyAsk({ title: '불씨를 옮길까요?', icon: 'gi:old-lantern', body: '등불 +30. 이 야영지에서 한 번.', ok: '옮긴다' }, (r) => campRefuel(r), '등불을 채웠다 (+30)')}>
           <Icon name="gi:old-lantern" size={18} />
           불씨 옮기기
         </button>
-        <button class="btn" onClick={() => apply((r) => leavePlace(r))}>
+        <button class="btn" onClick={() => applyAsk({ title: '이곳을 떠날까요?', icon: 'gi:exit-door', ok: '떠난다' }, (r) => leavePlace(r))}>
           떠난다
         </button>
       </div>
@@ -121,7 +121,7 @@ export function ShrineScreen() {
         </h2>
         {mode === 'main' && (
           <div class="list">
-            <button class={`card ${prayed ? 'off' : ''}`} onClick={() => !prayed && apply((r) => shrinePray(r))}>
+            <button class={`card ${prayed ? 'off' : ''}`} onClick={() => !prayed && applyAsk({ title: '기도할까요?', icon: 'gi:prayer-beads', body: '정신력 +15 (한 번)', ok: '기도한다' }, (r) => shrinePray(r))}>
               <div class="badge">
                 <Icon name="gi:prayer-beads" size={26} color="#8fc4ea" />
               </div>
@@ -184,7 +184,7 @@ export function ShrineScreen() {
                   <button
                     class="btn danger wide"
                     disabled={ESSENCES.get(es.id)?.lord || run.player.gold < removalCost(run)}
-                    onClick={() => apply((r) => purgeEssence(r, es.uid), '정수를 지웠다').then(() => setMode('main'))}
+                    onClick={() => applyAsk({ title: `${ESSENCES.get(es.id)?.name ?? '정수'}를 지울까요?`, icon: 'gi:heart-beats', body: `${removalCost(run)} 골드. 이 정수가 준 스탯·패시브·스킬이 모두 사라지고 되돌릴 수 없다.`, ok: '지운다', danger: true }, (r) => purgeEssence(r, es.uid), '정수를 지웠다').then(() => setMode('main'))}
                   >
                     지운다
                   </button>
@@ -201,7 +201,7 @@ export function ShrineScreen() {
             {mad.map((m) => {
               const d = MADNESS.get(m)!;
               return (
-                <button class="card" onClick={() => apply((r) => cureMadness(r, m)).then(() => setMode('main'))}>
+                <button class="card" onClick={() => applyAsk({ title: `${d.name} 치료`, icon: d.icon, body: `${CURE_COST} 골드`, ok: '치료한다' }, (r) => cureMadness(r, m)).then(() => setMode('main'))}>
                   <div class="badge">
                     <Icon name={d.icon} size={26} color="#b99bff" />
                   </div>
@@ -222,7 +222,7 @@ export function ShrineScreen() {
           <div class="list">
             <div class="section-label">금기의 지식 하나를 받아들인다</div>
             {offers.map((id) => (
-              <SkillCard id={id} onClick={() => apply((r) => acceptForbidden(r, id)).then(() => setMode('main'))} />
+              <SkillCard id={id} onClick={() => applyAsk({ title: '금기를 받아들일까요?', icon: 'gi:tentacle-heart', color: 'var(--eldritch)', body: '최대 정신력 -8을 바치고 이 스킬을 얻는다.', ok: '받아들인다', danger: true }, (r) => acceptForbidden(r, id)).then(() => setMode('main'))} />
             ))}
             <button class="btn ghost" onClick={() => setMode('main')}>
               거절한다
@@ -231,7 +231,7 @@ export function ShrineScreen() {
         )}
       </div>
       <div class="footer">
-        <button class="btn" onClick={() => apply((r) => leavePlace(r))}>
+        <button class="btn" onClick={() => applyAsk({ title: '이곳을 떠날까요?', icon: 'gi:exit-door', ok: '떠난다' }, (r) => leavePlace(r))}>
           떠난다
         </button>
         <button

@@ -6,6 +6,7 @@ import { store } from '../../state/store';
 import { sound } from '../../sound';
 import { Icon } from '../components';
 import { SCHOOL_COLOR, SCHOOL_NAME } from '../text';
+import { confirmThen } from '../ask';
 
 export function Title() {
   const [mode, setMode] = useState<'main' | 'origin'>('main');
@@ -27,7 +28,7 @@ export function Title() {
             {[...ORIGINS.values()].map((o) => {
               const locked = !meta.unlocked.includes(o.id);
               return (
-                <button class={`card ${locked ? 'off' : ''}`} style={{ padding: 14 }} onClick={() => !locked && newGame(o.id, asc)}>
+                <button class={`card ${locked ? 'off' : ''}`} style={{ padding: 14 }} onClick={() => !locked && confirmThen({ title: `${o.name}(으)로 여정을 시작할까요?`, icon: o.icon, body: hasSave() ? '저장된 여정은 사라진다.' : undefined, ok: '시작한다', danger: hasSave() }, () => newGame(o.id, asc))}>
                   <div class="badge" style={{ width: 56, height: 56 }}>
                     <Icon name={locked ? 'gi:padlock' : o.icon} size={34} color={locked ? 'var(--ink-3)' : 'var(--brass-2)'} />
                   </div>

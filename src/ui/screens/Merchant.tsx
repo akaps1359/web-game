@@ -1,10 +1,10 @@
 import { EQUIPS } from '../../engine/registry';
 import { buy, sell, sellPrice } from '../../engine/shop';
 import { leavePlace } from '../../engine/places';
-import { apply } from '../../state/actions';
 import { store } from '../../state/store';
 import { sound } from '../../sound';
-import { LootCard } from '../cards';
+import { LootCard, lootInfo, lootName } from '../cards';
+import { applyAsk } from '../ask';
 import { Icon } from '../components';
 import { RunHud } from '../Hud';
 
@@ -22,7 +22,10 @@ export function ShopList() {
             off={it.sold}
             onClick={() => {
               if (it.sold) return;
-              void apply((r) => {
+              const loot = { kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined } as Parameters<typeof lootInfo>[0];
+              const info = lootInfo(loot);
+              if (!afford) return void store.toast('골드가 모자라다', 'bad');
+              void applyAsk({ title: `${lootName(loot)} 구매`, icon: info.icon, color: info.color, body: info.desc || info.meta, lines: [{ label: '가격', value: `${it.price} 골드` }, { label: '남는 골드', value: `${run.player.gold - it.price} 골드` }], ok: '산다' }, (r) => {
                 const why = buy(r, i);
                 if (!why) sound.sfx('coin');
                 return why;
@@ -50,7 +53,7 @@ export function SellList() {
         {run.bag.map((it) => (
           <LootCard
             it={{ kind: 'equip', id: it.id, n: it.lvl }}
-            onClick={() => apply((r) => sell(r, it.uid), `${EQUIPS.get(it.id)?.name} 판매`)}
+            onClick={() => applyAsk({ title: `${EQUIPS.get(it.id)?.name} 판매`, icon: EQUIPS.get(it.id)?.icon, lines: [{ label: '받는 골드', value: `+${sellPrice(run, it.uid)} 골드` }], ok: '판다' }, (r) => sell(r, it.uid), `${EQUIPS.get(it.id)?.name} 판매`)}
             right={<span class="chip num" style={{ color: 'var(--good)' }}>+{sellPrice(run, it.uid)}G</span>}
           />
         ))}
@@ -79,7 +82,7 @@ export function MerchantScreen() {
         <SellList />
       </div>
       <div class="footer">
-        <button class="btn wide" onClick={() => apply((r) => leavePlace(r))}>
+        <button class="btn wide" onClick={() => applyAsk({ title: '상인을 떠날까요?', icon: 'gi:exit-door', ok: '떠난다' }, (r) => leavePlace(r))}>
           떠난다
         </button>
       </div>

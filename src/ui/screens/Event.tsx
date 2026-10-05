@@ -3,6 +3,7 @@ import { eventChoose, eventLeave } from '../../state/actions';
 import { store } from '../../state/store';
 import { Icon } from '../components';
 import { RunHud } from '../Hud';
+import { confirmThen } from '../ask';
 
 export function EventScreen() {
   const run = store.run!;
@@ -24,7 +25,7 @@ export function EventScreen() {
         </div>
         <div class="list" style={{ marginTop: 14 }}>
           {view.choices.map((ch, i) => (
-            <button class={`btn wide choice-btn ${ch.disabled ? 'off' : ''}`} onClick={() => eventChoose(i)}>
+            <button class={`btn wide choice-btn ${ch.disabled ? 'off' : ''}`} onClick={() => (ch.disabled ? eventChoose(i) : confirmThen({ title: ch.label, icon: view.icon, body: ch.hint || undefined, ok: '이렇게 한다' }, () => eventChoose(i)))}>
               <span>{ch.label}</span>
               {(ch.hint || ch.disabled) && <span class="hint">{ch.disabled || ch.hint}</span>}
             </button>
@@ -33,7 +34,10 @@ export function EventScreen() {
       </div>
       {done && (
         <div class="footer">
-          <button class="btn wide" onClick={() => eventLeave()}>
+          <button
+            class="btn wide"
+            onClick={() => (run.event?.fight ? confirmThen({ title: '맞서 싸울까요?', icon: 'gi:crossed-swords', ok: '싸운다', danger: true }, eventLeave) : eventLeave())}
+          >
             {run.event?.fight ? '맞서 싸운다' : '계속'}
           </button>
         </div>
