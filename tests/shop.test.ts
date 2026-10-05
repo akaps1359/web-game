@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import '../src/content';
 import { SKILLS } from '../src/engine/registry';
 import { learnSkill, newRun } from '../src/engine/run';
-import { discardSkill, sellSkill, skillLockReason, skillSellPrice } from '../src/engine/shop';
+import { discardSkill, sellPrice, sellSkill, skillLockReason, skillSellPrice } from '../src/engine/shop';
+import { unequip } from '../src/engine/run';
 
 describe('스킬 처분', () => {
   const someSkill = [...SKILLS.values()].find((s) => s.rarity === 'uncommon')!.id;
@@ -35,5 +36,15 @@ describe('스킬 처분', () => {
     expect(sellSkill(run, equipped)).not.toBeNull();
     const s = learnSkill(run, someSkill, 'essence-uid')!;
     expect(skillLockReason(run, s.uid)).not.toBeNull();
+  });
+
+  it('시작할 때 받은 기본 템은 팔아도 0골드', () => {
+    const run = newRun({ seed: 10, origin: 'soldier' });
+    const starter = run.skills.find((x) => !run.slots.includes(x.uid)) ?? run.skills[0];
+    expect(starter.starter).toBe(true);
+    expect(skillSellPrice(run, starter.uid)).toBe(0);
+    const weapon = run.equip.weapon!;
+    expect(unequip(run, 'weapon')).toBe(true);
+    expect(sellPrice(run, weapon.uid)).toBe(0);
   });
 });

@@ -124,6 +124,8 @@ export function sellPrice(run: RunState, itemUid: string): number {
   const it = run.bag.find((x) => x.uid === itemUid);
   if (!it) return 0;
   const def = need(EQUIPS, it.id, '장비');
+  // 기본 템(시작 장비·기본 등급)은 값이 없다
+  if (it.starter || def.rarity === 'basic') return 0;
   return Math.round(((PRICE.equip[def.rarity] ?? 50) * (1 + 0.5 * it.lvl)) / 2);
 }
 
@@ -144,6 +146,8 @@ export function skillSellPrice(run: RunState, skillUid: string): number {
   const s = run.skills.find((x) => x.uid === skillUid);
   const def = s && SKILLS.get(s.id);
   if (!s || !def) return 0;
+  // 기본 템(시작 스킬·기본 등급)은 값이 없다
+  if (s.starter || def.rarity === 'basic') return 0;
   const base = PRICE.skill[def.rarity] ?? PRICE.skill.common ?? 45;
   return Math.max(5, Math.round(base * SKILL_SELL_RATE * (s.lvl > 0 ? 1.5 : 1)));
 }

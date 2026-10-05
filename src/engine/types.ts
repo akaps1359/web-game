@@ -107,6 +107,8 @@ export interface OwnedSkill {
   runes: string[];
   /** 출처 (정수 uid 등). 정수를 제거하면 함께 사라짐 */
   from?: string;
+  /** 처음부터 가진 기본 스킬 (팔아도 0골드) */
+  starter?: boolean;
 }
 
 export interface OwnedEssence {
@@ -152,6 +154,8 @@ export interface OwnedItem {
   id: string;
   /** 강화 단계 0~2 */
   lvl: number;
+  /** 처음부터 가진 기본 장비 (팔아도 0골드) */
+  starter?: boolean;
 }
 
 export interface OwnedRelic {

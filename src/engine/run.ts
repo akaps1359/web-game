@@ -216,9 +216,13 @@ export function newRun(opts: { seed?: number; origin: string; asc?: number; know
     learned: { weak: {} },
     knownWeak: opts.knownWeak ?? {},
   };
-  for (const id of origin.skills) learnSkill(run, id);
+  // 시작 장비·스킬은 기본 템: 팔아도 0골드
+  for (const id of origin.skills) {
+    const s = learnSkill(run, id);
+    if (s) s.starter = true;
+  }
   for (const [slot, id] of Object.entries(origin.equip)) {
-    if (id) run.equip[slot as EquipSlot] = { uid: uid(run), id, lvl: 0 };
+    if (id) run.equip[slot as EquipSlot] = { uid: uid(run), id, lvl: 0, starter: true };
   }
   for (const id of origin.relics ?? []) gainRelic(run, id);
   for (const id of origin.consumables ?? []) addConsumable(run, id);
