@@ -287,8 +287,9 @@ reg.statuses([
     name: '화상',
     icon: 'gi:flame',
     kind: 'debuff',
-    desc: '턴 종료 시 {n} 피해 (줄어들지 않음). 화염 공격을 받으면 +2',
-    tickEnd(c, u, n) {
+    // 다른 지속 피해(출혈·독)처럼 자기 차례가 시작될 때, 행동하기 전에 먼저 정산한다
+    desc: '턴 시작 시 {n} 피해 (줄어들지 않음). 화염 공격을 받으면 +2',
+    tickStart(c, u, n) {
       c.damage({ src: null, tgt: u, base: n, type: 'true', tags: ['dot', 'burn'] });
     },
     hooks: {

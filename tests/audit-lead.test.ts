@@ -113,3 +113,35 @@ describe('점검: 판단 반영', () => {
     expect(rules).toContain('x-rule-escalation');
   });
 });
+
+describe('점검: 지속 피해는 행동 전에 정산', () => {
+  for (const id of ['bleed', 'poison', 'burn']) {
+    it(`${id}: 적은 자기 차례 시작에 먼저 피해를 받고, 그걸로 쓰러지면 행동하지 못한다`, () => {
+      const run = newRun({ seed: 21, origin: 'soldier' });
+      const c = startCombat(run, 'a1-cult', { anomaly: null });
+      for (const e of c.alive) {
+        e.hp = 3;
+        e.block = 0;
+        e.st[id] = 10;
+      }
+      const hp = c.p.hp;
+      const san = c.p.sanity;
+      c.endTurn();
+      expect(c.alive.length).toBe(0);
+      expect(c.p.hp).toBe(hp);
+      expect(c.p.sanity).toBe(san);
+    });
+
+    it(`${id}: 나는 내 차례가 시작될 때 행동하기 전에 피해를 받는다`, () => {
+      const run = newRun({ seed: 22, origin: 'soldier' });
+      const c = startCombat(run, 'a1-cult', { anomaly: null });
+      for (const e of c.alive) e.st.stun = 5;
+      c.p.st[id] = 4;
+      const hp = c.p.hp;
+      c.endTurn();
+      // 적은 기절해 아무것도 못 했으니, 줄어든 체력은 모두 내 차례 시작의 지속 피해다
+      expect(c.s.phase).toBe('player');
+      expect(c.p.hp).toBeLessThan(hp);
+    });
+  }
+});
