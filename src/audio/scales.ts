@@ -43,6 +43,7 @@ export const mtof = (m: number): number => 440 * Math.pow(2, (m - 69) / 12);
 export const MODES = {
   aeolian: [0, 2, 3, 5, 7, 8, 10],
   dorian: [0, 2, 3, 5, 7, 9, 10],
+  lydian: [0, 2, 4, 6, 7, 9, 11],
   phrygian: [0, 1, 3, 5, 7, 8, 10],
   phrygianDominant: [0, 1, 4, 5, 7, 8, 10],
   harmonicMinor: [0, 2, 3, 5, 7, 8, 11],
@@ -83,7 +84,7 @@ export interface Palette {
   /** 베이스 음역(옥타브 1~2)의 으뜸음 MIDI */
   root: number;
   mode: Mode;
-  /** 화음 근음(음계 차수) 진행 — 3막은 무작위 보행 */
+  /** 화음 근음(음계 차수) 진행 (무드가 wander를 켜면 무작위 보행) */
   prog: readonly number[];
   /** 기본 미분음 흔들림(cents) */
   micro: number;
@@ -96,14 +97,14 @@ export interface Palette {
 const PALETTES: Record<number, Palette> = {
   // 1막: 안개 낀 항구 — 자연단음계, 우울하지만 현실적
   1: { act: 1, root: 38, mode: MODES.aeolian, prog: [0, 5, 3, 4, 0, 5, 6, 4], micro: 0, tempo: 1, bright: 1 },
-  // 2막: 가라앉은 수도원 — 프리지안, 성가/의식
+  // 2막: 잿빛 수도원 — 프리지안, 성가/의식
   2: { act: 2, root: 35, mode: MODES.phrygian, prog: [0, 1, 0, 6, 3, 1, 0, 4], micro: 4, tempo: 0.93, bright: 0.85 },
-  // 3막: 꿈의 경계 — 온음음계, 떠도는 화성
-  3: { act: 3, root: 41, mode: MODES.wholeTone, prog: [0, 1, 3, 2, 0, 4, 1, 5], micro: 12, tempo: 0.9, bright: 1.1 },
+  // 3막: 얼어붙은 고대 도시 — E 도리안, 느리고 광대함. 차가운 고음과 얼음 밑의 낮은 드론
+  3: { act: 3, root: 40, mode: MODES.dorian, prog: [0, 3, 0, 6, 0, 3, 4, 0], micro: 5, tempo: 0.86, bright: 1.15 },
   // 4막: 별들의 궁정 — 로크리안 + 미분음
   4: { act: 4, root: 36, mode: MODES.locrian, prog: [0, 1, 0, 4, 0, 1, 5, 4], micro: 24, tempo: 0.86, bright: 0.8 },
-  // 최종: 잠든 자 — 이중 화성 단음계, 압도
-  5: { act: 5, root: 33, mode: MODES.doubleHarmonic, prog: [0, 1, 0, 5, 3, 1, 0, 6], micro: 30, tempo: 0.82, bright: 0.75 },
+  // 5막: 꿈꾸는 우주 (별의 태아) — 리디안. 광대한 경이 위에 #iv 감화음의 불안이 스민다
+  5: { act: 5, root: 33, mode: MODES.lydian, prog: [0, 1, 0, 3, 0, 1, 4, 3], micro: 16, tempo: 0.8, bright: 0.95 },
 };
 
 export function palette(act: number): Palette {
@@ -122,7 +123,7 @@ export class Harmony {
   constructor(
     readonly pal: Palette,
     private readonly prog: readonly number[] = pal.prog,
-    private readonly wander = pal.act === 3,
+    private readonly wander = false,
   ) {
     this.degree = prog[0];
   }

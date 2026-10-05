@@ -312,7 +312,7 @@ function EnemyOverlay({ e, real, a, focus, valid, onTap }: { e: Snap['e'][number
               </span>
             )}
           </div>
-          <Bar kind="hp" value={Math.max(0, e.hp)} max={e.maxHp} />
+          <Bar kind="hp" value={Math.max(0, e.hp)} max={e.maxHp} label={def?.tier === 'boss' ? '' : undefined} />
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {e.maxPoise > 0 &&
               (e.maxPoise > 8 ? (
@@ -349,6 +349,11 @@ function EnemyOverlay({ e, real, a, focus, valid, onTap }: { e: Snap['e'][number
   );
 }
 
+/** 수호자·군주의 체력은 숫자 대신 상태로만 알려 준다 */
+function woundWord(r: number): string {
+  return r > 0.8 ? '건재하다' : r > 0.55 ? '상처 입었다' : r > 0.3 ? '깊이 상처 입었다' : r > 0.12 ? '비틀거린다' : '쓰러지기 직전이다';
+}
+
 function enemyTip(e: EnemyUnit) {
   const def = ENEMIES.get(e.def);
   if (!def) return;
@@ -364,7 +369,7 @@ function enemyTip(e: EnemyUnit) {
       (it ? `의도: ${it.hidden && store.combat!.p.insight < 5 ? '???' : `${it.label}${move?.desc ? ` — ${move.desc}` : ''}`}` : '') +
       (traits.length ? `\n\n${traits.map((t) => `【${t!.name}】 ${t!.desc}`).join('\n')}` : ''),
     lines: [
-      { label: '체력', value: `${e.hp}/${e.maxHp}` },
+      { label: '체력', value: def.tier === 'boss' ? woundWord(e.hp / Math.max(1, e.maxHp)) : `${e.hp}/${e.maxHp}` },
       { label: '버팀', value: `${e.poise}/${e.maxPoise}${e.broken ? ' (붕괴)' : ''}` },
       {
         label: '약점',

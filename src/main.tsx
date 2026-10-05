@@ -29,7 +29,7 @@ async function boot() {
   if (import.meta.env.DEV) {
     // 개발용 디버그 핸들 (브라우저 콘솔에서 상태 확인)
     const [{ store }, actions] = await Promise.all([import('./state/store'), import('./state/actions')]);
-    (window as unknown as { __game: unknown }).__game = { store, actions };
+    (window as unknown as { __game: unknown }).__game = { store, actions, stage };
   }
   try {
     await stage.init(document.getElementById('stage')!);

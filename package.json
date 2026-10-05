@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "sim": "vitest run --config vitest.sim.config.ts"
+    "sim": "vitest run --config vitest.sim.config.ts",
+    "art": "node scripts/ingest-art.mjs"
   },
   "repository": {
     "type": "git",

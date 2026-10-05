@@ -355,7 +355,7 @@ reg.relics([
   },
   {
     id: 'sleeper-scale',
-    name: 'No.7 잠든 자의 비늘',
+    name: 'No.7 잠들지 않는 비늘',
     icon: 'gi:scales',
     rarity: 'boss',
     desc: '행동력 +1. 야영지에서 수면으로 체력을 회복할 수 없다',

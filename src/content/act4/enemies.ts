@@ -1017,7 +1017,7 @@ reg.enemies([
     eldritch: true,
     tags: ['star'],
     traits: ['a4-aligned'],
-    desc: '별에서 내려온 자손들의 왕. 그 꿈은 잠든 자에게 닿아 있다.',
+    desc: '별에서 내려온 자손들의 왕. 그 꿈은 궁정 아래, 우주 한가운데서 뒤척이는 무언가에 닿아 있다.',
     moves: {
       sweep: mv.attack('촉수 휩쓸기', 7, { hits: 3, melee: false }),
       flip: {

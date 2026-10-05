@@ -13,10 +13,10 @@ const CLEANSE = ['vuln', 'weak', 'frail', 'bleed', 'poison', 'burn', 'corrode', 
 // ───────────── 정수 액티브 ─────────────
 
 reg.skills([
-  // 익사한 성가대원
+  // 재를 토하는 성가대원
   ess({
     id: 'ess-chorister-hymn',
-    name: '물밑의 찬송',
+    name: '재 섞인 찬송',
     icon: 'gi:sing',
     rarity: 'uncommon',
     cost: 1,
@@ -46,9 +46,9 @@ reg.skills([
     desc: '무작위 적에게 {D:dmg} 비전 피해 {hits}회',
     run: (c, u, t) => void hit(c, u, t),
   }),
-  // 심해교 사제
+  // 향로 사제
   ess({
-    id: 'ess-abbey-priest-rite',
+    id: 'ess-censer-priest-rite',
     name: '의식 집전',
     icon: 'gi:candles',
     rarity: 'uncommon',
@@ -62,8 +62,8 @@ reg.skills([
     run: (c, u) => void c.apply(c.p, 'ritual', u.v('ritual'), c.p),
   }),
   ess({
-    id: 'ess-abbey-priest-smite',
-    name: '심해의 인장',
+    id: 'ess-censer-priest-smite',
+    name: '재의 인장',
     icon: 'gi:pentagram-rose',
     rarity: 'uncommon',
     cost: 1,
@@ -150,11 +150,11 @@ reg.skills([
       c.apply(c.p, 'str', u.v('str'), c.p);
     },
   }),
-  // 비늘 돋은 수사
+  // 밀랍 수사
   ess({
-    id: 'ess-scaled-friar-trident',
-    name: '삼지창 찌르기',
-    icon: 'gi:trident',
+    id: 'ess-wax-friar-spike',
+    name: '쇠 촛대 찌르기',
+    icon: 'gi:candle-holder',
     rarity: 'uncommon',
     cost: 1,
     cd: 1,
@@ -170,9 +170,9 @@ reg.skills([
     },
   }),
   ess({
-    id: 'ess-scaled-friar-scales',
-    name: '비늘 세우기',
-    icon: 'gi:fish-scales',
+    id: 'ess-wax-friar-seal',
+    name: '밀랍 봉합',
+    icon: 'gi:wax-seal',
     rarity: 'uncommon',
     cost: 1,
     cd: 2,
@@ -220,11 +220,11 @@ reg.skills([
       if (!c.over) hit(c, u, t);
     },
   }),
-  // 물에 잠긴 수녀
+  // 벽에 갇힌 수녀
   ess({
-    id: 'ess-drowned-nun-veil',
-    name: '물의 장막',
-    icon: 'gi:water-splash',
+    id: 'ess-walled-nun-brick',
+    name: '벽돌 쌓기',
+    icon: 'gi:brick-wall',
     rarity: 'uncommon',
     cost: 1,
     cd: 3,
@@ -236,8 +236,8 @@ reg.skills([
     run: (c, u) => void c.apply(c.p, 'barrier', u.v('barrier'), c.p),
   }),
   ess({
-    id: 'ess-drowned-nun-lament',
-    name: '익사자의 기도',
+    id: 'ess-walled-nun-lament',
+    name: '벽 속의 기도',
     icon: 'gi:prayer-beads',
     rarity: 'uncommon',
     cost: 1,
@@ -286,11 +286,11 @@ reg.skills([
       c.gainSanity(u.v('san'));
     },
   }),
-  // 칠성장어
+  // 뼈지네
   ess({
-    id: 'ess-lamprey-latch',
-    name: '흡착',
-    icon: 'gi:lamprey-mouth',
+    id: 'ess-bone-centipede-latch',
+    name: '턱 박기',
+    icon: 'gi:insect-jaws',
     rarity: 'uncommon',
     cost: 1,
     cd: 2,
@@ -308,7 +308,7 @@ reg.skills([
     },
   }),
   ess({
-    id: 'ess-lamprey-thrash',
+    id: 'ess-bone-centipede-thrash',
     name: '몸부림',
     icon: 'gi:whiplash',
     rarity: 'uncommon',
@@ -322,11 +322,11 @@ reg.skills([
     desc: '{D:dmg} 타격 피해 {hits}회',
     run: (c, u, t) => void hit(c, u, t),
   }),
-  // 창백한 뱀장어
+  // 시체 나방
   ess({
-    id: 'ess-pale-eel-shock',
-    name: '감전',
-    icon: 'gi:eel',
+    id: 'ess-corpse-moth-dust',
+    name: '날갯가루',
+    icon: 'gi:pollen-dust',
     rarity: 'uncommon',
     cost: 1,
     cd: 1,
@@ -342,9 +342,9 @@ reg.skills([
     },
   }),
   ess({
-    id: 'ess-pale-eel-discharge',
-    name: '방전',
-    icon: 'gi:lightning-branches',
+    id: 'ess-corpse-moth-swarm',
+    name: '나방 떼',
+    icon: 'gi:fluffy-wing',
     rarity: 'uncommon',
     cost: 2,
     cd: 3,
@@ -394,11 +394,11 @@ reg.skills([
       if (bad) c.clear(c.p, bad);
     },
   }),
-  // 성수반의 촉수
+  // 성수반의 손
   ess({
-    id: 'ess-font-tentacle-lash',
-    name: '촉수 채찍',
-    icon: 'gi:spiked-tentacle',
+    id: 'ess-font-hands-reach',
+    name: '뻗어 오는 손',
+    icon: 'gi:grab',
     rarity: 'uncommon',
     cost: 1,
     cd: 1,
@@ -414,7 +414,7 @@ reg.skills([
     },
   }),
   ess({
-    id: 'ess-font-tentacle-baptize',
+    id: 'ess-font-hands-baptize',
     name: '검은 세례',
     icon: 'gi:holy-water',
     rarity: 'uncommon',
@@ -631,11 +631,11 @@ reg.skills([
     desc: '{D:dmg} 타격 피해, 버팀 추가 -{poise}',
     run: (c, u, t) => void hit(c, u, t),
   }),
-  // 심해 군주
+  // 재에 묻힌 것
   ess({
-    id: 'ess-deep-lord-trident',
-    name: '심해의 삼지창',
-    icon: 'gi:harpoon-trident',
+    id: 'ess-ash-buried-rib',
+    name: '갈비뼈 찌르기',
+    icon: 'gi:ribcage',
     rarity: 'rare',
     cost: 1,
     cd: 1,
@@ -648,9 +648,9 @@ reg.skills([
     run: (c, u, t) => void hit(c, u, t),
   }),
   ess({
-    id: 'ess-deep-lord-wave',
-    name: '해일',
-    icon: 'gi:big-wave',
+    id: 'ess-ash-buried-collapse',
+    name: '무너지는 잿더미',
+    icon: 'gi:dust-cloud',
     rarity: 'rare',
     cost: 2,
     cd: 3,
@@ -666,9 +666,9 @@ reg.skills([
     },
   }),
   ess({
-    id: 'ess-deep-lord-song',
-    name: '심해의 노래',
-    icon: 'gi:siren',
+    id: 'ess-ash-buried-song',
+    name: '재 밑의 노래',
+    icon: 'gi:musical-notes',
     rarity: 'rare',
     cost: 1,
     cd: 3,
@@ -733,11 +733,11 @@ reg.skills([
       if (!c.over) hit(c, u, t);
     },
   }),
-  // 물밑의 아귀 (추적자)
+  // 촛불을 든 것 (추적자)
   ess({
-    id: 'ess-angler-lure',
-    name: '미끼 불빛',
-    icon: 'gi:angler-fish',
+    id: 'ess-candle-lure-lure',
+    name: '손짓하는 촛불',
+    icon: 'gi:candle-light',
     rarity: 'rare',
     cost: [1, 0],
     cd: 3,
@@ -753,9 +753,9 @@ reg.skills([
     },
   }),
   ess({
-    id: 'ess-angler-swallow',
+    id: 'ess-candle-lure-swallow',
     name: '삼키기',
-    icon: 'gi:shark-jaws',
+    icon: 'gi:carnivore-mouth',
     rarity: 'rare',
     cost: 2,
     cd: 3,
@@ -832,16 +832,16 @@ reg.essences([
       },
     },
     actives: ['ess-chorister-hymn', 'ess-chorister-discord'],
-    colors: ['물빛 은색', '불협 보라'],
+    colors: ['잿빛 은색', '불협 보라'],
   },
   {
-    id: 'abbey-priest',
-    name: '심해교 사제의 정수',
-    icon: 'gi:warlock-hood',
+    id: 'censer-priest',
+    name: '향로 사제의 정수',
+    icon: 'gi:incense',
     grade: 8,
     stats: { maxHp: 6, will: 1 },
     passive: {
-      name: '심해의 교리',
+      name: '꺼지지 않는 향',
       desc: '3번째 턴마다 시작 시 힘 +1 (전투 동안)',
       hooks: {
         onTurnStart(c, s) {
@@ -849,8 +849,8 @@ reg.essences([
         },
       },
     },
-    actives: ['ess-abbey-priest-rite', 'ess-abbey-priest-smite'],
-    colors: ['심해 남색', '인장 자주'],
+    actives: ['ess-censer-priest-rite', 'ess-censer-priest-smite'],
+    colors: ['향 연기 회색', '인장 자주'],
   },
   {
     id: 'martyr',
@@ -889,13 +889,13 @@ reg.essences([
     colors: ['뼈 회색', '썩은 녹색'],
   },
   {
-    id: 'scaled-friar',
-    name: '비늘 수사의 정수',
-    icon: 'gi:frog',
+    id: 'wax-friar',
+    name: '밀랍 수사의 정수',
+    icon: 'gi:candle-skull',
     grade: 8,
     stats: { maxHp: 8, dex: 1 },
     passive: {
-      name: '비늘 피부',
+      name: '굳은 밀랍',
       desc: '받는 공격 피해 -1',
       hooks: {
         modDamageIn(c, s, d) {
@@ -903,8 +903,8 @@ reg.essences([
         },
       },
     },
-    actives: ['ess-scaled-friar-trident', 'ess-scaled-friar-scales'],
-    colors: ['비늘 청록', '아가미 붉은'],
+    actives: ['ess-wax-friar-spike', 'ess-wax-friar-seal'],
+    colors: ['쇠 촛대 흑철', '밀랍 상아'],
   },
   {
     id: 'possessed-monk',
@@ -925,8 +925,8 @@ reg.essences([
     colors: ['핏기 없는 회색', '악령의 붉은'],
   },
   {
-    id: 'drowned-nun',
-    name: '익사한 수녀의 정수',
+    id: 'walled-nun',
+    name: '벽에 갇힌 수녀의 정수',
     icon: 'gi:nun-face',
     grade: 8,
     stats: { maxHp: 5, maxSanity: 5 },
@@ -939,8 +939,8 @@ reg.essences([
         },
       },
     },
-    actives: ['ess-drowned-nun-veil', 'ess-drowned-nun-lament'],
-    colors: ['익사자의 청', '젖은 흑단'],
+    actives: ['ess-walled-nun-brick', 'ess-walled-nun-lament'],
+    colors: ['회벽의 흰빛', '벽 틈의 흑단'],
   },
   {
     id: 'bell-acolyte',
@@ -961,13 +961,13 @@ reg.essences([
     colors: ['청동빛', '녹슨 금빛'],
   },
   {
-    id: 'lamprey',
-    name: '칠성장어의 정수',
-    icon: 'gi:lamprey-mouth',
+    id: 'bone-centipede',
+    name: '뼈지네의 정수',
+    icon: 'gi:centipede',
     grade: 8,
     stats: { maxHp: 6, dex: 1 },
     passive: {
-      name: '흡혈 입',
+      name: '흡혈 턱',
       desc: '출혈 중인 적에게 공격 피해를 입히면 체력 1 회복',
       hooks: {
         onDamageDealt(c, s, d) {
@@ -975,32 +975,32 @@ reg.essences([
         },
       },
     },
-    actives: ['ess-lamprey-latch', 'ess-lamprey-thrash'],
-    colors: ['점액 분홍', '이빨 상아'],
+    actives: ['ess-bone-centipede-latch', 'ess-bone-centipede-thrash'],
+    colors: ['핏빛 턱', '마디 상아'],
   },
   {
-    id: 'pale-eel',
-    name: '창백한 뱀장어의 정수',
-    icon: 'gi:eel',
+    id: 'corpse-moth',
+    name: '시체 나방의 정수',
+    icon: 'gi:butterfly',
     grade: 8,
     stats: { maxHp: 5, dex: 1 },
     passive: {
-      name: '전류 감각',
+      name: '마비의 가루',
       desc: '매 턴 첫 비전 공격의 버팀 피해 +1',
       hooks: {
         onTurnStart(c) {
-          c.s.vars.a2eel = 1;
+          c.s.vars.a2moth = 1;
         },
         modDamageOut(c, s, d) {
-          if (d.attack && d.type === 'arcane' && d.src === c.p && c.s.vars.a2eel) d.poiseBonus += s.n;
+          if (d.attack && d.type === 'arcane' && d.src === c.p && c.s.vars.a2moth) d.poiseBonus += s.n;
         },
         onDamageDealt(c, _s, d) {
-          if (d.attack && d.type === 'arcane' && d.src === c.p) c.s.vars.a2eel = 0;
+          if (d.attack && d.type === 'arcane' && d.src === c.p) c.s.vars.a2moth = 0;
         },
       },
     },
-    actives: ['ess-pale-eel-shock', 'ess-pale-eel-discharge'],
-    colors: ['창백한 흰빛', '전류 청색'],
+    actives: ['ess-corpse-moth-dust', 'ess-corpse-moth-swarm'],
+    colors: ['날갯가루 금빛', '창백한 날개빛'],
   },
   {
     id: 'confessor',
@@ -1021,9 +1021,9 @@ reg.essences([
     colors: ['고해실 흑단', '사면의 금빛'],
   },
   {
-    id: 'font-tentacle',
-    name: '성수반 촉수의 정수',
-    icon: 'gi:spiked-tentacle',
+    id: 'font-hands',
+    name: '성수반 손의 정수',
+    icon: 'gi:evil-hand',
     grade: 7,
     eldritch: true,
     stats: { maxHp: 6, str: 1 },
@@ -1036,8 +1036,8 @@ reg.essences([
         },
       },
     },
-    actives: ['ess-font-tentacle-lash', 'ess-font-tentacle-baptize'],
-    colors: ['세례반 흑청', '심연 녹색'],
+    actives: ['ess-font-hands-reach', 'ess-font-hands-baptize'],
+    colors: ['세례반 흑적', '재와 피의 검정'],
   },
   {
     id: 'flagellant',
@@ -1138,14 +1138,14 @@ reg.essences([
     colors: ['왕좌의 뼈', '굶주린 붉은'],
   },
   {
-    id: 'deep-lord',
-    name: '심해 군주의 정수',
-    icon: 'gi:octoman',
+    id: 'ash-buried',
+    name: '재에 묻힌 것의 정수',
+    icon: 'gi:half-body-crawling',
     grade: 4,
     eldritch: true,
     stats: { maxHp: 12, str: 1, will: 2 },
     passive: {
-      name: '조수의 주인',
+      name: '쌓이는 재',
       desc: '심연의 조수 1단계당 공격 피해 +1',
       hooks: {
         modDamageOut(c, s, d) {
@@ -1153,8 +1153,8 @@ reg.essences([
         },
       },
     },
-    actives: ['ess-deep-lord-trident', 'ess-deep-lord-wave', 'ess-deep-lord-song'],
-    colors: ['심해 청록', '해일 남색', '노래하는 은빛'],
+    actives: ['ess-ash-buried-rib', 'ess-ash-buried-collapse', 'ess-ash-buried-song'],
+    colors: ['그을린 뼈빛', '잿더미 회색', '묻힌 노래의 은빛'],
   },
   {
     id: 'bellkeeper',
@@ -1182,13 +1182,13 @@ reg.essences([
     colors: ['녹슨 청동', '종탑의 검정', '마지막 울림'],
   },
   {
-    id: 'angler',
-    name: '아귀의 정수',
-    icon: 'gi:angler-fish',
+    id: 'candle-lure',
+    name: '촛불을 든 것의 정수',
+    icon: 'gi:candlebright',
     grade: 6,
     stats: { maxHp: 10, dex: 2 },
     passive: {
-      name: '미끼 불빛',
+      name: '꾀어내는 불빛',
       desc: '전투 시작 시 체력이 가장 높은 적에게 취약 2',
       hooks: {
         onCombatStart(c, s) {
@@ -1198,8 +1198,8 @@ reg.essences([
         },
       },
     },
-    actives: ['ess-angler-lure', 'ess-angler-swallow'],
-    colors: ['미끼 노랑', '심연 흑색'],
+    actives: ['ess-candle-lure-lure', 'ess-candle-lure-swallow'],
+    colors: ['촛불 노랑', '연기 속 흑색'],
   },
   {
     id: 'inverted-saint',

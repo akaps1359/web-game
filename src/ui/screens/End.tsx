@@ -1,4 +1,4 @@
-import { ORIGINS } from '../../engine/registry';
+import { FLOORS, ORIGINS } from '../../engine/registry';
 import { toTitle } from '../../state/actions';
 import { store } from '../../state/store';
 import { Icon } from '../components';
@@ -10,7 +10,7 @@ export function EndScreen() {
   const mins = Math.round((Date.now() - st.startedAt) / 60000);
   const rows: [string, string][] = [
     ['출신', ORIGINS.get(run.origin)?.name ?? ''],
-    ['도달', run.act >= 5 ? '잠든 자의 무덤' : `${run.act}층`],
+    ['도달', `${run.act}층${FLOORS.get(run.act) ? ` · ${FLOORS.get(run.act)!.name}` : ''}`],
     ['레벨', String(run.player.level)],
     ['처치', `${st.kills}`],
     ['붕괴시킨 적', `${st.breaks}`],

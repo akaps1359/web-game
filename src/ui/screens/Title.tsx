@@ -101,7 +101,7 @@ export function Title() {
             ABYSSBOUND
           </div>
           <div class="muted serif" style={{ marginTop: 18, fontSize: 14 }}>
-            안개 낀 항구 아래, 잠든 것이 꿈을 꾼다
+            안개 낀 항구 아래, 태어나지 않은 것이 꿈을 꾼다
           </div>
         </div>
         {save && (

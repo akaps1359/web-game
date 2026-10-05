@@ -37,7 +37,7 @@ reg.events([
     id: 'broken-idol',
     title: '부서진 성상',
     icon: 'gi:colombian-statue',
-    acts: [1, 2],
+    acts: [1],
     stages: {
       start: (run, ev) => ({
         text: ev.result ?? '물에 잠긴 골목 끝, 반쯤 무너진 성상이 서 있다. 눈이 있어야 할 자리에 검은 진주가 박혀 있다.',
@@ -167,7 +167,7 @@ reg.events([
     id: 'whispering-well',
     title: '속삭이는 우물',
     icon: 'gi:well',
-    acts: [1, 2],
+    acts: [1],
     stages: {
       start: (run) => ({
         text: '우물 바닥에서 누군가 이름을 부른다. 당신의 이름이다.',
@@ -311,7 +311,7 @@ reg.events([
     id: 'mirror-pool',
     title: '물웅덩이의 그림자',
     icon: 'gi:water-drop',
-    acts: [1, 2, 3, 4],
+    acts: [1],
     stages: {
       start: (run) => {
         const mad = run.madness.filter((m) => !MADNESS.get(m)?.virtue);
@@ -372,7 +372,7 @@ reg.events([
     id: 'drowned-chapel',
     title: '물에 잠긴 예배당',
     icon: 'gi:church',
-    acts: [1, 2],
+    acts: [1],
     stages: {
       start: () => ({
         text: '무릎까지 물이 찬 예배당. 제단 위 성배에 검은 물이 고여 있다.',
@@ -439,32 +439,4 @@ reg.events([
   },
 ]);
 
-/** 최종층 */
-reg.events([
-  {
-    id: 'sleeper-dream',
-    title: '잠든 자의 꿈',
-    icon: 'gi:sleepy',
-    acts: [5],
-    stages: {
-      start: () => ({
-        text: '모든 소리가 사라졌다. 발밑 깊은 곳에서 거대한 무언가가 꿈을 꾸고 있다. 그 꿈이 당신을 부른다.',
-        choices: [
-          {
-            label: '꿈에 저항한다',
-            hint: '체력 +20, 정신력 +20',
-            go: (r, e) => finish(e, `이를 악물고 현실을 붙잡았다. (체력 +${healRun(r, 20)}, 정신력 +${gainSanityRun(r, 20)})`),
-          },
-          {
-            label: '꿈에 귀 기울인다',
-            hint: '통찰 +2, 정신력 -15',
-            go: (r, e) => {
-              r.player.insight += 2;
-              finish(e, '꿈은 별보다 오래되었다. 그 일부가 당신에게 스며들었다. (통찰 +2)' + sanity(r, 15));
-            },
-          },
-        ],
-      }),
-    },
-  },
-]);
+// 5층 '잠든 자의 꿈'(sleeper-dream)은 5층 개편 때 '아래의 목소리'(a5-voice-below, act5/events.ts)로 옮겨 갔다

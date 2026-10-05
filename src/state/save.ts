@@ -24,10 +24,7 @@ export function loadRun(): RunState | null {
   }
 }
 
+/** 이어할 수 있는 판이 있는지 (저장 형식이 바뀐 옛 판은 없는 것으로 친다 — '이어하기'가 헛돌지 않게) */
 export function hasSave(): boolean {
-  try {
-    return !!localStorage.getItem(KEY);
-  } catch {
-    return false;
-  }
+  return loadRun() !== null;
 }

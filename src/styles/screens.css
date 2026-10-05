@@ -103,6 +103,12 @@
     box-shadow: 0 0 28px rgba(192, 140, 255, 1);
   }
 }
+.room.target {
+  border-color: var(--brass-2);
+  box-shadow: 0 0 0 3px rgba(240, 207, 122, 0.85), 0 0 24px rgba(240, 207, 122, 0.55);
+  transform: translate(-50%, -50%) scale(1.08);
+  animation: none;
+}
 .room .dot {
   width: 6px;
   height: 6px;

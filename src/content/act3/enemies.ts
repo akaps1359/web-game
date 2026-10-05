@@ -1,66 +1,50 @@
-import { reg, SKILLS } from '../../engine/registry';
+import { reg } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
-import type { DmgType, EnemyUnit, MoveDef } from '../../engine/types';
-import { countDef, mv, others, release } from '../moves';
-import {
-  absorbBlobs,
-  hid,
-  isAsleep,
-  isIllusion,
-  realAlive,
-  shuffleGroup,
-  spawnIllusion,
-  stealInsight,
-  stealLight,
-  swapRows,
-  vanish,
-  wake,
-} from './dream';
+import type { EnemyUnit } from '../../engine/types';
+import { countDef, mv, release } from '../moves';
+import { absorbBlobs, frost, hid, isIllusion, returnSkill, seizeSkill, stealInsight, swapRows, veiledHorror } from './common';
 
-/** 토성의 고양이: 목숨을 버릴 때마다 약점이 바뀐다 */
-const SATURN_WEAK: DmgType[][] = [
-  ['blunt', 'void'],
-  ['fire', 'pierce'],
-  ['slash', 'arcane'],
-];
+/*
+ * 3층 적 — 얼어붙은 고대 도시.
+ * 고대인(Elder Things)의 도시가 검은 얼음 속에 묻혀 있다: 고대인과 그들이 부리던 쇼고스, 얼음 위의 짐승들,
+ * 얼어 죽은 탐사대, 별 너머에서 온 미고, 각도 속의 사냥개, 얼음을 건너온 렝의 거미.
+ * (꿈의 땅 적들은 2026-10 개편 때 5층 act5/enemies.ts로 옮겨 갔다.)
+ */
+
+/** 깨어난 원로를 따르는 (아직 반란하지 않은) 쇼고스 노예 */
+function loyalThrall(c: Combat): EnemyUnit | undefined {
+  return c.alive.find((x) => x.def === 'shoggoth-thrall' && !x.mem.rebel);
+}
+
+/** 반란을 일으킨 쇼고스 노예 */
+function rebelThrall(c: Combat): EnemyUnit | undefined {
+  return c.alive.find((x) => x.def === 'shoggoth-thrall' && x.mem.rebel);
+}
+
+/** 해부학자가 떼어 갈 수 있는 이로운 효과 */
+const STEALABLE = ['str', 'barrier', 'regen', 'evasive', 'ward', 'ritual', 'harden', 'thorns', 'spikes'];
+
+/** 플레이어의 이로운 효과를 떼어 제 것으로 삼는다. 떼어 낸 것이 있으면 true */
+function stealBuffs(c: Combat, e: EnemyUnit): boolean {
+  let took = false;
+  for (const id of STEALABLE) {
+    const v = c.p.st[id] ?? 0;
+    if (v <= 0) continue;
+    c.apply(c.p, id, -v);
+    c.apply(e, id, v, e);
+    took = true;
+  }
+  if (took) c.emit({ t: 'text', uid: e.uid, text: '떼어 낸 것을 제 몸에 꿰맨다', tone: 'eldritch' });
+  return took;
+}
+
+/** 멈춘 시간: 한 턴에 받는 피해 상한 */
+export const CLOCK_CAP = 75;
 
 // ───────────── 특성 ─────────────
 
 reg.traits([
-  {
-    id: 'a3-nine-lives',
-    name: '아홉 목숨',
-    desc: '쓰러져도 남은 목숨이 있으면 체력 40%로 되살아난다. 되살아날 때마다 힘 +2, 버팀이 회복되고 약점이 바뀐다',
-    hooks: {
-      onDeath(c, s) {
-        const e = s.unit;
-        if (!isEnemy(e) || isIllusion(e)) return;
-        const lives = e.mem.lives ?? 0;
-        if (lives <= 0) return;
-        e.mem.lives = lives - 1;
-        // 'risen'과 같은 표식 (봇·균열 규칙이 참조). 다음 목숨을 위해 자기 턴이 끝나면 지운다
-        e.mem.revived = 1;
-        e.dead = false;
-        e.hp = Math.ceil(e.maxHp * 0.4);
-        e.block = 0;
-        e.broken = 0;
-        e.poise = e.maxPoise;
-        delete e.mem.charge;
-        e.weak = [...SATURN_WEAK[(3 - lives) % SATURN_WEAK.length]];
-        e.known = c.p.insight >= 2 ? [...e.weak] : [];
-        c.apply(e, 'str', 2, e);
-        if (e.st['a3-lives']) c.apply(e, 'a3-lives', -1);
-        c.emit({ t: 'spawn', uid: e.uid });
-        c.emit({ t: 'text', uid: e.uid, text: `목숨 하나를 버렸다 — 무늬가 바뀐다 (남은 목숨 ${lives - 1})`, tone: 'eldritch' });
-        if (c.s.phase === 'player') c.planIntent(e);
-      },
-      onUnitTurnEnd(_c, s) {
-        const e = s.unit;
-        if (isEnemy(e) && (e.mem.lives ?? 0) > 0) delete e.mem.revived;
-      },
-    },
-  },
   {
     id: 'a3-faceless',
     name: '얼굴 없음',
@@ -113,45 +97,6 @@ reg.traits([
     },
   },
   {
-    id: 'a3-lamp-eater',
-    name: '등불 갉아먹기',
-    desc: '갉아먹은 등불은 쓰러뜨리면 되찾는다',
-    hooks: {
-      onDeath(c, s) {
-        const e = s.unit;
-        if (!isEnemy(e) || !e.mem.light) return;
-        const n = e.mem.light;
-        e.mem.light = 0;
-        c.run.light = Math.min(100, c.run.light + n);
-        c.emit({ t: 'text', uid: 'p', text: `등불 +${n} (되찾음)`, tone: 'good' });
-      },
-    },
-  },
-  {
-    id: 'a3-sleeper',
-    name: '잠든 자',
-    desc: '잠든 동안은 행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3',
-    hooks: {
-      onDamageTaken(c, s, d) {
-        const e = s.unit;
-        if (!isEnemy(e) || e.dead || e.hp <= 0 || !isAsleep(e)) return;
-        if (d.attack || d.hpLoss > 0) wake(c, e, true);
-      },
-    },
-  },
-  {
-    id: 'a3-pilgrim',
-    name: '순례자',
-    desc: '행동할 때마다 꿈의 문에 한 걸음 다가간다. 다 걸으면 사라지고(보상 없음) 남은 동료를 축복한다',
-    hooks: {},
-  },
-  {
-    id: 'a3-illusionist',
-    name: '환영술',
-    desc: '환영을 만든다. 환영은 공격받으면 흩어지고, 실제 피해 대신 정신을 흔들며, 처치 보상이 없다. 통찰 4 이상이면 환영을 꿰뚫어 본다',
-    hooks: {},
-  },
-  {
     id: 'a3-protoplasm',
     name: '원형질 분리',
     desc: '체력이 75%·50%·25% 아래로 떨어질 때마다 원형질 조각 둘을 떼어낸다',
@@ -191,46 +136,144 @@ reg.traits([
     },
   },
   {
-    id: 'a3-dream-glutton',
-    name: '꿈의 포식자',
-    desc: '잠든 자를 삼켜 회복하고 강해진다. 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오른다',
+    id: 'a3-burrower',
+    name: '땅굴 벌레',
+    desc: '얼음 밑으로 파고들면 회피 2를 얻고, 얼음 밑에서의 움직임은 읽을 수 없다',
+    hooks: {},
+  },
+  // ── 얼어붙은 고대 도시의 새 특성 ──
+  {
+    id: 'a3-blind',
+    name: '눈이 없다',
+    desc: '소리를 쫓는다 — 「소리를 쫓는 부리」는 이번 턴 당신이 쓴 기술 하나마다 한 번씩 쫀다. 기술을 하나도 쓰지 않으면 당신을 찾지 못한다',
+    hooks: {},
+  },
+  {
+    id: 'a3-refreeze',
+    name: '다시 어는 시신',
+    desc: '처음 쓰러지면 얼어붙은 채 다시 일어선다 (체력 40%). 타격이나 화염으로 쓰러뜨리면 산산조각 나 다시 일어서지 못한다',
     hooks: {
-      onDamageTaken(c, s) {
+      onDeath(c, s, d) {
         const e = s.unit;
-        if (!isEnemy(e) || e.dead || e.hp <= 0 || e.mem.p2 || hpPct(e) > 0.5) return;
-        e.mem.p2 = 1;
-        e.form = 1;
-        e.name = '깨어난 악몽';
-        c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
-        c.emit({ t: 'text', uid: e.uid, text: '꿈이 찢어지고, 악몽이 눈을 뜬다', tone: 'eldritch' });
-        c.apply(e, 'ritual', 1, e);
-        c.loseSanity(6, true);
-        if (e.broken !== 2) c.planIntent(e);
+        if (!isEnemy(e) || e.mem.revived) return;
+        if (d && (d.type === 'blunt' || d.type === 'fire')) {
+          e.mem.revived = 1;
+          c.emit({ t: 'text', uid: e.uid, text: '산산조각 났다', tone: 'good' });
+          return;
+        }
+        e.mem.revived = 1;
+        e.dead = false;
+        e.hp = Math.ceil(e.maxHp * 0.4);
+        c.emit({ t: 'spawn', uid: e.uid });
+        c.emit({ t: 'text', uid: e.uid, text: '얼어붙은 채 다시 일어선다', tone: 'eldritch' });
       },
     },
   },
   {
-    id: 'a3-burrower',
-    name: '땅굴 벌레',
-    desc: '땅속으로 파고들면 회피 2를 얻고, 땅속에서의 움직임은 읽을 수 없다',
+    id: 'a3-specimen',
+    name: '표본 채집',
+    desc: '「표본 채집」으로 당신의 기술 하나를 빼앗아 간다. 쓰러뜨리면 되찾는다',
+    hooks: {
+      onDeath(c, s) {
+        if (isEnemy(s.unit)) returnSkill(c, s.unit);
+      },
+    },
+  },
+  {
+    id: 'a3-cold-bringer',
+    name: '눈보라를 끄는 털가죽',
+    desc: '자기 차례가 끝날 때마다 당신에게 동상 1',
+    hooks: {
+      onUnitTurnEnd(c, s) {
+        frost(c, c.p, 1, s.unit);
+      },
+    },
+  },
+  {
+    id: 'a3-dissected',
+    name: '해부된 몸',
+    desc: '갈라진 몸속이 훤히 보인다 — 약점이 처음부터 모두 드러나 있다. 다른 썰매개가 쓰러지면 힘 +2',
+    hooks: {
+      onAnyDeath(c, s, victim) {
+        if (isEnemy(victim) && victim !== s.unit && victim.def === 'sled-dog') c.apply(s.unit, 'str', 2, s.unit);
+      },
+    },
+  },
+  {
+    id: 'a3-anatomist',
+    name: '해부학자',
+    desc: '출혈이 있는 상대에게 주는 공격 피해 +25%',
+    hooks: {
+      modDamageOut(c, s, d) {
+        if (d.src === s.unit && d.attack && d.tgt === c.p && (c.p.st.bleed ?? 0) > 0) d.mult *= 1.25;
+      },
+    },
+  },
+  {
+    id: 'a3-veil',
+    name: '눈을 감아라',
+    desc: '이것이 주는 정신 피해는 당신의 방어도가 먼저 막아 낸다 (막은 만큼 방어도가 줄어든다)',
     hooks: {},
   },
   {
-    id: 'a3-liminal',
-    name: '문턱',
-    desc: '자기 턴이 끝날 때마다 현실과 꿈 사이를 오간다. 현실에선 화염·비전·공허 피해를, 꿈에선 참격·관통·타격 피해를 60% 덜 받는다',
+    id: 'a3-fear-eater',
+    name: '공포를 먹는 것',
+    desc: '이것 때문에 잃은 정신력만큼 체력을 회복한다',
+    hooks: {},
+  },
+  {
+    id: 'a3-old-master',
+    name: '옛 주인',
+    desc: '체력이 절반 아래로 떨어지면 쇼고스 노예가 옛 반란을 기억해 낸다 — 그 뒤로 노예는 주인을 공격한다',
     hooks: {
-      onUnitTurnEnd(c, s) {
+      onDamageTaken(c, s) {
         const e = s.unit;
-        if (!isEnemy(e) || e.dead) return;
-        if (e.st['a3-phase-dream']) {
-          c.clear(e, 'a3-phase-dream');
-          c.apply(e, 'a3-phase-real', 1, e);
-          c.emit({ t: 'text', uid: e.uid, text: '현실로 넘어왔다', tone: 'info' });
-        } else {
-          c.clear(e, 'a3-phase-real');
-          c.apply(e, 'a3-phase-dream', 1, e);
-          c.emit({ t: 'text', uid: e.uid, text: '꿈속으로 가라앉았다', tone: 'eldritch' });
+        if (!isEnemy(e) || e.hp <= 0 || e.mem.revolt || hpPct(e) > 0.5) return;
+        const t = loyalThrall(c);
+        if (!t) return;
+        e.mem.revolt = 1;
+        t.mem.rebel = 1;
+        c.emit({ t: 'text', uid: t.uid, text: '테켈리-리! 노예가 주인에게 등을 돌렸다', tone: 'eldritch' });
+        if (t.broken !== 2 && c.s.phase === 'player') c.planIntent(t);
+      },
+    },
+  },
+  {
+    id: 'a3-rebellion',
+    name: '반란의 기억',
+    desc: '주인의 체력이 절반 아래로 떨어지면 반란을 일으켜 주인을 공격한다. 주인이 쓰러지면 어둠 속으로 흘러가 버린다',
+    hooks: {
+      onAnyDeath(c, s, victim) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || !isEnemy(victim) || victim.def !== 'awakened-elder') return;
+        c.emit({ t: 'text', uid: e.uid, text: '주인을 잃은 원형질이 어둠 속으로 흘러간다', tone: 'eldritch' });
+        c.flee(e);
+      },
+    },
+  },
+  {
+    id: 'a3-stopped-clock',
+    name: '멈춘 시간',
+    desc: `한 턴에 받는 피해가 최대 ${CLOCK_CAP} (지속 피해 제외). 붕괴해 있는 동안에는 시간이 깨져 상한이 없다`,
+    hooks: {
+      modDamageIn(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.broken > 0) return;
+        const taken = e.mem.clockTurn === c.s.turn ? (e.mem.clockTaken ?? 0) : 0;
+        const left = Math.max(0, CLOCK_CAP - taken);
+        d.cap = d.cap === undefined ? left : Math.min(d.cap, left);
+      },
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || d.type === 'true') return;
+        if (e.mem.clockTurn !== c.s.turn) {
+          e.mem.clockTurn = c.s.turn;
+          e.mem.clockTaken = 0;
+        }
+        e.mem.clockTaken = (e.mem.clockTaken ?? 0) + d.amount;
+        if (e.broken === 0 && e.mem.clockTaken >= CLOCK_CAP && e.mem.clockSaid !== c.s.turn) {
+          e.mem.clockSaid = c.s.turn;
+          c.emit({ t: 'text', uid: e.uid, text: '멈춘 시간 속에서는 상처가 더 새겨지지 않는다', tone: 'info' });
         }
       },
     },
@@ -238,83 +281,6 @@ reg.traits([
 ]);
 
 // ───────────── 행동 헬퍼 ─────────────
-
-/** 장막 직조자가 베낄 수 있는 존재 */
-const COPYABLE = ['nightgaunt', 'tindalos', 'gug', 'moonbeast', 'migo', 'sleepwalker', 'veil-weaver'];
-
-function weaveIllusion(c: Combat, e: EnemyUnit) {
-  if (isIllusion(e)) return;
-  const cands = realAlive(c).filter((x) => x !== e && COPYABLE.includes(x.def) && !isAsleep(x));
-  const src = cands.length ? c.rng.pick(cands) : e;
-  const copy = spawnIllusion(c, src, 3);
-  if (copy) shuffleGroup(c, [src, copy]);
-}
-
-function mirrorSelf(c: Combat, e: EnemyUnit) {
-  if (isIllusion(e)) return;
-  for (let i = 0; i < 2; i++) {
-    if (c.alive.filter(isIllusion).length >= 2) break;
-    spawnIllusion(c, e, 3);
-  }
-  shuffleGroup(c, c.alive.filter((x) => x === e || (isIllusion(x) && x.def === e.def)));
-  c.emit({ t: 'text', uid: e.uid, text: '거울의 문이 열렸다 — 어느 쪽이 진짜인가', tone: 'eldritch' });
-}
-
-function openGate(c: Combat, e: EnemyUnit) {
-  if (isIllusion(e)) return;
-  e.mem.opened = 1;
-  c.spawn('sleepwalker', 0);
-  c.spawn('sleepwalker', 0);
-  c.apply(e, 'str', 2, e);
-}
-
-function feedOnDreams(c: Combat, e: EnemyUnit) {
-  const n = c.horror(e, 10);
-  if (!e.dead && n > 0 && !c.over) c.heal(e, n * 2);
-}
-
-function devour(c: Combat, e: EnemyUnit) {
-  const s = c.alive.find((x) => x !== e && isAsleep(x) && !isIllusion(x));
-  if (!s) return feedOnDreams(c, e);
-  vanish(c, s, '꿈째로 삼켜졌다');
-  c.heal(e, 25);
-  c.apply(e, 'str', 1, e);
-}
-
-/** 기억 포식: 장착 스킬 n개를 잊게 한다 (재사용 대기 2) */
-function eatMemory(c: Combat, e: EnemyUnit, n: number) {
-  const cands = c.run.slots.filter((x): x is string => !!x && !((c.s.cd[x] ?? 0) > 0));
-  for (const uid of c.rng.sample(cands, n)) {
-    c.s.cd[uid] = 2;
-    const id = c.run.skills.find((s) => s.uid === uid)?.id;
-    c.emit({ t: 'text', uid: 'p', text: `잊혔다: ${(id && SKILLS.get(id)?.name) || '기술'}`, tone: 'eldritch' });
-  }
-  c.horror(e, 5);
-}
-
-function pilgrimStep(c: Combat, e: EnemyUnit) {
-  if (isIllusion(e) || e.dead) return;
-  e.mem.steps = Math.max(0, (e.mem.steps ?? 5) - 1);
-  if (e.st['a3-pilgrimage']) c.apply(e, 'a3-pilgrimage', -1);
-}
-
-/** 순례자의 행동: 실행할 때마다 한 걸음 */
-const walk = (m: MoveDef): MoveDef => ({
-  ...m,
-  run(c, e) {
-    m.run(c, e);
-    pilgrimStep(c, e);
-  },
-});
-
-function whip(c: Combat, e: EnemyUnit) {
-  if (isIllusion(e)) return;
-  const slave = c.alive.find((x) => x.def === 'leng-slave' && !isIllusion(x));
-  if (slave) {
-    c.loseHp(slave, 4);
-    if (!slave.dead) c.apply(slave, 'str', 3, e);
-  } else c.apply(e, 'str', 2, e);
-}
 
 const corrode = (c: Combat, e: EnemyUnit, cap = 3) => {
   if ((c.p.st.corrode ?? 0) < cap) c.apply(c.p, 'corrode', 1, e);
@@ -336,9 +302,9 @@ reg.enemies([
     row: 0,
     dread: 4,
     eldritch: true,
-    tags: ['dream', 'gaunt'],
+    tags: ['gaunt'],
     traits: ['a3-faceless'],
-    desc: '얼굴이 없는 검은 날개. 소리 없이 내려와 간지럼을 태우고, 낚아채 어둠 속으로 날아간다.',
+    desc: '얼굴이 없는 검은 날개. 얼어붙은 탑 꼭대기에 거꾸로 매달려 있다가 소리 없이 내려와 간지럼을 태우고, 낚아채 어둠 속으로 날아간다.',
     moves: {
       tickle: hid(mv.horror('간지럼', 8, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' })),
       clutch: hid(mv.attack('움켜쥐기', 10, { desc: '고무 같은 발톱으로 움켜쥔다' })),
@@ -363,9 +329,9 @@ reg.enemies([
     row: 1,
     dread: 4,
     eldritch: true,
-    tags: ['dream', 'yuggoth'],
+    tags: ['yuggoth'],
     traits: ['a3-brain-thief'],
-    desc: '갑각과 균사로 된 날개 달린 것. 윙윙거리는 목소리로 말하며, 뇌를 원통에 담아 별 너머로 가져간다.',
+    desc: '갑각과 균사로 된 날개 달린 것. 얼음 밑 광맥을 캐러 별 너머에서 왔다. 윙윙거리는 목소리로 말하며, 뇌를 원통에 담아 가져간다.',
     moves: {
       extract: mv.horror('뇌 적출', 6, { then: (c, e) => void stealInsight(c, e, 1), desc: '정신 피해, 통찰 1 강탈 (통찰이 없으면 정신 피해 +4)' }),
       buzz: mv.horror('윙윙거리는 목소리', 9),
@@ -390,9 +356,9 @@ reg.enemies([
     row: 1,
     dread: 4,
     eldritch: true,
-    tags: ['dream', 'angle'],
+    tags: ['angle'],
     traits: ['a3-angles'],
-    desc: '굽은 시간 속에 사는 굶주린 것. 120도보다 날카로운 모서리라면 어디서든 튀어나온다.',
+    desc: '굽은 시간 속에 사는 굶주린 것. 이 도시의 오각형 탑들에는 120도보다 날카로운 모서리가 너무 많다.',
     moves: {
       lurk: mv.block('모서리에 웅크림', 8, { desc: '방어도 8. 다음 턴 덮친다' }),
       pounce: {
@@ -437,7 +403,7 @@ reg.enemies([
     row: 0,
     dread: 5,
     eldritch: true,
-    tags: ['dream', 'shoggoth'],
+    tags: ['shoggoth'],
     traits: ['a3-split'],
     desc: '아직 작은 원형질 덩어리. 눈과 입이 생겼다 사라지며, 쓰러뜨려도 갈라져 다시 기어 온다.',
     moves: {
@@ -473,25 +439,6 @@ reg.enemies([
     visual: { tint: 0x1d2e24, glow: 0x70ff9a, fx: ['drip'] },
   },
   {
-    id: 'shoggoth-blob',
-    name: '원형질 조각',
-    icon: 'gi:acid-blob',
-    act: 3,
-    tier: 'minion',
-    hp: [11, 13],
-    poise: 0,
-    weak: ['fire', 'slash', 'arcane'],
-    row: 0,
-    eldritch: true,
-    tags: ['dream', 'shoggoth'],
-    moves: {
-      slap: mv.attack('철썩', 5),
-      cling: mv.attack('들러붙기', 3, { then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
-    },
-    ai: (_c, e) => cycle(e, ['slap', 'cling']),
-    visual: { tint: 0x1a3022, glow: 0x60ff90, scale: 0.6, fx: ['drip'] },
-  },
-  {
     id: 'leng-spider',
     name: '렝의 거미',
     icon: 'gi:long-legged-spider',
@@ -503,12 +450,12 @@ reg.enemies([
     row: 1,
     dread: 4,
     eldritch: true,
-    tags: ['dream', 'leng'],
-    desc: '렝 고원의 보랏빛 거미. 꿈과 꿈 사이에 실을 걸고, 걸린 것을 천천히 녹여 먹는다.',
+    tags: ['leng'],
+    desc: '렝 고원에서 얼음을 건너온 보랏빛 거미. 얼음 틈 사이에 실을 걸고, 걸린 것을 천천히 녹여 먹는다.',
     moves: {
       spit: mv.attack('독액 뱉기', 6, { melee: false, type: 'pierce', then: (c, e) => void c.apply(c.p, 'poison', 3, e), desc: '독 3' }),
       web: mv.debuff(
-        '꿈실 거미줄',
+        '서릿실 거미줄',
         (c, e) => {
           c.apply(c.p, 'weak', 1, e);
           c.apply(c.p, 'frail', 2, e);
@@ -534,6 +481,217 @@ reg.enemies([
     visual: { tint: 0x4a2a5a, glow: 0xc070ff },
   },
   {
+    id: 'blind-penguin',
+    name: '눈먼 펭귄',
+    icon: 'gi:penguin',
+    act: 3,
+    tier: 'normal',
+    hp: [34, 38],
+    poise: 3,
+    weak: ['slash', 'fire'],
+    row: 0,
+    dread: 2,
+    tags: ['ice', 'beast'],
+    traits: ['a3-blind'],
+    desc: '사람 키만 한 흰 펭귄. 눈이 있어야 할 자리가 매끈하다. 소리 나는 쪽으로 일제히 고개를 돌리고, 뒤뚱거리며 몰려온다.',
+    moves: {
+      peck: {
+        name: '소리를 쫓는 부리',
+        intent: 'attack',
+        dmg: 3,
+        hits: (c) => Math.max(1, c.s.used),
+        melee: true,
+        desc: '이번 턴 당신이 쓴 기술 하나마다 한 번씩 쫀다 (기술을 하나도 쓰지 않으면 당신을 찾지 못한다)',
+        run(c, e) {
+          const n = c.s.used;
+          if (n <= 0) {
+            c.emit({ t: 'text', uid: e.uid, text: '소리를 놓쳤다', tone: 'info' });
+            return;
+          }
+          c.enemyAttack(e, { hits: n, type: 'pierce' });
+        },
+      },
+      huddle: mv.block('몸을 맞댄다', 0, {
+        then(c) {
+          for (const x of c.alive) if (x.def === 'blind-penguin') c.gainBlock(x, 6);
+        },
+        desc: '모든 눈먼 펭귄 방어도 6',
+      }),
+      cry: mv.horror('떼 울음', 6, { desc: '사람 목소리를 닮은 울음' }),
+    },
+    ai: (c, e) => pick(c, e, { peck: 5, huddle: countDef(c, 'blind-penguin') > 1 && last(e) !== 'huddle' ? 2 : 0, cry: 1 }),
+    visual: { tint: 0xd8e4ea, glow: 0x9fd8ff },
+  },
+  {
+    id: 'frozen-explorer',
+    name: '동사한 탐사대원',
+    icon: 'gi:frozen-body',
+    act: 3,
+    tier: 'normal',
+    hp: [40, 46],
+    poise: 4,
+    weak: ['fire', 'blunt'],
+    row: 0,
+    dread: 3,
+    tags: ['ice', 'undead', 'expedition'],
+    traits: ['a3-refreeze'],
+    desc: '미스캐토닉 탐사대의 방한복을 입은 시신. 서리 앉은 눈썹 아래 눈동자가 하얗게 얼었다. 얼어붙은 손에 아직 도끼를 쥐고 있다.',
+    moves: {
+      axe: mv.attack('얼음도끼', 11, { type: 'slash' }),
+      flare: mv.attack('조명탄 권총', 6, { melee: false, type: 'fire', then: (c, e) => void c.apply(c.p, 'burn', 2, e), desc: '화상 2 (불꽃이 동상을 녹인다)' }),
+      journal: mv.horror('마지막 일지', 8, { desc: '얼어붙은 입술로 일지의 마지막 장을 읽는다' }),
+    },
+    ai: (c, e) => opener(c, e, ['axe']) ?? pick(c, e, { axe: 3, flare: 2, journal: 1 }),
+    visual: { tint: 0x8aa0b0, glow: 0xd0f0ff },
+  },
+  {
+    id: 'frost-wraith',
+    name: '서리 망령',
+    icon: 'gi:floating-ghost',
+    act: 3,
+    tier: 'normal',
+    hp: [36, 40],
+    poise: 4,
+    weak: ['fire', 'arcane'],
+    row: 1,
+    dread: 4,
+    eldritch: true,
+    tags: ['ice', 'spirit'],
+    traits: ['incorporeal'],
+    desc: '얼어 죽은 자의 마지막 숨이 서리가 되어 떠돈다. 그것이 지나간 자리마다 온기가 사라진다.',
+    moves: {
+      breath: mv.attack('서리 숨결', 7, { melee: false, type: 'arcane', then: (c, e) => frost(c, c.p, 2, e), desc: '동상 2' }),
+      whisper: mv.horror('얼어붙은 속삭임', 8, { then: (c, e) => frost(c, c.p, 1, e), desc: '정신 피해, 동상 1' }),
+      drain: {
+        name: '온기 흡수',
+        intent: 'heal',
+        desc: '당신의 동상 1당 체력 4 회복 (최소 8)',
+        run(c, e) {
+          c.heal(e, Math.max(8, (c.p.st['a3-frostbite'] ?? 0) * 4));
+        },
+      },
+    },
+    ai: (c, e) => pick(c, e, { breath: 3, whisper: 2, drain: hpPct(e) < 0.6 && !e.hist.includes('drain') ? 3 : 0 }),
+    visual: { tint: 0xc8e0f0, glow: 0x80d0ff, fx: ['float', 'flicker'] },
+  },
+  {
+    id: 'elder-hunter',
+    name: '고대인 사냥꾼',
+    icon: 'gi:eyestalk',
+    act: 3,
+    tier: 'normal',
+    hp: [42, 48],
+    poise: 5,
+    weak: ['pierce', 'fire'],
+    row: 1,
+    dread: 5,
+    eldritch: true,
+    tags: ['elder'],
+    traits: ['flying', 'a3-specimen'],
+    desc: '통 같은 몸통에 별 모양의 머리, 접었다 펴는 막날개. 얼음 위를 낮게 날며 표본을 모은다. 이번 표본은 당신이다.',
+    moves: {
+      collect: {
+        name: '표본 채집',
+        intent: 'debuff',
+        extra: ['attack'],
+        dmg: 6,
+        melee: false,
+        desc: '장착한 기술 하나를 빼앗아 간다 — 쓰러뜨리면 되찾는다',
+        run(c, e) {
+          c.enemyAttack(e, { type: 'pierce' });
+          if (!c.over && !e.dead) seizeSkill(c, e);
+        },
+      },
+      tentacles: mv.attack('다섯 갈래 촉수', 4, { hits: 2, melee: false, type: 'slash' }),
+      dive: mv.attack('막날개 급습', 12, { melee: false, type: 'pierce' }),
+    },
+    ai: (c, e) => {
+      if (!e.mem.tried) {
+        e.mem.tried = 1;
+        return 'collect';
+      }
+      return pick(c, e, { dive: 3, tentacles: 2 });
+    },
+    visual: { tint: 0x5a6a50, glow: 0xb0ffd0, fx: ['float'] },
+  },
+  {
+    id: 'gnoph-keh',
+    name: '그노프케',
+    icon: 'gi:mammoth',
+    act: 3,
+    tier: 'normal',
+    hp: [58, 64],
+    poise: 5,
+    weak: ['fire', 'pierce'],
+    resist: { blunt: 0.75 },
+    row: 0,
+    dread: 4,
+    eldritch: true,
+    tags: ['ice', 'beast'],
+    traits: ['a3-cold-bringer'],
+    desc: '긴 털에 덮인 여섯 다리의 짐승. 이마에 돋은 뿔 하나로 얼음을 가른다. 그것이 지나가면 눈보라가 뒤따른다.',
+    moves: {
+      horn: mv.attack('뿔 들이받기', 13, { type: 'pierce' }),
+      claws: mv.attack('여섯 다리 할퀴기', 4, { hits: 3, type: 'slash' }),
+      blizzard: mv.debuff(
+        '눈보라 부르기',
+        (c, e) => {
+          frost(c, c.p, 2, e);
+          c.apply(e, 'evasive', 1, e);
+        },
+        { desc: '동상 2, 자신 회피 1', extra: ['buff'] },
+      ),
+    },
+    ai: (c, e) => opener(c, e, ['claws']) ?? pick(c, e, { horn: 3, claws: 2, blizzard: e.hist.slice(-2).includes('blizzard') ? 0 : 2 }),
+    visual: { tint: 0xd0d0c8, glow: 0x9ad8ff, scale: 1.2 },
+  },
+  {
+    id: 'sled-dog',
+    name: '해부된 썰매개',
+    icon: 'gi:wolf-howl',
+    act: 3,
+    tier: 'normal',
+    hp: [32, 36],
+    poise: 3,
+    weak: ['fire', 'slash', 'pierce'],
+    row: 0,
+    dread: 3,
+    tags: ['beast', 'expedition'],
+    traits: ['a3-dissected'],
+    desc: '탐사대의 썰매개. 배가 정교하게 갈렸다가 다시 꿰매어졌다. 사람의 솜씨가 아니다.',
+    moves: {
+      bite: mv.attack('물어뜯기', 9),
+      nape: mv.attack('목덜미 물기', 4, { hits: 2, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
+      howl: mv.horror('꿰맨 목의 울부짖음', 5),
+    },
+    ai: (c, e) => pick(c, e, { bite: 3, nape: 2, howl: 1 }),
+    onSpawn: (_c, e) => {
+      e.known = [...e.weak];
+    },
+    visual: { tint: 0x6a5a50, glow: 0xff9080 },
+  },
+
+  // ───────────── 하수인 ─────────────
+  {
+    id: 'shoggoth-blob',
+    name: '원형질 조각',
+    icon: 'gi:acid-blob',
+    act: 3,
+    tier: 'minion',
+    hp: [11, 13],
+    poise: 0,
+    weak: ['fire', 'slash', 'arcane'],
+    row: 0,
+    eldritch: true,
+    tags: ['shoggoth'],
+    moves: {
+      slap: mv.attack('철썩', 5),
+      cling: mv.attack('들러붙기', 3, { then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
+    },
+    ai: (_c, e) => cycle(e, ['slap', 'cling']),
+    visual: { tint: 0x1a3022, glow: 0x60ff90, scale: 0.6, fx: ['drip'] },
+  },
+  {
     id: 'leng-spiderling',
     name: '새끼 거미',
     icon: 'gi:spider-face',
@@ -544,250 +702,65 @@ reg.enemies([
     weak: ['fire', 'slash', 'blunt'],
     row: 0,
     eldritch: true,
-    tags: ['dream', 'leng'],
+    tags: ['leng'],
     moves: { nip: mv.attack('물기', 3, { type: 'pierce', then: (c, e) => void c.apply(c.p, 'poison', 1, e), desc: '독 1' }) },
     ai: () => 'nip',
     visual: { tint: 0x3a2048, glow: 0xb060f0, scale: 0.5 },
   },
   {
-    id: 'ash-pilgrim',
-    name: '잿빛 순례자',
-    icon: 'gi:cowled',
-    act: 3,
-    tier: 'normal',
-    hp: [44, 50],
-    poise: 4,
-    weak: ['pierce', 'void'],
-    resist: { fire: 0.5 },
-    row: 1,
-    dread: 3,
-    eldritch: true,
-    tags: ['dream', 'pilgrim'],
-    traits: ['a3-pilgrim'],
-    desc: '꿈의 문을 향해 걷는 자들. 걸음마다 몸이 재로 부서지지만, 멈추는 법이 없다.',
-    onSpawn: (c, e) => {
-      if (c.s.vars.a3Illu) return;
-      e.mem.steps = 5;
-      e.st['a3-pilgrimage'] = 5;
-    },
-    moves: {
-      chant: walk(mv.horror('잿빛 찬송', 8)),
-      bless: walk(
-        mv.buff(
-          '재의 축복',
-          (c, e) => {
-            for (const a of c.alive) if (!isIllusion(a)) c.apply(a, 'barrier', 5, e);
-          },
-          { desc: '모든 아군 보호막 5' },
-        ),
-      ),
-      penance: walk(
-        mv.buff(
-          '고행',
-          (c, e) => {
-            c.loseHp(e, 5);
-            if (e.dead) return;
-            for (const a of others(c, e)) c.apply(a, 'str', 1, e);
-          },
-          { desc: '체력 5를 바쳐 다른 아군 힘 +1' },
-        ),
-      ),
-      ember: walk(mv.attack('잿불 던지기', 7, { melee: false, type: 'fire' })),
-      depart: {
-        name: '꿈의 문으로',
-        intent: 'flee',
-        desc: '꿈의 문 너머로 사라진다 (보상 없음). 남은 아군 힘 +2, 체력 10 회복',
-        run(c, e) {
-          for (const a of others(c, e)) {
-            if (isIllusion(a)) continue;
-            c.apply(a, 'str', 2, e);
-            c.heal(a, 10);
-          }
-          vanish(c, e, '꿈의 문 너머로 걸어 들어갔다');
-        },
-      },
-    },
-    ai: (c, e) => {
-      if (!isIllusion(e) && (e.mem.steps ?? 5) <= 0) return 'depart';
-      const allies = others(c, e).length;
-      return pick(c, e, { chant: 2, bless: allies ? 2 : 1, penance: allies && e.hp > 12 ? 1 : 0, ember: 2 });
-    },
-    visual: { tint: 0x6a6660, glow: 0xffa060, fx: ['flicker'] },
-  },
-  {
-    id: 'moonbeast',
-    name: '달짐승',
-    icon: 'gi:toad-teeth',
-    act: 3,
-    tier: 'normal',
-    hp: [58, 64],
-    poise: 5,
-    weak: ['slash', 'arcane'],
-    resist: { blunt: 0.75 },
-    row: 0,
-    dread: 5,
-    eldritch: true,
-    tags: ['dream', 'moon'],
-    desc: '눈 없는 두꺼비 같은 회백색 몸뚱이, 주둥이 끝에서 분홍빛 촉수가 꿈틀댄다. 노예를 부리고 고문을 즐긴다.',
-    moves: {
-      snout: mv.attack('촉수 주둥이', 4, { hits: 3 }),
-      hook: mv.attack('고문 갈고리', 8, { type: 'pierce', then: (c, e) => void c.apply(c.p, 'bleed', 3, e), desc: '출혈 3' }),
-      whip: mv.buff('채찍질', whip, { desc: '렝의 노예에게 피해 4를 주고 노예 힘 +3 (노예가 없으면 자신 힘 +2)' }),
-      call: mv.summon(
-        '노예 부르기',
-        (c, e) => {
-          if (isIllusion(e)) return;
-          e.mem.called = (e.mem.called ?? 0) + 1;
-          c.spawn('leng-slave', 0);
-        },
-        '렝의 노예 소환',
-      ),
-    },
-    ai: (c, e) => {
-      if (e.mem.illu) return pick(c, e, { snout: 1, hook: 1 });
-      const slaves = countDef(c, 'leng-slave');
-      return (
-        opener(c, e, ['hook']) ??
-        pick(c, e, { snout: 3, hook: 2, whip: slaves ? 2 : 1, call: slaves === 0 && (e.mem.called ?? 0) < 2 && last(e) !== 'call' ? 2 : 0 })
-      );
-    },
-    visual: { tint: 0x9a9a8a, glow: 0xff90b0, scale: 1.1, fx: ['drip'] },
-  },
-  {
-    id: 'leng-slave',
-    name: '렝의 노예',
-    icon: 'gi:prisoner',
+    id: 'shoggoth-thrall',
+    name: '쇼고스 노예',
+    icon: 'gi:goo-skull',
     act: 3,
     tier: 'minion',
-    hp: [18, 22],
+    hp: [66, 70],
     poise: 0,
-    weak: ['slash', 'pierce', 'fire'],
+    weak: ['fire', 'arcane'],
+    resist: { blunt: 0.6 },
     row: 0,
-    tags: ['dream', 'leng'],
-    moves: {
-      spear: mv.attack('녹슨 창', 6, { type: 'pierce' }),
-      horn: mv.attack('뿔 들이받기', 8),
-    },
-    ai: (c, e) => pick(c, e, { spear: 2, horn: 1 }),
-    visual: { tint: 0x5a4a3a, glow: 0xd0a060, scale: 0.8 },
-  },
-  {
-    id: 'zoog',
-    name: '주그',
-    icon: 'gi:flying-fox',
-    act: 3,
-    tier: 'normal',
-    hp: [32, 36],
-    poise: 4,
-    weak: ['fire', 'blunt', 'slash'],
-    row: 0,
-    dread: 2,
     eldritch: true,
-    tags: ['dream', 'zoog'],
-    traits: ['a3-lamp-eater'],
-    desc: '마법의 숲에 사는 작고 갈색 털 난 것들. 파닥이는 소리로 속삭이며, 호기심이 많고 무엇이든 갉아먹는다.',
+    tags: ['shoggoth'],
+    traits: ['a3-rebellion'],
+    desc: '원로가 피리 소리로 부리는 원형질의 노예. 몸 곳곳에 열린 눈들이 주인을 지켜본다. 아주 오래전에도 그랬다.',
     moves: {
-      nibble: mv.attack('등불 갉아먹기', 3, { hits: 2, type: 'slash', then: (c, e) => stealLight(c, e, 5), desc: '등불 5를 갉아먹는다' }),
-      chitter: mv.horror('파닥이는 속삭임', 5, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '정신 피해, 자신에게 회피 1' }),
-      swarm: mv.attack('떼 지어 물기', 2, { hits: (c) => 1 + countDef(c, 'zoog'), type: 'slash', desc: '주그 수만큼 더 문다' }),
-    },
-    ai: (c, e) => pick(c, e, { nibble: c.run.light > 0 ? 3 : 0, chitter: 2, swarm: countDef(c, 'zoog') > 1 ? 2 : 1 }),
-    visual: { tint: 0x5a4630, glow: 0xffe070, scale: 0.7 },
-  },
-  {
-    id: 'gug',
-    name: '구그',
-    icon: 'gi:troll',
-    act: 3,
-    tier: 'normal',
-    hp: [68, 74],
-    poise: 6,
-    weak: ['pierce', 'fire'],
-    resist: { slash: 0.75 },
-    row: 0,
-    dread: 5,
-    eldritch: true,
-    tags: ['dream', 'giant'],
-    desc: '저주받아 지하로 쫓겨난 거인. 팔목마다 두 개씩 갈라진 앞발, 머리를 세로로 가르는 아가리.',
-    moves: {
-      paws: mv.attack('네 개의 앞발', 4, { hits: 3 }),
-      stomp: mv.attack('짓밟기', 11, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
-      gape: mv.charge('세로 아가리를 벌린다', 26),
-      maw: release(mv.attack('세로 아가리', 26)),
-    },
-    ai: (c, e) => {
-      if (e.mem.charge) return 'maw';
-      return opener(c, e, ['paws']) ?? pick(c, e, { paws: 2, stomp: 2, gape: e.hist.slice(-2).includes('maw') ? 0 : 1 });
-    },
-    visual: { tint: 0x4a3a38, glow: 0xff5040, scale: 1.3 },
-  },
-  {
-    id: 'sleepwalker',
-    name: '몽유병자',
-    icon: 'gi:shambling-zombie',
-    act: 3,
-    tier: 'normal',
-    hp: [48, 54],
-    poise: 4,
-    weak: ['slash', 'void'],
-    row: 0,
-    dread: 2,
-    tags: ['dream', 'sleeper'],
-    traits: ['a3-sleeper'],
-    desc: '꿈의 경계를 헤매다 돌아가는 길을 잃은 사람들. 깨우지 않는 편이 낫다.',
-    onSpawn: (c, e) => {
-      if (c.s.vars.a3Illu) return;
-      e.mem.asleep = 3;
-      e.st['a3-asleep'] = 3;
-    },
-    moves: {
-      doze: {
-        name: '잠들어 있다',
-        intent: 'sleep',
-        desc: '아무것도 하지 않는다',
+      slam: mv.attack('위족 내려치기', 11),
+      engulf: mv.attack('집어삼키기', 8, { then: (c, e) => void c.heal(e, 8), desc: '체력 8 회복' }),
+      mimic: mv.horror('테켈리-리', 7, { desc: '주인의 피리 소리를 흉내 낸다' }),
+      revolt: {
+        name: '주인을 덮친다',
+        intent: 'special',
+        desc: '옛 주인에게 덤벼든다 (원로에게 피해 18)',
         run(c, e) {
-          // 꿈을 먹는 자의 곁에서는 스스로 깨어나지 못한다
-          if (c.alive.some((x) => x.def === 'dream-eater')) return;
-          e.mem.asleep = (e.mem.asleep ?? 1) - 1;
-          if (e.mem.asleep <= 0) {
-            e.mem.asleep = 1;
-            wake(c, e, false);
-          } else if (e.st['a3-asleep']) c.apply(e, 'a3-asleep', -1);
+          const m = c.alive.find((x) => x.def === 'awakened-elder');
+          if (!m) return;
+          c.emit({ t: 'text', uid: e.uid, text: '테켈리-리! 주인을 덮친다', tone: 'eldritch' });
+          c.damage({ src: e, tgt: m, base: 18, type: 'void', attack: true, melee: true, move: 'revolt' });
         },
       },
-      flail: mv.attack('허우적거림', 4, { hits: 3 }),
-      claw: mv.attack('잠결의 손톱', 10, { type: 'slash' }),
-      scream: mv.horror('악몽의 비명', 8, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
-    },
-    ai: (c, e) => (isAsleep(e) ? 'doze' : pick(c, e, { flail: 2, claw: 3, scream: 2 })),
-    visual: { tint: 0x8a8aa0, glow: 0xc0d0ff },
-  },
-  {
-    id: 'veil-weaver',
-    name: '장막 직조자',
-    icon: 'gi:duality-mask',
-    act: 3,
-    tier: 'normal',
-    hp: [44, 50],
-    poise: 4,
-    weak: ['pierce', 'void'],
-    row: 1,
-    dread: 4,
-    eldritch: true,
-    tags: ['dream', 'illusion'],
-    traits: ['a3-illusionist'],
-    desc: '가면 뒤에 얼굴이 몇 개인지 아무도 모른다. 꿈의 실로 동료의 그림자를 짜낸다.',
-    moves: {
-      weave: mv.summon('환영 짜기', weaveIllusion, '아군 하나의 환영을 만든다'),
-      needle: mv.attack('꿈바늘', 8, { melee: false, type: 'pierce' }),
-      lull: mv.horror('자장가', 8, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
     },
     ai: (c, e) => {
-      if (e.mem.illu) return pick(c, e, { needle: 2, lull: 1 });
-      const illus = c.alive.filter(isIllusion).length;
-      return opener(c, e, ['weave']) ?? pick(c, e, { weave: illus < 2 && last(e) !== 'weave' ? 2 : 0, needle: 3, lull: 2 });
+      if (e.mem.rebel && c.alive.some((x) => x.def === 'awakened-elder')) return 'revolt';
+      return cycle(e, ['slam', 'engulf', 'slam', 'mimic']);
     },
-    visual: { tint: 0x3a3050, glow: 0xe0b0ff, fx: ['flicker', 'float'] },
+    visual: { tint: 0x14281c, glow: 0x60ff9a, scale: 1.1, fx: ['drip'] },
+  },
+  {
+    id: 'frozen-crewman',
+    name: '얼어붙은 대원',
+    icon: 'gi:frozen-body',
+    act: 3,
+    tier: 'minion',
+    hp: [14, 16],
+    poise: 0,
+    weak: ['fire', 'blunt', 'pierce'],
+    row: 0,
+    tags: ['ice', 'expedition'],
+    moves: {
+      pickaxe: mv.attack('곡괭이', 5),
+      cling: mv.attack('얼어붙은 손', 3, { then: (c, e) => frost(c, c.p, 1, e), desc: '동상 1' }),
+    },
+    ai: (_c, e) => cycle(e, ['pickaxe', 'cling']),
+    visual: { tint: 0x8aa0b0, glow: 0xd0f0ff, scale: 0.7 },
   },
 
   // ───────────── 정예 ─────────────
@@ -803,8 +776,8 @@ reg.enemies([
     row: 0,
     dread: 5,
     eldritch: true,
-    tags: ['dream', 'leng'],
-    desc: '렝의 골짜기를 메운 거미들의 어미. 꿈꾸는 자를 고치로 감아 영영 깨지 못하게 한다.',
+    tags: ['leng'],
+    desc: '렝의 골짜기를 메운 거미들의 어미. 얼어 죽은 탐사대원들을 고치로 감아 탑 안에 매달아 두었다.',
     moves: {
       fangs: mv.attack('독니', 12, { type: 'pierce', then: (c, e) => void c.apply(c.p, 'poison', 4, e), desc: '독 4' }),
       spray: mv.attack('거미줄 분사', 5, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
@@ -837,40 +810,6 @@ reg.enemies([
     visual: { tint: 0x40204a, glow: 0xd060ff, scale: 1.35 },
   },
   {
-    id: 'saturn-cat',
-    name: '토성의 고양이',
-    icon: 'gi:hollow-cat',
-    act: 3,
-    tier: 'elite',
-    hp: [128, 134],
-    poise: 7,
-    weak: [...SATURN_WEAK[0]],
-    row: 0,
-    dread: 5,
-    eldritch: true,
-    tags: ['dream', 'saturn'],
-    traits: ['a3-nine-lives'],
-    desc: '달의 뒷면에서 달짐승과 손잡은, 토성에서 온 기묘한 고양이. 지구의 고양이들과는 오랜 원수이며 좀처럼 죽지 않는다.',
-    onSpawn: (c, e) => {
-      if (c.s.vars.a3Illu) return;
-      e.mem.lives = 2;
-      e.st['a3-lives'] = 2;
-    },
-    moves: {
-      rake: mv.attack('고리 발톱', 6, { hits: 2, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
-      grin: mv.horror('토성의 미소', 10, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
-      pounce: mv.attack('뒤틀린 도약', 13, { melee: false }),
-      coil: mv.block('고리 속으로 몸을 말다', 12, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '방어도 12, 회피 1' }),
-      stalk: mv.charge('사냥 자세', 30),
-      leap: release(mv.attack('목덜미 물기', 30)),
-    },
-    ai: (c, e) => {
-      if (e.mem.charge) return 'leap';
-      return cycle(e, ['rake', 'grin', 'pounce', 'coil', 'rake', 'stalk']);
-    },
-    visual: { tint: 0x2a2440, glow: 0xffd040, scale: 1.2, fx: ['flicker'] },
-  },
-  {
     id: 'shantak',
     name: '샨탁',
     icon: 'gi:vulture',
@@ -883,8 +822,8 @@ reg.enemies([
     row: 0,
     dread: 5,
     eldritch: true,
-    tags: ['dream', 'flyer'],
-    desc: '말처럼 생긴 머리에 비늘 덮인 날개. 미지의 카다스로 가는 길을 지키며, 밤의 마귀를 몹시 두려워한다.',
+    tags: ['flyer'],
+    desc: '말처럼 생긴 머리에 비늘 덮인 날개. 산맥 너머의 고원으로 가는 길을 지키며, 밤의 마귀를 몹시 두려워한다.',
     moves: {
       peck: mv.attack('말 머리 부리', 15, { type: 'pierce' }),
       buffet: mv.attack('날개 폭풍', 6, { hits: 3, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
@@ -916,6 +855,57 @@ reg.enemies([
     },
     visual: { tint: 0x3a4038, glow: 0x90ffb0, scale: 1.35, fx: ['float'] },
   },
+  {
+    id: 'elder-vivisector',
+    name: '고대인 해부학자',
+    icon: 'gi:scalpel',
+    act: 3,
+    tier: 'elite',
+    hp: [186, 194],
+    poise: 8,
+    weak: ['pierce', 'void'],
+    resist: { arcane: 0.75 },
+    row: 0,
+    dread: 6,
+    eldritch: true,
+    tags: ['elder'],
+    traits: ['a3-anatomist'],
+    desc: '얼음 속에서 먼저 깨어난 고대인. 깨어나자마자 탐사대의 천막에서 사람과 개를 갈라 보았다. 다섯 갈래 촉수 끝마다 메스가 들려 있다.',
+    moves: {
+      scalpels: mv.attack('다섯 개의 메스', 5, { hits: 3, melee: false, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 3, e), desc: '출혈 3' }),
+      extract: {
+        name: '적출',
+        intent: 'debuff',
+        extra: ['buff'],
+        desc: '당신의 이로운 효과(힘·보호막·재생·회피 등)를 모두 떼어 가 제 것으로 삼는다. 떼어 갈 것이 없으면 취약 2',
+        run(c, e) {
+          if (!stealBuffs(c, e)) c.apply(c.p, 'vuln', 2, e);
+        },
+      },
+      gas: mv.debuff(
+        '마취 가스',
+        (c, e) => {
+          c.apply(c.p, 'weak', 2, e);
+          c.apply(c.p, 'frail', 2, e);
+        },
+        { desc: '약화 2, 허약 2' },
+      ),
+      suture: mv.heal('스스로 꿰매기', 22),
+      table: mv.charge('해부대를 펼친다', 34),
+      vivisect: release(mv.attack('생체 해부', 34, { then: (c, e) => void c.apply(c.p, 'bleed', 4, e), desc: '출혈 4' })),
+    },
+    ai: (c, e) => {
+      if (e.mem.charge) return 'vivisect';
+      const o = opener(c, e, ['gas']);
+      if (o) return o;
+      if (hpPct(e) < 0.5 && !e.mem.sutured) {
+        e.mem.sutured = 1;
+        return 'suture';
+      }
+      return cycle(e, ['scalpels', 'extract', 'scalpels', 'table']);
+    },
+    visual: { tint: 0x4a5a48, glow: 0xc0ffb0, scale: 1.35, fx: ['float'] },
+  },
 
   // ───────────── 층 수호자 ─────────────
   {
@@ -931,9 +921,9 @@ reg.enemies([
     row: 0,
     dread: 7,
     eldritch: true,
-    tags: ['dream', 'shoggoth'],
+    tags: ['shoggoth'],
     traits: ['a3-protoplasm', 'a3-regrow'],
-    desc: '옛것들이 부리던 원형질의 노예. 주인들의 피리 소리를 흉내 내며, 무엇이든 될 수 있고 무엇이든 삼킨다.',
+    desc: '고대인들이 부리던 원형질의 노예. 주인들의 피리 소리를 흉내 내며, 무엇이든 될 수 있고 무엇이든 삼킨다. 아주 오래전, 주인들에게 반란을 일으켰다.',
     moves: {
       pseudopods: mv.attack('위족 난타', 5, { hits: 4 }),
       crush: mv.attack('짓누르기', 17, { then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
@@ -963,48 +953,6 @@ reg.enemies([
     visual: { tint: 0x10261a, glow: 0x50ff90, scale: 1.55, fx: ['drip'] },
   },
   {
-    id: 'dream-gatekeeper',
-    name: '꿈의 문지기',
-    icon: 'gi:door-watcher',
-    act: 3,
-    tier: 'boss',
-    hp: [340, 340],
-    poise: 12,
-    weak: ['void', 'pierce'],
-    row: 0,
-    dread: 6,
-    eldritch: true,
-    tags: ['dream', 'gate'],
-    traits: ['a3-illusionist'],
-    desc: '얕은 잠의 일흔 계단 끝, 깊은 잠의 문을 지키는 자. 문 앞에서는 무엇이 진짜인지 그가 정한다.',
-    moves: {
-      staff: mv.attack('문지기의 지팡이', 15, { melee: false, type: 'arcane' }),
-      mirror: mv.summon('거울의 문', mirrorSelf, '자신의 환영 2개를 만들고 자리를 뒤섞는다'),
-      riddle: hid(mv.horror('문의 수수께끼', 10, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' })),
-      steps: mv.debuff(
-        '얕은 잠의 일흔 계단',
-        (c, e) => {
-          c.apply(c.p, 'weak', 1, e);
-          c.apply(c.p, 'frail', 2, e);
-        },
-        { desc: '약화 1, 허약 2' },
-      ),
-      seal: mv.charge('문의 봉인', 34),
-      judgment: release(mv.attack('문지기의 심판', 34, { melee: false, type: 'void' })),
-      open: mv.summon('깊은 잠의 문', openGate, '잠든 몽유병자 둘을 불러들이고 힘 +2'),
-    },
-    ai: (c, e) => {
-      if (e.mem.charge) return 'judgment';
-      if (e.mem.illu) return pick(c, e, { staff: 3, riddle: 2, steps: 1 });
-      if (hpPct(e) <= 0.5 && !e.mem.opened) return 'open';
-      const first = opener(c, e, ['steps']);
-      if (first) return first;
-      if (c.alive.filter(isIllusion).length === 0 && !e.hist.includes('mirror')) return 'mirror';
-      return cycle(e, ['staff', 'riddle', 'staff', 'steps', 'seal']);
-    },
-    visual: { tint: 0x4a4060, glow: 0xffe0a0, scale: 1.45, fx: ['float'] },
-  },
-  {
     id: 'angle-king',
     name: '각도의 왕',
     icon: 'gi:moebius-triangle',
@@ -1016,9 +964,9 @@ reg.enemies([
     row: 0,
     dread: 7,
     eldritch: true,
-    tags: ['dream', 'angle'],
+    tags: ['angle'],
     traits: ['a3-angles'],
-    desc: '모든 각도의 주인. 시간이 굽어지기 전부터 굶주려 왔고, 모서리마다 새끼를 풀어 둔다.',
+    desc: '모든 각도의 주인. 시간이 굽어지기 전부터 굶주려 왔고, 오각형 탑의 모서리마다 새끼를 풀어 둔다.',
     moves: {
       fang: mv.attack('시간의 송곳니', 16, { type: 'slash', then: (c, e) => corrode(c, e, 2), desc: '부식 1 (최대 2)' }),
       whelp: mv.summon(
@@ -1068,7 +1016,7 @@ reg.enemies([
     weak: ['arcane', 'blunt', 'fire'],
     row: 0,
     eldritch: true,
-    tags: ['dream', 'angle'],
+    tags: ['angle'],
     moves: {
       snap: mv.attack('물어뜯기', 5, { type: 'slash' }),
       lunge: mv.attack('모서리에서 튀어나오기', 3, { hits: 2, melee: false, type: 'slash' }),
@@ -1076,67 +1024,148 @@ reg.enemies([
     ai: (_c, e) => (e.row === 0 ? 'snap' : 'lunge'),
     visual: { tint: 0x223048, glow: 0x50a0ff, scale: 0.65, fx: ['flicker'] },
   },
-
-  // ───────────── 계층군주 / 추적자 / 균열 수호자 ─────────────
   {
-    id: 'dream-eater',
-    name: '꿈을 먹는 자',
-    icon: 'gi:evil-moon',
+    id: 'beyond-peaks',
+    name: '산맥 너머의 것',
+    icon: 'gi:peaks',
     act: 3,
     tier: 'boss',
-    hp: [440, 440],
+    hp: [365, 365],
+    poise: 12,
+    weak: ['fire', 'void'],
+    resist: { slash: 0.75, pierce: 0.75 },
+    row: 0,
+    dread: 9,
+    eldritch: true,
+    tags: ['beyond'],
+    traits: ['a3-veil', 'a3-fear-eater'],
+    desc: '이 도시를 굽어보는 산맥보다 더 높은 봉우리들 너머, 보랏빛 증기 속에서 모양을 바꾸는 것. 그것을 똑바로 본 탐사대원은 남은 평생 같은 말만 되뇌었다.',
+    moves: {
+      peaks: mv.attack('끝없는 봉우리', 7, { hits: 3, melee: false, type: 'arcane' }),
+      gaze: {
+        ...mv.horror('보랏빛 응시', 18),
+        desc: '정신 피해 18 — 방어도가 먼저 막아 낸다',
+        run(c, e) {
+          veiledHorror(c, e, 18, true);
+        },
+      },
+      scream: {
+        ...mv.horror('테켈리-리!', 10),
+        desc: '정신 피해 10 (방어도가 먼저 막는다), 공포 2',
+        run(c, e) {
+          veiledHorror(c, e, 10, true);
+          if (!c.over) c.apply(c.p, 'dread', 2, e);
+        },
+      },
+      mist: mv.block('증기의 장막', 18, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '방어도 18, 회피 1' }),
+      thin: mv.debuff(
+        '희박한 공기',
+        (c, e) => {
+          c.apply(c.p, 'weak', 2, e);
+          c.apply(c.p, 'frail', 2, e);
+        },
+        { desc: '약화 2, 허약 2' },
+      ),
+      unveil: {
+        name: '봉우리 너머가 드러난다',
+        intent: 'charge',
+        charging: true,
+        sanity: 34,
+        desc: '다음 턴 그것의 모습이 드러난다 — 정신 피해 34 (방어도가 먼저 막는다). 붕괴시키면 다시 증기에 가려진다',
+        run(c, e) {
+          e.mem.charge = 1;
+          c.emit({ t: 'text', uid: e.uid, text: '증기가 걷히기 시작한다…', tone: 'eldritch' });
+        },
+      },
+      truth: release({
+        ...mv.horror('그것을 보았다', 34),
+        desc: '정신 피해 34 — 방어도가 먼저 막아 낸다',
+        run(c, e) {
+          veiledHorror(c, e, 34, true);
+        },
+      }),
+    },
+    ai: (c, e) => {
+      if (e.mem.charge) return 'truth';
+      return opener(c, e, ['scream']) ?? cycle(e, ['peaks', 'gaze', 'mist', 'thin', 'peaks', 'unveil']);
+    },
+    visual: { tint: 0x3a3050, glow: 0xc090ff, scale: 1.55, fx: ['float', 'flicker'] },
+  },
+
+  // ───────────── 계층군주 ─────────────
+  {
+    id: 'awakened-elder',
+    name: '깨어난 원로',
+    icon: 'gi:sea-star',
+    act: 3,
+    tier: 'boss',
+    hp: [400, 400],
     poise: 13,
-    weak: ['fire', 'slash'],
-    resist: { void: 0.5 },
+    weak: ['fire', 'pierce'],
+    resist: { arcane: 0.75 },
     row: 0,
     dread: 8,
     eldritch: true,
-    tags: ['dream', 'lord'],
-    traits: ['a3-dream-glutton'],
-    desc: '꿈의 경계에서 잠든 자들의 꿈을 갉아먹고 자라는 것. 이 층에서 잠드는 자는 모두 그것의 식탁에 오른다.',
+    tags: ['elder'],
+    traits: ['a3-old-master'],
+    desc: '수억 년 전 얼음 속에 잠든 고대인의 원로. 모닥불의 온기가 얼음을 녹이자 다섯 눈을 떴다. 그것은 아직 이 도시가 자기 것이라고 믿는다.',
     moves: {
-      maw: mv.attack('꿈의 아가리', 18),
-      ravage: hid(mv.attack('악몽의 난도질', 6, { hits: 3, type: 'slash' })),
-      devour: {
-        name: '꿈 삼키기',
-        intent: 'heal',
-        desc: '잠든 자를 통째로 삼켜 체력 25 회복, 힘 +1 (잠든 자가 없으면 꿈 갉아먹기)',
-        run: devour,
-      },
-      dreamfeed: {
-        name: '꿈 갉아먹기',
-        intent: 'horror',
-        sanity: 10,
-        desc: '빼앗은 정신력의 두 배만큼 회복한다',
-        run: feedOnDreams,
-      },
-      lull: mv.summon(
-        '깊은 자장가',
+      tentacles: mv.attack('다섯 갈래 촉수', 5, { hits: 3, melee: false, type: 'slash' }),
+      pipe: mv.buff(
+        '명령의 피리',
         (c, e) => {
-          e.mem.lulled = (e.mem.lulled ?? 0) + 1;
-          c.spawn('sleepwalker', 0);
-          c.apply(c.p, 'dread', 2, e);
+          const t = loyalThrall(c);
+          if (!t) return;
+          c.apply(t, 'str', 2, e);
+          c.gainBlock(t, 10);
         },
-        '몽유병자를 불러 재운다. 공포 2',
+        { desc: '쇼고스 노예 힘 +2, 방어도 10' },
       ),
-      feast: hid(mv.debuff('기억 포식', (c, e) => eatMemory(c, e, 2), { desc: '스킬 2개를 잊게 한다 (재사용 대기 2), 정신 피해 5' })),
-      conceive: mv.charge('악몽 잉태', 40),
-      nightfall: release(mv.attack('악몽 강림', 40, { melee: false, type: 'void' })),
+      mold: mv.summon(
+        '원형질을 빚는다',
+        (c, e) => {
+          e.mem.molds = (e.mem.molds ?? 0) + 1;
+          c.spawn('shoggoth-blob', 0);
+          c.spawn('shoggoth-blob', 0);
+        },
+        '원형질 조각 둘을 빚어낸다',
+      ),
+      memory: mv.horror('수억 년의 기억', 12, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      dissect: mv.attack('해부의 손길', 9, {
+        type: 'slash',
+        then: (c, e) => {
+          c.apply(c.p, 'bleed', 3, e);
+          c.apply(c.p, 'weak', 1, e);
+        },
+        desc: '출혈 3, 약화 1',
+      }),
+      quell: {
+        name: '반란 진압',
+        intent: 'special',
+        desc: '반란을 일으킨 쇼고스를 벌한다 (쇼고스에게 피해 24)',
+        run(c, e) {
+          const t = rebelThrall(c);
+          if (!t) return;
+          c.emit({ t: 'text', uid: e.uid, text: '날카로운 피리 소리가 노예를 찢는다', tone: 'eldritch' });
+          c.damage({ src: e, tgt: t, base: 24, type: 'arcane', attack: true, move: 'quell' });
+        },
+      },
+      spread: mv.charge('막날개를 펼친다', 38),
+      starfall: release(mv.attack('별을 건너온 날개', 38, { melee: false })),
     },
     ai: (c, e) => {
-      if (e.mem.charge) return 'nightfall';
-      const sleeper = c.alive.some((x) => x !== e && isAsleep(x) && !isIllusion(x));
-      const canLull = countDef(c, 'sleepwalker') < 2 && (e.mem.lulled ?? 0) < 3;
-      const m = e.form
-        ? cycle(e, ['ravage', 'dreamfeed', 'feast', 'conceive', 'ravage', 'lull'], 'c2')
-        : cycle(e, ['maw', 'dreamfeed', 'feast', 'lull', 'maw', 'conceive']);
-      if (m === 'dreamfeed' && sleeper) return 'devour';
-      if (m === 'lull' && !canLull) return e.form ? 'ravage' : 'maw';
+      if (e.mem.charge) return 'starfall';
+      const o = opener(c, e, ['memory']);
+      if (o) return o;
+      if (rebelThrall(c) && last(e) !== 'quell' && c.rng.chance(0.5)) return 'quell';
+      let m = cycle(e, ['tentacles', 'pipe', 'dissect', 'spread', 'tentacles', 'memory']);
+      if (m === 'pipe' && !loyalThrall(c)) m = (e.mem.molds ?? 0) < 2 && countDef(c, 'shoggoth-blob') === 0 ? 'mold' : 'dissect';
       return m;
     },
-    visual: { tint: 0x1a1030, glow: 0xb070ff, scale: 1.6, fx: ['float', 'flicker'] },
-    forms: [{ name: '깨어난 악몽', icon: 'gi:dread-skull', visual: { tint: 0x300a20, glow: 0xff3080, scale: 1.7, fx: ['flicker'] } }],
+    visual: { tint: 0x3a5048, glow: 0x9fffd0, scale: 1.5, fx: ['float'] },
   },
+
+  // ───────────── 추적자 ─────────────
   {
     id: 'dhole',
     name: '프나스의 돌',
@@ -1149,17 +1178,17 @@ reg.enemies([
     row: 0,
     dread: 5,
     eldritch: true,
-    tags: ['dream', 'worm'],
+    tags: ['worm'],
     traits: ['a3-burrower'],
-    desc: '프나스 골짜기의 뼈 무덤 속을 미끄러지는 거대한 벌레. 아무도 그 전체 모습을 본 적이 없다.',
+    desc: '프나스 골짜기에서 여기까지 얼음 밑으로 굴을 뚫고 올라온 거대한 벌레. 아무도 그 전체 모습을 본 적이 없다.',
     moves: {
       slime: mv.attack('점액 분사', 9, { melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
       engulf: mv.attack('통째로 삼키기', 15, { then: (c, e) => void c.heal(e, 10), desc: '체력 10 회복' }),
-      grind: mv.horror('뼈 무덤의 울림', 9),
+      grind: mv.horror('얼음 밑의 울림', 9),
       burrow: {
-        name: '땅속으로',
+        name: '얼음 밑으로',
         intent: 'block',
-        desc: '회피 2, 방어도 10. 땅속에서 움직인다',
+        desc: '회피 2, 방어도 10. 얼음 밑에서 움직인다',
         run(c, e) {
           e.mem.under = 1;
           c.apply(e, 'evasive', 2, e);
@@ -1167,7 +1196,7 @@ reg.enemies([
         },
       },
       tremor: hid(mv.attack('땅울림', 5, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' })),
-      rise: mv.charge('땅이 부풀어 오른다', 34),
+      rise: mv.charge('얼음이 부풀어 오른다', 34),
       erupt: release(
         mv.attack('분출', 34, {
           melee: false,
@@ -1184,37 +1213,46 @@ reg.enemies([
     },
     visual: { tint: 0x5a5040, glow: 0xa0ff60, scale: 1.4, fx: ['drip'] },
   },
+
+  // ───────────── 균열 수호자 ─────────────
   {
-    id: 'liminal',
-    name: '문턱의 존재',
-    icon: 'gi:magic-portal',
+    id: 'frozen-leader',
+    name: '시간에 얼어붙은 탐사대장',
+    icon: 'gi:frozen-block',
     act: 3,
     tier: 'elite',
-    hp: [228, 236],
-    poise: 9,
-    weak: ['arcane', 'blunt'],
+    hp: [205, 215],
+    poise: 8,
+    weak: ['fire', 'blunt'],
     row: 0,
     dread: 5,
-    eldritch: true,
-    tags: ['dream', 'rift'],
-    traits: ['a3-liminal'],
-    desc: '꿈과 현실 사이의 틈에 끼어 사는 것. 한쪽 세계의 무기로는 결코 끝까지 베어 낼 수 없다.',
-    onSpawn: (_c, e) => {
-      e.st['a3-phase-real'] = 1;
-    },
+    tags: ['ice', 'expedition'],
+    traits: ['a3-stopped-clock'],
+    desc: '균열 너머, 시간이 멈춘 얼음 속에 탐사대장이 서 있다. 그는 그날 밤의 마지막 순간을 끝없이 되풀이한다. 손목시계의 바늘은 움직이지 않는다.',
     moves: {
-      grasp: mv.attack('현실의 손아귀', 14),
-      rake: mv.attack('양쪽에서 할퀴기', 6, { hits: 2, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
-      whisper: mv.horror('문턱 너머의 속삭임', 10, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
-      dreamclaw: mv.attack('꿈의 발톱', 11, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
-      gather: mv.charge('두 세계를 끌어모은다', 34),
-      sunder: release(mv.attack('경계 붕괴', 34, { melee: false, type: 'void' })),
+      axe: mv.attack('얼음도끼', 13, { type: 'slash' }),
+      flare: mv.attack('마지막 조명탄', 6, { hits: 2, melee: false, type: 'fire', then: (c, e) => void c.apply(c.p, 'burn', 2, e), desc: '화상 2' }),
+      journal: mv.horror('끝나지 않는 일지', 10, { then: (c, e) => void c.apply(c.p, 'a3-timeworn', 1, e), desc: '정신 피해, 다음 턴 행동력 -1' }),
+      muster: mv.summon(
+        '대원 소집',
+        (c, e) => {
+          e.mem.musters = (e.mem.musters ?? 0) + 1;
+          c.spawn('frozen-crewman', 0);
+          c.spawn('frozen-crewman', 0);
+        },
+        '얼어붙은 대원 둘을 부른다',
+      ),
+      wind: mv.charge('멈춘 시계가 움직인다', 36),
+      moment: release(mv.attack('되돌아온 순간', 36, { type: 'slash' })),
     },
     ai: (c, e) => {
-      if (e.mem.charge) return 'sunder';
-      if (cycle(e, ['a', 'a', 'a', 'a', 'gather']) === 'gather') return 'gather';
-      return e.st['a3-phase-dream'] ? pick(c, e, { whisper: 2, dreamclaw: 3 }) : pick(c, e, { grasp: 3, rake: 2 });
+      if (e.mem.charge) return 'moment';
+      const o = opener(c, e, ['muster']);
+      if (o) return o;
+      let m = cycle(e, ['axe', 'journal', 'flare', 'axe', 'wind']);
+      if (m === 'flare' && countDef(c, 'frozen-crewman') === 0 && (e.mem.musters ?? 0) < 2) m = 'muster';
+      return m;
     },
-    visual: { tint: 0x404050, glow: 0xf0f0ff, scale: 1.3, fx: ['flicker', 'float'] },
+    visual: { tint: 0x7a90a8, glow: 0xe0f4ff, scale: 1.3, fx: ['flicker'] },
   },
 ]);

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>코드 그림 작업실</title>
+<style>
+  body { margin: 0; background: #1b1d20; color: #ddd; font: 14px/1.5 sans-serif; }
+  #info { padding: 8px 12px; white-space: pre-wrap; }
+  #out { display: block; max-width: min(100vw, 768px); max-height: 92vh; height: auto; background:
+    conic-gradient(#2a2d31 90deg, #222428 90deg 180deg, #2a2d31 180deg 270deg, #222428 270deg) 0 0 / 24px 24px; }
+  #gl { display: none; }
+</style>
+</head>
+<body>
+<div id="info">그리는 중…</div>
+<canvas id="out"></canvas>
+<canvas id="gl"></canvas>
+<script type="module">
+// 사용: ?r=레시피&seed=1&mode=sprite|sample|bg&ss=1.5
+//  sprite = 투명 배경, 바닥 맞춤 자동 구도 (게임용 1024²)
+//  sample = 바닥·배경이 있는 견본 (1024²)
+//  bg     = 세로 배경 (1080×1920, 레시피가 HAS_BG/장면을 직접 그림)
+// window.save(이름, 'art'|'sample') → PNG 저장 (개발 서버의 /__save-asset)
+import { PRESETS } from './presets.js';
+
+const q = new URLSearchParams(location.search);
+const id = q.get('r') || 'cultist';
+const seed = Number(q.get('seed') || 1);
+const mode = q.get('mode') || 'sprite';
+const ss = Number(q.get('ss') || 1.5);
+const info = document.getElementById('info');
+const t0 = performance.now();
+const fail = (msg) => {
+  info.textContent = 'error: ' + msg;
+  window.__error = msg;
+  throw new Error(msg);
+};
+
+const bust = `?t=${Date.now()}`;
+const mod = await import(/* @vite-ignore */ new URL(`./recipes/${id}.js`, location.href).pathname + bust);
+const rec = mod.default({ seed, mode });
+const core = await (await fetch(new URL('./core.glsl', location.href).pathname + bust)).text();
+const frag = core.replace('/*RECIPE*/', rec.glsl ?? '');
+
+const OUTW = mode === 'bg' ? 1080 : 1024;
+const OUTH = mode === 'bg' ? 1920 : 1024;
+const RW = Math.round(OUTW * ss);
+const RH = Math.round(OUTH * ss);
+
+const glc = document.getElementById('gl');
+glc.width = RW;
+glc.height = RH;
+const gl = glc.getContext('webgl2', { preserveDrawingBuffer: true, premultipliedAlpha: false, alpha: true, antialias: false });
+if (!gl) fail('WebGL2 없음');
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s) ?? '';
+    // 오류 줄 주변을 보여 준다
+    const m = /ERROR: \d+:(\d+)/.exec(log);
+    const lines = src.split('\n');
+    const at = m ? Number(m[1]) : 0;
+    const ctx = at ? lines.slice(Math.max(0, at - 3), at + 2).map((l, i) => `${at - 2 + i}: ${l}`).join('\n') : '';
+    fail(log + '\n' + ctx);
+  }
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, '#version 300 es\nin vec2 a; void main(){ gl_Position = vec4(a,0.,1.); }'));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) fail(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'a');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const U = (n) => gl.getUniformLocation(prog, n);
+const light = { ...PRESETS[rec.preset ?? 'act1'], ...(rec.light ?? {}) };
+const cam = { pos: [0, 1.2, 9], target: [0, 1.2, 0], fov: 1.8, ...(rec.cam ?? {}) };
+gl.uniform2f(U('uRes'), RW, RH);
+gl.uniform1i(U('uScene'), mode === 'sample' ? 1 : mode === 'bg' ? 2 : 0);
+gl.uniform1f(U('uSeed'), seed);
+gl.uniform3fv(U('uCamPos'), cam.pos);
+gl.uniform3fv(U('uCamTarget'), cam.target);
+gl.uniform1f(U('uFov'), cam.fov);
+gl.uniform3fv(U('uKeyDir'), light.key);
+gl.uniform3fv(U('uKeyCol'), light.keyCol);
+gl.uniform3fv(U('uFillDir'), light.fill);
+gl.uniform3fv(U('uFillCol'), light.fillCol);
+gl.uniform3fv(U('uAmbCol'), light.amb);
+gl.uniform3fv(U('uRimCol'), light.rimCol);
+gl.uniform3fv(U('uFogCol'), light.fog);
+gl.uniform1f(U('uRim'), light.rim);
+gl.uniform1f(U('uGlow'), light.glow);
+gl.uniform1f(U('uExposure'), light.exposure);
+gl.uniform1f(U('uEyeEmit'), light.eyeEmit);
+gl.uniform3fv(U('uPtPos'), light.pt ?? [0, 0, 0]);
+gl.uniform3fv(U('uPtCol'), light.ptCol ?? [0, 0, 0]);
+const LIMIT = { uA: 64, uB: 160, uE: 48, uG: 48, uL: 24, uLC: 24, uP: 16 };
+for (const [name, max] of Object.entries(LIMIT)) {
+  const arr = rec.arrays?.[name] ?? [];
+  if (arr.length > max) fail(`${name} ${arr.length}개 > 최대 ${max}`);
+  if (arr.length) gl.uniform4fv(U(name), new Float32Array(arr.map((v) => [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0, v[3] ?? 0]).flat()));
+  gl.uniform1i(U(name + 'N'), arr.length);
+}
+
+// 타일로 나눠 그린다 (GPU 시간 초과 방지)
+gl.viewport(0, 0, RW, RH);
+gl.enable(gl.SCISSOR_TEST);
+gl.clearColor(0, 0, 0, 0);
+gl.clear(gl.COLOR_BUFFER_BIT);
+const TX = 8;
+const TY = mode === 'bg' ? 14 : 8;
+const tw = Math.ceil(RW / TX);
+const th = Math.ceil(RH / TY);
+for (let ty = 0; ty < TY; ty++) {
+  for (let tx = 0; tx < TX; tx++) {
+    gl.scissor(tx * tw, ty * th, tw, th);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.finish();
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+  info.textContent = `그리는 중… ${Math.round(((ty + 1) / TY) * 100)}%`;
+}
+
+// 결과: 스프라이트는 형체의 경계 상자를 찾아 바닥에 맞추고 크기를 맞춘다
+const src = document.createElement('canvas');
+src.width = RW;
+src.height = RH;
+const sg = src.getContext('2d', { willReadFrequently: true });
+sg.drawImage(glc, 0, 0);
+const out = document.getElementById('out');
+out.width = OUTW;
+out.height = OUTH;
+const g = out.getContext('2d');
+g.imageSmoothingQuality = 'high';
+let note = '';
+if (mode === 'sprite') {
+  const px = sg.getImageData(0, 0, RW, RH).data;
+  let x0 = RW;
+  let y0 = RH;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < RH; y += 2) {
+    for (let x = 0; x < RW; x += 2) {
+      if (px[(y * RW + x) * 4 + 3] > 110) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) fail('아무것도 그려지지 않았다 (카메라/크기 확인)');
+  const fr = { fill: 0.9, bottom: 0.025, ...(rec.frame ?? {}) };
+  const bw = x1 - x0 + 2;
+  const bh = y1 - y0 + 2;
+  const s = Math.min((fr.fill * OUTW) / bw, ((1 - fr.bottom - 0.03) * OUTH) / bh, (fr.fill * OUTH) / bh);
+  const dx = OUTW / 2 - (x0 + bw / 2) * s;
+  const dy = OUTH * (1 - fr.bottom) - (y1 + 2) * s;
+  g.drawImage(src, 0, 0, RW, RH, dx, dy, RW * s, RH * s);
+  note = ` · 상자 ${bw}×${bh} · 배율 ${s.toFixed(2)}${x0 <= 2 || y0 <= 2 || x1 >= RW - 3 || y1 >= RH - 3 ? ' · ⚠ 잘림(카메라를 물리세요)' : ''}`;
+  window.__clipped = x0 <= 2 || y0 <= 2 || x1 >= RW - 3 || y1 >= RH - 3;
+} else {
+  g.drawImage(src, 0, 0, RW, RH, 0, 0, OUTW, OUTH);
+}
+info.textContent = `${id} · seed ${seed} · ${mode} · ${RW}×${RH} · ${((performance.now() - t0) / 1000).toFixed(1)}s${note}`;
+window.save = async (name, to = 'sample') => {
+  const r = await fetch(`/__save-asset?to=${to}&name=${encodeURIComponent(name)}.png`, { method: 'POST', body: out.toDataURL('image/png') });
+  return r.status;
+};
+window.__done = true;
+</script>
+</body>
+</html>

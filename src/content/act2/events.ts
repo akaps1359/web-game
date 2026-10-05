@@ -45,7 +45,7 @@ reg.events([
     acts: [2],
     stages: {
       start: () => ({
-        text: '반쯤 무너진 종탑 아래, 녹슨 대종이 밧줄 하나에 매달려 있다. 젖은 밧줄은 방금까지 누군가 쥐고 있었던 것처럼 따뜻하다.',
+        text: '반쯤 무너진 종탑 아래, 녹슨 대종이 밧줄 하나에 매달려 있다. 재가 엉겨 붙은 밧줄은 방금까지 누군가 쥐고 있었던 것처럼 따뜻하다.',
         choices: [
           {
             label: '종을 울린다',
@@ -83,7 +83,7 @@ reg.events([
     acts: [2],
     stages: {
       start: () => ({
-        text: '나무 칸막이 너머에서 젖은 숨소리가 들린다. "고백하라, 길 잃은 자여. 그러면 가벼워지리라."',
+        text: '나무 칸막이 너머에서 재 섞인 숨소리가 들린다. "고백하라, 길 잃은 자여. 그러면 가벼워지리라."',
         choices: [
           {
             label: '죄를 고백한다',
@@ -158,15 +158,15 @@ reg.events([
   },
   {
     id: 'a2-scriptorium',
-    title: '물에 잠긴 필사실',
-    icon: 'gi:book-pile',
+    title: '재에 묻힌 필사실',
+    icon: 'gi:burning-book',
     acts: [2],
     stages: {
       start: (run) => ({
-        text: '필사대와 책장이 검은 물에 반쯤 잠겨 있다. 수면 위로 떠오른 양피지에서 아직 마르지 않은 글씨가 천천히 번져 간다.',
+        text: '필사대와 책장이 재에 반쯤 묻혀 있다. 재 위로 삐져나온 양피지에서 아직 마르지 않은 글씨가 천천히 번져 간다.',
         choices: [
           {
-            label: '젖은 책장을 말린다 (3시간)',
+            label: '그을린 책장을 맞춘다 (3시간)',
             hint: '스킬 하나 강화. 시간이 흐른다',
             disabled: !run.skills.some((s) => canUpgradeSkill(run, s)) && '강화할 스킬이 없다',
             go: (r, e) => {
@@ -175,16 +175,16 @@ reg.events([
               const slotted = all.filter((s) => r.slots.includes(s.uid));
               const s = rng(r, 'event').pick(slotted.length ? slotted : all);
               upgradeSkill(r, s.uid);
-              finish(e, `불씨 곁에서 책장을 한 장씩 말렸다. 번진 글씨 사이로 잊었던 요령이 떠올랐다. (${SKILLS.get(s.id)?.name ?? '스킬'} 강화, 3시간 경과)`);
+              finish(e, `재를 털어 가며 그을린 책장을 한 장씩 맞추었다. 타다 남은 글씨 사이로 잊었던 요령이 떠올랐다. (${SKILLS.get(s.id)?.name ?? '스킬'} 강화, 3시간 경과)`);
             },
           },
           {
-            label: '물속의 책을 건져 올린다',
+            label: '재 속의 책을 파낸다',
             hint: '체력 -6, 기술서',
             go: (r, e) => {
               const n = hurtRun(r, 6);
               const [id] = rollSkills(r, 1);
-              finish(e, `차가운 물속에서 무언가 손가락을 물었지만, 가죽 장정의 책 한 권을 건져 냈다. (체력 -${n})`, {
+              finish(e, `미지근한 재 속에서 무언가 손가락을 물었지만, 가죽 장정의 책 한 권을 끄집어냈다. (체력 -${n})`, {
                 loot: id ? [{ kind: 'skill', id }] : [{ kind: 'gold', id: 'gold', n: 30 }],
               });
             },
@@ -242,7 +242,7 @@ reg.events([
     acts: [2],
     stages: {
       start: (run) => ({
-        text: '세례반에 고인 물이 먹처럼 검다. 수면 아래에서 무언가가 천천히 눈을 뜨고, 당신을 알아본다.',
+        text: '세례반에 재와 피를 갠 것이 먹처럼 검게 고여 있다. 그 표면 아래에서 무언가가 천천히 눈을 뜨고, 당신을 알아본다.',
         choices: [
           {
             label: '머리를 담근다',
@@ -254,13 +254,13 @@ reg.events([
               p.hp += 5;
               p.maxSanity = Math.max(10, p.maxSanity - 8);
               p.sanity = Math.min(p.sanity, p.maxSanity);
-              finish(e, '물은 귓속으로, 콧속으로, 생각 속으로 흘러들었다. 다시 고개를 들었을 때 숨 쉬는 법이 조금 달라져 있었다. (통찰 +1, 최대 체력 +5, 최대 정신력 -8)');
+              finish(e, '미지근하고 끈적한 것이 귓속으로, 콧속으로, 생각 속으로 스며들었다. 다시 고개를 들었을 때 숨 쉬는 법이 조금 달라져 있었다. (통찰 +1, 최대 체력 +5, 최대 정신력 -8)');
             },
           },
           {
-            label: '상처를 씻는다',
+            label: '상처에 바른다',
             hint: '체력 +20, 정신력 -8',
-            go: (r, e) => finish(e, `상처가 검은 물에 닿자 연기처럼 아물었다. 피부 아래에서 무언가 꿈틀거린다. (체력 +${healRun(r, 20)})` + sanity(r, 8)),
+            go: (r, e) => finish(e, `검은 것이 닿자 상처가 연기를 내며 아물었다. 피부 아래에서 무언가 꿈틀거린다. (체력 +${healRun(r, 20)})` + sanity(r, 8)),
           },
           {
             label: '성수를 붓는다',
@@ -268,29 +268,29 @@ reg.events([
             disabled: !run.consumables.includes('holy-water') && '성수가 없다',
             go: (r, e) => {
               r.consumables[r.consumables.indexOf('holy-water')] = null;
-              finish(e, '성수가 닿자 검은 물이 비명을 지르며 끓어올랐다. 바닥에 가라앉아 있던 것이 드러났다.', { loot: relicLoot(r) });
+              finish(e, '성수가 닿자 검은 것이 비명을 지르며 끓어올랐다. 바닥에 묻혀 있던 것이 드러났다.', { loot: relicLoot(r) });
             },
           },
-          { label: '떠난다', go: (_r, e) => finish(e, '등 뒤에서 물방울 떨어지는 소리가 따라왔다.') },
+          { label: '떠난다', go: (_r, e) => finish(e, '등 뒤에서 무언가 끈적하게 떨어지는 소리가 따라왔다.') },
         ],
       }),
     },
   },
   {
-    id: 'a2-drowned-choir',
-    title: '물속의 합창',
+    id: 'a2-ash-choir',
+    title: '재 속의 합창',
     icon: 'gi:sing',
     acts: [2],
     stages: {
       start: () => ({
-        text: '물에 잠긴 성가대석에서 노래가 들린다. 수면 아래, 하얀 얼굴들이 같은 박자로 입을 열고 닫는다. 한 자리가 비어 있다.',
+        text: '재가 수북이 쌓인 성가대석에서 노래가 들린다. 재 위로 고개만 내민 잿빛 얼굴들이 같은 박자로 입을 열고 닫는다. 한 자리가 비어 있다.',
         choices: [
           {
             label: '따라 부른다',
             hint: '정신력 -10, 성가대원의 정수',
             go: (r, e) => {
               const color = rng(r, 'event').int(0, 1);
-              finish(e, '목소리가 물속의 노래와 겹치는 순간, 무언가가 목구멍 안쪽에 자리를 잡았다.' + sanity(r, 10), {
+              finish(e, '목소리가 재 속의 노래와 겹치는 순간, 무언가가 목구멍 안쪽에 자리를 잡았다. 입안에서 재 맛이 난다.' + sanity(r, 10), {
                 loot: [{ kind: 'essence', id: 'chorister', color }],
               });
             },
@@ -300,13 +300,13 @@ reg.events([
             hint: '등불 -10, 정신력 +15',
             go: (r, e) => {
               r.light = Math.max(0, r.light - 10);
-              finish(e, `노래가 잦아들고, 아이들이 하나둘 물속 깊이 가라앉았다. (등불 -10, 정신력 +${gainSanityRun(r, 15)})`);
+              finish(e, `노래가 잦아들고, 아이들이 하나둘 재 속으로 고개를 묻었다. (등불 -10, 정신력 +${gainSanityRun(r, 15)})`);
             },
           },
           {
             label: '성가대석으로 뛰어든다',
             hint: '전투',
-            go: (_r, e) => finish(e, '노래가 뚝 그쳤다. 하얀 얼굴들이 일제히 당신을 본다.', { fight: 'a2-choir' }),
+            go: (_r, e) => finish(e, '노래가 뚝 그쳤다. 잿빛 얼굴들이 일제히 당신을 본다.', { fight: 'a2-choir' }),
           },
         ],
       }),
@@ -337,7 +337,7 @@ reg.events([
             hint: '체력 +12, 정신력 +15. 시간이 흐른다',
             go: (r, e) => {
               passTime(r, 4);
-              finish(e, `느린 걸음에 맞추어 함께 걸었다. 기도 소리에 마음이 이상하게 가라앉는다. (체력 +${healRun(r, 12)}, 정신력 +${gainSanityRun(r, 15)}, 4시간 경과)`);
+              finish(e, `느린 걸음에 맞추어 함께 걸었다. 기도 소리에 마음이 이상하게 차분해진다. (체력 +${healRun(r, 12)}, 정신력 +${gainSanityRun(r, 15)}, 4시간 경과)`);
             },
           },
           {
@@ -386,24 +386,24 @@ reg.events([
     },
   },
   {
-    id: 'a2-sluice',
-    title: '녹슨 수문',
-    icon: 'gi:medieval-gate',
+    id: 'a2-bellows',
+    title: '거대한 풀무',
+    icon: 'gi:bellows',
     acts: [2],
     stages: {
       start: (run) => {
-        const flooded = run.floor?.rooms.some((x) => x.flooded) ?? false;
+        const ashen = run.floor?.rooms.some((x) => x.flooded) ?? false;
         return {
-          text: '물길을 막은 거대한 수문. 톱니바퀴 사이에 수도사의 시체가 끼어 있다. 이걸 돌리면 아래쪽 회랑의 물이 빠질지도 모른다.',
+          text: '회랑의 재를 날려 보내던 거대한 풀무. 가죽 주름 사이에 수도사의 시체가 끼어 있다. 이걸 다시 움직이면 아래쪽 회랑에 쌓인 재가 걷힐지도 모른다.',
           choices: [
             {
-              label: '수문을 연다',
-              hint: '체력 -8. 이 층의 침수된 방에서 물이 빠진다',
-              disabled: !flooded && '이미 물이 빠졌다',
+              label: '풀무를 밟는다',
+              hint: '체력 -8. 이 층의 재에 파묻힌 방에서 재가 걷힌다',
+              disabled: !ashen && '이미 재가 걷혔다',
               go: (r, e) => {
                 const n = hurtRun(r, 8);
                 if (r.floor) for (const room of r.floor.rooms) room.flooded = false;
-                finish(e, `시체를 밀어내고 손잡이를 돌렸다. 녹슨 톱니가 손바닥을 찢었지만, 멀리서 물 빠지는 소리가 울렸다. (체력 -${n})`);
+                finish(e, `시체를 끌어내고 발판을 밟았다. 뿜어져 나온 뜨거운 재가 얼굴을 할퀴었지만, 멀리서 재가 쓸려 나가는 소리가 울렸다. (체력 -${n})`);
               },
             },
             {
@@ -411,10 +411,10 @@ reg.events([
               hint: '골드 +35, 정신력 -6',
               go: (r, e) => {
                 r.player.gold += 35;
-                finish(e, '불어 터진 손가락 사이에서 금화 주머니를 빼냈다. (골드 +35)' + sanity(r, 6));
+                finish(e, '그을려 굳은 손가락 사이에서 금화 주머니를 빼냈다. (골드 +35)' + sanity(r, 6));
               },
             },
-            { label: '떠난다', go: (_r, e) => finish(e, '수문 너머에서 물이 철썩였다.') },
+            { label: '떠난다', go: (_r, e) => finish(e, '등 뒤에서 풀무가 혼자 한 번 숨을 쉬었다.') },
           ],
         };
       },

@@ -1,6 +1,8 @@
 import type { CombatEvent, Snap } from './engine/combat';
 import { ENEMIES, MADNESS, STATUSES } from './engine/registry';
+import type { DmgType } from './engine/types';
 import { stage } from './render/stage';
+import type { VignetteKind } from './render/vfxTextures';
 import { sound } from './sound';
 import { store } from './state/store';
 import { DMG_COLOR, DMG_NAME } from './ui/text';
@@ -75,26 +77,50 @@ function unitPoint(uid: string | undefined, top = 0.55): { x: number; y: number 
   return { x: a.x, y: a.y - a.size * top };
 }
 
+/** 플레이어의 보호막 총량 (방어도 + 결계) */
+function wardOf(p: { block: number; st: Record<string, number> } | undefined | null): number {
+  return p ? p.block + (p.st.barrier ?? 0) : 0;
+}
+
 export function syncBattle(snap: Snap | null) {
   const c = store.combat;
   const enemies = snap
     ? snap.e.map((e) => {
         const real = c?.s.enemies.find((x) => x.uid === e.uid);
-        return { uid: e.uid, row: e.row, scale: real?.scale ?? 1, dead: e.dead, broken: e.broken, form: real?.form, def: real?.def ?? '' };
+        return { uid: e.uid, row: e.row, scale: real?.scale ?? 1, dead: e.dead, broken: e.broken, form: real?.form, def: real?.def ?? '', block: e.block };
       })
     : (c?.s.enemies ?? []);
   stage.battle.sync(enemies, (id) => ENEMIES.get(id));
+  stage.battle.wardSet(snap ? wardOf(snap.p) : c ? wardOf(c.p) : 0);
 }
 
 // ───────────── 재생 ─────────────
 
 let queue: CombatEvent[] = [];
 let running: Promise<void> | null = null;
+/** 지금 연출 중인 플레이어 스킬 (총기 연출 판단용) */
+let curSkill: { school: string; dtype?: DmgType } | null = null;
+
+/**
+ * 재생 시작. 주의: 빈 큐로 run()을 부르면 async 함수가 동기적으로 끝나 버려
+ * finally의 `running = null`이 `running = run()` 대입보다 먼저 실행된다 → running이 영원히 남아
+ * 이후 모든 연출이 멈췄다 (전투 시작 시 play([])가 항상 불리므로 매 전투마다 발생).
+ * 그래서 비어 있으면 시작하지 않고, running 해제는 promise가 끝난 뒤에 한다.
+ */
+function kick() {
+  if (running || !queue.length) return;
+  const p: Promise<void> = run().finally(() => {
+    if (running === p) running = null;
+    // 끝나는 사이에 들어온 이벤트가 있으면 이어서 재생
+    kick();
+  });
+  running = p;
+}
 
 export function play(events: CombatEvent[]): Promise<void> {
   queue.push(...events);
-  if (!running) running = run();
-  return running;
+  kick();
+  return running ?? Promise.resolve();
 }
 
 export function busy(): boolean {
@@ -108,12 +134,13 @@ async function run() {
     while (queue.length) {
       const ev = queue.shift()!;
       if (ev.snap) store.snap = ev.snap;
+      stage.battle.timeScale = speed();
       await step(ev);
     }
   } finally {
     store.snap = null;
     store.busy = false;
-    running = null;
+    curSkill = null;
     syncBattle(null);
     store.emit();
   }
@@ -129,9 +156,23 @@ const SFX_BY_TYPE: Record<string, string> = {
   true: 'debuff',
 };
 
+/** 피격 속성별 화면 가장자리 색 */
+const VIG_BY_TYPE: Record<DmgType | 'true', VignetteKind> = {
+  slash: 'blood',
+  pierce: 'blood',
+  blunt: 'blood',
+  fire: 'fire',
+  arcane: 'arcane',
+  void: 'void',
+  true: 'blood',
+};
+
+const hexNum = (s: string) => parseInt(s.replace('#', ''), 16);
+
 async function step(ev: CombatEvent) {
   switch (ev.t) {
     case 'turn':
+      curSkill = null;
       syncBattle(store.snap);
       if (ev.side === 'player') {
         banner(`${ev.turn}턴 — 당신의 차례`, 'player', 900);
@@ -146,6 +187,7 @@ async function step(ev: CombatEvent) {
       return;
     case 'skill': {
       store.emit();
+      curSkill = { school: ev.school, dtype: ev.dtype };
       const fxName = ev.dtype ? SFX_BY_TYPE[ev.dtype] : 'select';
       if (ev.school === 'firearm' && ev.dtype === 'pierce') sound.sfx('gunshot');
       else if (!ev.dtype) sound.sfx('buff');
@@ -156,9 +198,9 @@ async function step(ev: CombatEvent) {
     }
     case 'move': {
       store.emit();
+      curSkill = null;
       fx.moveLabel = { id: ++fid, uid: ev.uid, text: ev.name };
-      if (ev.kind === 'attack' || ev.kind === 'horror' || ev.kind === 'debuff') stage.battle.lunge(ev.uid);
-      else stage.battle.pulse(ev.uid, ev.kind === 'block' ? 0x8fd0ff : ev.kind === 'buff' ? 0xffc060 : 0xe86a8a);
+      stage.battle.telegraph(ev.uid, ev.kind);
       if (ev.kind === 'charge') sound.sfx('charge');
       else if (ev.kind === 'buff') sound.sfx('buff');
       else if (ev.kind === 'block') sound.sfx('block', { volume: 0.6 });
@@ -170,35 +212,72 @@ async function step(ev: CombatEvent) {
     case 'dmg': {
       store.emit();
       const isDot = ev.tags.includes('dot');
+      const dotKind = ev.tags.find((t) => t === 'bleed' || t === 'poison' || t === 'burn') ?? '';
       if (ev.tgt === 'p') {
         const pp = playerPoint();
+        const sp = ev.snap?.p;
+        const remaining = wardOf(sp);
+        const maxHp = sp?.maxHp ?? store.run?.player.maxHp ?? 100;
+        const frac = ev.hpLoss / Math.max(1, maxHp);
+        if (isDot) {
+          stage.battle.dotPlayer(dotKind);
+          if (ev.hpLoss > 0) {
+            stage.vignette(dotKind === 'poison' ? 'poison' : dotKind === 'burn' ? 'fire' : 'blood', Math.min(0.7, 0.3 + frac * 3), 600);
+            floater(pp.x, pp.y - 30, `-${ev.hpLoss}`, dotKind === 'poison' ? '#7fe060' : dotKind === 'burn' ? '#ff8a45' : '#ff6a5a', 'num', 26);
+          }
+          await wait(160);
+          return;
+        }
         if (ev.hpLoss > 0) {
-          stage.shake(Math.min(16, 4 + ev.hpLoss * 0.6), 0.3);
-          stage.flash(0xc01818, Math.min(0.4, 0.12 + ev.hpLoss / 60));
+          stage.battle.playerHit(ev.dtype, { hpLoss: ev.hpLoss, blocked: ev.blocked, remaining, maxHp, src: ev.src });
+          stage.shake(Math.min(18, 5 + ev.hpLoss * 0.6), 0.32);
+          stage.joltHud(3 + ev.hpLoss * 0.35);
+          stage.flash(0xc01818, Math.min(0.26, 0.07 + frac * 0.8));
+          stage.vignette(VIG_BY_TYPE[ev.dtype], Math.min(1, 0.5 + frac * 3), 650 + Math.min(550, ev.hpLoss * 25));
+          if (ev.dtype === 'arcane' || ev.dtype === 'void') stage.splitPulse(Math.min(1.4, 0.6 + frac * 3));
+          if (frac >= 0.12) {
+            const r = stage.battle.rect;
+            stage.punch(r.x + r.w / 2, r.y + r.h * 0.7, Math.min(0.045, 0.02 + frac * 0.1), 0.26);
+          }
           floater(pp.x, pp.y - 30, `-${ev.hpLoss}`, '#ff6a5a', 'num', 30);
           sound.sfx('playerHit', { pitch: 0.9 + Math.random() * 0.2 });
         } else if (ev.blocked > 0) {
+          stage.battle.playerHit(ev.dtype, { hpLoss: 0, blocked: ev.blocked, remaining, maxHp, src: ev.src });
+          stage.shake(remaining > 0 ? 3 : 6, 0.18);
+          stage.joltHud(remaining > 0 ? 1.5 : 3);
+          stage.vignette('ward', remaining > 0 ? 0.32 : 0.55, 520);
           floater(pp.x, pp.y - 30, '막음', '#8fc4ea', 'word', 20);
           sound.sfx('block', { volume: 0.7 });
         } else if (ev.amount === 0 && ev.attack) {
           floater(pp.x, pp.y - 30, '빗나감', '#cfc8b8', 'word', 20);
         }
-        await wait(isDot ? 140 : 260);
+        await wait(260);
         return;
       }
       const p = unitPoint(ev.tgt);
       if (isDot) {
-        stage.battle.dot(ev.tgt, ev.tags.find((t) => t === 'bleed' || t === 'poison' || t === 'burn') ?? '');
+        stage.battle.dot(ev.tgt, dotKind);
         floater(p.x, p.y, `${ev.hpLoss || ev.amount}`, ev.tags.includes('poison') ? '#7fe060' : ev.tags.includes('burn') ? '#ff8a45' : '#e05050', 'num', 22);
         await wait(160);
         return;
       }
-      stage.battle.hit(ev.tgt, ev.dtype, ev.amount, { crit: ev.crit, weak: ev.weak, blocked: ev.blocked > 0 });
+      const firearm = ev.src === 'p' && ev.attack && ev.dtype === 'pierce' && curSkill?.school === 'firearm';
+      const es = ev.snap?.e.find((e) => e.uid === ev.tgt);
+      const shellBreak = ev.blocked > 0 && !!es && es.block <= 0;
+      stage.battle.hit(ev.tgt, ev.dtype, ev.amount, { crit: ev.crit, weak: ev.weak, blocked: ev.blocked, hpLoss: ev.hpLoss, shellBreak, firearm, src: ev.src });
       const big = ev.crit || ev.weak;
+      if (big) {
+        const c = stage.battle.center(ev.tgt);
+        if (c) {
+          stage.punch(c.x, c.y, ev.crit ? 0.05 : 0.04, 0.26);
+          if (ev.crit) stage.shockwave(c.x, c.y, { amplitude: 18, wavelength: 120, speed: 1100, radius: 380, brightness: 1.15, dur: 0.36 });
+        }
+        stage.flash(0xffffff, 0.08);
+      }
       floater(p.x, p.y, ev.hpLoss > 0 ? `${ev.hpLoss}` : ev.blocked > 0 ? `(${ev.blocked})` : '0', DMG_COLOR[ev.dtype], 'num', big ? 36 : 28);
       if (ev.weak) floater(p.x, p.y - 34, `약점 · ${DMG_NAME[ev.dtype]}`, DMG_COLOR[ev.dtype], 'word', 16);
       if (ev.crit) floater(p.x, p.y - 52, '치명타!', '#ffe080', 'word', 18);
-      if (ev.amount > 0) stage.shake(big ? 7 : 3, 0.15);
+      if (ev.amount > 0) stage.shake(big ? 8 : ev.dtype === 'blunt' ? 5 : firearm ? 4 : 3, big ? 0.2 : 0.15);
       sound.sfx(ev.blocked > 0 && ev.hpLoss === 0 ? 'block' : SFX_BY_TYPE[ev.dtype], { pitch: 0.92 + Math.random() * 0.16 });
       await wait(big ? 260 : 200);
       return;
@@ -206,7 +285,10 @@ async function step(ev: CombatEvent) {
     case 'block': {
       store.emit();
       const p = unitPoint(ev.uid, ev.uid === 'p' ? 0 : 0.6);
-      if (ev.uid !== 'p') stage.battle.shield(ev.uid);
+      if (ev.uid === 'p') {
+        stage.battle.wardGain(ev.snap ? wardOf(ev.snap.p) : ev.amount);
+        stage.vignette('ward', 0.3, 560);
+      } else stage.battle.shield(ev.uid);
       floater(p.x, p.y - (ev.uid === 'p' ? 30 : 0), `+${ev.amount}`, '#8fc4ea', 'num', 22);
       sound.sfx('block', { volume: 0.5 });
       await wait(150);
@@ -216,7 +298,8 @@ async function step(ev: CombatEvent) {
       store.emit();
       const p = unitPoint(ev.uid, ev.uid === 'p' ? 0 : 0.6);
       floater(p.x, p.y - (ev.uid === 'p' ? 30 : 0), `+${ev.amount}`, '#6ee08a', 'num', 24);
-      if (ev.uid !== 'p') stage.battle.pulse(ev.uid, 0x6ee08a);
+      stage.battle.heal(ev.uid);
+      if (ev.uid === 'p') stage.vignette('heal', 0.4, 800);
       sound.sfx('heal', { volume: 0.6 });
       await wait(170);
       return;
@@ -224,9 +307,16 @@ async function step(ev: CombatEvent) {
     case 'status': {
       store.emit();
       const def = STATUSES.get(ev.id);
+      if (ev.uid === 'p' && ev.id === 'barrier') {
+        // 결계도 방어막으로 보여 준다
+        if (ev.n > 0) stage.battle.wardGain(wardOf(ev.snap?.p) || ev.n);
+        else stage.battle.wardSet(wardOf(ev.snap?.p));
+      }
       if (!def || def.hidden || ev.n === 0) return;
       const p = unitPoint(ev.uid, ev.uid === 'p' ? 0 : 0.95);
       if (ev.n > 0) {
+        stage.battle.status(ev.uid, ev.id, def.kind);
+        if (ev.uid === 'p' && def.kind === 'debuff') stage.vignette(ev.id === 'poison' ? 'poison' : ev.id === 'bleed' ? 'blood' : 'arcane', 0.32, 600);
         floater(p.x, p.y - (ev.uid === 'p' ? 52 : 0), `${def.name} ${ev.n > 0 ? '+' : ''}${ev.n}`, def.kind === 'buff' ? '#f0cf7a' : '#c8a0ff', 'word', 15);
         if (def.kind === 'debuff' && ev.uid === 'p') sound.sfx('debuff', { volume: 0.5 });
         await wait(110);
@@ -236,6 +326,7 @@ async function step(ev: CombatEvent) {
     case 'reveal': {
       store.emit();
       const p = unitPoint(ev.uid, 1.05);
+      stage.battle.reveal(ev.uid, hexNum(DMG_COLOR[ev.dtype]));
       floater(p.x, p.y, `약점 발견: ${DMG_NAME[ev.dtype]}`, DMG_COLOR[ev.dtype], 'word', 15);
       sound.sfx('reveal', { volume: 0.6 });
       await wait(160);
@@ -246,7 +337,12 @@ async function step(ev: CombatEvent) {
       store.emit();
       stage.battle.breakFx(ev.uid);
       stage.shake(12, 0.35);
-      stage.flash(0xffd060, 0.25);
+      stage.flash(0xffd060, 0.22);
+      const c = stage.battle.center(ev.uid);
+      if (c) {
+        stage.punch(c.x, c.y, 0.05, 0.3);
+        stage.shockwave(c.x, c.y, { amplitude: 26, wavelength: 160, speed: 1000, radius: 520, brightness: 1.25, dur: 0.45 });
+      }
       const p = unitPoint(ev.uid, 0.7);
       floater(p.x, p.y, '붕괴!', '#ffe080', 'big', 40);
       sound.sfx('break');
@@ -256,6 +352,7 @@ async function step(ev: CombatEvent) {
     case 'recover': {
       store.emit();
       const p = unitPoint(ev.uid, 1);
+      stage.battle.recover(ev.uid);
       floater(p.x, p.y, '버팀 회복', '#cfc8b8', 'word', 14);
       await wait(150);
       return;
@@ -272,7 +369,7 @@ async function step(ev: CombatEvent) {
       store.emit();
       const p = unitPoint(ev.uid, 0.7);
       floater(p.x, p.y, '도주', '#cfc8b8', 'word', 18);
-      stage.battle.death(ev.uid);
+      stage.battle.flee(ev.uid);
       syncBattle(store.snap);
       await wait(320);
       return;
@@ -288,6 +385,7 @@ async function step(ev: CombatEvent) {
     case 'row': {
       syncBattle(store.snap);
       store.emit();
+      stage.battle.telegraph(ev.uid, ev.row === 0 ? 'advance' : 'retreat');
       sound.sfx('footstep', { volume: 0.5 });
       await wait(180);
       return;
@@ -296,11 +394,16 @@ async function step(ev: CombatEvent) {
       store.emit();
       const pp = playerPoint();
       if (ev.delta < 0) {
+        const n = -ev.delta;
         floater(pp.x + 40, pp.y - 10, `정신 ${ev.delta}`, '#b99bff', 'num', 22);
-        stage.flash(0x5030c0, 0.16);
-        sound.sfx(Math.abs(ev.delta) >= 6 ? 'whisper' : 'sanityLoss', { volume: 0.7 });
+        stage.flash(0x5030c0, 0.1);
+        stage.battle.sanityLoss(n);
+        stage.vignette('ink', Math.min(1, 0.5 + n * 0.06), 900 + Math.min(700, n * 45));
+        stage.splitPulse(Math.min(1.6, 0.55 + n * 0.09));
+        sound.sfx(n >= 6 ? 'whisper' : 'sanityLoss', { volume: 0.7 });
       } else {
         floater(pp.x + 40, pp.y - 10, `정신 +${ev.delta}`, '#d0bfff', 'num', 20);
+        stage.battle.sanityGain();
       }
       if (store.snap) {
         stage.setSanity(store.snap.p.sanity);
@@ -312,6 +415,7 @@ async function step(ev: CombatEvent) {
     case 'insight': {
       store.emit();
       const pp = playerPoint();
+      stage.battle.insight();
       floater(pp.x, pp.y - 60, `통찰 +${ev.delta}`, '#4fffc4', 'big', 26);
       sound.sfx('reveal');
       await wait(400);
@@ -321,8 +425,13 @@ async function step(ev: CombatEvent) {
       store.emit();
       const name = MADNESS.get(ev.madness)?.name;
       banner(ev.fatal ? '정신이 완전히 무너졌다' : `정신 붕괴 — ${name ?? '광기'}`, 'eldritch', 1800);
-      stage.flash(0x30ffc0, 0.35);
+      stage.flash(0x30ffc0, 0.3);
       stage.shake(14, 0.6);
+      stage.battle.breakdown();
+      stage.vignette('ink', 1, 1900);
+      stage.splitPulse(2);
+      const r = stage.battle.rect;
+      stage.shockwave(r.x + r.w / 2, r.y + r.h * 0.55, { amplitude: 34, wavelength: 220, speed: 750, radius: 760, brightness: 1.2, dur: 0.6 });
       sound.sfx('breakdown');
       await wait(1300);
       return;
@@ -337,17 +446,23 @@ async function step(ev: CombatEvent) {
     }
     case 'fx': {
       store.emit();
-      if (ev.name === 'horror' && ev.src) stage.battle.horror(ev.src);
-      else if (ev.name === 'tentacle' && ev.tgt) {
+      if (ev.name === 'horror' && ev.src) {
+        stage.battle.horror(ev.src);
+        const c = stage.battle.center(ev.src);
+        if (c) stage.shockwave(c.x, c.y, { amplitude: 16, wavelength: 140, speed: 1000, radius: 700, brightness: 1.05, dur: 0.55 });
+        stage.splitPulse(0.5);
+      } else if (ev.name === 'tentacle' && ev.tgt) {
         stage.battle.tentacle(true, ev.tgt);
         sound.sfx('void', { volume: 0.5 });
       } else if (ev.name === 'detonate' && ev.tgt) {
-        stage.battle.pulse(ev.tgt, 0xb48cff);
+        stage.battle.detonate(ev.tgt);
         sound.sfx('arcane');
       } else if (ev.name === 'transform') {
-        stage.flash(0x40ffc0, 0.4);
+        stage.flash(0x40ffc0, 0.35);
         stage.shake(14, 0.5);
         syncBattle(store.snap);
+        stage.battle.transform(ev.tgt);
+        stage.splitPulse(1);
         sound.sfx('breakdown');
         await wait(600);
       }

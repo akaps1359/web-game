@@ -1,5 +1,7 @@
+import { useState } from 'preact/hooks';
 import { ENCOUNTERS, ENEMIES, FLOORS } from '../../engine/registry';
 import { distances, lightCost, type Room } from '../../engine/dungeon';
+import { FINAL_ACT } from '../../engine/run';
 import { fightGuardian, move, riftEnter, useItem } from '../../state/actions';
 import { store } from '../../state/store';
 import { CONSUMABLES } from '../../engine/registry';
@@ -9,6 +11,7 @@ import { hours, ROOM_COLOR, ROOM_ICON, ROOM_NAME } from '../text';
 import { leavePlace } from '../../engine/places';
 import { openShop } from '../../engine/shop';
 import { refresh } from '../../state/actions';
+import { sound } from '../../sound';
 
 export function DungeonScreen() {
   const run = store.run!;
@@ -17,6 +20,18 @@ export function DungeonScreen() {
   const here = f.rooms[f.pos];
   const dist = distances(f, f.pos);
   const stalker = f.stalker?.active ? f.stalker : null;
+  // 이동 확인: 이웃 방을 누르면 먼저 선택만 하고, 확인 버튼으로 이동
+  const [picked, setPicked] = useState<number | null>(null);
+  const target = picked !== null && here.links.includes(picked) ? picked : null;
+  const select = (id: number) => {
+    setPicked(target === id ? null : id);
+    sound.sfx('click', { volume: 0.5 });
+  };
+  const confirmMove = () => {
+    if (target === null) return;
+    setPicked(null);
+    void move(target);
+  };
 
   const roomTip = (r: Room) => {
     if (!r.scouted) {
@@ -33,9 +48,15 @@ export function DungeonScreen() {
       if (boss) lines.push({ label: '층 수호자', value: ENEMIES.get(boss.enemies[0].id)?.name ?? '???' });
     }
     const notes: string[] = [];
-    if (r.flooded) notes.push('침수됨 — 들어가는 데 2시간');
+    if (r.flooded) notes.push(f.act === 2 ? '재에 파묻힘 — 들어가는 데 2시간' : '침수됨 — 들어가는 데 2시간');
     if (r.inverted) notes.push('회복 반전 구역 — 이곳의 전투에선 회복이 피해가 된다');
     if (r.meteor !== undefined && !f.vars['meteor' + r.id]) notes.push(`유성 낙하 지점 — ${r.meteor}시에 떨어진다 (현재 ${f.hours}시)`);
+    if (r.frozen !== undefined && !r.cleared)
+      notes.push(
+        f.hours < r.frozen
+          ? `얼어붙은 방 — ${r.frozen}시간이 지나기 전엔 적이 얼음에 갇혀 첫 차례를 움직이지 못한다 (지금 ${hours(f.hours)})`
+          : '녹아내린 방 — 깨어난 것들이 굶주려 있다 (적 공격 피해 +25%)',
+      );
     showTip({
       title: ROOM_NAME[r.type] + (r.rift ? ' · 균열' : ''),
       icon: r.rift ? 'gi:magic-portal' : ROOM_ICON[r.type],
@@ -55,7 +76,7 @@ export function DungeonScreen() {
       <XpBar />
       <div class="floorbar">
         <button class="floor-name serif" onClick={() => floorDef && showTip({ title: `${f.act}층 · ${floorDef.name}`, icon: 'gi:dungeon-gate', body: `층의 법칙\n${floorDef.law}` })}>
-          {f.act >= 5 ? '잠든 자의 무덤' : `${f.act}층 · ${floorDef?.name ?? ''}`}
+          {`${f.act}층 · ${floorDef?.name ?? ''}`}
           <Icon name="gi:help" size={13} color="var(--ink-3)" />
         </button>
         <div class="grow" />
@@ -130,17 +151,20 @@ export function DungeonScreen() {
               return (
                 <button
                   key={r.id}
-                  class={`room ${cur ? 'cur' : ''} ${adj ? 'adj' : ''} ${r.scouted ? '' : 'unknown'} ${faded ? 'faded' : ''} ${r.rift ? 'rift' : ''}`}
+                  class={`room ${cur ? 'cur' : ''} ${adj ? 'adj' : ''} ${r.scouted ? '' : 'unknown'} ${faded ? 'faded' : ''} ${r.rift ? 'rift' : ''} ${target === r.id ? 'target' : ''}`}
                   style={`left:${((r.x + 0.5) / f.w) * 100}%;top:${((r.y + 0.5) / f.h) * 100}%;--rc:${color}`}
-                  {...press(() => (adj && !store.busy ? move(r.id) : roomTip(r)), () => roomTip(r))}
+                  {...press(() => (adj && !store.busy ? select(r.id) : roomTip(r)), () => roomTip(r))}
                 >
                   {r.scouted && r.type === 'empty' && !r.rift ? <i class="dot" /> : <Icon name={icon} size={22} color={color} />}
                   {cur && <span class="me" />}
-                  {(r.flooded || r.inverted || (r.meteor !== undefined && !f.vars['meteor' + r.id])) && (
+                  {(r.flooded || r.inverted || (r.meteor !== undefined && !f.vars['meteor' + r.id]) || (r.frozen !== undefined && !r.cleared)) && (
                     <span class="mods">
-                      {r.flooded && <Icon name="gi:water-drop" size={11} color="#6fb6ea" />}
+                      {r.flooded && (f.act === 2 ? <Icon name="gi:burning-embers" size={11} color="#c9a27a" /> : <Icon name="gi:water-drop" size={11} color="#6fb6ea" />)}
                       {r.inverted && r.scouted && <Icon name="gi:cycle" size={11} color="#ff80c0" />}
                       {r.meteor !== undefined && !f.vars['meteor' + r.id] && <Icon name="gi:burning-meteor" size={11} color="#ff9a4a" />}
+                      {r.frozen !== undefined &&
+                        !r.cleared &&
+                        (f.hours < r.frozen ? <Icon name="gi:ice-cube" size={11} color="#9fd8ff" /> : <Icon name="gi:melting-ice-cube" size={11} color="#ff8a6a" />)}
                     </span>
                   )}
                   {showStalker && (
@@ -154,7 +178,7 @@ export function DungeonScreen() {
         </div>
       </div>
 
-      <RoomPanel />
+      {target !== null ? <MoveConfirm id={target} onCancel={() => setPicked(null)} onConfirm={confirmMove} /> : <RoomPanel />}
 
       <div class="footer" style={{ paddingTop: 4 }}>
         {run.consumables.map((id, i) => {
@@ -212,6 +236,63 @@ function roomDesc(r: Room): string {
   }
 }
 
+/** 이동 확인 */
+function MoveConfirm({ id, onCancel, onConfirm }: { id: number; onCancel: () => void; onConfirm: () => void }) {
+  const run = store.run!;
+  const f = run.floor!;
+  const r = f.rooms[id];
+  const known = r.scouted;
+  const name = r.rift ? '균열이 열린 방' : known ? ROOM_NAME[r.type] : '알 수 없는 방';
+  const cost = r.flooded ? 2 : 1;
+  // 층의 법칙이 등불을 더 닳게 할 수 있다 (3층 혹한: f.vars.coldLight = 추가 소모 %)
+  const cold = Math.ceil((lightCost(run) * (f.vars.coldLight ?? 0)) / 100);
+  const light = lightCost(run) + cold;
+  const after = Math.max(0, run.light - light);
+  const lines: string[] = [];
+  if (known && r.enc && !r.cleared) {
+    const enc = ENCOUNTERS.find((e) => e.id === r.enc);
+    if (enc) lines.push('존재: ' + enc.enemies.map((e) => ENEMIES.get(e.id)?.name ?? e.id).join(', '));
+  }
+  if (known && !r.cleared && r.type === 'elite') lines.push('강력한 존재가 지키고 있다');
+  if (r.type === 'lord' && !r.cleared) lines.push('계층군주가 기다린다');
+  if (r.type === 'portal') lines.push('층 수호자에게 도전하려면 들어간 뒤 따로 결정한다');
+  if (r.flooded) lines.push(f.act === 2 ? '재에 파묻힌 방 — 2시간 걸린다' : '침수된 방 — 2시간 걸린다');
+  if (r.inverted && known) lines.push('회복 반전 구역');
+  if (r.meteor !== undefined && !f.vars['meteor' + r.id]) lines.push(`유성 낙하 지점 (${r.meteor}시 예정, 지금 ${f.hours}시)`);
+  if (r.frozen !== undefined && !r.cleared)
+    lines.push(f.hours < r.frozen ? '얼어붙은 방 — 적이 아직 얼음에 갇혀 있다' : '녹아내린 방 — 굶주린 것들이 깨어났다 (적 공격 피해 +25%)');
+  if (cold > 0) lines.push(`혹한 — 등불이 ${cold} 더 닳는다`);
+  if (after < 25) lines.push('어둠 속 이동 — 정신력 -2, 기습 위험');
+  const danger = known && !r.cleared && (r.type === 'elite' || r.type === 'lord');
+  return (
+    <div class="room-panel panel" style={{ borderColor: 'var(--brass)' }}>
+      <div class="room-head">
+        <Icon name={r.rift ? 'gi:magic-portal' : known ? ROOM_ICON[r.type] : 'gi:help'} size={18} color={known ? ROOM_COLOR[r.type] : '#8a8f96'} />
+        <span class="serif" style={{ fontWeight: 800 }}>
+          {name}(으)로 이동할까요?
+        </span>
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'grid', gap: 2 }}>
+        <div>
+          시간 +{cost} · 등불 {run.light} → {after}
+        </div>
+        {lines.map((l) => (
+          <div>· {l}</div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button class="btn ghost" style={{ flex: 1 }} onClick={onCancel}>
+          취소
+        </button>
+        <button class={`btn ${danger ? 'danger' : ''}`} style={{ flex: 2 }} disabled={store.busy} onClick={onConfirm}>
+          <Icon name="gi:footsteps" size={18} />
+          이동
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RoomPanel() {
   const run = store.run!;
   const f = run.floor!;
@@ -231,7 +312,7 @@ function RoomPanel() {
     action = (
       <button class="btn danger wide" onClick={() => fightGuardian()}>
         <Icon name="gi:dungeon-gate" size={18} />
-        {f.act >= 5 ? '잠든 자에게 다가간다' : `층 수호자 「${name}」에게 도전`}
+        {f.act >= FINAL_ACT ? `최후의 수호자 「${name}」에게 다가간다` : `층 수호자 「${name}」에게 도전`}
       </button>
     );
   } else if (here.type === 'lord' && !here.cleared) {

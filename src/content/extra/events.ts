@@ -257,7 +257,7 @@ reg.events([
     id: 'x-drowned-library',
     title: '물에 잠긴 서고',
     icon: 'gi:bookshelf',
-    acts: [1, 2, 3],
+    acts: [1],
     stages: {
       start: () => ({
         text: '무너진 서가 사이로 검은 물이 찰랑인다. 높은 선반에 젖지 않은 책 몇 권이 남아 있다.',
@@ -317,7 +317,7 @@ reg.events([
                 if (id) loot.push({ kind: 'consumable', id });
               }
               loot.push({ kind: 'gold', id: 'gold', n: 20 });
-              finish(e, '젖지 않은 보급품을 챙겼다.', { loot });
+              finish(e, '아직 쓸 만한 보급품을 챙겼다.', { loot });
             },
           },
           {
@@ -338,11 +338,11 @@ reg.events([
           {
             label: '발자국을 따라간다',
             hint: '정예 전투 (승리 시 유물)',
-            disabled: !encPool(run, 'elite').length && '발자국이 물속으로 사라졌다',
+            disabled: !encPool(run, 'elite').length && '발자국이 어둠 속에서 끊겼다',
             go: (r, e) => {
               const enc = pickEnc(r, 'elite');
               if (enc) finish(e, '발자국이 끝나는 곳에서, 그것이 탐사대의 마지막 사람을 먹고 있었다.', { fight: enc });
-              else finish(e, '발자국은 물속으로 사라졌다.');
+              else finish(e, '발자국은 어둠 속에서 뚝 끊겼다.');
             },
           },
           { label: '떠난다', go: (_r, e) => finish(e, '꺼진 모닥불에서 아직 연기가 피어오르고 있었다.') },

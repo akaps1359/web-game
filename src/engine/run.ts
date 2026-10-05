@@ -1,11 +1,12 @@
 import { Rng, deriveSeed } from './rng';
-import { Combat, BREAKDOWN_RESET, rollMadness, type CombatState } from './combat';
+import { Combat, BREAKDOWN_RESET, rollMadness, type CombatEvent, type CombatState } from './combat';
 import {
   CONSUMABLES,
   ENCOUNTERS,
   ENEMIES,
   EQUIPS,
   ESSENCES,
+  FLOORS,
   ORIGINS,
   RELICS,
   RUNES,
@@ -26,7 +27,11 @@ import { generateFloor, floorSignal, type FloorState } from './dungeon';
 import type { EventState } from './events';
 import type { ShopState } from './shop';
 
-export const SAVE_VERSION = 1;
+/** 저장 형식 버전. 층 구성이 바뀌면 올린다 (이전 판은 이어하기 불가) — 2: 3층/5층 개편, 5층이 정식 탐험 층으로 */
+export const SAVE_VERSION = 2;
+
+/** 마지막 층. 이 층의 수호자(포탈 비석)를 쓰러뜨리면 승리 */
+export const FINAL_ACT = 5;
 
 export type Screen =
   | 'dungeon'
@@ -659,6 +664,14 @@ export function rollEssenceDrops(run: RunState, killed: { def: string; tier: str
 
 // ───────────── 전투 시작/종료 ─────────────
 
+/** 전투 시작 연출 이벤트 (첫 턴, 처음 본 존재의 공포, 기습 등) — 화면이 새 Combat을 만들 때 한 번 가져간다 */
+const beginEvents = new WeakMap<RunState, CombatEvent[]>();
+export function takeBeginEvents(run: RunState): CombatEvent[] {
+  const ev = beginEvents.get(run) ?? [];
+  beginEvents.delete(run);
+  return ev;
+}
+
 export function startCombat(run: RunState, encId: string, opts: { anomaly?: string | null; ambush?: boolean } = {}): Combat {
   const enc = ENCOUNTERS.find((e) => e.id === encId);
   if (!enc) throw new Error(`알 수 없는 조우: ${encId}`);
@@ -670,6 +683,7 @@ export function startCombat(run: RunState, encId: string, opts: { anomaly?: stri
     c.s.ap = Math.max(0, c.s.ap - 1);
     c.emit({ t: 'text', text: '어둠 속에서 기습당했다! (행동력 -1)', tone: 'bad' });
   }
+  beginEvents.set(run, [...c.events]);
   return c;
 }
 
@@ -717,7 +731,7 @@ export function finishCombat(run: RunState): RewardState | null {
     run.stats.bosses++;
     reward.choice = rollBossRelics(run, 3).map((id) => ({ kind: 'relic', id }));
     if (!reward.choice.length) reward.choice = rollChoice(run, 'boss');
-    reward.next = run.act >= 5 ? 'final' : 'haven';
+    reward.next = run.act >= FINAL_ACT ? 'final' : 'haven';
   } else {
     reward.choice = rollChoice(run, cs.kind === 'elite' ? 'elite' : 'normal');
   }
@@ -805,6 +819,11 @@ export function chooseLoot(run: RunState, idx: number, upgradeTarget?: string): 
 export function endRun(run: RunState, won: boolean, reason: string) {
   run.over = { won, reason };
   run.screen = won ? 'victory' : 'gameover';
+}
+
+/** 최종 수호자를 쓰러뜨림 → 승리. 승리 문장은 최종층 FloorDef.victory */
+export function winRun(run: RunState) {
+  endRun(run, true, FLOORS.get(FINAL_ACT)?.victory ?? '심연의 끝에서 살아 돌아왔다');
 }
 
 export { type FloorState };

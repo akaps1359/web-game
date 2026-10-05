@@ -1,7 +1,7 @@
 import { Container, Graphics, Sprite, TilingSprite, type Texture } from 'pixi.js';
-import { fogTexture, gradientTexture, softCircle, vignetteTexture } from './textures';
+import { bgTexture, fogTexture, gradientTexture, hasBg, softCircle, vignetteTexture } from './textures';
 
-type Motif = 'harbor' | 'abbey' | 'dream' | 'stars' | 'tomb' | 'title';
+type Motif = 'harbor' | 'abbey' | 'ice' | 'stars' | 'cosmos' | 'title';
 
 interface Theme {
   sky: [string, string, string];
@@ -36,24 +36,24 @@ const THEMES: Record<number, Theme> = {
     particle: { color: 0xa8c8c8, count: 50, rise: 8, size: 1.4, drift: 10 },
   },
   2: {
-    sky: ['#0d0812', '#1c1226', '#060408'],
-    far: 0x170f1f,
-    near: 0x0a060d,
-    fog: 0x9a80b0,
-    fogAlpha: 0.2,
+    sky: ['#0e0b09', '#211913', '#060504'],
+    far: 0x1b1511,
+    near: 0x0a0807,
+    fog: 0xa89a8c,
+    fogAlpha: 0.22,
     accent: 0xffb060,
     motif: 'abbey',
-    particle: { color: 0xffb070, count: 40, rise: -14, size: 1.5, drift: 6 },
+    particle: { color: 0xd8b088, count: 55, rise: -10, size: 1.4, drift: 7 },
   },
   3: {
-    sky: ['#0a1416', '#1a2a3a', '#120a18'],
-    far: 0x1a2236,
-    near: 0x0b0f18,
-    fog: 0xc090d0,
-    fogAlpha: 0.18,
-    accent: 0xff80c0,
-    motif: 'dream',
-    particle: { color: 0xd0a0ff, count: 60, rise: -4, size: 1.8, drift: 14 },
+    sky: ['#050b12', '#0e2232', '#04070c'],
+    far: 0x0f1d2a,
+    near: 0x070d14,
+    fog: 0xa8d0e8,
+    fogAlpha: 0.26,
+    accent: 0x7fffd0,
+    motif: 'ice',
+    particle: { color: 0xe8f4ff, count: 90, rise: 22, size: 1.5, drift: 26 },
   },
   4: {
     sky: ['#020208', '#0a0a24', '#040208'],
@@ -66,14 +66,14 @@ const THEMES: Record<number, Theme> = {
     particle: { color: 0xc0d0ff, count: 70, rise: 0, size: 1.2, drift: 3 },
   },
   5: {
-    sky: ['#020806', '#06180f', '#010302'],
-    far: 0x08180f,
-    near: 0x030a06,
-    fog: 0x40ff90,
-    fogAlpha: 0.12,
-    accent: 0x40ff90,
-    motif: 'tomb',
-    particle: { color: 0x60ffa0, count: 50, rise: -10, size: 1.6, drift: 8 },
+    sky: ['#05030b', '#170a26', '#020106'],
+    far: 0x140a22,
+    near: 0x06030b,
+    fog: 0xc080e0,
+    fogAlpha: 0.14,
+    accent: 0xff9ad8,
+    motif: 'cosmos',
+    particle: { color: 0xffe0f0, count: 70, rise: -3, size: 1.4, drift: 4 },
   },
 };
 
@@ -103,13 +103,33 @@ export class Backdrop extends Container {
   private t = 0;
   /** 0(밝음)~1(완전한 어둠) */
   darkness = 0;
+  /** 배경 그림 (있으면 절차적 실루엣 대신) */
+  private photo: Sprite | null = null;
+  private photoShade = new Graphics();
 
-  constructor(public act: number) {
+  constructor(
+    public act: number,
+    bgKey?: string,
+  ) {
     super();
     this.theme = THEMES[act] ?? THEMES[1];
     this.fogA = new TilingSprite({ texture: fogTexture(act + 1), width: 10, height: 10 });
     this.fogB = new TilingSprite({ texture: fogTexture(act + 7), width: 10, height: 10 });
     this.addChild(this.sky, this.glow, this.beam, this.eye, this.far, this.fogA, this.tentacles, this.near, this.moteLayer, this.fogB, this.vignette);
+    if (bgKey && hasBg(bgKey)) {
+      const photo = new Sprite();
+      photo.anchor.set(0.5);
+      photo.alpha = 0;
+      this.photo = photo;
+      this.addChildAt(photo, 1);
+      this.addChildAt(this.photoShade, 2);
+      void bgTexture(bgKey).then((tex) => {
+        photo.texture = tex;
+        this.fitPhoto();
+        // 그림이 있으면 절차적 실루엣은 숨긴다 (안개·먼지·비네트는 유지)
+        for (const g of [this.far, this.near, this.beam, this.eye, this.tentacles, this.glow]) g.visible = false;
+      });
+    }
     this.glow.anchor.set(0.5);
     this.glow.blendMode = 'add';
     this.beam.blendMode = 'add';
@@ -131,9 +151,19 @@ export class Backdrop extends Container {
     }
   }
 
+  private fitPhoto() {
+    const p = this.photo;
+    if (!p || p.texture.width <= 1) return;
+    const k = Math.max(this.w / p.texture.width, this.h / p.texture.height) * 1.06;
+    p.scale.set(k);
+    p.position.set(this.w / 2, this.h / 2);
+    this.photoShade.clear().rect(0, 0, this.w, this.h).fill({ color: 0x000000, alpha: 0.22 });
+  }
+
   resize(w: number, h: number) {
     this.w = w;
     this.h = h;
+    this.fitPhoto();
     this.sky.width = w;
     this.sky.height = h;
     this.vignette.width = w;
@@ -243,21 +273,23 @@ export class Backdrop extends Container {
         near.rect(0, base, w, h - base).fill({ color: th.near });
         break;
       }
-      case 'dream': {
-        for (let i = 0; i < 9; i++) {
-          const cx = rnd() * w;
-          const cy = h * 0.1 + rnd() * h * 0.5;
-          const r = 14 + rnd() * 40;
-          const sides = 3 + Math.floor(rnd() * 4);
-          const pts: number[] = [];
-          for (let k = 0; k < sides; k++) {
-            const a = (k / sides) * Math.PI * 2 + rnd();
-            pts.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-          }
-          far.poly(pts).stroke({ width: 1.5, color: 0xd0a0ff, alpha: 0.25 });
+      case 'ice': {
+        // 얼음에 묻힌 오각형 탑들의 실루엣 + 오로라
+        const base = h * 0.8;
+        let x = -20;
+        while (x < w + 20) {
+          const tw = 26 + rnd() * 46;
+          const top = h * (0.18 + rnd() * 0.4);
+          far.poly([x, base, x + tw * 0.12, top + 30, x + tw * 0.5, top, x + tw * 0.88, top + 30, x + tw, base]).fill({ color: th.far });
+          x += tw * (0.7 + rnd() * 0.6);
         }
+        this.glow.visible = true;
+        this.glow.position.set(w * 0.5, h * 0.12);
+        this.glow.tint = th.accent;
+        this.glow.scale.set(5);
+        this.glow.alpha = 0.16;
         near.moveTo(0, h);
-        for (let x = 0; x <= w; x += 12) near.lineTo(x, h * 0.78 + Math.sin(x * 0.03) * 14);
+        for (let xx = 0; xx <= w; xx += 12) near.lineTo(xx, h * 0.8 + Math.sin(xx * 0.02) * 10);
         near.lineTo(w, h).closePath().fill({ color: th.near });
         break;
       }
@@ -283,13 +315,17 @@ export class Backdrop extends Container {
         near.rect(0, h * 0.85, w, h * 0.15).fill({ color: th.near });
         break;
       }
-      case 'tomb': {
-        near.rect(0, h * 0.82, w, h * 0.18).fill({ color: th.near });
+      case 'cosmos': {
+        // 별밭과 성운의 빛 — 그 한가운데 무언가가 웅크려 잠들어 있다
+        for (let i = 0; i < 180; i++) {
+          far.circle(rnd() * w, rnd() * h * 0.85, rnd() * 1.2 + 0.2).fill({ color: rnd() < 0.3 ? 0xffd8f0 : 0xffffff, alpha: 0.15 + rnd() * 0.7 });
+        }
         this.glow.visible = true;
-        this.glow.position.set(w * 0.5, h * 0.65);
-        this.glow.tint = 0x30ff80;
-        this.glow.scale.set(5);
-        this.glow.alpha = 0.18;
+        this.glow.position.set(w * 0.5, h * 0.3);
+        this.glow.tint = th.accent;
+        this.glow.scale.set(6);
+        this.glow.alpha = 0.22;
+        near.rect(0, h * 0.86, w, h * 0.14).fill({ color: th.near, alpha: 0.8 });
         break;
       }
       case 'title': {
@@ -310,6 +346,13 @@ export class Backdrop extends Container {
     this.t += dt;
     const t = this.t;
     const { w, h } = this;
+    if (this.photo && this.photo.texture.width > 1) {
+      // 느린 켄 번스 효과
+      this.photo.alpha = Math.min(1, this.photo.alpha + dt * 0.8);
+      this.photo.x = w / 2 + Math.sin(t * 0.03) * w * 0.02;
+      this.photo.y = h / 2 + Math.cos(t * 0.025) * h * 0.01;
+      this.photoShade.alpha = 1 + this.darkness * 1.6;
+    }
     this.fogA.tilePosition.x -= dt * 6;
     this.fogB.tilePosition.x -= dt * 14;
     this.fogA.tilePosition.y = Math.sin(t * 0.1) * 6;
@@ -320,16 +363,12 @@ export class Backdrop extends Container {
       const blink = Math.max(0, Math.sin(t * 0.3) * 6 - 5);
       this.eye.scale.y = 1 - Math.min(1, blink);
       this.eye.rotation = Math.sin(t * 0.07) * 0.1;
-    } else if (this.theme.motif === 'tomb') {
-      const g = this.tentacles.clear();
-      for (let i = 0; i < 5; i++) {
-        const bx = w * (0.1 + i * 0.2);
-        const sway = Math.sin(t * 0.4 + i) * 40;
-        g.moveTo(bx - 18, h)
-          .bezierCurveTo(bx - 30 + sway, h * 0.7, bx + 40 + sway, h * 0.45, bx + sway * 1.5, h * (0.25 + (i % 2) * 0.1))
-          .bezierCurveTo(bx + 30 + sway, h * 0.5, bx + 10 + sway, h * 0.75, bx + 18, h)
-          .fill({ color: 0x041008, alpha: 0.95 });
-      }
+    } else if (this.theme.motif === 'ice') {
+      this.glow.alpha = 0.12 + Math.sin(t * 0.35) * 0.06;
+      this.glow.x = w * (0.5 + Math.sin(t * 0.05) * 0.15);
+    } else if (this.theme.motif === 'cosmos') {
+      this.glow.alpha = 0.2 + Math.sin(t * 0.5) * 0.06;
+      this.glow.scale.set(6 + Math.sin(t * 0.21) * 0.4);
     } else if (this.theme.motif === 'abbey' || this.theme.motif === 'title') {
       this.glow.alpha = (this.theme.motif === 'abbey' ? 0.3 : 0.12) + Math.sin(t * 0.8) * 0.05;
     }

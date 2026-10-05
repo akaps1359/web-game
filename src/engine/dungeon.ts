@@ -1,5 +1,6 @@
 import { ANOMALIES, ENCOUNTERS, EVENTS, FLOORS, type FloorSignal } from './registry';
 import {
+  FINAL_ACT,
   endRun,
   log,
   loseSanityRun,
@@ -10,6 +11,7 @@ import {
   rollConsumable,
   rollRelic,
   rollEquip,
+  winRun,
 } from './run';
 import { startEvent } from './events';
 import { openShop, type ShopState } from './shop';
@@ -37,6 +39,8 @@ export interface Room {
   inverted?: boolean;
   /** 이 시각이 되면 유성 낙하 */
   meteor?: number;
+  /** 얼어붙은 방 (3층 법칙): 이 시각이 되기 전엔 적이 얼음에 갇혀 있고, 지나면 녹아 깨어난다 */
+  frozen?: number;
   rift?: boolean;
 }
 
@@ -69,7 +73,6 @@ export const HOURS_PER_TIDE = 12;
 // ───────────── 생성 ─────────────
 
 export function generateFloor(run: RunState, act: number): FloorState {
-  if (act >= 5) return finalFloor(run);
   const r = rng(run, 'map');
   for (let attempt = 0; ; attempt++) {
     const target = r.int(22, 27) + (act >= 3 ? 2 : 0);
@@ -246,51 +249,29 @@ function assignRooms(run: RunState, f: FloorState, dist: number[]) {
   }
 }
 
-/** 최종층: 일직선 */
-function finalFloor(run: RunState): FloorState {
-  const rooms: Room[] = [];
-  const types: Room['type'][] = ['start', 'event', 'camp', 'elite', 'camp', 'portal'];
-  types.forEach((type, i) => {
-    rooms.push({
-      id: i,
-      x: 3,
-      y: GRID_H - 1 - Math.min(GRID_H - 1, Math.round(i * 1.6)),
-      type,
-      links: [],
-      seen: false,
-      scouted: false,
-      visited: false,
-      cleared: type === 'start',
-    });
-  });
-  for (let i = 0; i < rooms.length - 1; i++) {
-    rooms[i].links.push(i + 1);
-    rooms[i + 1].links.push(i);
-  }
-  const evs = [...EVENTS.values()].filter((e) => e.acts.includes(5));
-  if (evs.length) rooms[1].event = rng(run, 'map').pick(evs).id;
-  else rooms[1].type = 'empty';
-  const f: FloorState = {
-    act: 5,
-    w: GRID_W,
-    h: GRID_H,
-    rooms,
-    pos: 0,
-    start: 0,
-    portal: rooms.length - 1,
-    hours: 0,
-    tide: 0,
-    rifts: 0,
-    lord: { progress: 0, warned: 0, room: -1, defeated: false },
-    stalker: null,
-    fights: 0,
-    recentEnc: [],
-    bossEnc: ENCOUNTERS.find((e) => e.act === 5 && e.kind === 'boss')?.id ?? '',
-    vars: {},
+// ───────────── 특수 조우 ─────────────
+// 층마다 추적자(stalker-aN)·균열 수호자(rift-aN)·계층군주(lord-aN)가 없을 수도 있다 (개편 중인 층 등).
+// 없으면 해당 시스템은 조용히 꺼진다: 추적자가 나타나지 않고, 균열이 열리지 않고, 군주 진척이 쌓이지 않는다.
+
+const isSpecialEnc = (id: string) => id.startsWith('stalker') || id.startsWith('rift') || id.startsWith('lord');
+
+/** 이 층의 추적자 조우 */
+export function stalkerEnc(act: number): EncounterDef | undefined {
+  return ENCOUNTERS.find((e) => e.act === act && e.id.startsWith('stalker'));
+}
+
+/** 균열에 쓸 조우들. 일반 조우나 균열 수호자가 없으면 그 층에는 균열이 열리지 않는다 */
+function riftPools(act: number) {
+  return {
+    normals: ENCOUNTERS.filter((e) => e.act === act && e.kind === 'normal' && !e.early && (e.weight ?? 1) > 0 && !isSpecialEnc(e.id)),
+    elites: ENCOUNTERS.filter((e) => e.act === act && e.kind === 'elite' && !isSpecialEnc(e.id)),
+    guardians: ENCOUNTERS.filter((e) => e.act === act && e.id.startsWith('rift')),
   };
-  for (const room of rooms) room.seen = room.scouted = true;
-  reveal(run, f, 0);
-  return f;
+}
+
+export function riftsPossible(act: number): boolean {
+  const p = riftPools(act);
+  return p.normals.length > 0 && p.guardians.length > 0;
 }
 
 // ───────────── 시야 ─────────────
@@ -399,7 +380,7 @@ export function advanceTime(run: RunState, hours: number) {
     floorSignal(run, { t: 'tide', tide: f.tide });
   }
   for (let i = 0; i < hours; i++) maybeOpenRift(run, f);
-  if (f.tide >= 4 && !f.stalker && f.act < 5) {
+  if (f.tide >= 4 && !f.stalker && stalkerEnc(f.act)) {
     const d = distances(f, f.pos);
     let far = 0;
     for (let i = 0; i < d.length; i++) if (d[i] !== Infinity && d[i] > d[far]) far = i;
@@ -409,7 +390,7 @@ export function advanceTime(run: RunState, hours: number) {
 }
 
 function maybeOpenRift(run: RunState, f: FloorState) {
-  if (f.tide < 2 || f.rifts >= 2 || f.act >= 5) return;
+  if (f.tide < 2 || f.rifts >= 2 || !riftsPossible(f.act)) return;
   const r = rng(run, 'map');
   if (!r.chance(0.05 + 0.04 * (f.tide - 2))) return;
   const cands = f.rooms.filter((x) => x.id !== f.pos && x.id !== f.start && x.type !== 'portal' && x.type !== 'lord' && !x.rift);
@@ -431,7 +412,7 @@ function moveStalker(run: RunState, f: FloorState) {
     s.room = next;
   }
   if (s.room === f.pos) {
-    const enc = ENCOUNTERS.find((e) => e.id.startsWith('stalker') && e.act === f.act);
+    const enc = stalkerEnc(f.act);
     s.active = false;
     s.beaten++;
     if (enc) {
@@ -506,7 +487,13 @@ export function startGuardian(run: RunState): string | null {
   if (!f) return '층이 없다';
   const room = f.rooms[f.pos];
   if (room.type === 'portal') {
-    if (!f.bossEnc) return '수호자가 없다';
+    if (!f.bossEnc || !ENCOUNTERS.some((e) => e.id === f.bossEnc)) {
+      // 수호자 조우가 없는 층 (개편 중): 막힌 채로 두지 않고 비석이 그냥 길을 연다
+      log(run, '포탈 비석을 지키는 자가 없다 — 길이 열렸다');
+      if (run.act >= FINAL_ACT) winRun(run);
+      else goHaven(run);
+      return null;
+    }
     startCombat(run, f.bossEnc);
     return null;
   }
@@ -549,11 +536,13 @@ export function enterRift(run: RunState): string | null {
   if (!room.rift) return '균열이 없다';
   const r = rng(run, 'map');
   const rules = [...ANOMALIES.keys()].filter((k) => k.startsWith('rule-'));
-  const normals = ENCOUNTERS.filter((e) => e.act === f.act && e.kind === 'normal' && !e.early && (e.weight ?? 1) > 0);
-  const special = (id: string) => id.startsWith('stalker') || id.startsWith('rift') || id.startsWith('lord');
-  const elites = ENCOUNTERS.filter((e) => e.act === f.act && e.kind === 'elite' && !special(e.id));
-  const guardians = ENCOUNTERS.filter((e) => e.act === f.act && e.id.startsWith('rift'));
-  if (!normals.length || !guardians.length) return '균열이 불안정하다';
+  const { normals, elites, guardians } = riftPools(f.act);
+  if (!normals.length || !guardians.length) {
+    // 균열 수호자가 없는 층: 들어갈 수 없는 균열은 닫아 버린다 (막힌 채로 두지 않음)
+    room.rift = false;
+    log(run, '균열이 불안정하게 일렁이더니 닫혀 버렸다');
+    return '균열이 불안정하다';
+  }
   const encs = [r.pick(normals).id, (r.chance(0.5) && elites.length ? r.pick(elites) : r.pick(normals)).id, r.pick(guardians).id];
   run.rift = { room: room.id, stage: 0, rule: r.pick(rules), encs };
   room.rift = false;
@@ -614,8 +603,9 @@ export function goHaven(run: RunState) {
 
 export function descend(run: RunState) {
   run.act++;
-  if (run.act > 5) {
-    endRun(run, true, '잠든 자를 다시 잠재웠다');
+  if (run.act > FINAL_ACT) {
+    run.act = FINAL_ACT;
+    winRun(run);
     return;
   }
   if (!ENCOUNTERS.some((e) => e.act === run.act)) {
@@ -628,7 +618,45 @@ export function descend(run: RunState) {
   log(run, `${run.act}층으로 내려왔다`);
 }
 
-/** 3층 법칙: 복도 연결이 뒤틀림 (연결성 유지) */
+/** from → to 최단 경로 위의 방들을 지도에 드러낸다 (내용은 그대로 미지) */
+export function revealPath(f: FloorState, from: number, to: number) {
+  const prev = new Map<number, number>();
+  const q = [from];
+  const seen = new Set([from]);
+  while (q.length) {
+    const cur = q.shift()!;
+    if (cur === to) break;
+    for (const n of f.rooms[cur].links) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      prev.set(n, cur);
+      q.push(n);
+    }
+  }
+  if (!seen.has(to)) return;
+  for (let at = to; at !== from; at = prev.get(at)!) f.rooms[at].seen = true;
+}
+
+/** 드러난 방이 드러난 길만으로 현재 위치와 이어지도록 끊긴 곳의 경로를 드러낸다 (회랑이 뒤틀린 뒤 지도 정리) */
+export function connectSeen(f: FloorState) {
+  for (let guard = 0; guard < f.rooms.length; guard++) {
+    const reach = new Set([f.pos]);
+    const q = [f.pos];
+    while (q.length) {
+      const cur = q.shift()!;
+      for (const n of f.rooms[cur].links) {
+        if (reach.has(n) || !f.rooms[n].seen) continue;
+        reach.add(n);
+        q.push(n);
+      }
+    }
+    const cut = f.rooms.find((r) => r.seen && !reach.has(r.id));
+    if (!cut) return;
+    revealPath(f, f.pos, cut.id);
+  }
+}
+
+/** 복도 연결이 뒤틀림 (연결성 유지) — 5층 '뒤틀린 회랑' 법칙, 3층 이벤트 등에서 쓴다 */
 export function shiftCorridors(run: RunState, f: FloorState, count: number) {
   const r = rng(run, 'map');
   for (let i = 0; i < count; i++) {

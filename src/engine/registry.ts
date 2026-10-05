@@ -91,7 +91,10 @@ export interface FloorDef {
   setup?(run: RunState, f: FloorState): void;
   /** 조우 시작 시 전장 규칙 추가 (예: 회복 반전 구역) — 반환한 anomaly id 적용 */
   roomAnomaly?(run: RunState, f: FloorState, roomId: number): string | null;
+  /** 계층군주 (없으면 그 층에는 군주가 나타나지 않는다) */
   lord?: LordDef;
+  /** 최종층 전용: 최종 수호자를 쓰러뜨렸을 때의 승리 문장 */
+  victory?: string;
 }
 
 export interface ConsumableDef {

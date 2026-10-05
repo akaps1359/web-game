@@ -3,9 +3,10 @@ import { isEnemy, type Combat } from '../../engine/combat';
 import type { EnemyUnit, MoveDef } from '../../engine/types';
 
 /**
- * 3층(꿈의 경계) 공용 헬퍼와 전용 상태.
- * - 환영: 숨겨진 상태 'a3-illusion' + mem.illu. 공격받으면 흩어지고(보상 없음), 실제 피해 대신 정신 피해를 준다.
- * - 통찰 강탈 / 등불 갉아먹기: 빼앗은 것은 mem에 보관했다가 처치하면 돌려준다 (특성 훅).
+ * 5층(꿈꾸는 우주) — 꿈의 땅 공용 헬퍼와 전용 상태. (2026-10 개편 때 3층 '꿈의 경계'에서 옮겨 왔고, id 접두사도 a3- → a5- 로 바꿨다)
+ * - 환영: 숨겨진 상태 'a5-illusion' + mem.illu. 공격받으면 흩어지고(보상 없음), 실제 피해 대신 정신 피해를 준다.
+ * - 등불 갉아먹기: 빼앗은 것은 mem에 보관했다가 처치하면 돌려준다 (특성 훅).
+ * - 잠듦/순례/남은 목숨/꿈결·현실: 몽유병자·별빛 순례자·토성의 고양이·문턱의 존재 전용.
  */
 
 /** 통찰이 이 이상이면 환영의 정체가 이름에 드러난다 */
@@ -23,7 +24,7 @@ export function realAlive(c: Combat): EnemyUnit[] {
   return c.alive.filter((x) => !isIllusion(x));
 }
 
-/** 보상 없이 사라진다 (환영이 흩어짐, 삼켜짐 등) */
+/** 보상 없이 사라진다 (환영이 흩어짐, 삼켜짐, 별빛이 되어 흩어짐 등) */
 export function vanish(c: Combat, e: EnemyUnit, text = '환영이 흩어졌다') {
   if (e.dead) return;
   e.dead = true;
@@ -35,17 +36,17 @@ export function vanish(c: Combat, e: EnemyUnit, text = '환영이 흩어졌다')
 
 /**
  * src의 환영을 만든다. 체력·버팀·상태까지 똑같이 베껴 겉보기로는 구별할 수 없다.
- * onSpawn은 c.s.vars.a3Illu 플래그로 건너뛸 수 있다.
+ * onSpawn은 c.s.vars.a5Illu 플래그로 건너뛸 수 있다.
  */
 export function spawnIllusion(c: Combat, src: EnemyUnit, turns = 3): EnemyUnit | null {
-  const prev = c.s.vars.a3Illu;
-  c.s.vars.a3Illu = 1;
+  const prev = c.s.vars.a5Illu;
+  c.s.vars.a5Illu = 1;
   let copy: EnemyUnit | null = null;
   try {
     copy = c.spawn(src.def, src.row);
   } finally {
-    if (prev === undefined) delete c.s.vars.a3Illu;
-    else c.s.vars.a3Illu = prev;
+    if (prev === undefined) delete c.s.vars.a5Illu;
+    else c.s.vars.a5Illu = prev;
   }
   if (!copy) return null;
   copy.mem = { illu: 1 };
@@ -63,7 +64,7 @@ export function spawnIllusion(c: Combat, src: EnemyUnit, turns = 3): EnemyUnit |
   copy.name = c.p.insight >= ILLUSION_SIGHT ? `${src.name}의 환영` : src.name;
   copy.st = {};
   for (const [k, v] of Object.entries(src.st)) if (!STATUSES.get(k)?.hidden) copy.st[k] = v;
-  copy.st['a3-illusion'] = turns;
+  copy.st['a5-illusion'] = turns;
   if (c.s.phase === 'player') c.planIntent(copy);
   c.emit({ t: 'text', uid: copy.uid, text: c.p.insight >= ILLUSION_SIGHT ? '환영이다' : '형체가 겹쳐 보인다', tone: 'eldritch' });
   return copy;
@@ -90,21 +91,6 @@ export function shuffleGroup(c: Combat, group: EnemyUnit[]) {
   c.emit({ t: 'row', uid: group[0].uid, row: group[0].row });
 }
 
-/** 통찰 강탈. holder가 보관하고, holder를 쓰러뜨리면 돌려받는다. 통찰이 없으면 정신 피해 */
-export function stealInsight(c: Combat, e: EnemyUnit, n: number, holder: EnemyUnit = e): number {
-  if (isIllusion(e)) return 0;
-  const k = Math.min(n, c.p.insight);
-  if (k <= 0) {
-    c.loseSanity(4, true);
-    return 0;
-  }
-  c.p.insight -= k;
-  holder.mem.brain = (holder.mem.brain ?? 0) + k;
-  c.emit({ t: 'insight', delta: -k });
-  c.emit({ t: 'text', uid: holder.uid, text: `통찰 -${k} (빼앗김)`, tone: 'eldritch' });
-  return k;
-}
-
 /** 등불 갉아먹기. 처치하면 돌려받는다 */
 export function stealLight(c: Combat, e: EnemyUnit, n: number) {
   if (isIllusion(e)) return;
@@ -115,34 +101,11 @@ export function stealLight(c: Combat, e: EnemyUnit, n: number) {
   c.emit({ t: 'text', uid: 'p', text: `등불 -${k}`, tone: 'bad' });
 }
 
-/** 피해 없이 버팀만 깎는다 (0이 되면 붕괴) */
-export function chipPoise(c: Combat, e: EnemyUnit, n: number) {
-  if (e.dead || e.broken > 0 || e.maxPoise <= 0 || n <= 0) return;
-  e.poise = Math.max(0, e.poise - n);
-  if (e.poise === 0) c.breakEnemy(e);
-  else c.emit({ t: 'text', uid: e.uid, text: `버팀 -${n}`, tone: 'info' });
-}
-
-/** 적의 전열과 후열을 통째로 뒤바꾼다 */
-export function swapRows(c: Combat) {
-  const front = c.row(0);
-  const back = c.row(1);
-  if (!back.length) return;
-  for (const x of front) {
-    x.row = 1;
-    c.emit({ t: 'row', uid: x.uid, row: 1 });
-  }
-  for (const x of back) {
-    x.row = 0;
-    c.emit({ t: 'row', uid: x.uid, row: 0 });
-  }
-}
-
 /** 잠든 적을 깨운다. startled면 놀라서 힘 +3 */
 export function wake(c: Combat, e: EnemyUnit, startled: boolean) {
   if (!isAsleep(e) || e.dead) return;
   e.mem.asleep = 0;
-  if (e.st['a3-asleep']) c.clear(e, 'a3-asleep');
+  if (e.st['a5-asleep']) c.clear(e, 'a5-asleep');
   if (startled) {
     c.apply(e, 'str', 3, e);
     c.emit({ t: 'text', uid: e.uid, text: '놀라 깨어났다!', tone: 'bad' });
@@ -150,25 +113,11 @@ export function wake(c: Combat, e: EnemyUnit, startled: boolean) {
   if (c.s.phase === 'player' && e.broken !== 2 && !e.dead) c.planIntent(e);
 }
 
-/** 원형질 조각을 삼킨다: 조각마다 체력 회복, 삼켰다면 힘 +1. 조각이 없으면 방어도 */
-export function absorbBlobs(c: Combat, e: EnemyUnit, healPer: number, maxN: number) {
-  const blobs = c.alive.filter((x) => x.def === 'shoggoth-blob' && !isIllusion(x)).slice(0, maxN);
-  if (!blobs.length) {
-    c.gainBlock(e, 8);
-    return;
-  }
-  for (const b of blobs) {
-    vanish(c, b, '삼켜졌다');
-    c.heal(e, healPer);
-  }
-  c.apply(e, 'str', 1, e);
-}
-
-// ───────────── 3층 전용 상태 ─────────────
+// ───────────── 꿈의 땅 전용 상태 ─────────────
 
 reg.statuses([
   {
-    id: 'a3-illusion',
+    id: 'a5-illusion',
     name: '환영',
     icon: 'gi:two-shadows',
     kind: 'buff',
@@ -180,10 +129,10 @@ reg.statuses([
         if (d.src !== s.unit || !d.move) return;
         d.mult = 0;
         d.attack = false;
-        d.tags = [...d.tags, 'a3-illusory'];
+        d.tags = [...d.tags, 'a5-illusory'];
       },
       onDamageDealt(c, s, d) {
-        if (d.src !== s.unit || d.tgt !== c.p || !d.tags.includes('a3-illusory')) return;
+        if (d.src !== s.unit || d.tgt !== c.p || !d.tags.includes('a5-illusory')) return;
         c.emit({ t: 'text', uid: 'p', text: '실체 없는 일격 — 정신이 흔들린다', tone: 'eldritch' });
         c.loseSanity(Math.max(2, Math.round(d.base / 2)), true);
       },
@@ -200,45 +149,32 @@ reg.statuses([
     tickEnd(c, u, n) {
       if (!isEnemy(u)) return;
       if (n <= 1) vanish(c, u, '환영이 옅어져 사라졌다');
-      else c.apply(u, 'a3-illusion', -1);
+      else c.apply(u, 'a5-illusion', -1);
     },
   },
   {
-    id: 'a3-asleep',
+    id: 'a5-asleep',
     name: '잠듦',
     icon: 'gi:sleepy',
     kind: 'debuff',
     desc: '행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3. {n}턴 뒤 스스로 깨어난다 (꿈을 먹는 자의 곁에서는 깨어나지 못한다)',
   },
   {
-    id: 'a3-pilgrimage',
+    id: 'a5-pilgrimage',
     name: '순례',
     icon: 'gi:pilgrim-hat',
     kind: 'buff',
-    desc: '꿈의 문까지 {n}걸음. 다 걸으면 사라지고(보상 없음) 남은 동료는 힘 +2, 체력 10 회복. 붕괴·기절 중에는 걷지 못한다',
+    desc: '요람까지 {n}걸음. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료는 힘 +2, 체력 20 회복. 붕괴·기절 중에는 걷지 못한다',
   },
   {
-    id: 'a3-lives',
+    id: 'a5-lives',
     name: '남은 목숨',
     icon: 'gi:hollow-cat',
     kind: 'buff',
     desc: '쓰러져도 {n}번 더 되살아난다 (체력 40%, 힘 +2, 약점이 바뀐다)',
   },
   {
-    id: 'a3-timeworn',
-    name: '시간 상실',
-    icon: 'gi:backward-time',
-    kind: 'debuff',
-    desc: '다음 턴 행동력 -{n}',
-    tickStart(c, u, n) {
-      if (isEnemy(u)) return;
-      c.s.ap = Math.max(1, c.s.ap - n);
-      c.emit({ t: 'text', uid: 'p', text: `시간을 잃었다 (행동력 -${n})`, tone: 'bad' });
-      c.clear(u, 'a3-timeworn');
-    },
-  },
-  {
-    id: 'a3-phase-dream',
+    id: 'a5-phase-dream',
     name: '꿈결',
     icon: 'gi:fluffy-swirl',
     kind: 'buff',
@@ -250,7 +186,7 @@ reg.statuses([
     },
   },
   {
-    id: 'a3-phase-real',
+    id: 'a5-phase-real',
     name: '현실',
     icon: 'gi:stone-block',
     kind: 'buff',

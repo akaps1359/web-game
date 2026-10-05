@@ -82,7 +82,7 @@ export const explore: MoodFactory = (env) => {
         ],
       });
     case 2:
-      // 가라앉은 수도원: 오르간 드론, 합창, 종, 홀로 부르는 성가
+      // 잿빛 수도원: 오르간 드론, 합창, 종, 홀로 부르는 성가, 회랑의 바람과 꺼지지 않는 향로 불씨 (바다 소리는 1층만)
       return createMood(env, {
         bpm: 52,
         chordBars: 4,
@@ -91,7 +91,7 @@ export const explore: MoodFactory = (env) => {
           const cantor = choir(rt, { volume: -12, attack: 0.35, release: 2.2, vibrato: 0.14, vowel: 'o' });
           rt.route(cantor.output, { dry: 0.8, verb: 0.9, echo: 0.15 });
           return [
-            sea(rt, { level: 0.16, cutoff: 190 }),
+            wind(rt, { level: 0.12, freq: 240, q: 2.5, rate: 0.02 }),
             drone(rt, { notes: [rt.pal.root, rt.pal.root + 7, rt.pal.root + 12], type: 'triangle', count: 2, spread: 6, cutoff: 650, level: 0.3, lfoRate: 0.02, lfoOct: 0.5 }),
             hum(rt, { volume: -13, octave: 2, vowels: ['o', 'a', 'u', 'a'], every: 4 }),
             bells(rt, { notes: [12, 19, 24], every: 16, strikes: [1, 3], gap: 2.6, volume: -15, hum: true }),
@@ -107,27 +107,26 @@ export const explore: MoodFactory = (env) => {
               leap: 0.04,
               startResting: true,
             }),
-            drips(rt, { every: 5 }),
+            fire(rt, { level: 0.3 }),
           ];
         },
       });
     case 3:
-      // 꿈의 경계: 떠도는 온음 화성, 유리 오르골, 역재생 스웰, 공기
+      // 얼어붙은 고대 도시: 산맥을 넘는 바람의 휘파람과 낮은 눈보라, 얼음 결정 같은 종, 얼음 밑의 낮은 드론, 아주 가끔 먼 피리 소리(테켈리-리)
       return createMood(env, {
-        bpm: 66,
-        chordBars: 2,
+        bpm: 50,
+        chordBars: 4,
         gain: 3,
         build: (rt) => {
-          const glass = fmBell(rt, { harmonicity: 5.01, index: 2.5, ring: 2.6, shine: 0.5, volume: -17 });
-          rt.route(glass, { dry: 0.6, verb: 0.7, echo: 0.55 });
+          const ice = fmBell(rt, { harmonicity: 7.01, index: 1.8, ring: 3.4, shine: 0.35, volume: -18 });
+          rt.route(ice, { dry: 0.5, verb: 0.9, echo: 0.5 });
           return [
-            pad(rt, { type: 'sine', count: 3, spread: 35, cutoff: 2400, attack: 2.5, release: 4, volume: -22, octave: 2, chorus: true }),
-            shimmer(rt, { density: 0.22, shift: true }),
-            melody(rt, glass, { lo: rt.pal.root + 36, hi: rt.pal.root + 55, grid: 2, density: 0.3, phrase: [1, 3], rest: [1, 3], detune: 1.2 }),
-            swells(rt, { prob: 0.3, every: 2 }),
-            wind(rt, { level: 0.18, freq: 1400, q: 2.2, rate: 0.03 }),
-            drone(rt, { notes: [rt.pal.root, rt.pal.root + 7], type: 'triangle', count: 2, spread: 10, cutoff: 500, level: 0.16 }),
-            tempoDrift(rt, 0.04, 2),
+            wind(rt, { level: 0.3, freq: 1100, q: 3.2, rate: 0.025 }),
+            wind(rt, { level: 0.18, freq: 260, q: 1.2, rate: 0.015 }),
+            drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 5], type: 'sine', count: 2, spread: 6, cutoff: 240, level: 0.3, lfoRate: 0.02 }),
+            pad(rt, { type: 'sine', count: 2, spread: 14, cutoff: 1800, attack: 5, release: 7, volume: -26, octave: 2, every: 4 }),
+            melody(rt, ice, { lo: rt.pal.root + 43, hi: rt.pal.root + 60, grid: 2, density: 0.16, phrase: [1, 3], rest: [3, 7], vel: [0.2, 0.45], startResting: true }),
+            pipes(rt, { prob: 0.1, volume: -31 }),
           ];
         },
       });
@@ -147,15 +146,15 @@ export const explore: MoodFactory = (env) => {
         ],
       });
     default:
-      // 잠든 자의 무덤: 압도적인 군집, 거대한 심장박동, 낮은 합창
+      // 꿈꾸는 우주: 열린 5도 드론, 우주 한가운데 태아의 느린 심장박동, 낮은 합창, 별빛
       return createMood(env, {
         bpm: 48,
         chordBars: 2,
         build: (rt) => [
-          drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 11, rt.pal.root - 5, rt.pal.root], count: 3, spread: 30, cutoff: 220, level: 0.4, lfoRate: 0.025, lfoOct: 1.1 }),
-          heartbeat(rt, { bpm: 44, note: 26, volume: -7 }),
-          hum(rt, { volume: -12, octave: 1, vowels: ['u', 'o', 'u', 'a'], every: 2, unease: 0.4 }),
-          pipes(rt, { prob: 0.3, volume: -25 }),
+          drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 5, rt.pal.root], count: 3, spread: 18, cutoff: 260, level: 0.36, lfoRate: 0.025, lfoOct: 1.1 }),
+          heartbeat(rt, { bpm: 44, note: 26, volume: -9 }),
+          hum(rt, { volume: -12, octave: 1, vowels: ['a', 'o', 'u', 'o'], every: 2, unease: 0.3 }),
+          shimmer(rt, { density: 0.22, shift: true }),
           bells(rt, { notes: [0, 12], every: 24, strikes: [1, 1], volume: -14, ring: 8, hum: true }),
           swells(rt, { prob: 0.25, every: 2, lo: rt.pal.root + 12, hi: rt.pal.root + 30 }),
         ],
@@ -307,7 +306,7 @@ export const event: MoodFactory = (env) => {
       ];
       if (act === 1) L.push(sea(rt, { level: 0.2, cutoff: 300 }));
       else if (act === 2) L.push(hum(rt, { volume: -16, octave: 1, vowels: ['u', 'o'], every: 4 }));
-      else if (act === 3) L.push(shimmer(rt, { density: 0.15, shift: true }), swells(rt, { prob: 0.2 }));
+      else if (act === 3) L.push(wind(rt, { level: 0.2, freq: 1000, q: 3, rate: 0.03 }), shimmer(rt, { density: 0.08 }));
       else if (act === 4) L.push(pipes(rt, { prob: 0.25, volume: -27 }));
       else L.push(heartbeat(rt, { bpm: 50, volume: -12 }));
       return L;
@@ -338,7 +337,7 @@ export const camp: MoodFactory = (env) => {
       // 멀리서 들려오는 불안의 기척
       if (act === 1) L.push(foghorn(rt, { every: 45, volume: -16 }));
       else if (act === 2) L.push(bells(rt, { notes: [12], every: 30, strikes: [1, 1], volume: -20 }));
-      else if (act === 3) L.push(swells(rt, { prob: 0.12, every: 4 }));
+      else if (act === 3) L.push(wind(rt, { level: 0.16, freq: 700, q: 2.5, rate: 0.02 }));
       else if (act === 4) L.push(pipes(rt, { prob: 0.15, volume: -28 }));
       else L.push(heartbeat(rt, { bpm: 48, volume: -15, prob: 0.8 }));
       return L;
@@ -395,7 +394,7 @@ export const haven: MoodFactory = (env) => {
         keysMelody(rt, { lo: rt.pal.root + 24, hi: rt.pal.root + 41, grid: 3, density: 0.45, volume: -15, rest: [2, 4] }),
       ];
       if (act === 2) L.push(hum(rt, { volume: -19, octave: 1, vowels: ['u', 'o'], every: 4 }));
-      else if (act === 3) L.push(shimmer(rt, { density: 0.1 }), tempoDrift(rt, 0.03, 4));
+      else if (act === 3) L.push(shimmer(rt, { density: 0.08 }), wind(rt, { level: 0.12, freq: 800, q: 2.5, rate: 0.02 }));
       else if (act === 4) L.push(drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 11], cutoff: 200, level: 0.22 }), pipes(rt, { prob: 0.12, volume: -29 }));
       else if (act === 5) L.push(drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 5], cutoff: 200, level: 0.26 }), heartbeat(rt, { bpm: 46, volume: -16, prob: 0.7 }));
       return L;

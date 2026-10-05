@@ -122,7 +122,7 @@ export class Runtime implements MoodInstance {
     this.spec = spec;
     const base = palette(env.act);
     this.pal = spec.palette ? spec.palette(base) : base;
-    this.harmony = new Harmony(this.pal, spec.prog ?? this.pal.prog, spec.wander ?? this.pal.act === 3);
+    this.harmony = new Harmony(this.pal, spec.prog ?? this.pal.prog, spec.wander ?? false);
     this.rhythmic = spec.rhythmic ?? false;
     this.stepsPerBeat = spec.stepsPerBeat ?? 4;
     this.stepsPerBar = this.stepsPerBeat * (spec.beatsPerBar ?? 4);

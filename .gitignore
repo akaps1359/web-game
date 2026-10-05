@@ -6,3 +6,5 @@ Thumbs.db
 *.log
 .claude/settings.local.json
 sim/out/
+art/incoming/
+art/processed/

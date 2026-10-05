@@ -14,7 +14,7 @@ import { continueRift, distances, enterRift, goHaven, moveTo, startGuardian } fr
 import { chooseEvent, eventView, leaveEvent } from '../engine/events';
 import { camp, campRefuel, cureMadness, inn, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
 import { buy } from '../engine/shop';
-import { endRun } from '../engine/run';
+import { endRun, winRun } from '../engine/run';
 import { autoTurn } from './bot';
 import type { Rarity } from '../engine/types';
 
@@ -80,7 +80,9 @@ function pickTarget(run: RunState): number {
   const committed = f.vars.botTarget;
   if (committed !== undefined && committed >= 0 && committed !== f.pos) {
     const t = f.rooms[committed];
-    if (t && (!t.cleared || t.type === 'portal' || t.rift)) return committed;
+    // 상인·신전은 비워지지 않으므로 한 번 들렀으면 목표에서 내린다 (안 그러면 그 옆방과 무한히 오간다)
+    const done = (t?.type === 'merchant' || t?.type === 'shrine') && t.visited;
+    if (t && !done && (!t.cleared || t.type === 'portal' || t.rift)) return committed;
   }
   const commit = (id: number) => {
     f.vars.botTarget = id;
@@ -137,7 +139,7 @@ function pickTarget(run: RunState): number {
       best = r.id;
     }
   }
-  if (best < 0 || bestScore < -4) return portal.seen ? commit(f.portal) : best;
+  if (best < 0 || bestScore < -4) return portal.seen ? commit(f.portal) : best >= 0 ? commit(best) : best;
   return commit(best);
 }
 
@@ -172,7 +174,7 @@ function handleReward(run: RunState) {
   run.reward = null;
   if (next === 'rift') continueRift(run);
   else if (next === 'haven') goHaven(run);
-  else if (next === 'final') endRun(run, true, '잠든 자를 다시 잠재웠다');
+  else if (next === 'final') winRun(run);
   else run.screen = 'dungeon';
 }
 
@@ -286,10 +288,8 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
       case 'dungeon': {
         const f = run.floor!;
         const here = f.rooms[f.pos];
-        if (here.rift && run.player.hp > run.player.maxHp * 0.75) {
-          enterRift(run);
-          break;
-        }
+        // 들어갈 수 없는 균열이면(균열 수호자가 없는 층 등) 그냥 지나간다
+        if (here.rift && run.player.hp > run.player.maxHp * 0.75 && !enterRift(run)) break;
         if ((here.type === 'portal' || (here.type === 'lord' && !here.cleared)) && (here.type === 'portal' ? true : run.player.hp > run.player.maxHp * 0.85)) {
           if (!startGuardian(run)) break;
         }

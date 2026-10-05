@@ -29,15 +29,16 @@ function cultEncounter(id: string): boolean {
   return !!enc && enc.enemies.some((s) => ENEMIES.get(s.id)?.tags?.includes('cult'));
 }
 
-const FLOODABLE: string[] = ['combat', 'elite', 'treasure', 'event', 'empty'];
+/** 재에 파묻힐 수 있는 방 종류 */
+const ASHABLE: string[] = ['combat', 'elite', 'treasure', 'event', 'empty'];
 
 reg.floors([
   {
     act: 2,
-    name: '가라앉은 수도원',
+    name: '잿빛 수도원',
     law:
       '종소리 — 12시간마다 수도원의 종이 울리고, 울릴 때마다 모든 교단 신도의 힘이 1씩 오른다 (최대 4). ' +
-      '침수 — 물에 잠긴 방은 들어가는 데 2시간이 걸린다. 그곳의 전투에선 화염이 약해지고 전류가 강해지며, 심해의 것들이 날뛴다.',
+      '잿더미 — 재에 파묻힌 방은 들어가는 데 2시간이 걸린다. 그곳의 전투에선 화염이 강해지고, 재의 것들이 날뛴다.',
     hooks: {
       onCombatStart(c, s) {
         const f = c.run.floor;
@@ -64,9 +65,10 @@ reg.floors([
       },
     },
     setup(run, f) {
-      // 아래쪽(남쪽) 회랑일수록 물이 깊다 — 특수한 방을 뺀 방의 약 25%가 침수
+      // 재는 아래쪽(남쪽) 회랑으로 흘러내려 쌓인다 — 특수한 방을 뺀 방의 약 25%가 재에 파묻힌다.
+      // 엔진은 room.flooded인 방에 들어가는 데 2시간을 쓴다. 2층에선 이 깃발이 '재에 파묻힌 방'을 뜻한다
       const r = rng(run, 'map');
-      const cands = f.rooms.filter((x) => FLOODABLE.includes(x.type));
+      const cands = f.rooms.filter((x) => ASHABLE.includes(x.type));
       const n = Math.round(cands.length * 0.25);
       const ranked = cands.map((room) => ({ room, k: room.y + r.next() * 4 })).sort((a, b) => b.k - a.k);
       for (const { room } of ranked.slice(0, n)) room.flooded = true;
@@ -74,13 +76,13 @@ reg.floors([
     },
     onMove(run, f) {
       tollCheck(run, f);
-      if (f.rooms[f.pos]?.flooded && !f.vars.floodSeen) {
-        f.vars.floodSeen = 1;
-        log(run, '허리까지 차오른 검은 물을 헤치고 나아간다 — 침수된 방은 지나는 데 2시간이 걸린다');
+      if (f.rooms[f.pos]?.flooded && !f.vars.ashSeen) {
+        f.vars.ashSeen = 1;
+        log(run, '무릎까지 쌓인 미지근한 재를 헤치고 나아간다 — 재에 파묻힌 방은 지나는 데 2시간이 걸린다');
       }
     },
     roomAnomaly(_run, f, roomId) {
-      return f.rooms[roomId]?.flooded ? 'a2-flooded' : null;
+      return f.rooms[roomId]?.flooded ? 'a2-ashen' : null;
     },
     lord: {
       id: 'bellkeeper',
@@ -88,7 +90,7 @@ reg.floors([
       enc: 'lord-a2',
       goal: 5,
       warnings: [
-        '종소리가 물속에서 울리는 것처럼 뭉개져 들린다…',
+        '종소리가 재에 덮인 것처럼 뭉개져 들린다…',
         '종이 울리지 않을 때에도 귓속의 종소리가 멎지 않는다',
         '종탑의 밧줄이 저절로 당겨진다. 누군가 당신의 발걸음을 세고 있다',
         '종지기가 종탑에서 내려왔다 — 지도에 표시됨',

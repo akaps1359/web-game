@@ -142,7 +142,7 @@ export function HavenScreen() {
       <div class="footer">
         <button class="btn danger wide" onClick={() => apply((r) => leaveHaven(r))}>
           <Icon name="gi:dungeon-gate" size={18} />
-          {run.act >= 4 ? '잠든 자의 무덤으로' : `${run.act + 1}층으로 내려간다${next ? ` · ${next.name}` : ''}`}
+          {`${run.act + 1}층으로 내려간다${next ? ` · ${next.name}` : ''}`}
         </button>
       </div>
     </div>

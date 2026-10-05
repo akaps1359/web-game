@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import type { Plugin, ViteDevServer } from 'vite';
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -48,10 +48,14 @@ function gameIcons(): Plugin {
       return `export default ${JSON.stringify(out)};`;
     },
     configureServer(server: ViteDevServer) {
-      // 개발 전용: 브라우저에서 만든 앱 아이콘 PNG를 public/에 저장
+      // 개발 전용: 브라우저에서 만든 PNG 저장 — 앱 아이콘은 public/, 코드로 그린 그림은 art/incoming/ (to=art) 또는 sim/out/samples/ (to=sample)
       server.middlewares.use('/__save-asset', (req, res) => {
-        const name = new URL(req.url ?? '', 'http://x').searchParams.get('name') ?? '';
-        if (req.method !== 'POST' || !/^icon-\d+\.png$/.test(name)) {
+        const q = new URL(req.url ?? '', 'http://x').searchParams;
+        const name = q.get('name') ?? '';
+        const to = q.get('to');
+        const dir = to === 'art' ? join('art', 'incoming') : to === 'sample' ? join('sim', 'out', 'samples') : 'public';
+        const ok = to === 'art' || to === 'sample' ? /^[a-z0-9@-]+\.png$/.test(name) : /^icon-\d+\.png$/.test(name);
+        if (req.method !== 'POST' || !ok) {
           res.statusCode = 400;
           res.end('bad');
           return;
@@ -60,7 +64,8 @@ function gameIcons(): Plugin {
         req.on('data', (chunk) => (body += chunk));
         req.on('end', () => {
           const b64 = body.replace(/^data:image\/png;base64,/, '');
-          writeFileSync(join('public', name), Buffer.from(b64, 'base64'));
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(join(dir, name), Buffer.from(b64, 'base64'));
           res.end('ok');
         });
       });
@@ -73,9 +78,59 @@ function gameIcons(): Plugin {
   };
 }
 
+/** `virtual:art` — public/art 에 들어 있는 그림 목록 (없는 그림은 아이콘으로 대체) */
+function artList(): Plugin {
+  const VIRTUAL = 'virtual:art';
+  const RESOLVED = '\0virtual:art';
+  const list = (dir: string) => {
+    try {
+      return readdirSync(dir)
+        .filter((f) => f.endsWith('.webp'))
+        .map((f) => f.slice(0, -5))
+        .sort();
+    } catch {
+      return [];
+    }
+  };
+  return {
+    name: 'art-list',
+    resolveId(id) {
+      if (id === VIRTUAL) return RESOLVED;
+    },
+    load(id) {
+      if (id !== RESOLVED) return;
+      return `export default ${JSON.stringify({ enemies: list('public/art/enemies'), bg: list('public/art/bg') })};`;
+    },
+    configureServer(server: ViteDevServer) {
+      // 그림이 추가·삭제되면 목록을 다시 만들고 페이지를 새로 고친다 (여러 장을 한꺼번에 넣어도 한 번만)
+      server.watcher.add('public/art');
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const refresh = (file: string) => {
+        if (!/[\\/]public[\\/]art[\\/]/.test(file)) return;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          const mod = server.moduleGraph.getModuleById(RESOLVED);
+          if (mod) server.moduleGraph.invalidateModule(mod);
+          server.ws.send({ type: 'full-reload' });
+        }, 800);
+      };
+      server.watcher.on('add', refresh);
+      server.watcher.on('unlink', refresh);
+      // 감시가 놓친 경우에도 페이지를 열 때마다 목록을 새로 만든다
+      server.middlewares.use((req, _res, next) => {
+        if (req.url?.includes('virtual:art')) {
+          const mod = server.moduleGraph.getModuleById(RESOLVED);
+          if (mod) server.moduleGraph.invalidateModule(mod);
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/web-game/' : '/',
-  plugins: [gameIcons()],
+  plugins: [gameIcons(), artList()],
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1500,

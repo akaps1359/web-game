@@ -10,7 +10,7 @@ import {
 } from '../engine/run';
 import { continueRift, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
 import { chooseEvent, leaveEvent } from '../engine/events';
-import { endRun } from '../engine/run';
+import { endRun, takeBeginEvents, winRun } from '../engine/run';
 import { play, syncBattle } from '../director';
 import { stage } from '../render/stage';
 import { sound } from '../sound';
@@ -76,7 +76,7 @@ function music() {
 export async function refresh() {
   const r = store.run;
   if (r) {
-    stage.setAct(Math.min(5, r.act));
+    stage.setAct(Math.min(5, r.act), r.screen === 'haven' ? 'haven' : undefined);
     stage.setSanity(r.player.sanity);
     sound.sanity(r.player.sanity);
     stage.setDarkness(r.screen === 'dungeon' ? Math.max(0, (50 - r.light) / 50) : 0);
@@ -85,6 +85,7 @@ export async function refresh() {
   if (r?.screen === 'combat' && r.combat) {
     if (!store.combat || store.combat.s !== r.combat) {
       store.combat = new Combat(r);
+      store.combat.events.push(...takeBeginEvents(r));
       store.sel = null;
       store.focus = null;
       stage.showBattle(true);
@@ -300,7 +301,7 @@ export async function leaveReward() {
       sound.sfx('portal');
       break;
     case 'final':
-      endRun(r, true, '잠든 자를 다시 잠재웠다');
+      winRun(r);
       break;
     default:
       r.screen = 'dungeon';

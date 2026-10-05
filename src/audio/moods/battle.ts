@@ -2,7 +2,7 @@ import { Gain } from 'tone';
 import { MODES, clamp, mtof, rand } from '../scales';
 import { Sustain } from '../synth';
 import { biquad, choir, fmKeys, sweep, type Vowel } from './instruments';
-import { bells, chords, drone, melody, pad, pipes, shimmer, swells } from './layers';
+import { bells, chords, drone, melody, pad, pipes, shimmer, swells, wind } from './layers';
 import { drumKit, glassArp, ostinato, riser, stabs, type DrumVoice, type KitOpts, type OstinatoOpts } from './rhythm';
 import { createMood, type Layer, type MoodFactory, type Runtime } from './runtime';
 
@@ -175,9 +175,9 @@ const ACTS: Record<number, BattleAct> = {
       ];
     },
   },
-  // 3막: 꿈속 전투 — 엇박, 유리 아르페지오, 일렁이는 템포
+  // 3막: 얼어붙은 고대 도시 — 엇박, 얼음 결정 같은 유리 아르페지오, 눈보라, 얼음 밑의 낮은 드론
   3: {
-    bpm: 106,
+    bpm: 100,
     kit: {
       patterns: {
         K: ['X..x..X...x.....', 'X...x..x..X..x..'],
@@ -193,9 +193,9 @@ const ACTS: Record<number, BattleAct> = {
       B: ['X.........X.....'],
     },
     ost: [
-      [0, 4, 8, 6, 2, 4, 0, 10],
-      [0, 0, 6, 0, 4, 0, 8, 2],
-      [0, 2, 4, 6, 8, 6, 4, 2],
+      [0, 0, 4, 0, 7, 0, 4, 3],
+      [0, 7, 4, 7, 0, 7, 3, 2],
+      [0, null, 0, 4, 3, 2, 0, -1],
     ],
     stabHits: [0, 10],
     color(rt, kind) {
@@ -213,8 +213,8 @@ const ACTS: Record<number, BattleAct> = {
           sends: { dry: 0.8, verb: 0.7, echo: 0.2 },
         }),
         glassArp(rt, { density: kind === 'combat' ? 0.45 : 0.62 }),
-        swells(rt, { prob: 0.2, every: 2 }),
-        tempoDrift(rt, kind === 'boss' ? 0.03 : 0.05),
+        wind(rt, { level: kind === 'combat' ? 0.16 : 0.22, freq: 1200, q: 3, rate: 0.04 }),
+        drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 5], cutoff: 220, level: 0.24, spread: 8, sends: { dry: 1, verb: 0.3 } }),
       ];
     },
   },
@@ -254,7 +254,7 @@ const ACTS: Record<number, BattleAct> = {
       ];
     },
   },
-  // 최종: 잠든 자 — 무거운 하프타임, 낮은 합창, 군집
+  // 5막: 꿈꾸는 우주 — 무거운 하프타임, 낮은 합창, 열린 5도, 별빛
   5: {
     bpm: 84,
     kit: {
@@ -281,9 +281,9 @@ const ACTS: Record<number, BattleAct> = {
     stabHits: [0, 8],
     color(rt, kind) {
       return [
-        choirChords(rt, { volume: -13, octave: 1, vowels: ['u', 'o', 'u', 'a'], unease: 0.35 }),
-        pipes(rt, { prob: kind === 'boss' ? 0.5 : 0.3, volume: -26 }),
-        drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 11, rt.pal.root - 5], cutoff: 180, level: 0.35, spread: 26, sends: { dry: 1, verb: 0.2 } }),
+        choirChords(rt, { volume: -13, octave: 1, vowels: ['a', 'o', 'u', 'a'], unease: 0.3 }),
+        shimmer(rt, { density: kind === 'boss' ? 0.24 : 0.14, shift: true }),
+        drone(rt, { notes: [rt.pal.root - 12, rt.pal.root - 5], cutoff: 200, level: 0.33, spread: 18, sends: { dry: 1, verb: 0.3 } }),
       ];
     },
   },

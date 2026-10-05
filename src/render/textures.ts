@@ -1,5 +1,62 @@
 import { Texture } from 'pixi.js';
 import ICONS from 'virtual:icons';
+import ART from 'virtual:art';
+
+// ───────────── 그림 (AI 생성 일러스트) ─────────────
+
+export const hasArt = (key: string) => ART.enemies.includes(key);
+export const hasBg = (key: string) => ART.bg.includes(key);
+
+function artUrl(kind: 'enemies' | 'bg', key: string): string {
+  return `${import.meta.env.BASE_URL}art/${kind}/${encodeURIComponent(key)}.webp`;
+}
+
+function loadUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+const artCache = new Map<string, Promise<{ tex: Texture; white: Texture }>>();
+
+/** 몬스터 그림 + 피격 플래시용 흰 실루엣 */
+export function artTextures(key: string): Promise<{ tex: Texture; white: Texture }> {
+  let p = artCache.get(key);
+  if (p) return p;
+  p = (async () => {
+    const img = await loadUrl(artUrl('enemies', key));
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext('2d')!;
+    g.drawImage(img, 0, 0);
+    const w = document.createElement('canvas');
+    w.width = c.width;
+    w.height = c.height;
+    const wg = w.getContext('2d')!;
+    wg.drawImage(img, 0, 0);
+    wg.globalCompositeOperation = 'source-in';
+    wg.fillStyle = '#ffffff';
+    wg.fillRect(0, 0, w.width, w.height);
+    return { tex: Texture.from(c), white: Texture.from(w) };
+  })();
+  artCache.set(key, p);
+  return p;
+}
+
+const bgCache = new Map<string, Promise<Texture>>();
+export function bgTexture(key: string): Promise<Texture> {
+  let p = bgCache.get(key);
+  if (!p) {
+    p = loadUrl(artUrl('bg', key)).then((img) => Texture.from(img));
+    bgCache.set(key, p);
+  }
+  return p;
+}
 
 const cache = new Map<string, Promise<Texture>>();
 

@@ -6,7 +6,7 @@ import { countDef, mv, others, release } from '../moves';
 
 // ───────────── 공용 헬퍼 ─────────────
 
-/** 적 정의의 분류 태그 확인 ('cult', 'deep', 'undead' …) */
+/** 적 정의의 분류 태그 확인 ('cult', 'ash', 'undead' …) */
 export function hasTag(e: EnemyUnit, tag: string): boolean {
   return ENEMIES.get(e.def)?.tags?.includes(tag) ?? false;
 }
@@ -41,7 +41,7 @@ const DMG_KO: Record<DmgType, string> = { slash: '참격', pierce: '관통', blu
 /** 성가대원의 찬송: 계획 시점의 성가대 수에 맞춘 정신 피해를 보여주고, 실행 시 다시 센다 */
 function hymn(n: number): MoveDef {
   return {
-    ...mv.horror('물밑의 찬송', 5 + n, { desc: '다른 성가대원 1명당 정신 피해 +1 (최대 +3)' }),
+    ...mv.horror('재 섞인 찬송', 5 + n, { desc: '다른 성가대원 1명당 정신 피해 +1 (최대 +3)' }),
     run(c, e) {
       c.horror(e, 5 + Math.min(3, choirOthers(c, e)));
     },
@@ -113,9 +113,9 @@ reg.traits([
     hooks: {},
   },
   {
-    id: 'a2-gills',
-    name: '아가미',
-    desc: '자기 턴이 끝날 때 체력 3 회복',
+    id: 'a2-wax-seal',
+    name: '밀랍 봉합',
+    desc: '자기 턴이 끝날 때 녹은 밀랍이 상처를 메워 체력 3 회복',
     hooks: {
       onUnitTurnEnd(c, s) {
         c.heal(s.unit, 3);
@@ -139,9 +139,9 @@ reg.traits([
     },
   },
   {
-    id: 'a2-slippery',
-    name: '미끄러운 몸',
-    desc: '근접 공격으로 받는 피해 25% 감소',
+    id: 'a2-carapace',
+    name: '뼈 껍데기',
+    desc: '마디마다 덧댄 뼈 때문에 근접 공격으로 받는 피해 25% 감소',
     hooks: {
       modDamageIn(_c, _s, d) {
         if (d.melee && d.attack) d.mult *= 0.75;
@@ -224,9 +224,9 @@ reg.traits([
     },
   },
   {
-    id: 'a2-submerged',
-    name: '심해의 몸',
-    desc: '후열(물속)에 있는 동안 받는 피해 30% 감소, 자기 턴이 끝날 때 체력 6 회복. 심해의 자손이 모두 쓰러지면 물 밖으로 끌려 나와 취약해진다',
+    id: 'a2-buried',
+    name: '재 속의 몸',
+    desc: '후열(재 속)에 파묻혀 있는 동안 받는 피해 30% 감소, 자기 턴이 끝날 때 체력 6 회복. 재를 덮어 주던 잿빛 유충이 모두 쓰러지면 재 밖으로 드러나 취약해진다',
     hooks: {
       modDamageIn(_c, s, d) {
         if (isEnemy(s.unit) && s.unit.row === 1) d.mult *= 0.7;
@@ -236,12 +236,12 @@ reg.traits([
       },
       onAnyDeath(c, s, victim) {
         const e = s.unit;
-        if (!isEnemy(e) || !isEnemy(victim) || victim.def !== 'deep-spawn') return;
-        if (!e.mem.sub || e.row !== 1 || countDef(c, 'deep-spawn') > 0) return;
+        if (!isEnemy(e) || !isEnemy(victim) || victim.def !== 'ash-larva') return;
+        if (!e.mem.sub || e.row !== 1 || countDef(c, 'ash-larva') > 0) return;
         if (!c.moveRow(e, 0)) return;
         e.mem.sub = 0;
         e.mem.stranded = 1;
-        c.emit({ t: 'text', uid: e.uid, text: '물 밖으로 끌려 나왔다!', tone: 'good' });
+        c.emit({ t: 'text', uid: e.uid, text: '재 밖으로 드러났다!', tone: 'good' });
         c.apply(e, 'vuln', 2, c.p);
         if (e.broken !== 2 && c.s.phase === 'player') c.planIntent(e);
       },
@@ -278,7 +278,7 @@ reg.traits([
   {
     id: 'a2-lure',
     name: '어둠의 사냥꾼',
-    desc: '등불이 25 미만이면 공격 피해 +25%. 미끼 불빛으로 등불을 빼앗는다. 물속에 숨어 얻은 회피는 자기 턴이 오면 사라진다',
+    desc: '등불이 25 미만이면 공격 피해 +25%. 손짓하는 촛불로 등불을 빼앗는다. 향 연기 속에 숨어 얻은 회피는 자기 턴이 오면 사라진다',
     hooks: {
       modDamageOut(c, _s, d) {
         if (d.attack && c.run.light < 25) d.mult *= 1.25;
@@ -301,7 +301,7 @@ reg.traits([
 reg.enemies([
   {
     id: 'chorister',
-    name: '익사한 성가대원',
+    name: '재를 토하는 성가대원',
     icon: 'gi:sing',
     act: 2,
     tier: 'normal',
@@ -312,7 +312,7 @@ reg.enemies([
     dread: 2,
     tags: ['cult', 'undead'],
     traits: ['a2-chorus'],
-    desc: '물에 잠긴 성가대석에서 아직도 저녁 기도를 부르는 아이들. 입을 벌릴 때마다 검은 물이 흐른다.',
+    desc: '재가 쌓인 성가대석에서 아직도 저녁 기도를 부르는 아이들. 입을 벌릴 때마다 잿가루가 쏟아진다.',
     moves: {
       hymn0: hymn(0),
       hymn1: hymn(1),
@@ -330,12 +330,12 @@ reg.enemies([
       const h = `hymn${Math.min(3, choirOthers(c, e))}`;
       return pick(c, e, { [h]: 2, discord: 2, harmony: others(c, e).length ? 1 : 0 });
     },
-    visual: { tint: 0x4a5a66, glow: 0x9fe0ff, scale: 0.85, fx: ['drip', 'float'] },
+    visual: { tint: 0x5a5650, glow: 0xffd890, scale: 0.85, fx: ['float'] },
   },
   {
-    id: 'abbey-priest',
-    name: '심해교 사제',
-    icon: 'gi:warlock-hood',
+    id: 'censer-priest',
+    name: '향로 사제',
+    icon: 'gi:incense',
     act: 2,
     tier: 'normal',
     hp: [38, 42],
@@ -343,7 +343,7 @@ reg.enemies([
     weak: ['pierce', 'void'],
     row: 1,
     tags: ['cult'],
-    desc: '수도원의 제단을 심해의 신에게 바친 자들. 의식이 길어질수록 그 목소리는 사람의 것이 아니게 된다.',
+    desc: '꺼지지 않는 향로를 흔들며 회랑을 도는 사제. 연기가 짙어질수록 그가 외는 기도는 사람의 말이 아니게 된다.',
     moves: {
       rite: mv.buff(
         '의식 집전',
@@ -364,10 +364,10 @@ reg.enemies([
         { extra: ['heal'], desc: '모든 아군 힘 +1, 체력 4 회복' },
       ),
       curse: mv.horror('저주의 설교', 6, { then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
-      smite: mv.attack('심해의 인장', 7, { melee: false, type: 'arcane' }),
+      smite: mv.attack('재의 인장', 7, { melee: false, type: 'arcane' }),
     },
     ai: (c, e) => (e.mem.rite ? pick(c, e, { smite: 3, curse: 2, communion: others(c, e).length ? 2 : 1 }) : 'rite'),
-    visual: { tint: 0x3a3550, glow: 0x7a60e0, fx: ['flicker'] },
+    visual: { tint: 0x46404a, glow: 0xff9a40, fx: ['flicker'] },
   },
   {
     id: 'martyr',
@@ -437,25 +437,25 @@ reg.enemies([
     visual: { tint: 0x6a6a58, glow: 0xc0ff60 },
   },
   {
-    id: 'scaled-friar',
-    name: '비늘 돋은 수사',
-    icon: 'gi:frog',
+    id: 'wax-friar',
+    name: '밀랍 수사',
+    icon: 'gi:candle-skull',
     act: 2,
     tier: 'normal',
     hp: [48, 54],
     poise: 4,
     weak: ['blunt', 'arcane'],
     row: 0,
-    tags: ['deep', 'cult'],
-    traits: ['a2-gills'],
-    desc: '수도복 아래로 비늘이 돋고 목에는 아가미가 열렸다. 그래도 매일 아침 기도를 거르지 않는다.',
+    tags: ['ash', 'cult'],
+    traits: ['a2-wax-seal'],
+    desc: '녹은 촛농을 제 몸에 부어 상처를 봉한 수사. 굳은 밀랍이 얼굴의 반을 덮었지만 아침 기도는 거르지 않는다.',
     moves: {
-      trident: mv.attack('삼지창 찌르기', 9, { type: 'pierce' }),
-      drag: mv.attack('물밑으로 끌기', 6, { then: (c, e) => void c.apply(c.p, 'frail', 2, e) }),
-      scales: mv.block('비늘 세우기', 10),
+      spike: mv.attack('쇠 촛대 찌르기', 9, { type: 'pierce' }),
+      grip: mv.attack('밀랍 손아귀', 6, { then: (c, e) => void c.apply(c.p, 'frail', 2, e) }),
+      harden: mv.block('밀랍 굳히기', 10),
     },
-    ai: (c, e) => opener(c, e, ['trident']) ?? pick(c, e, { trident: 3, drag: 2, scales: hpPct(e) < 0.6 ? 2 : 1 }),
-    visual: { tint: 0x3f6a5a, glow: 0x60ffb0, fx: ['drip'] },
+    ai: (c, e) => opener(c, e, ['spike']) ?? pick(c, e, { spike: 3, grip: 2, harden: hpPct(e) < 0.6 ? 2 : 1 }),
+    visual: { tint: 0x8a7a5a, glow: 0xffd070, fx: ['flicker'] },
   },
   {
     id: 'possessed-monk',
@@ -514,8 +514,8 @@ reg.enemies([
     visual: { tint: 0x2a2630, glow: 0xff3060, scale: 0.6, fx: ['float', 'flicker'] },
   },
   {
-    id: 'drowned-nun',
-    name: '물에 잠긴 수녀',
+    id: 'walled-nun',
+    name: '벽에 갇힌 수녀',
     icon: 'gi:nun-face',
     act: 2,
     tier: 'normal',
@@ -524,21 +524,21 @@ reg.enemies([
     weak: ['fire', 'slash'],
     row: 1,
     tags: ['undead'],
-    desc: '수녀원이 가라앉던 밤, 그들은 문을 걸어 잠그고 끝까지 기도했다.',
+    desc: '수도원이 바쳐지던 밤, 그들은 스스로를 벽 속에 쌓아 넣었다. 회벽 너머의 기도는 아직 끝나지 않았다.',
     moves: {
-      lament: mv.horror('익사자의 기도', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
-      veil: mv.buff(
-        '물의 장막',
+      lament: mv.horror('벽 속의 기도', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      brick: mv.buff(
+        '벽돌 쌓기',
         (c, e) => {
           const t = mostHurt(c) ?? e;
           c.apply(t, 'barrier', 8, e);
         },
         { desc: '가장 다친 아군에게 보호막 8' },
       ),
-      touch: mv.attack('젖은 손길', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
+      touch: mv.attack('벽 틈의 손길', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
     },
-    ai: (c, e) => pick(c, e, { touch: 3, lament: 2, veil: c.alive.some((a) => hpPct(a) < 0.8) ? 2 : 0 }),
-    visual: { tint: 0x40566a, glow: 0x80c0ff, fx: ['drip', 'float'] },
+    ai: (c, e) => pick(c, e, { touch: 3, lament: 2, brick: c.alive.some((a) => hpPct(a) < 0.8) ? 2 : 0 }),
+    visual: { tint: 0x6a6460, glow: 0xe8dcc0, fx: ['flicker'] },
   },
   {
     id: 'bell-acolyte',
@@ -565,21 +565,21 @@ reg.enemies([
     visual: { tint: 0x5a4a3a, glow: 0xffc060 },
   },
   {
-    id: 'lamprey',
-    name: '칠성장어',
-    icon: 'gi:lamprey-mouth',
+    id: 'bone-centipede',
+    name: '뼈지네',
+    icon: 'gi:centipede',
     act: 2,
     tier: 'normal',
     hp: [30, 34],
     poise: 2,
     weak: ['slash', 'fire'],
     row: 0,
-    tags: ['deep', 'beast'],
-    traits: ['a2-slippery'],
-    desc: '침수된 회랑의 물속에서 무엇이든 들러붙어 빨아먹는다. 수도사들은 이것을 "회개하지 않는 혀"라 불렀다.',
+    tags: ['ash', 'beast'],
+    traits: ['a2-carapace'],
+    desc: '납골당의 뼈를 껍데기 삼아 재 속을 기는 지네. 무엇에든 들러붙어 피를 빤다. 수도사들은 이것을 "회개하지 않는 혀"라 불렀다.',
     moves: {
       latch: {
-        name: '흡착',
+        name: '턱 박기',
         intent: 'attack',
         extra: ['heal'],
         dmg: 5,
@@ -596,25 +596,25 @@ reg.enemies([
       thrash: mv.attack('몸부림', 3, { hits: 2 }),
     },
     ai: (c, e) => pick(c, e, { latch: 3, thrash: 2 }),
-    visual: { tint: 0x5a4a5a, glow: 0xff7090, scale: 0.8, fx: ['drip'] },
+    visual: { tint: 0xb0a890, glow: 0xff6050, scale: 0.8 },
   },
   {
-    id: 'pale-eel',
-    name: '창백한 뱀장어',
-    icon: 'gi:eel',
+    id: 'corpse-moth',
+    name: '시체 나방',
+    icon: 'gi:butterfly',
     act: 2,
     tier: 'normal',
     hp: [30, 34],
     poise: 3,
     weak: ['pierce', 'blunt'],
     row: 1,
-    tags: ['deep', 'beast'],
-    desc: '빛을 본 적 없는 물에서 자란 뱀장어. 몸에 흐르는 전류가 생각을 마비시킨다.',
+    tags: ['ash', 'beast'],
+    desc: '향로 연기를 따라 모여드는 창백한 나방. 시체에 알을 슬고, 그 날갯가루를 들이마신 자는 생각이 굳는다.',
     moves: {
-      shock: mv.attack('감전', 5, { melee: false, type: 'arcane' }),
-      coil: mv.charge('전기를 모은다', 9),
-      discharge: release(
-        mv.attack('방전', 9, {
+      dust: mv.attack('날갯가루', 5, { melee: false, type: 'arcane' }),
+      rub: mv.charge('날개를 비빈다', 9),
+      burst: release(
+        mv.attack('마비의 가루', 9, {
           melee: false,
           type: 'arcane',
           desc: '침묵 1 — 다음 턴엔 기본기만 쓸 수 있다',
@@ -622,8 +622,8 @@ reg.enemies([
         }),
       ),
     },
-    ai: (_c, e) => (e.mem.charge ? 'discharge' : cycle(e, ['shock', 'coil', 'shock'])),
-    visual: { tint: 0xc8d0d8, glow: 0x80f0ff, scale: 0.9, fx: ['float'] },
+    ai: (_c, e) => (e.mem.charge ? 'burst' : cycle(e, ['dust', 'rub', 'dust'])),
+    visual: { tint: 0xd0c8b8, glow: 0xffe0a0, scale: 0.9, fx: ['float'] },
   },
   {
     id: 'confessor',
@@ -636,7 +636,7 @@ reg.enemies([
     weak: ['void', 'slash'],
     row: 0,
     tags: ['cult'],
-    desc: '모든 죄를 들어주고, 모든 죄를 기록한다. 그 장부는 바다 밑의 누군가에게 바쳐진다.',
+    desc: '모든 죄를 들어주고, 모든 죄를 기록한다. 그 장부는 아래의 목소리에게 바쳐진다.',
     moves: {
       penance: mv.attack('참회의 매', 8, { then: (c, e) => void c.apply(c.p, 'vuln', 1, e) }),
       confess: {
@@ -658,9 +658,9 @@ reg.enemies([
     visual: { tint: 0x2e2a30, glow: 0xd0b070 },
   },
   {
-    id: 'font-tentacle',
-    name: '성수반의 촉수',
-    icon: 'gi:spiked-tentacle',
+    id: 'font-hands',
+    name: '성수반의 손',
+    icon: 'gi:evil-hand',
     act: 2,
     tier: 'normal',
     hp: [34, 38],
@@ -669,18 +669,18 @@ reg.enemies([
     row: 1,
     dread: 3,
     eldritch: true,
-    tags: ['deep'],
-    desc: '세례반의 바닥은 바다와 이어져 있다. 그 아래에서 무언가가 세례를 기다린다.',
+    tags: ['ash'],
+    desc: '세례반에는 재와 피를 갠 검은 것이 고여 있다. 그 속에서 손들이 뻗어 나와 세례받을 자를 더듬는다.',
     moves: {
-      lash: mv.attack('촉수 채찍', 7, { melee: false, type: 'void' }),
+      reach: mv.attack('뻗어 오는 손', 7, { melee: false, type: 'void' }),
       baptize: mv.horror('검은 세례', 4, {
         desc: '부식 1 — 받는 피해 +1 (전투 동안)',
         then: (c, e) => void c.apply(c.p, 'corrode', 1, e),
       }),
-      squeeze: mv.attack('휘감아 조이기', 3, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
+      clutch: mv.attack('움켜쥐기', 3, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e) }),
     },
-    ai: (_c, e) => cycle(e, ['lash', 'baptize', 'squeeze', 'lash']),
-    visual: { tint: 0x1a2a30, glow: 0x40ffd0, fx: ['float'] },
+    ai: (_c, e) => cycle(e, ['reach', 'baptize', 'clutch', 'reach']),
+    visual: { tint: 0x2a1a1a, glow: 0xff5a40, fx: ['float'] },
   },
 
   // ───────────── 정예 ─────────────
@@ -734,7 +734,7 @@ reg.enemies([
     dread: 3,
     tags: ['cult', 'undead'],
     traits: ['a2-chorus', 'a2-crescendo'],
-    desc: '익사한 아이들을 지휘하는 자. 그가 지휘봉을 들면 물 밑의 모든 입이 동시에 열린다.',
+    desc: '재를 토하는 아이들을 지휘하는 자. 그가 지휘봉을 들면 재에 묻힌 모든 입이 동시에 열린다.',
     moves: {
       conduct1: conduct(1),
       conduct2: conduct(2),
@@ -747,7 +747,7 @@ reg.enemies([
           e.mem.gathers = (e.mem.gathers ?? 0) + 1;
           c.spawn('chorister', 0);
         },
-        '익사한 성가대원 소환',
+        '재를 토하는 성가대원 소환',
       ),
       prelude: {
         ...mv.charge('대합창 준비', 5),
@@ -775,7 +775,7 @@ reg.enemies([
       const m = cycle(e, ['conduct', 'solo', 'conduct', 'baton']);
       return m === 'conduct' ? `conduct${Math.min(3, cres + 1)}` : m;
     },
-    visual: { tint: 0x30384a, glow: 0xa0c0ff, scale: 1.2, fx: ['float', 'drip'] },
+    visual: { tint: 0x3a3634, glow: 0xffd890, scale: 1.2, fx: ['float'] },
   },
   {
     id: 'reliquary',
@@ -824,7 +824,7 @@ reg.enemies([
     dread: 5,
     tags: ['cult'],
     traits: ['a2-offering-rite'],
-    desc: '가라앉은 수도원의 마지막 대사제. 그는 수도원을 바다에 바쳤고, 바다는 그에게 영생을 주었다.',
+    desc: '잿빛 수도원의 마지막 대사제. 수도원을 아래의 목소리에 바친 대가로, 그의 목숨은 향로의 불처럼 꺼지지 않게 되었다.',
     moves: {
       blade: mv.attack('제례검', 11, { type: 'slash' }),
       sermon: mv.horror('심연의 설교', 7, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
@@ -853,7 +853,7 @@ reg.enemies([
         },
         '결박된 제물 2명',
       ),
-      call: mv.summon('신도 소집', (c) => void c.spawn('abbey-priest', 1), '심해교 사제 소환'),
+      call: mv.summon('신도 소집', (c) => void c.spawn('censer-priest', 1), '향로 사제 소환'),
       prepare: mv.charge('심연 강림', 28),
       descend: release(mv.attack('심연 강림', 28, { melee: false, type: 'void' })),
     },
@@ -995,9 +995,9 @@ reg.enemies([
     visual: { tint: 0x6a6450, glow: 0xc0ff60, scale: 0.65 },
   },
   {
-    id: 'deep-lord',
-    name: '심해 군주',
-    icon: 'gi:octoman',
+    id: 'ash-buried',
+    name: '재에 묻힌 것',
+    icon: 'gi:half-body-crawling',
     act: 2,
     tier: 'boss',
     hp: [270, 270],
@@ -1006,37 +1006,37 @@ reg.enemies([
     row: 0,
     dread: 6,
     eldritch: true,
-    tags: ['deep'],
-    traits: ['a2-submerged'],
-    desc: '수도원의 지하 저수조는 바다로 이어져 있었다. 교단이 부른 것은 신이 아니라 그 신의 사제였다.',
+    tags: ['ash'],
+    traits: ['a2-buried'],
+    desc: '수백 년 동안 향로에서 떨어진 재가 납골당 바닥에 쌓였다. 그 재 아래에서 무언가가 자랐다. 교단은 그것을 파내지 않고 매일 새 재를 덮어 주었다.',
     moves: {
-      trident: mv.attack('삼지창', 10, { type: 'pierce' }),
-      sweep: mv.attack('꼬리 휩쓸기', 5, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
-      prep: mv.charge('해일을 일으킨다', 27),
-      wave: release(mv.attack('해일', 27, { melee: false })),
-      dive: {
-        name: '잠수',
+      rib: mv.attack('갈비뼈 찌르기', 10, { type: 'pierce' }),
+      sweep: mv.attack('재 휩쓸기', 5, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e) }),
+      prep: mv.charge('잿더미를 끌어올린다', 27),
+      collapse: release(mv.attack('무너지는 잿더미', 27, { melee: false })),
+      burrow: {
+        name: '파묻히기',
         intent: 'retreat',
         extra: ['summon'],
-        desc: '심해의 자손 2마리를 부르고 물속(후열)으로 가라앉는다',
+        desc: '잿빛 유충 2마리를 부르고 재 속(후열)으로 파고든다',
         run(c, e) {
           e.mem.dives = (e.mem.dives ?? 0) + 1;
           e.mem.upT = 0;
           e.mem.subT = 0;
-          c.spawn('deep-spawn', 0);
-          c.spawn('deep-spawn', 0);
+          c.spawn('ash-larva', 0);
+          c.spawn('ash-larva', 0);
           if (c.moveRow(e, 1)) {
             e.mem.sub = 1;
-            c.emit({ t: 'text', uid: e.uid, text: '검은 물속으로 가라앉는다', tone: 'eldritch' });
+            c.emit({ t: 'text', uid: e.uid, text: '잿더미 속으로 파고든다', tone: 'eldritch' });
           }
         },
       },
-      jet: mv.attack('수압 분사', 8, { melee: false }),
-      song: mv.horror('심해의 노래', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
-      surface: {
-        name: '부상',
+      spew: mv.attack('잿가루 분출', 8, { melee: false }),
+      song: mv.horror('재 밑의 노래', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e) }),
+      rise: {
+        name: '솟아오름',
         intent: 'advance',
-        desc: '물 위로 떠오른다',
+        desc: '재를 헤치고 솟아오른다',
         run(c, e) {
           c.moveRow(e, 0);
           e.mem.sub = 0;
@@ -1046,16 +1046,16 @@ reg.enemies([
       gasp: {
         name: '헐떡임',
         intent: 'special',
-        desc: '물 밖으로 끌려 나와 숨을 고른다 (행동 없음)',
+        desc: '재 밖으로 끌려 나와 숨을 고른다 (행동 없음)',
         run(c, e) {
           delete e.mem.stranded;
           e.mem.upT = 0;
-          c.emit({ t: 'text', uid: e.uid, text: '아가미가 헛되이 벌떡인다', tone: 'good' });
+          c.emit({ t: 'text', uid: e.uid, text: '드러난 살이 공기에 닿아 오그라든다', tone: 'good' });
         },
       },
     },
     ai: (c, e) => {
-      if (e.mem.charge) return 'wave';
+      if (e.mem.charge) return 'collapse';
       if (e.mem.stranded) return 'gasp';
       if (e.mem.sub) {
         if (e.row === 0) {
@@ -1064,32 +1064,33 @@ reg.enemies([
           return 'gasp';
         }
         e.mem.subT = (e.mem.subT ?? 0) + 1;
-        if (e.mem.subT >= 4 && c.row(0).length < 3) return 'surface';
-        return cycle(e, ['jet', 'song'], 'cs');
+        if (e.mem.subT >= 4 && c.row(0).length < 3) return 'rise';
+        return cycle(e, ['spew', 'song'], 'cs');
       }
       e.mem.upT = (e.mem.upT ?? 0) + 1;
-      if (e.mem.upT >= 4 && (e.mem.dives ?? 0) < 3 && c.row(1).length < 3) return 'dive';
-      return cycle(e, ['trident', 'sweep', 'prep', 'trident'], 'cu');
+      if (e.mem.upT >= 4 && (e.mem.dives ?? 0) < 3 && c.row(1).length < 3) return 'burrow';
+      return cycle(e, ['rib', 'sweep', 'prep', 'rib'], 'cu');
     },
-    visual: { tint: 0x1f3a40, glow: 0x30ffd0, scale: 1.5, fx: ['drip', 'float'] },
+    visual: { tint: 0x4a4640, glow: 0xff7a30, scale: 1.5, fx: ['flicker'] },
   },
   {
-    id: 'deep-spawn',
-    name: '심해의 자손',
-    icon: 'gi:sea-creature',
+    id: 'ash-larva',
+    name: '잿빛 유충',
+    icon: 'gi:maggot',
     act: 2,
     tier: 'minion',
     hp: [20, 22],
     poise: 0,
     weak: ['fire', 'slash'],
     row: 0,
-    tags: ['deep'],
+    tags: ['ash'],
+    desc: '재에 묻힌 것의 몸에서 떨어져 나온 유충. 쉬지 않고 재를 날라 어미를 덮는다.',
     moves: {
-      claw: mv.attack('물갈퀴 할퀴기', 5, { type: 'slash' }),
-      hunch: mv.block('비늘 웅크림', 6),
+      gnaw: mv.attack('갉아먹기', 5, { type: 'slash' }),
+      curl: mv.block('재 속에 웅크림', 6),
     },
-    ai: (c, e) => pick(c, e, { claw: 3, hunch: 1 }),
-    visual: { tint: 0x2a4a48, glow: 0x50ffc0, scale: 0.7, fx: ['drip'] },
+    ai: (c, e) => pick(c, e, { gnaw: 3, curl: 1 }),
+    visual: { tint: 0x8a8478, glow: 0xffb060, scale: 0.7 },
   },
 
   // ───────────── 계층군주 ─────────────
@@ -1107,7 +1108,7 @@ reg.enemies([
     eldritch: true,
     tags: ['undead'],
     traits: ['a2-bell-bound'],
-    desc: '수도원이 가라앉은 뒤에도 종을 멈추지 않은 자. 그의 등은 종의 모양으로 굽었고, 심장은 종추처럼 뛴다.',
+    desc: '수도원이 재에 묻힌 뒤에도 종을 멈추지 않은 자. 그의 등은 종의 모양으로 굽었고, 심장은 종추처럼 뛴다.',
     moves: {
       hammer: mv.attack('종추 내려치기', 13),
       toll1: toll(1),
@@ -1176,9 +1177,9 @@ reg.enemies([
 
   // ───────────── 추적자 / 균열 수호자 ─────────────
   {
-    id: 'angler',
-    name: '물밑의 아귀',
-    icon: 'gi:angler-fish',
+    id: 'candle-lure',
+    name: '촛불을 든 것',
+    icon: 'gi:candlebright',
     act: 2,
     tier: 'elite',
     hp: [150, 150],
@@ -1186,11 +1187,11 @@ reg.enemies([
     weak: ['fire', 'pierce'],
     row: 0,
     dread: 4,
-    tags: ['deep', 'beast'],
+    tags: ['ash', 'beast'],
     traits: ['a2-lure'],
-    desc: '침수된 회랑에서 작은 불빛이 흔들린다. 등불을 든 사람인 줄 알고 다가간 자들은 돌아오지 않았다.',
+    desc: '향 연기가 자욱한 회랑 저편에서 작은 촛불이 흔들린다. 길 잃은 수도사인 줄 알고 다가간 자들은 돌아오지 않았다.',
     moves: {
-      lure: mv.horror('미끼 불빛', 5, {
+      lure: mv.horror('손짓하는 촛불', 5, {
         desc: '등불 -10, 약화 1',
         then(c, e) {
           c.run.light = Math.max(0, c.run.light - 10);
@@ -1200,12 +1201,12 @@ reg.enemies([
       }),
       bite: mv.attack('아가리', 13, { type: 'pierce' }),
       thrash: mv.attack('휘감기', 5, { hits: 3 }),
-      sink: mv.block('물속으로', 10, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '방어도 10, 회피 1' }),
+      smoke: mv.block('연기 속으로', 10, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '방어도 10, 회피 1' }),
       open: mv.charge('아가리가 열린다', 30),
       swallow: release(mv.attack('삼키기', 30, { type: 'pierce' })),
     },
-    ai: (_c, e) => (e.mem.charge ? 'swallow' : cycle(e, ['lure', 'bite', 'sink', 'thrash', 'open'])),
-    visual: { tint: 0x1e2830, glow: 0xfff080, scale: 1.35, fx: ['float', 'drip'] },
+    ai: (_c, e) => (e.mem.charge ? 'swallow' : cycle(e, ['lure', 'bite', 'smoke', 'thrash', 'open'])),
+    visual: { tint: 0x2a2624, glow: 0xffe080, scale: 1.35, fx: ['float', 'flicker'] },
   },
   {
     id: 'inverted-saint',
