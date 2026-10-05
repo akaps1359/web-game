@@ -185,10 +185,12 @@ export const TRAIN_COST = 60;
 
 export function trainPaid(run: RunState, skillUid: string): string | null {
   const s = run.skills.find((x) => x.uid === skillUid);
+  if (run.trainUsed) return '이번 거점에서는 이미 훈련했다';
   if (!s || !canUpgradeSkill(run, s)) return '강화할 수 없다';
   if (run.player.gold < TRAIN_COST) return '골드가 부족하다';
   run.player.gold -= TRAIN_COST;
   upgradeSkill(run, skillUid);
+  run.trainUsed = true;
   return null;
 }
 

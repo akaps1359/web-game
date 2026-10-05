@@ -126,6 +126,8 @@ export interface RunState {
   essenceRemovals: number;
   /** 거점 여관 사용 여부 */
   innUsed: boolean;
+  /** 이번 거점에서 훈련장 강화를 했는가 (거점마다 한 번) */
+  trainUsed?: boolean;
   stats: RunStats;
   uidN: number;
   log: string[];

@@ -4,6 +4,8 @@ import { SKILLS } from '../src/engine/registry';
 import { learnSkill, newRun } from '../src/engine/run';
 import { discardSkill, sellPrice, sellSkill, skillLockReason, skillSellPrice } from '../src/engine/shop';
 import { unequip } from '../src/engine/run';
+import { trainPaid } from '../src/engine/places';
+import { goHaven } from '../src/engine/dungeon';
 
 describe('스킬 처분', () => {
   const someSkill = [...SKILLS.values()].find((s) => s.rarity === 'uncommon')!.id;
@@ -46,5 +48,16 @@ describe('스킬 처분', () => {
     const weapon = run.equip.weapon!;
     expect(unequip(run, 'weapon')).toBe(true);
     expect(sellPrice(run, weapon.uid)).toBe(0);
+  });
+
+  it('거점 훈련장 강화는 거점마다 한 번', () => {
+    const run = newRun({ seed: 11, origin: 'soldier' });
+    run.player.gold = 999;
+    goHaven(run);
+    const [a, b] = run.skills;
+    expect(trainPaid(run, a.uid)).toBeNull();
+    expect(trainPaid(run, b.uid)).not.toBeNull();
+    goHaven(run);
+    expect(trainPaid(run, b.uid)).toBeNull();
   });
 });

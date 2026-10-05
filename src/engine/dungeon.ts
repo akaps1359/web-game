@@ -598,6 +598,7 @@ export function floorSignal(run: RunState, sig: FloorSignal) {
 export function goHaven(run: RunState) {
   run.screen = 'haven';
   run.innUsed = false;
+  run.trainUsed = false;
   run.shop = null;
 }
 

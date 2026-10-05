@@ -60,8 +60,9 @@ export function HavenScreen() {
               </div>
             </button>
             <button
-              class="card"
+              class={`card ${run.trainUsed ? 'off' : ''}`}
               onClick={() => {
+                if (run.trainUsed) return void store.toast('이번 거점에서는 이미 훈련했다', 'info');
                 store.sheet = { kind: 'pick', title: `스킬 훈련 (${TRAIN_COST} 골드)`, purpose: 'train-paid' };
                 store.emit();
               }}
@@ -71,7 +72,7 @@ export function HavenScreen() {
               </div>
               <div class="body">
                 <div class="name">훈련장</div>
-                <div class="desc">스킬 하나를 강화한다. {TRAIN_COST} 골드</div>
+                <div class="desc">스킬 하나를 강화한다. {TRAIN_COST} 골드 · 거점마다 한 번 {run.trainUsed ? '(이미 훈련했다)' : ''}</div>
               </div>
             </button>
           </div>
