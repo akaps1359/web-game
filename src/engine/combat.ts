@@ -834,10 +834,12 @@ export class Combat {
   }
 
   cdOf(info: { def: SkillDef; owned: OwnedSkill }): number {
-    let cd = lvlVal(info.def.cd, info.owned.lvl);
+    const base = lvlVal(info.def.cd, info.owned.lvl);
+    let cd = base;
     for (const id of info.owned.runes) cd += RUNES.get(id)?.cdMod ?? 0;
     for (const [h, self] of this.sources(this.p)) if (h.modCd) cd = h.modCd(this, self, info.def, cd);
-    return Math.max(0, cd);
+    // 원래 재사용 대기가 있는 스킬은 각인·유물로도 1턴 아래로 줄지 않는다 (같은 턴에 무한히 쓰는 고리 방지)
+    return Math.max(base > 0 ? 1 : 0, cd);
   }
 
   /** 단일 대상 스킬이 고를 수 있는 적 */

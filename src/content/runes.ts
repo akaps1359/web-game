@@ -51,7 +51,7 @@ reg.runes([
     name: '가속 각인',
     icon: 'gi:running-shoe',
     rarity: 'uncommon',
-    desc: '재사용 대기 -1',
+    desc: '재사용 대기 -1 (1턴 아래로는 줄지 않는다)',
     cdMod: -1,
     fits: (s) => {
       const cd = Array.isArray(s.cd) ? s.cd[0] : s.cd;
