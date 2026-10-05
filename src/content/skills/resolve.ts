@@ -15,7 +15,7 @@ reg.skills([
     target: 'single',
     type: 'blunt',
     tags: ['attack', 'block'],
-    vals: { dmg: [4, 5], pct: [50, 75] },
+    vals: { dmg: [6, 7], pct: [50, 75] },
     desc: '{D:dmg} + 현재 방어도의 {pct}% 타격 피해',
     // 방어도 비례 피해도 위력(메아리·절약 각인)을 따른다
     run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor((c.p.block * u.v('pct') * u.power) / 100) }),

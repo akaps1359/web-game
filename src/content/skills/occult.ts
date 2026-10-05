@@ -15,7 +15,7 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'mark'],
-    vals: { dmg: [3, 4], mark: [2, 3] },
+    vals: { dmg: [4, 5], mark: [2, 3] },
     desc: '{D:dmg} 비전 피해, 인장 {mark}',
     run: (c, u, t) => {
       hit(c, u, t);
@@ -34,7 +34,7 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'mark', 'detonate'],
-    vals: { base: [5, 7], per: [5, 7] },
+    vals: { base: [7, 9], per: [5, 7] },
     desc: '대상의 인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해',
     run: (c, u, t) => {
       // 기본·인장당 피해도 위력(메아리·절약 각인)을 따른다
@@ -53,7 +53,7 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack'],
-    vals: { dmg: [7, 10] },
+    vals: { dmg: [10, 13] },
     desc: '{D:dmg} 비전 피해',
     run: (c, u, t) => void hit(c, u, t),
   }),
@@ -99,7 +99,7 @@ reg.skills([
     target: 'all',
     type: 'arcane',
     tags: ['attack', 'mark', 'aoe'],
-    vals: { dmg: 2, mark: [1, 2] },
+    vals: { dmg: 3, mark: [1, 2] },
     desc: '적 전체에 {D:dmg} 비전 피해, 인장 {mark}',
     run: (c, u, t) => {
       hit(c, u, t);

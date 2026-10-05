@@ -254,3 +254,18 @@ describe('정수: 기술로 / 본질로 흡수', () => {
     expect(absorbBlock(run, { id: pair[1], color: 0 }, true)).toBeNull();
   });
 });
+
+describe('지속 피해 밸런스', () => {
+  it('화상도 출혈·독처럼 턴마다 1씩 줄어든다 (한 번 건 화상이 보스전 내내 타지 않게)', () => {
+    const run = newRun({ seed: 61, origin: 'soldier' });
+    const c = startCombat(run, 'a1-cult', { anomaly: null });
+    const e = c.alive[0];
+    e.hp = e.maxHp = 999;
+    for (const x of c.alive) x.st.stun = 9;
+    e.st.burn = 3;
+    const hp = e.hp;
+    for (let i = 0; i < 5; i++) c.endTurn();
+    expect(hp - e.hp).toBe(3 + 2 + 1);
+    expect(e.st.burn ?? 0).toBe(0);
+  });
+});

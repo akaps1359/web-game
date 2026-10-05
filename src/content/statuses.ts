@@ -287,10 +287,12 @@ reg.statuses([
     name: '화상',
     icon: 'gi:flame',
     kind: 'debuff',
-    // 다른 지속 피해(출혈·독)처럼 자기 차례가 시작될 때, 행동하기 전에 먼저 정산한다
-    desc: '턴 시작 시 {n} 피해 (줄어들지 않음). 화염 공격을 받으면 +2',
+    // 다른 지속 피해(출혈·독)처럼 자기 차례가 시작될 때, 행동하기 전에 먼저 정산하고 1 줄어든다.
+    // (줄지 않으면 긴 전투에서 한 번 건 화상이 끝없이 피해를 줘 보스전이 무너진다) 불길은 화염 공격으로 되살린다
+    desc: '턴 시작 시 {n} 피해, 이후 1 감소. 화염 공격을 받으면 +2',
     tickStart(c, u, n) {
       c.damage({ src: null, tgt: u, base: n, type: 'true', tags: ['dot', 'burn'] });
+      c.apply(u, 'burn', -1);
     },
     hooks: {
       onDamageTaken(c, s, d) {

@@ -15,7 +15,7 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'combo', 'multi'],
-    vals: { dmg: [3, 4], hits: 2 },
+    vals: { dmg: [4, 5], hits: 2 },
     desc: '{D:dmg} 참격 피해 {hits}회. 이번 턴 앞서 스킬을 2개 이상 썼으면 1회 추가',
     run: (c, u, t) => void hit(c, u, t, { hits: u.v('hits') + (combo(c) >= 2 ? 1 : 0) }),
   }),
@@ -50,7 +50,7 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'block'],
-    vals: { dmg: [6, 8], blk: [4, 6] },
+    vals: { dmg: [8, 10], blk: [4, 6] },
     desc: '{D:dmg} 참격 피해, 방어도 {B:blk}',
     run: (c, u, t) => {
       hit(c, u, t);
@@ -69,7 +69,7 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'combo'],
-    vals: { dmg: [8, 10], per: [4, 5] },
+    vals: { dmg: [11, 13], per: [4, 5] },
     desc: '{D:dmg} 참격 피해. 이번 턴 앞서 사용한 스킬 1개당 +{per}',
     // 연계 추가 피해도 위력(메아리·절약 각인)을 따른다
     run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * combo(c) * u.power) }),
@@ -125,7 +125,7 @@ reg.skills([
     target: 'random',
     type: 'slash',
     tags: ['attack', 'combo', 'multi'],
-    vals: { dmg: [2, 3], hits: 3 },
+    vals: { dmg: [3, 4], hits: 3 },
     desc: '{D:dmg} 참격 피해 {hits}회, 매번 전열의 무작위 적에게. 이번 턴 앞서 쓴 스킬 1개당 1회 추가',
     run: (c, u, t) => void hit(c, u, t, { hits: u.v('hits') + combo(c) }),
   }),

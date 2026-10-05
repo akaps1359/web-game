@@ -84,7 +84,7 @@ describe('스킬 감사 — 각인의 위력 배율', () => {
     const t = front(c);
     t.st.mark = 2;
     expect(c.useSkill('sk', t.uid)).toBeNull();
-    expect(total(c)).toBe(p75(5) + 2 * p75(5));
+    expect(total(c)).toBe(p75(7) + 2 * p75(5));
   });
 
   it('대폭발 의식: 인장당 피해가 위력을 따른다', () => {
@@ -99,8 +99,8 @@ describe('스킬 감사 — 각인의 위력 배율', () => {
     const t = front(c);
     expect(c.useSkill('sk', t.uid)).toBeNull();
     const hs = hits(c);
-    expect(hs.find((h) => h.tgt === t.uid)?.amount).toBe(p75(12));
-    expect(hs.find((h) => h.tgt !== t.uid)?.amount).toBe(p75(6));
+    expect(hs.find((h) => h.tgt === t.uid)?.amount).toBe(p75(15));
+    expect(hs.find((h) => h.tgt !== t.uid)?.amount).toBe(p75(8));
   });
 
   it('최후의 저항: 방어도가 위력을 따른다', () => {
@@ -121,7 +121,7 @@ describe('스킬 감사 — 각인의 위력 배율', () => {
     const c = arena('shield-bash', { runes: THRIFT });
     c.p.block = 20;
     expect(c.useSkill('sk', front(c).uid)).toBeNull();
-    expect(total(c)).toBe(p75(4) + p75(10));
+    expect(total(c)).toBe(p75(6) + p75(10));
   });
 
   it('혈류 폭발: 출혈 배수 피해가 위력을 따른다', () => {
@@ -136,7 +136,7 @@ describe('스킬 감사 — 각인의 위력 배율', () => {
     const c = arena('finisher', { runes: THRIFT });
     c.s.used = 2;
     expect(c.useSkill('sk', front(c).uid)).toBeNull();
-    expect(total(c)).toBe(p75(8) + p75(4 * 2));
+    expect(total(c)).toBe(p75(11) + p75(4 * 2));
   });
 
   it('변성: 독+화상 비례 피해가 위력을 따른다', () => {
@@ -161,14 +161,14 @@ describe('스킬 감사 — 각인의 위력 배율', () => {
     const a = arena('whisper-void', { runes: THRIFT });
     a.p.insight = 3;
     expect(a.useSkill('sk', front(a).uid)).toBeNull();
-    expect(total(a)).toBe(p75(6) + p75(2 * 3));
+    expect(total(a)).toBe(p75(8) + p75(2 * 3));
 
     const b = arena('void-rift', { runes: THRIFT });
     b.p.insight = 3;
     expect(b.useSkill('sk')).toBeNull();
     const hs = hits(b);
     expect(hs.length).toBe(3);
-    for (const h of hs) expect(h.amount).toBe(p75(12) + p75(2 * 3));
+    for (const h of hs) expect(h.amount).toBe(p75(14) + p75(2 * 3));
   });
 
   it('촉매: 늘어나는 독의 양이 위력을 따른다', () => {

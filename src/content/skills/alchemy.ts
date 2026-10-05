@@ -74,7 +74,7 @@ reg.skills([
     target: 'front',
     type: 'fire',
     tags: ['attack', 'aoe', 'debuff'],
-    vals: { dmg: [3, 4], corrode: [1, 2] },
+    vals: { dmg: [4, 6], corrode: [1, 2] },
     desc: '전열의 모든 적에게 {D:dmg} 화염 피해, 부식 {corrode}',
     run: (c, u, t) => {
       const units = new Set(hit(c, u, t).map((d) => d.tgt));

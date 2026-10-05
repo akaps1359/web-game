@@ -15,7 +15,7 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'sanity', 'insight'],
-    vals: { dmg: [6, 8], per: [2, 3], san: 2 },
+    vals: { dmg: [8, 10], per: [2, 3], san: 2 },
     desc: '정신력 {san} 소모. {D:dmg} + 통찰×{per} 공허 피해',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
@@ -53,7 +53,7 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'sanity', 'debuff'],
-    vals: { dmg: [10, 14], madden: 2, san: 5 },
+    vals: { dmg: [13, 17], madden: 2, san: 5 },
     desc: '정신력 {san} 소모. {D:dmg} 공허 피해, 광란 {madden}',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
@@ -149,7 +149,7 @@ reg.skills([
     target: 'all',
     type: 'void',
     tags: ['attack', 'aoe', 'sanity', 'insight'],
-    vals: { dmg: [12, 16], per: 2, san: 8 },
+    vals: { dmg: [14, 18], per: 2, san: 8 },
     desc: '정신력 {san} 소모. 적 전체에 {D:dmg} + 통찰×{per} 공허 피해 (방어도 무시)',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));

@@ -94,7 +94,7 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'combo'],
-    vals: { dmg: [6, 7] },
+    vals: { dmg: [8, 9] },
     desc: '{D:dmg} 참격 피해. 이번 턴 앞서 스킬을 2개 이상 썼으면 행동력 +1',
     run: (c, u, t) => {
       const flowing = combo(c) >= 2;
@@ -160,7 +160,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun'],
-    vals: { dmg: [3, 5] },
+    vals: { dmg: [4, 6] },
     desc: '탄약 1: {D:dmg} 관통 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -221,7 +221,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'aim'],
-    vals: { dmg: [6, 8], poise: [1, 2] },
+    vals: { dmg: [8, 10], poise: [1, 2] },
     desc: '탄약 1: {D:dmg} 관통 피해, 버팀 추가 -{poise}. 이 공격으로 붕괴시키면 조준 +1, 탄약 +2',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -245,7 +245,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'multi'],
-    vals: { dmg: [4, 5], bounce: [1, 2] },
+    vals: { dmg: [5, 6], bounce: [1, 2] },
     desc: '탄약 1: {D:dmg} 관통 피해. 이후 다른 무작위 적에게 {bounce}번 튕겨 {D:dmg} 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -273,7 +273,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun'],
-    vals: { dmg: [6, 8] },
+    vals: { dmg: [8, 10] },
     desc: '탄약 1: {D:dmg} 관통 피해. 붕괴된 적에게는 3배',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -298,7 +298,7 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'mark', 'multi'],
-    vals: { dmg: [2, 3], hits: 3 },
+    vals: { dmg: [3, 4], hits: 3 },
     desc: '{D:dmg} 비전 피해 {hits}회 (인장이 타격마다 피해를 더한다)',
     run: (c, u, t) => void hit(c, u, t),
   }),
@@ -338,7 +338,7 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'barrier'],
-    vals: { dmg: [4, 6] },
+    vals: { dmg: [6, 8] },
     desc: '보호막을 모두 소모해 {D:dmg} + 소모한 보호막만큼 비전 피해',
     run: (c, u, t) => {
       const b = c.p.st.barrier ?? 0;
@@ -358,7 +358,7 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'mark', 'detonate'],
-    vals: { base: [4, 6], per: [5, 6] },
+    vals: { base: [6, 8], per: [5, 6] },
     desc: '대상의 인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해. 터뜨린 인장의 절반(올림)을 다른 모든 적에게 새긴다',
     run: (c, u, t) => {
       if (!t) return;
@@ -538,7 +538,7 @@ reg.skills([
     target: 'single',
     type: 'blunt',
     tags: ['attack'],
-    vals: { dmg: [5, 6], pct: [20, 30] },
+    vals: { dmg: [7, 8], pct: [20, 30] },
     desc: '{D:dmg} + 잃은 체력의 {pct}% 타격 피해',
     run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor(((c.p.maxHp - c.p.hp) * u.v('pct') * u.power) / 100) }),
   }),
@@ -614,7 +614,7 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'sanity', 'tentacle'],
-    vals: { dmg: [5, 7], per: [3, 4], san: 2 },
+    vals: { dmg: [7, 9], per: [3, 4], san: 2 },
     desc: '정신력 {san} 소모. {D:dmg} + 촉수 1개당 {per} 공허 피해',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
@@ -633,7 +633,7 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'insight', 'sanity'],
-    vals: { dmg: [6, 8] },
+    vals: { dmg: [8, 10] },
     desc: '방어도를 무시하고 {D:dmg} + 통찰 공허 피해. 준 체력 피해의 절반만큼 정신력 회복',
     run: (c, u, t) => {
       const ds = hit(c, u, t, { dmg: u.v('dmg') + c.p.insight, ignoreBlock: true });
@@ -695,7 +695,7 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'sanity'],
-    vals: { dmg: [4, 6], pct: [20, 30], san: 2 },
+    vals: { dmg: [6, 8], pct: [20, 30], san: 2 },
     desc: '정신력 {san} 소모. {D:dmg} + 잃은 정신력의 {pct}% 공허 피해',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
@@ -720,7 +720,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'pull', 'debuff'],
-    vals: { dmg: [4, 6], vuln: [1, 2] },
+    vals: { dmg: [6, 8], vuln: [1, 2] },
     desc: '{D:dmg} 관통 피해. 대상이 후열에 있으면 전열로 끌어당기고 취약 {vuln} (전열에 자리가 있을 때)',
     run: (c, u, t) => {
       hit(c, u, t);
@@ -738,7 +738,7 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     tags: ['attack', 'reveal'],
-    vals: { dmg: [6, 8] },
+    vals: { dmg: [8, 10] },
     desc: '대상의 밝혀진 약점 속성으로 {D:dmg} 피해 (모르면 타격)',
     run: (c, u, t) => {
       if (!t) return;
@@ -795,7 +795,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'debuff'],
-    vals: { dmg: [3, 4], per: [2, 3] },
+    vals: { dmg: [4, 5], per: [3, 4] },
     desc: '{D:dmg} 관통 피해 + 대상에게 걸린 해로운 효과 1종류당 {per}',
     run: (c, u, t) => {
       if (!t) return;

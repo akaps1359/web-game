@@ -15,7 +15,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun'],
-    vals: { dmg: [8, 11], poise: 1 },
+    vals: { dmg: [10, 13], poise: 1 },
     desc: '탄약 1: {D:dmg} 관통 피해, 버팀 추가 -{poise}',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -53,7 +53,7 @@ reg.skills([
     target: 'random',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'multi'],
-    vals: { dmg: [3, 4], hits: 4 },
+    vals: { dmg: [4, 5], hits: 4 },
     desc: '탄약 3: {D:dmg} 관통 피해 {hits}회, 매번 무작위 적에게',
     canUse: needAmmo(3),
     run: (c, u, t) => {
@@ -91,7 +91,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun'],
-    vals: { dmg: [12, 15], behind: [6, 8] },
+    vals: { dmg: [15, 19], behind: [8, 10] },
     desc: '탄약 1: {D:dmg} 관통 피해. 총알이 관통해 대상과 다른 열의 무작위 적 하나에게도 {behind} 관통 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -115,7 +115,7 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'debuff'],
-    vals: { dmg: [5, 7], weak: 2, poise: 1 },
+    vals: { dmg: [7, 9], weak: 2, poise: 1 },
     desc: '탄약 1: {D:dmg} 관통 피해, 약화 {weak}, 버팀 추가 -{poise}',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -157,7 +157,7 @@ reg.skills([
     target: 'all',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'aoe', 'debuff'],
-    vals: { dmg: [4, 6], weak: 1 },
+    vals: { dmg: [5, 7], weak: 1 },
     desc: '탄약 2: 적 전체에 {D:dmg} 관통 피해, 약화 {weak}',
     canUse: needAmmo(2),
     run: (c, u, t) => {

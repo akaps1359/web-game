@@ -15,7 +15,7 @@ reg.skills([
     target: 'single',
     type: 'blunt',
     tags: ['attack', 'push'],
-    vals: { dmg: [4, 6], poise: 1 },
+    vals: { dmg: [6, 8], poise: 1 },
     desc: '{D:dmg} 타격 피해, 버팀 추가 -{poise}. 전열에 다른 적이 있고 후열에 자리가 있으면 대상을 후열로 밀어낸다',
     run: (c, u, t) => {
       hit(c, u, t);
