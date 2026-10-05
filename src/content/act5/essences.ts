@@ -486,7 +486,7 @@ reg.skills([
     cd: 3,
     range: 'self',
     target: 'self',
-    tags: ['buff'],
+    tags: ['buff', 'energy'],
     vals: { ap: 1 },
     desc: '회피 1. 다음 턴 행동력 +{ap}',
     run: (c, u) => {

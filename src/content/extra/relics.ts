@@ -220,8 +220,9 @@ reg.relics([
     name: 'No.20 세 번째 박자',
     icon: 'gi:musical-notes',
     rarity: 'rare',
-    desc: '매 턴 3번째·6번째·9번째로 쓰는 스킬은 행동력 비용 0',
-    hooks: { modCost: (c, _s, _d, cost) => (c.s.used % 3 === 2 ? 0 : cost) },
+    desc: '매 턴 3번째로 쓰는 스킬은 행동력 비용 0',
+    // 3·6·9번째마다 공짜면 행동력이 4만 돼도 한 턴에 +2 — 보스 유물(행동력 +1)보다 강했다 (시뮬 승률 +23%p). 턴당 한 번으로
+    hooks: { modCost: (c, _s, _d, cost) => (c.s.used === 2 ? 0 : cost) },
   },
   {
     id: 'x-mad-grin',
@@ -327,7 +328,7 @@ reg.relics([
     name: 'No.13 쌍둥이 달',
     icon: 'gi:moon-orbit',
     rarity: 'boss',
-    desc: '매 턴 처음 쓰는 스킬(기본기·행동력 스킬·전투당 1회 스킬 제외)이 50% 위력으로 한 번 더 발동 (탄약이 바닥났으면 불발). 전투 시작 시 모든 적의 체력 +15%',
+    desc: '매 턴 처음 쓰는 스킬(기본기·행동력 스킬·대기를 되돌리는 스킬·전투당 1회 스킬 제외)이 50% 위력으로 한 번 더 발동 (탄약이 바닥났으면 불발). 전투 시작 시 모든 적의 체력 +15%',
     hooks: {
       onCombatStart(c) {
         for (const e of c.alive) {
@@ -340,7 +341,7 @@ reg.relics([
         // 메아리 재발동은 afterSkill을 다시 부르지 않으므로 연쇄되지 않는다
         if (u.echo || u.basic || c.over || c.s.vars.xTwinTurn === c.s.turn) return;
         const def = u.def;
-        if (def.tags.includes('energy') || lvlVal(def.cd, u.owned.lvl) >= 99) return;
+        if (def.tags.includes('energy') || def.tags.includes('refresh') || lvlVal(def.cd, u.owned.lvl) >= 99) return;
         c.s.vars.xTwinTurn = c.s.turn;
         // 메아리 각인과 같은 규칙: 탄약을 쓰는 스킬은 탄약이 남아 있을 때만 (빈 총으로 공짜 사격 방지) — 이번 턴 몫은 불발로 끝난다
         if (def.tags.includes('ammo') && c.s.ammo <= 0) return;

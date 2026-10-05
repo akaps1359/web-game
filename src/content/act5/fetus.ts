@@ -247,7 +247,7 @@ reg.traits([
   {
     id: 'a5-unborn',
     name: '태어나지 못한 것',
-    desc: '쓰러뜨려도 두 번 더 일어난다 — 별의 태아 → 깨어나는 알 → 태어난 것. 그때마다 체력이 다시 차오르고 모습·약점·행동이 바뀌며, 혜성 탯줄이 새로 뻗는다',
+    desc: '쓰러뜨려도 두 번 더 일어난다 — 별의 태아 → 깨어나는 알 → 태어난 것. 그때마다 체력이 다시 차오르고(쌓인 파멸은 흩어진다) 모습·약점·행동이 바뀌며, 혜성 탯줄이 새로 뻗는다',
     hooks: {
       onDeath(c, s) {
         const e = s.unit;
@@ -276,6 +276,8 @@ reg.traits([
         e.poise = P.poise;
         e.mem.grows = 0;
         delete e.mem.charge;
+        // 새로 태어난 몸에는 앞 모습에 쌓인 파멸이 남지 않는다 (쌓아 둔 파멸로 다음 모습을 곧바로 넘기는 것 방지)
+        if (e.st.doom) delete e.st.doom;
         setWeak(c, e, P.weak);
         c.emit({ t: 'spawn', uid: e.uid });
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });

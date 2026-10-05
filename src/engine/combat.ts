@@ -546,6 +546,9 @@ export class Combat {
     for (const id of ENEMIES.get(t.def)?.traits ?? []) {
       TRAITS.get(id)?.hooks.onDeath?.(this, { kind: 'trait', id, unit: t, n: 1 }, d);
     }
+    // 전장 규칙의 부활(망자의 귀환)도 처치 보상보다 먼저 — 다시 일어서면 아직 처치가 아니다 (처치 효과가 두 번 터지지 않게)
+    const an = this.s.anomaly ? ANOMALIES.get(this.s.anomaly) : undefined;
+    if (t.dead && an?.hooks.onDeath) an.hooks.onDeath(this, { kind: 'anomaly', id: an.id, unit: t, n: 1 }, d);
     if (!t.dead) {
       if (d) d.killed = false;
       return;
@@ -630,6 +633,12 @@ export class Combat {
     const def = need(STATUSES, id, '상태');
     let amount = n;
     if (n > 0) {
+      // 수호자는 기절이 겹치지 않고, 붕괴 중이거나 기절·붕괴로 행동을 건너뛴 뒤 한 번 행동하기 전에는 기절하지 않는다 (기절 기술 여럿으로 영원히 묶는 것 방지)
+      // (적끼리의 연출 — 대종이 깨져 종지기가 비틀거리는 것 등 — 은 그대로)
+      if (id === 'stun' && !isEnemy(src) && isEnemy(target) && this.defOf(target).tier === 'boss' && (target.mem.stunGuard || target.broken > 0 || (target.st.stun ?? 0) > 0)) {
+        this.emit({ t: 'text', uid: target.uid, text: '기절하지 않는다', tone: 'info' });
+        return 0;
+      }
       // 부여자 측 보정 (예: 출혈 부여 +1)
       if (src) for (const [h, self] of this.sources(src)) if (h.modApply) amount = h.modApply(this, self, target, id, amount);
       // 결계: 해로운 효과 1회 무효
@@ -1046,8 +1055,15 @@ export class Combat {
       this.fire(e, 'onUnitTurnStart');
       if (this.checkEnd()) return null;
       if (e.dead) continue;
+      // 수호자는 행동을 건너뛰면(붕괴·기절) 한 번 행동하기 전까지 기절하지 않는다 (붕괴와 기절을 번갈아 영원히 묶는 것 방지)
+      const boss = this.defOf(e).tier === 'boss';
       if (e.broken === 2) {
         e.broken = 1;
+        if (boss) {
+          e.mem.stunGuard = 1;
+          // 붕괴로 건너뛴 차례가 걸려 있던 기절도 함께 쓴다 (붕괴 직전에 건 기절로 한 번 더 묶지 못하게)
+          if ((e.st.stun ?? 0) > 0) this.apply(e, 'stun', -1);
+        }
       } else {
         if (e.broken === 1) {
           e.broken = 0;
@@ -1057,7 +1073,9 @@ export class Combat {
         if ((e.st.stun ?? 0) > 0) {
           this.apply(e, 'stun', -1);
           this.emit({ t: 'text', uid: e.uid, text: '기절', tone: 'info' });
+          if (boss) e.mem.stunGuard = 1;
         } else {
+          delete e.mem.stunGuard;
           this.act(e);
         }
       }

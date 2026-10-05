@@ -3,14 +3,17 @@ import { lvlVal, type Combat } from '../../engine/combat';
 import type { EnemyUnit, SkillUse } from '../../engine/types';
 import { combo, dealt, detonate, guard, hit, needAmmo, reload, skill, spendAmmo } from '../lib';
 
-/** 재사용 대기 중인 다른 스킬 중 남은 대기가 가장 긴 것 (전투당 1회 스킬 제외) */
+/**
+ * 재사용 대기 중인 다른 스킬 중 남은 대기가 가장 긴 것 (전투당 1회 스킬·대기를 되돌리는 스킬 제외).
+ * 대기를 되돌리는 기술('refresh' — 임기응변·되감기)끼리 서로 되돌리면 한 턴에 끝없이 쓰는 고리가 된다.
+ */
 function longestCooldown(c: Combat, u: SkillUse | null): string | null {
   let best: string | null = null;
   let bestN = 0;
   for (const [uid, n] of Object.entries(c.s.cd)) {
     if ((u && uid === u.owned.uid) || n <= bestN) continue;
     const info = c.skillInfo(uid);
-    if (!info || lvlVal(info.def.cd, info.owned.lvl) >= 99) continue;
+    if (!info || lvlVal(info.def.cd, info.owned.lvl) >= 99 || info.def.tags.includes('refresh')) continue;
     best = uid;
     bestN = n;
   }
@@ -753,12 +756,13 @@ reg.skills([
     cd: 3,
     range: 'self',
     target: 'self',
-    tags: ['energy'],
+    tags: ['energy', 'refresh'],
     vals: {},
-    desc: '재사용 대기가 가장 많이 남은 다른 스킬 하나를 즉시 쓸 수 있게 한다 (전투당 1회 스킬 제외)',
+    desc: '재사용 대기가 가장 많이 남은 다른 스킬 하나를 즉시 쓸 수 있게 한다 (전투당 1회 스킬·대기를 되돌리는 스킬 제외)',
     canUse: (c) => (longestCooldown(c, null) ? null : '대기 중인 스킬이 없다'),
     run: (c, u) => {
-      const uid = longestCooldown(c, u);
+      // 메아리 사본은 되돌리지 않는다
+      const uid = u.echo ? null : longestCooldown(c, u);
       if (!uid) return;
       delete c.s.cd[uid];
       c.emit({ t: 'text', uid: 'p', text: '임기응변', tone: 'good' });

@@ -335,7 +335,17 @@ export function essenceUsed(run: RunState): number {
   return run.essences.reduce((sum, e) => sum + (ESSENCES.get(e.id)?.slotCost ?? 1), 0);
 }
 
-export function essenceStats(id: string, guardian = false): EssenceStats {
+/**
+ * 본질로 흡수하면 기술 대신 최대 체력을 더 받는다 (등급이 높을수록 많이).
+ * 힘·민첩을 늘리면 피해가 눈덩이처럼 불어나 체력으로만 보상한다.
+ */
+export const CORE_HP = { base: 3, step: 1 };
+
+export function coreHp(grade: number, guardian = false): number {
+  return Math.round((CORE_HP.base + CORE_HP.step * Math.max(0, 9 - grade)) * (guardian ? 1.5 : 1));
+}
+
+export function essenceStats(id: string, guardian = false, core = false): EssenceStats {
   const def = need(ESSENCES, id, '정수');
   const out: EssenceStats = {};
   for (const [k, v] of Object.entries(def.stats)) {
@@ -343,11 +353,19 @@ export function essenceStats(id: string, guardian = false): EssenceStats {
     const base = k === 'maxHp' ? (v as number) * 0.6 : (v as number);
     out[k as keyof EssenceStats] = Math.round(base * (guardian ? 1.5 : 1));
   }
+  if (core) out.maxHp = (out.maxHp ?? 0) + coreHp(def.grade, guardian);
   return out;
 }
 
+/** 이 정수가 주는(줄) 기술. 본질로 흡수했으면 없다 */
+export function essenceActives(drop: { id: string; color: number; guardian?: boolean; core?: boolean }): string[] {
+  const def = ESSENCES.get(drop.id);
+  if (!def || drop.core) return [];
+  return drop.guardian ? def.actives : [def.actives[drop.color]];
+}
+
 /** 흡수 불가 사유 */
-export function absorbBlock(run: RunState, drop: { id: string; color: number; guardian?: boolean }): string | null {
+export function absorbBlock(run: RunState, drop: { id: string; color: number; guardian?: boolean }, core = false): string | null {
   const def = ESSENCES.get(drop.id);
   if (!def) return '알 수 없는 정수';
   const same = run.essences.find((e) => e.id === drop.id);
@@ -355,11 +373,12 @@ export function absorbBlock(run: RunState, drop: { id: string; color: number; gu
     if (drop.guardian && !same.guardian) return null; // 수호자 정수로 승급
     return '같은 존재의 정수를 이미 흡수했다';
   }
-  const actives = drop.guardian ? def.actives : [def.actives[drop.color]];
+  // 계층정수는 판당 하나뿐 (지울 수도 없다)
+  if (def.lord && run.essences.some((e) => ESSENCES.get(e.id)?.lord)) return '계층정수는 판당 하나뿐이다';
+  // 기술이 겹치면 안 된다 (본질로 흡수한 정수는 기술이 없으니 상관없다)
+  const actives = essenceActives({ ...drop, core });
   for (const e of run.essences) {
-    const d = ESSENCES.get(e.id)!;
-    const theirs = e.guardian ? d.actives : [d.actives[e.color]];
-    if (theirs.some((a) => actives.includes(a))) return '같은 능력을 주는 정수가 있다';
+    if (essenceActives(e).some((a) => actives.includes(a))) return '같은 능력을 주는 정수가 있다';
   }
   if (essenceUsed(run) + (def.slotCost ?? 1) > essenceCap(run)) return `흡수 한도 초과 (레벨 ${run.player.level})`;
   return null;
@@ -381,25 +400,31 @@ function applyStats(run: RunState, st: EssenceStats, sign: 1 | -1) {
   if (st.insight) p.insight = Math.max(0, p.insight + sign * st.insight);
 }
 
-export function absorbEssence(run: RunState, drop: { id: string; color: number; guardian?: boolean }): string | null {
-  const why = absorbBlock(run, drop);
+/** core=true: 본질로 흡수 — 기술을 배우지 않고 최대 체력을 더 받는다 (coreHp) */
+export function absorbEssence(run: RunState, drop: { id: string; color: number; guardian?: boolean }, core = false): string | null {
+  const why = absorbBlock(run, drop, core);
   if (why) return why;
   const def = need(ESSENCES, drop.id, '정수');
   const same = run.essences.find((e) => e.id === drop.id);
+  // 수호자판으로 바꿔 흡수할 때 이미 강화해 둔 정수 스킬은 강화 단계를 이어받는다
+  const keepLvl = new Map((same ? run.skills.filter((s) => s.from === same.uid) : []).map((s) => [s.id, s.lvl]));
   if (same) removeEssence(run, same.uid, true);
   const es: OwnedEssence = { uid: uid(run), id: drop.id, color: drop.color, guardian: drop.guardian };
+  if (core) es.core = true;
   run.essences.push(es);
-  applyStats(run, essenceStats(drop.id, drop.guardian), 1);
+  applyStats(run, essenceStats(drop.id, drop.guardian, core), 1);
   // 같은 정수를 수호자판으로 바꿔 흡수할 때는 이계의 대가(최대 정신력 -5, 통찰 +1)를 다시 치르지 않는다
   if (def.eldritch && !same) {
     run.player.maxSanity = Math.max(10, run.player.maxSanity - 5);
     run.player.sanity = Math.min(run.player.sanity, run.player.maxSanity);
     run.player.insight += 1;
   }
-  const actives = drop.guardian ? def.actives : [def.actives[drop.color]];
-  for (const a of actives) learnSkill(run, a, es.uid);
+  for (const a of essenceActives(es)) {
+    const s = learnSkill(run, a, es.uid);
+    if (s && keepLvl.has(a)) s.lvl = keepLvl.get(a)!;
+  }
   run.stats.essences++;
-  log(run, `${def.name}을(를) 흡수했다`);
+  log(run, `${def.name}을(를) ${core ? '본질로 ' : ''}흡수했다`);
   return null;
 }
 
@@ -420,7 +445,7 @@ export function removeEssence(run: RunState, essenceUid: string, free = false): 
     run.player.gold -= cost;
     run.essenceRemovals++;
   }
-  applyStats(run, essenceStats(es.id, es.guardian), -1);
+  applyStats(run, essenceStats(es.id, es.guardian, es.core), -1);
   // 돈을 내고 지우면 이계의 흔적(최대 정신력 -5, 통찰 +1)도 함께 사라진다
   if (def.eldritch && !free) {
     run.player.maxSanity += 5;
@@ -503,7 +528,8 @@ function unapplyEquip(run: RunState, it: OwnedItem) {
   const hp = EQUIPS.get(it.id)?.maxHp ?? 0;
   if (hp) {
     run.player.maxHp = Math.max(1, run.player.maxHp - hp);
-    run.player.hp = Math.max(1, Math.min(run.player.hp, run.player.maxHp));
+    // 입을 때 얻은 체력만큼 벗을 때 다시 잃는다 (벗었다 입었다 하며 체력을 채우지 못하게 — 정수 제거와 같은 규칙)
+    run.player.hp = Math.max(1, Math.min(run.player.maxHp, run.player.hp - hp));
   }
 }
 
@@ -579,11 +605,16 @@ export function rollForbidden(run: RunState, n: number): string[] {
   return r.sample(pool, n).map((s) => s.id);
 }
 
+/** 행동력 +1 유물 (수호자 유물). 행동력 5 이상이면 더 주지 않는다 */
+const isApRelic = (d: { desc: string }) => d.desc.startsWith('행동력 +1');
+export const AP_RELIC_CAP = 5;
+
 export function rollRelic(run: RunState, tier: 'common' | 'uncommon' | 'rare' | 'boss' | 'any' = 'any'): string | null {
   const r = rng(run, 'loot');
   const owned = new Set(run.relics.map((x) => x.id));
   let pool = [...RELICS.values()].filter((x) => !owned.has(x.id) && x.rarity !== 'special');
-  if (tier === 'boss') pool = pool.filter((x) => x.rarity === 'boss');
+  // 이벤트 등에서 수호자 유물을 줄 때도 수호자 보상과 같은 행동력 상한을 지킨다
+  if (tier === 'boss') pool = pool.filter((x) => x.rarity === 'boss' && !(isApRelic(x) && run.player.maxAp >= AP_RELIC_CAP));
   else {
     pool = pool.filter((x) => x.rarity !== 'boss');
     if (tier !== 'any') {
@@ -600,11 +631,10 @@ export function rollBossRelics(run: RunState, n: number): string[] {
   const r = rng(run, 'loot');
   const owned = new Set(run.relics.map((x) => x.id));
   const pool = [...RELICS.values()].filter((x) => x.rarity === 'boss' && !owned.has(x.id));
-  const isAp = (d: { desc: string }) => d.desc.startsWith('행동력 +1');
-  const ap = pool.filter(isAp);
-  const rest = r.shuffle(pool.filter((d) => !isAp(d)));
+  const ap = pool.filter(isApRelic);
+  const rest = r.shuffle(pool.filter((d) => !isApRelic(d)));
   const out: string[] = [];
-  if (ap.length && run.player.maxAp < 5 && r.chance(0.7)) out.push(r.pick(ap).id);
+  if (ap.length && run.player.maxAp < AP_RELIC_CAP && r.chance(0.7)) out.push(r.pick(ap).id);
   for (const d of rest) {
     if (out.length >= n) break;
     out.push(d.id);
@@ -773,11 +803,12 @@ export function finishCombat(run: RunState): RewardState | null {
 }
 
 /** 보상 개별 수령 */
-export function takeLoot(run: RunState, item: LootItem): string | null {
+/** core: 정수를 본질로 흡수 (기술 대신 능력치) */
+export function takeLoot(run: RunState, item: LootItem, core = false): string | null {
   if (item.taken) return '이미 가져갔다';
   switch (item.kind) {
     case 'essence': {
-      const why = absorbEssence(run, { id: item.id, color: item.color ?? 0, guardian: item.guardian });
+      const why = absorbEssence(run, { id: item.id, color: item.color ?? 0, guardian: item.guardian }, core);
       if (why) return why;
       break;
     }

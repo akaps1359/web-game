@@ -8,9 +8,9 @@ import {
   type RunState,
   type LootItem,
 } from '../engine/run';
-import { continueRift, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
+import { closeReward, enterRift, moveTo, startGuardian } from '../engine/dungeon';
 import { chooseEvent, leaveEvent } from '../engine/events';
-import { endRun, takeBeginEvents, winRun } from '../engine/run';
+import { endRun, takeBeginEvents } from '../engine/run';
 import { play, syncBattle } from '../director';
 import { stage } from '../render/stage';
 import { sound } from '../sound';
@@ -273,11 +273,12 @@ export async function endTurn() {
 
 // ───────────── 보상 ─────────────
 
-export async function take(item: LootItem) {
+/** core: 정수를 본질로 흡수 */
+export async function take(item: LootItem, core = false) {
   const r = run();
-  if (fail(takeLoot(r, item))) return;
+  if (fail(takeLoot(r, item, core))) return;
   sound.sfx(item.kind === 'essence' ? 'essence' : item.kind === 'gold' ? 'coin' : 'select');
-  if (item.kind === 'essence') store.toast('정수를 흡수했다', 'eldritch');
+  if (item.kind === 'essence') store.toast(core ? '정수를 본질로 흡수했다' : '정수를 흡수했다', 'eldritch');
   await refresh();
 }
 
@@ -290,22 +291,10 @@ export async function choose(idx: number, upgradeTarget?: string) {
 
 export async function leaveReward() {
   const r = run();
-  const rw = r.reward;
-  r.reward = null;
-  switch (rw?.next) {
-    case 'rift':
-      continueRift(r);
-      break;
-    case 'haven':
-      goHaven(r);
-      sound.sfx('portal');
-      break;
-    case 'final':
-      winRun(r);
-      break;
-    default:
-      r.screen = 'dungeon';
-  }
+  const next = r.reward?.next;
+  // 보상 화면이 아니면(두 번 눌림 등) 아무것도 하지 않는다
+  if (!closeReward(r)) return;
+  if (next === 'haven') sound.sfx('portal');
   await refresh();
 }
 

@@ -150,13 +150,15 @@ reg.skills([
     cd: 4,
     range: 'self',
     target: 'self',
-    tags: ['heal'],
+    tags: ['heal', 'refresh'],
     vals: { heal: [10, 14] },
-    desc: '체력 {heal} 회복. 재사용 대기 중인 다른 스킬 하나의 대기 시간을 초기화 (전투당 1회 스킬 제외)',
+    desc: '체력 {heal} 회복. 재사용 대기 중인 다른 스킬 하나의 대기 시간을 초기화 (전투당 1회 스킬·대기를 되돌리는 스킬 제외)',
     run: (c, u) => {
       c.heal(c.p, u.v('heal'));
-      const keys = Object.keys(c.s.cd).filter((k) => k !== u.owned.uid && refreshable(c, k));
-      if (keys.length) {
+      // 대기를 되돌리는 기술(임기응변 등)끼리 서로 되돌리면 한 턴에 끝없이 쓰는 고리가 된다
+      const keys = Object.keys(c.s.cd).filter((k) => k !== u.owned.uid && refreshable(c, k) && !c.skillInfo(k)?.def.tags.includes('refresh'));
+      // 메아리 사본은 되돌리지 않는다
+      if (keys.length && !u.echo) {
         delete c.s.cd[c.rng.pick(keys)];
         c.emit({ t: 'text', uid: 'p', text: '시간이 되감긴다', tone: 'good' });
       }
@@ -556,7 +558,7 @@ reg.skills([
     desc: '행동력 +{ap}, 정신력 -{san}',
     run: (c, u) => {
       c.loseSanity(u.v('san'));
-      c.s.ap += u.v('ap');
+      if (!u.echo) c.s.ap += u.v('ap');
     },
   }),
   // 검은 파라오

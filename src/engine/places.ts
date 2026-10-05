@@ -199,6 +199,8 @@ export function trainPaid(run: RunState, skillUid: string): string | null {
 }
 
 export function leaveHaven(run: RunState) {
+  // 거점에서만 (두 번 눌려도 한 층을 건너뛰지 않게)
+  if (run.screen !== 'haven') return;
   run.shop = null;
   descend(run);
 }

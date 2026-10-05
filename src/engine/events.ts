@@ -45,6 +45,11 @@ export function chooseEvent(run: RunState, idx: number): string | null {
 /** '계속' — 전투나 보상으로 이어지거나 던전으로 */
 export function leaveEvent(run: RunState) {
   const ev = run.event;
+  // 이미 떠났으면 아무것도 하지 않는다 (두 번 눌려서 이어지는 전투·보상 화면을 건너뛰지 않게)
+  if (!ev) {
+    if (run.screen === 'event' && !run.over) run.screen = 'dungeon';
+    return;
+  }
   run.event = null;
   if (run.over) return;
   if (ev?.fight) {

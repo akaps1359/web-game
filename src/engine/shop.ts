@@ -123,6 +123,12 @@ export function buy(run: RunState, idx: number): string | null {
   }
   run.player.gold -= cost;
   if (it.kind !== 'oil') it.sold = true;
+  // 층에 기억해 둔 진열장도 지금 보고 있는 것과 같게 (이어하기로 불러온 판은 둘이 따로 떨어진 사본이라,
+  // 그대로 두면 상인을 떠났다 다시 들어올 때 산 물건이 다시 진열된다)
+  if (run.floor) {
+    run.floor.shops ??= {};
+    run.floor.shops[shop.key] = shop;
+  }
   return null;
 }
 

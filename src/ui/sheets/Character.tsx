@@ -187,7 +187,7 @@ function EssencesTab() {
       <div class="list">
         {run.essences.length === 0 && <div class="muted" style={{ fontSize: 13 }}>아직 흡수한 정수가 없다. 몬스터를 쓰러뜨리면 가끔 정수가 떨어진다.</div>}
         {run.essences.map((es) => (
-          <EssenceCard id={es.id} color={es.color} guardian={es.guardian} />
+          <EssenceCard id={es.id} color={es.color} guardian={es.guardian} core={es.core} />
         ))}
       </div>
     </div>

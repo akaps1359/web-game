@@ -16,7 +16,9 @@ reg.anomalies([
     icon: 'gi:raise-zombie',
     desc: '적은 처음 쓰러질 때 한 번, 체력 50%로 다시 일어선다 (하수인 제외)',
     hooks: {
-      onAnyDeath(c, _s, victim) {
+      // 엔진이 처치 보상(처치 효과·장의사의 동전 등)보다 먼저 부른다 → 다시 일어선 적은 마지막에 쓰러질 때 한 번만 보상
+      onDeath(c, s) {
+        const victim = s.unit;
         if (!isEnemy(victim) || victim.mem.revived || victim.minion || victim.fled) return;
         victim.mem.revived = 1;
         victim.dead = false;

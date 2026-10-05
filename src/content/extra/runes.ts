@@ -89,12 +89,13 @@ reg.runes([
     name: '공명 각인',
     icon: 'gi:double-ringed-orb',
     rarity: 'uncommon',
-    desc: '사용 후 재사용 대기 중인 다른 스킬 하나의 대기 -1 (가장 긴 것)',
+    desc: '사용 후 재사용 대기 중인 다른 스킬 하나의 대기 -1 (가장 긴 것. 1턴 아래로는 줄지 않는다)',
     fits: notBasic,
     hooks: {
       afterSkill(c, _s, u) {
+        // 대기 1인 스킬은 건드리지 않는다: 공명 각인 둘이 서로의 대기를 0으로 만들며 한 턴에 끝없이 쓰는 고리 방지
         let best: string | null = null;
-        let bestN = 0;
+        let bestN = 1;
         for (const [uid, n] of Object.entries(c.s.cd)) {
           if (uid === u.owned.uid || n <= bestN) continue;
           const info = c.skillInfo(uid);

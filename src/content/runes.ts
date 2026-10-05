@@ -10,9 +10,10 @@ reg.runes([
     name: '메아리 각인',
     icon: 'gi:echo-ripples',
     rarity: 'rare',
-    desc: '스킬이 50% 위력으로 한 번 더 발동 (탄약이 바닥났으면 불발). 재사용 대기 +1',
+    desc: '스킬이 50% 위력으로 한 번 더 발동 (탄약이 바닥났으면 불발). 재사용 대기 +1. 행동력을 주거나 대기를 되돌리는 스킬에는 새길 수 없다',
     cdMod: 1,
-    fits: (s) => !s.tags.includes('basic') && s.cd !== 99,
+    // 행동력·대기 되돌리기를 두 번 받으면 (피의 대가 +4 행동력 등) 다른 조각과 엮여 한 턴이 끝없이 길어진다
+    fits: (s) => !s.tags.includes('basic') && !s.tags.includes('energy') && !s.tags.includes('refresh') && s.cd !== 99,
   },
   {
     id: 'leech',

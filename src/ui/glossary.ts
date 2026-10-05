@@ -22,7 +22,7 @@ const TERMS: Keyword[] = [
   { name: '전열', icon: 'gi:crossed-swords', color: '#cfc8b8', desc: '앞줄. 근접 스킬은 전열에 적이 있으면 전열만 노릴 수 있다.' },
   { name: '후열', icon: 'gi:crossed-swords', color: '#cfc8b8', desc: '뒷줄. 근접 스킬은 전열이 모두 쓰러져야 닿는다. 원거리 스킬은 어디든 닿는다.' },
   { name: '탄약', icon: 'gi:bullets', color: '#ffe08a', desc: '총기 스킬이 쓰는 탄. 다 쓰면 재장전해야 한다.' },
-  { name: '정수', icon: 'gi:heart-beats', color: '#ff9ab0', desc: '쓰러뜨린 존재가 남긴 힘. 흡수하면 스탯·패시브·기술을 얻는다. 레벨만큼만 흡수할 수 있다.' },
+  { name: '정수', icon: 'gi:heart-beats', color: '#ff9ab0', desc: '쓰러뜨린 존재가 남긴 힘. 기술로 흡수하면 스탯·패시브·기술을, 본질로 흡수하면 기술 대신 최대 체력을 더 얻는다 (높은 등급일수록 많이). 레벨만큼만 흡수할 수 있다.' },
 ];
 
 /** 한 글자 이름은 뒤에 숫자·기호·공백이 올 때만 용어로 본다 (「힘껏」 같은 낱말과 헷갈리지 않게) */

@@ -143,10 +143,21 @@ function pickTarget(run: RunState): number {
   return commit(best);
 }
 
+/** 정수 흡수 방식: 'skill' 항상 기술 / 'core' 항상 본질 / 'auto' 빈 슬롯이 있으면 기술, 없으면 본질 */
+export const botEssence: { mode: 'skill' | 'core' | 'auto' } = { mode: 'auto' };
+
 function handleReward(run: RunState) {
   const rw = run.reward!;
   for (const it of rw.items) {
-    if (it.kind === 'essence' && absorbBlock(run, { id: it.id, color: it.color ?? 0, guardian: it.guardian })) continue;
+    if (it.kind === 'essence') {
+      const drop = { id: it.id, color: it.color ?? 0, guardian: it.guardian };
+      const skillOk = !absorbBlock(run, drop);
+      const coreOk = !absorbBlock(run, drop, true);
+      const core = botEssence.mode === 'core' ? true : botEssence.mode === 'skill' ? false : !skillOk || !run.slots.includes(null);
+      if (core ? !coreOk : !skillOk) continue;
+      takeLoot(run, it, core);
+      continue;
+    }
     takeLoot(run, it);
   }
   if (rw.choice && !rw.chosen) {

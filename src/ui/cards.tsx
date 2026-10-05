@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { CONSUMABLES, EQUIPS, ESSENCES, RELICS, RUNES, SKILLS } from '../engine/registry';
-import { essenceStats, type LootItem } from '../engine/run';
+import { essenceActives, essenceStats, type LootItem } from '../engine/run';
 import { lvlVal } from '../engine/combat';
 import type { EssenceStats } from '../engine/types';
 import { Icon, Segs, press, showTip } from './components';
@@ -61,7 +61,7 @@ export function SkillCard({ id, lvl = 0, runes = [], sel, off, onClick, right }:
   );
 }
 
-const STAT_NAME: Record<keyof EssenceStats, string> = {
+export const STAT_NAME: Record<keyof EssenceStats, string> = {
   maxHp: '최대 체력',
   str: '힘',
   dex: '민첩',
@@ -83,10 +83,11 @@ export function StatChips({ st }: { st: EssenceStats }) {
   );
 }
 
-export function EssenceCard({ id, color, guardian, footer }: { id: string; color: number; guardian?: boolean; footer?: ComponentChildren }) {
+/** core: 본질로 흡수한 정수 (기술 없음, 최대 체력 추가) */
+export function EssenceCard({ id, color, guardian, core, footer }: { id: string; color: number; guardian?: boolean; core?: boolean; footer?: ComponentChildren }) {
   const def = ESSENCES.get(id);
   if (!def) return null;
-  const actives = guardian ? def.actives : [def.actives[color]];
+  const actives = essenceActives({ id, color, guardian, core });
   return (
     <div class={`essence-card ${def.eldritch ? 'eldritch' : ''}`}>
       <div class="row">
@@ -102,8 +103,13 @@ export function EssenceCard({ id, color, guardian, footer }: { id: string; color
             {def.lord ? ' · 계층정수 (제거 불가)' : ''}
           </div>
         </div>
+        {core && (
+          <span class="chip" style={{ color: 'var(--eldritch)', alignSelf: 'flex-start' }}>
+            본질
+          </span>
+        )}
       </div>
-      <StatChips st={essenceStats(id, guardian)} />
+      <StatChips st={essenceStats(id, guardian, core)} />
       {def.eldritch && (
         <div style={{ fontSize: 12, color: 'var(--eldritch)' }}>
           이계의 정수 — 흡수하면 최대 정신력 -5, 통찰 +1

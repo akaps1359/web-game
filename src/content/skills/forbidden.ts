@@ -90,11 +90,14 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['insight', 'sanity'],
-    vals: { san: [6, 4] },
-    desc: '정신력 {san} 소모. 통찰 +1 (영구). 전투당 1회',
+    vals: { san: [6, 4], max: 6 },
+    desc: '정신력 {san} 소모. 통찰 +1 (영구, 통찰 {max}까지). 전투당 1회',
+    // 전투마다 공짜로 통찰을 쌓으면 판 끝에는 30을 넘고, 통찰 비례 금기 스킬이 끝없이 강해진다.
+    // 통찰의 대가(받는 정신 피해 +5%/통찰)도 6에서 멈추므로 응시로는 그 지점까지만 오른다.
+    canUse: (c, u) => (c.p.insight >= u.v('max') ? '더 들여다볼 심연이 없다' : null),
     run: (c, u) => {
       c.loseSanity(u.v('san'));
-      c.gainInsight(1);
+      if (c.p.insight < u.v('max')) c.gainInsight(1);
     },
   }),
   skill({
@@ -130,7 +133,8 @@ reg.skills([
     desc: '체력 {hp} 소모. 행동력 +{ap}',
     run: (c, u) => {
       c.loseHp(c.p, u.v('hp'));
-      c.s.ap += u.v('ap');
+      // 메아리 사본은 행동력을 주지 않는다 (물 흐르듯과 같은 규칙)
+      if (!u.echo) c.s.ap += u.v('ap');
     },
   }),
   skill({

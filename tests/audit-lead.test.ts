@@ -163,3 +163,94 @@ describe('점검: 신전 금기의 봉헌', () => {
     expect(forbiddenOffer(run)).toEqual(a);
   });
 });
+
+describe('점검: 정수 규칙', () => {
+  it('계층정수는 판당 하나뿐', async () => {
+    const { absorbEssence } = await import('../src/engine/run');
+    const { ESSENCES } = await import('../src/engine/registry');
+    const lords = [...ESSENCES.values()].filter((d) => d.lord);
+    expect(lords.length).toBeGreaterThan(1);
+    const run = newRun({ seed: 41, origin: 'soldier' });
+    run.player.level = 20;
+    expect(absorbEssence(run, { id: lords[0].id, color: 0, guardian: true })).toBeNull();
+    expect(absorbEssence(run, { id: lords[1].id, color: 0, guardian: true })).toBe('계층정수는 판당 하나뿐이다');
+  });
+
+  it('수호자판으로 바꿔 흡수해도 강화해 둔 정수 스킬은 그대로', async () => {
+    const { absorbEssence } = await import('../src/engine/run');
+    const run = newRun({ seed: 42, origin: 'soldier' });
+    run.player.level = 10;
+    absorbEssence(run, { id: 'lurker', color: 0 });
+    const s = run.skills.find((x) => x.from === run.essences[0].uid)!;
+    s.lvl = 1;
+    absorbEssence(run, { id: 'lurker', color: 0, guardian: true });
+    expect(run.skills.find((x) => x.id === s.id)!.lvl).toBe(1);
+  });
+});
+
+describe('정수: 기술로 / 본질로 흡수', () => {
+  it('본질로 흡수하면 기술 없이 최대 체력을 더 받고, 지우면 정확히 되돌아간다', async () => {
+    const { absorbEssence, coreHp, essenceStats, removeEssence } = await import('../src/engine/run');
+    const run = newRun({ seed: 51, origin: 'soldier' });
+    run.player.level = 10;
+    run.player.gold = 999;
+    const before = { ...run.player };
+    const skills = run.skills.length;
+    expect(absorbEssence(run, { id: 'thug', color: 0 }, true)).toBeNull();
+    expect(run.essences[0].core).toBe(true);
+    expect(run.skills.length).toBe(skills);
+    const one = essenceStats('thug');
+    const two = essenceStats('thug', false, true);
+    expect(two.str).toBe(one.str);
+    expect(two.maxHp).toBe((one.maxHp ?? 0) + coreHp(9));
+    expect(coreHp(1)).toBeGreaterThan(coreHp(9));
+    expect(run.player.str).toBe(before.str + (two.str ?? 0));
+    expect(run.player.maxHp).toBe(before.maxHp + (two.maxHp ?? 0));
+    expect(removeEssence(run, run.essences[0].uid)).toBeNull();
+    expect(run.player.str).toBe(before.str);
+    expect(run.player.maxHp).toBe(before.maxHp);
+  });
+
+  it('기술로 흡수하면 기술을 배운다 (능력치는 한 배)', async () => {
+    const { absorbEssence, essenceStats } = await import('../src/engine/run');
+    const run = newRun({ seed: 52, origin: 'soldier' });
+    run.player.level = 10;
+    const str = run.player.str;
+    absorbEssence(run, { id: 'thug', color: 0 });
+    expect(run.essences[0].core).toBeUndefined();
+    expect(run.skills.some((s) => s.from === run.essences[0].uid)).toBe(true);
+    expect(run.player.str).toBe(str + (essenceStats('thug').str ?? 0));
+  });
+
+  it('본질 정수를 수호자판 기술로 바꿔 흡수할 수 있고, 능력치가 이중으로 남지 않는다', async () => {
+    const { absorbEssence, essenceStats } = await import('../src/engine/run');
+    const run = newRun({ seed: 53, origin: 'soldier' });
+    run.player.level = 10;
+    const str = run.player.str;
+    absorbEssence(run, { id: 'thug', color: 0 }, true);
+    expect(absorbEssence(run, { id: 'thug', color: 0, guardian: true })).toBeNull();
+    expect(run.essences.length).toBe(1);
+    expect(run.essences[0].core).toBeUndefined();
+    expect(run.player.str).toBe(str + (essenceStats('thug', true).str ?? 0));
+    expect(run.skills.filter((s) => s.from === run.essences[0].uid).length).toBeGreaterThan(0);
+  });
+
+  it('본질로 흡수한 정수는 기술이 겹친다는 이유로 막지 않는다', async () => {
+    const { absorbBlock, absorbEssence } = await import('../src/engine/run');
+    const { ESSENCES } = await import('../src/engine/registry');
+    const run = newRun({ seed: 54, origin: 'soldier' });
+    run.player.level = 30;
+    const seen = new Map<string, string>();
+    let pair: [string, string] | null = null;
+    for (const d of ESSENCES.values()) {
+      if (d.lord) continue;
+      const other = seen.get(d.actives[0]);
+      if (other) pair = [other, d.id];
+      else seen.set(d.actives[0], d.id);
+    }
+    if (!pair) return; // 기술을 공유하는 정수가 없다
+    absorbEssence(run, { id: pair[0], color: 0 });
+    expect(absorbBlock(run, { id: pair[1], color: 0 })).toBe('같은 능력을 주는 정수가 있다');
+    expect(absorbBlock(run, { id: pair[1], color: 0 }, true)).toBeNull();
+  });
+});

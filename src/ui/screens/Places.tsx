@@ -180,6 +180,7 @@ export function ShrineScreen() {
                 id={es.id}
                 color={es.color}
                 guardian={es.guardian}
+                core={es.core}
                 footer={
                   <button
                     class="btn danger wide"

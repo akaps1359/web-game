@@ -1,10 +1,13 @@
 import { it } from 'vitest';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import '../src/content';
-import { simulateRun, summarize } from '../src/sim/runbot';
+import { CORE_HP } from '../src/engine/run';
+import { botEssence, simulateRun, summarize } from '../src/sim/runbot';
 
 const N = Number(process.env.SIM_RUNS ?? 40);
 const ORIGINS = (process.env.SIM_ORIGINS ?? 'soldier,hunter,occultist').split(',');
+botEssence.mode = (process.env.SIM_ESSENCE as typeof botEssence.mode) ?? 'auto';
+if (process.env.SIM_CORE_HP) [CORE_HP.base, CORE_HP.step] = process.env.SIM_CORE_HP.split(',').map(Number);
 
 it('밸런스 시뮬레이션', () => {
   const out: string[] = [];
@@ -15,6 +18,6 @@ it('밸런스 시뮬레이션', () => {
   }
   const text = out.join('\n\n');
   mkdirSync('sim/out', { recursive: true });
-  writeFileSync('sim/out/balance.txt', text);
+  writeFileSync(process.env.SIM_OUT ?? 'sim/out/balance.txt', text);
   console.log(text);
 });

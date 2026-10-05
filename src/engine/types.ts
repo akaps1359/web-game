@@ -117,6 +117,8 @@ export interface OwnedEssence {
   /** 색 = 액티브 종류 */
   color: number;
   guardian?: boolean;
+  /** 본질로 흡수: 기술을 배우지 않는 대신 능력치를 더 받는다 */
+  core?: boolean;
 }
 
 export interface EssenceStats {

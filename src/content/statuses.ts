@@ -315,7 +315,7 @@ reg.statuses([
     name: '기절',
     icon: 'gi:knocked-out-stars',
     kind: 'debuff',
-    desc: '다음 행동 {n}회 불가',
+    desc: '다음 행동 {n}회 불가 (수호자는 겹쳐 걸리지 않고, 붕괴 중이거나 기절·붕괴로 행동을 건너뛰면 한 번 행동하기 전까지 기절하지 않는다)',
   },
   {
     id: 'dread',

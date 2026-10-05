@@ -116,7 +116,7 @@ reg.relics([
     name: 'No.58 상인 조합 주화',
     icon: 'gi:coins',
     rarity: 'common',
-    desc: '상점 물건값 20% 할인 (이미 둘러본 상점은 그대로)',
+    desc: '상점 물건값 20% 할인',
   },
   {
     id: 'grave-dirt',

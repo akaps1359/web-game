@@ -488,6 +488,8 @@ export function enterRoom(run: RunState, id: number) {
 export function startGuardian(run: RunState): string | null {
   const f = run.floor;
   if (!f) return '층이 없다';
+  // 던전에 서 있을 때만 (두 번 눌리거나 보상·거점에서 불려도 수호자와 다시 싸우지 않게)
+  if (run.screen !== 'dungeon') return '지금은 도전할 수 없다';
   const room = f.rooms[f.pos];
   if (room.type === 'portal') {
     if (!f.bossEnc || !ENCOUNTERS.some((e) => e.id === f.bossEnc)) {
@@ -503,6 +505,7 @@ export function startGuardian(run: RunState): string | null {
   if (room.type === 'lord') {
     const lord = FLOORS.get(f.act)?.lord;
     if (!lord) return '군주가 없다';
+    if (room.cleared) return '계층군주는 이미 쓰러졌다';
     room.cleared = true;
     startCombat(run, lord.enc);
     return null;
@@ -552,6 +555,30 @@ export function enterRift(run: RunState): string | null {
   log(run, '균열 속으로 발을 들였다. 수호자를 쓰러뜨리기 전에는 나갈 수 없다');
   startCombat(run, encs[0], { anomaly: run.rift.rule });
   return null;
+}
+
+/**
+ * 보상 화면을 떠난다 (다음 균열 전투 / 거점 / 승리 / 던전).
+ * 보상 화면이 아니면 아무것도 하지 않는다 — 두 번 눌려도 거점에서 수호자 방으로 되돌아가는 일이 없게.
+ */
+export function closeReward(run: RunState): boolean {
+  if (run.screen !== 'reward') return false;
+  const rw = run.reward;
+  run.reward = null;
+  switch (rw?.next) {
+    case 'rift':
+      continueRift(run);
+      break;
+    case 'haven':
+      goHaven(run);
+      break;
+    case 'final':
+      winRun(run);
+      break;
+    default:
+      run.screen = 'dungeon';
+  }
+  return true;
 }
 
 export function continueRift(run: RunState) {
