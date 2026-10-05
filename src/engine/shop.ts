@@ -134,3 +134,43 @@ export function sell(run: RunState, itemUid: string): string | null {
   run.bag.splice(i, 1);
   return null;
 }
+
+// ───────────── 스킬 처분 ─────────────
+
+/** 스킬 판매가: 상점 기본가의 30% (강화했으면 1.5배). 상점에서 사는 값보다 크게 손해 본다 */
+export const SKILL_SELL_RATE = 0.3;
+
+export function skillSellPrice(run: RunState, skillUid: string): number {
+  const s = run.skills.find((x) => x.uid === skillUid);
+  const def = s && SKILLS.get(s.id);
+  if (!s || !def) return 0;
+  const base = PRICE.skill[def.rarity] ?? PRICE.skill.common ?? 45;
+  return Math.max(5, Math.round(base * SKILL_SELL_RATE * (s.lvl > 0 ? 1.5 : 1)));
+}
+
+/** 팔거나 버릴 수 없는 이유 (없으면 null) */
+export function skillLockReason(run: RunState, skillUid: string): string | null {
+  const s = run.skills.find((x) => x.uid === skillUid);
+  if (!s) return '스킬이 없다';
+  if (s.from) return '정수에서 얻은 스킬은 그 정수를 지워야 사라진다';
+  if (run.slots.includes(skillUid)) return '장착한 스킬은 먼저 빼야 한다';
+  return null;
+}
+
+/** 스킬을 버린다 (새겨 둔 각인은 돌려받는다) */
+export function discardSkill(run: RunState, skillUid: string): string | null {
+  const why = skillLockReason(run, skillUid);
+  if (why) return why;
+  const i = run.skills.findIndex((x) => x.uid === skillUid);
+  run.runes.push(...run.skills[i].runes);
+  run.skills.splice(i, 1);
+  return null;
+}
+
+export function sellSkill(run: RunState, skillUid: string): string | null {
+  const gold = skillSellPrice(run, skillUid);
+  const why = discardSkill(run, skillUid);
+  if (why) return why;
+  run.player.gold += gold;
+  return null;
+}

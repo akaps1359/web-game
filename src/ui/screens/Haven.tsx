@@ -8,7 +8,7 @@ import { store } from '../../state/store';
 import { EssenceCard } from '../cards';
 import { Icon } from '../components';
 import { RunHud } from '../Hud';
-import { SellList, ShopList } from './Merchant';
+import { SellList, SellSkillList, ShopList } from './Merchant';
 
 type Tab = 'inn' | 'shop' | 'smith' | 'temple';
 
@@ -80,6 +80,7 @@ export function HavenScreen() {
           <>
             <ShopList />
             <SellList />
+            <SellSkillList />
           </>
         )}
         {tab === 'smith' && (

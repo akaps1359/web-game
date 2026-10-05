@@ -741,3 +741,11 @@ h2.title {
   flex: none;
   margin-top: 2px;
 }
+
+/* 탭 줄은 줄어들지 않게 (글자 잘림 방지), 소지품 창은 탭을 바꿔도 높이가 같게 */
+.tabs {
+  flex-shrink: 0;
+}
+.sheet.fixed {
+  height: calc(100% - var(--safe-t) - 24px);
+}

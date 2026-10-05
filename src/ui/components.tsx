@@ -114,10 +114,10 @@ export function Segs({ segs }: { segs: Seg[] }) {
   );
 }
 
-export function Sheet({ title, onClose, children, icon }: { title: string; onClose: () => void; children: ComponentChildren; icon?: string }) {
+export function Sheet({ title, onClose, children, icon, fixed }: { title: string; onClose: () => void; children: ComponentChildren; icon?: string; fixed?: boolean }) {
   return (
     <div class="veil" onClick={onClose}>
-      <div class="sheet" onClick={(e) => e.stopPropagation()}>
+      <div class={`sheet ${fixed ? 'fixed' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div class="sheet-head">
           {icon && <Icon name={icon} size={24} color="var(--brass-2)" />}
           <h2 class="title grow">{title}</h2>

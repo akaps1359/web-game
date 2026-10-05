@@ -1,9 +1,10 @@
 import { EQUIPS } from '../../engine/registry';
-import { buy, sell, sellPrice } from '../../engine/shop';
+import { buy, sell, sellPrice, sellSkill, skillLockReason, skillSellPrice, SKILL_SELL_RATE } from '../../engine/shop';
+import { SKILLS } from '../../engine/registry';
 import { leavePlace } from '../../engine/places';
 import { store } from '../../state/store';
 import { sound } from '../../sound';
-import { LootCard, lootInfo, lootName } from '../cards';
+import { LootCard, SkillCard, lootInfo, lootName } from '../cards';
 import { applyAsk } from '../ask';
 import { Icon } from '../components';
 import { RunHud } from '../Hud';
@@ -62,6 +63,39 @@ export function SellList() {
   );
 }
 
+/** 장착하지 않은 스킬 팔기 (정수 스킬 제외) */
+export function SellSkillList() {
+  const run = store.run!;
+  const list = run.skills.filter((s) => !skillLockReason(run, s.uid));
+  if (!list.length) return null;
+  return (
+    <>
+      <div class="section-label">스킬 팔기 (상점 값의 {Math.round(SKILL_SELL_RATE * 100)}%, 장착 중·정수 스킬 제외)</div>
+      <div class="list">
+        {list.map((s) => {
+          const def = SKILLS.get(s.id);
+          const gold = skillSellPrice(run, s.uid);
+          return (
+            <SkillCard
+              id={s.id}
+              lvl={s.lvl}
+              runes={s.runes}
+              onClick={() =>
+                applyAsk(
+                  { title: `${def?.name}${s.lvl > 0 ? '+' : ''} 판매`, icon: def?.icon, body: s.runes.length ? '새겨 둔 각인은 돌려받는다.' : undefined, lines: [{ label: '받는 골드', value: `+${gold} 골드` }], ok: '판다' },
+                  (r) => sellSkill(r, s.uid),
+                  `${def?.name} 판매`,
+                )
+              }
+              right={<span class="chip num" style={{ color: 'var(--good)' }}>+{gold}G</span>}
+            />
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 export function MerchantScreen() {
   return (
     <div class="screen">
@@ -80,6 +114,7 @@ export function MerchantScreen() {
         </div>
         <ShopList />
         <SellList />
+        <SellSkillList />
       </div>
       <div class="footer">
         <button class="btn wide" onClick={() => applyAsk({ title: '상인을 떠날까요?', icon: 'gi:exit-door', ok: '떠난다' }, (r) => leavePlace(r))}>

@@ -3,6 +3,7 @@ import { EQUIPS, MADNESS, RELICS, RUNES, SKILLS } from '../../engine/registry';
 import { equipFromBag, equipSkill, essenceCap, essenceUsed, socketRune, unequip, xpToNext } from '../../engine/run';
 import type { EquipSlot } from '../../engine/types';
 import { applyAsk } from '../ask';
+import { discardSkill, skillLockReason } from '../../engine/shop';
 import { store } from '../../state/store';
 import { EssenceCard, LootCard, SkillCard } from '../cards';
 import { Icon, Sheet, showTip } from '../components';
@@ -18,7 +19,7 @@ export function CharacterSheet({ tab: initial }: { tab?: Tab }) {
     store.emit();
   };
   return (
-    <Sheet title="소지품" icon="gi:knapsack" onClose={close}>
+    <Sheet title="소지품" icon="gi:knapsack" onClose={close} fixed>
       <div class="tabs">
         {(
           [
@@ -146,7 +147,29 @@ function SkillsTab() {
               void applyAsk({ title: `${SKILLS.get(s.id)?.name} 장착`, icon: SKILLS.get(s.id)?.icon, body: cur ? `${SKILLS.get(cur.id)?.name} 대신 넣는다.` : '빈 슬롯에 넣는다.', ok: '장착한다' }, (r) => equipSkill(r, target, s.uid));
               setSlot(null);
             }}
-            right={s.from ? <span class="chip" style={{ color: '#ff9ab0' }}>정수</span> : undefined}
+            right={
+              s.from ? (
+                <span class="chip" style={{ color: '#ff9ab0' }}>정수</span>
+              ) : (
+                !lock &&
+                !skillLockReason(run, s.uid) && (
+                  <button
+                    class="chip"
+                    style={{ color: 'var(--bad)' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void applyAsk(
+                        { title: `${SKILLS.get(s.id)?.name}${s.lvl > 0 ? '+' : ''} 버리기`, icon: SKILLS.get(s.id)?.icon, body: '이 스킬을 영영 버린다. 새겨 둔 각인은 돌려받는다. 상인에게 팔면 골드라도 받을 수 있다.', ok: '버린다', danger: true },
+                        (r) => discardSkill(r, s.uid),
+                        '스킬을 버렸다',
+                      );
+                    }}
+                  >
+                    버리기
+                  </button>
+                )
+              )
+            }
           />
         ))}
       </div>
