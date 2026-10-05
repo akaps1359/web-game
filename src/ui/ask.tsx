@@ -1,6 +1,5 @@
 import type { ComponentChildren } from 'preact';
 import { store } from '../state/store';
-import { sound } from '../sound';
 import { Icon } from './components';
 import { apply } from '../state/actions';
 
@@ -39,7 +38,6 @@ export function AskView() {
   const { ask: a, resolve } = pending;
   const done = (ok: boolean) => {
     pending = null;
-    sound.sfx('click', { volume: 0.5 });
     resolve(ok);
     store.emit();
   };

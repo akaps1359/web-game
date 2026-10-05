@@ -699,3 +699,18 @@ h2.title {
     transform: rotate(var(--a)) translateX(170px);
   }
 }
+
+/* ───────── 누름 반응 (모든 누를 수 있는 것) ───────── */
+.card,
+.chip,
+.tab,
+.skill-tile {
+  transition: transform 0.08s, filter 0.08s;
+}
+.card:active:not(.off),
+.chip:active,
+.tab:active,
+.skill-tile:active:not(.off) {
+  transform: scale(0.97);
+  filter: brightness(1.18);
+}

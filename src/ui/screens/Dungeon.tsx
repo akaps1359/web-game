@@ -26,7 +26,6 @@ export function DungeonScreen() {
   const target = picked !== null && here.links.includes(picked) ? picked : null;
   const select = (id: number) => {
     setPicked(target === id ? null : id);
-    sound.sfx('click', { volume: 0.5 });
   };
   const confirmMove = () => {
     if (target === null) return;

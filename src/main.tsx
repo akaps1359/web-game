@@ -15,6 +15,19 @@ document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: fals
 // 오디오는 첫 터치에서 잠금 해제 (iOS는 touchend/click 제스처가 확실함)
 for (const ev of ['pointerdown', 'touchend', 'click']) document.addEventListener(ev, () => void sound.unlock(), { capture: true });
 
+// 누를 수 있는 것은 무엇이든 누르는 순간 짧은 소리 (눌렸는지 바로 알 수 있게). 막힌 단추는 둔탁한 소리
+const PRESSABLE = 'button, a, [role="button"], .card, .chip, .tab, .skill-tile, .room, .slot-item, .enemy-hit, .skill, .chip-anom';
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    const el = (e.target as Element | null)?.closest?.(PRESSABLE) as HTMLElement | null;
+    if (!el) return;
+    const off = (el as HTMLButtonElement).disabled || el.classList.contains('off') || el.getAttribute('aria-disabled') === 'true';
+    sound.sfx(off ? 'error' : 'click', { volume: off ? 0.25 : 0.45 });
+  },
+  { capture: true, passive: true },
+);
+
 /** 핵심 장면은 실제 음원 (OpenGameArt, CC0) */
 function registerTracks(audio: { registerTrack(mood: string, url: string, opts?: { act?: number; volume?: number }): void }) {
   const base = import.meta.env.BASE_URL;

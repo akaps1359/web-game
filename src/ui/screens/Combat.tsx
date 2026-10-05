@@ -63,7 +63,6 @@ export function CombatScreen() {
       return;
     }
     s.focus = uid;
-    sound.sfx('click', { volume: 0.4 });
     s.emit();
   };
 
@@ -422,7 +421,6 @@ function SkillButton({ r }: { r: string }) {
       return;
     }
     s.sel = r;
-    sound.sfx('click', { volume: 0.5 });
     s.emit();
   };
   return (

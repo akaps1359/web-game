@@ -54,7 +54,7 @@ export function PickSkillSheet() {
           {cands.map((s) => {
             const d = SKILLS.get(s.id)!;
             return (
-              <button class={`skill-tile ${s.uid === selUid ? 'sel' : ''}`} onClick={() => (setSel(s.uid), sound.sfx('click', { volume: 0.4 }))}>
+              <button class={`skill-tile ${s.uid === selUid ? 'sel' : ''}`} onClick={() => setSel(s.uid)}>
                 <Icon name={d.icon} size={30} color={SCHOOL_COLOR[d.school]} />
                 <span class="nm">{d.name}</span>
               </button>
