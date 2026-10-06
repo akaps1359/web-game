@@ -13,7 +13,7 @@ reg.statuses([
     icon: 'gi:biceps',
     kind: 'buff',
     signed: true,
-    desc: '공격 피해 +{n}',
+    desc: '공격 피해 +{n} — 스킬 한 번에 대상마다 첫 타격에만 (여러 번 때려도 한 번, 광역은 대상마다)',
     hooks: {
       modDamageOut(_c, s, d) {
         if (d.attack) d.add += s.n;
@@ -112,7 +112,8 @@ reg.statuses([
     desc: '다음 관통 공격이 치명타(피해 2배). {n}회',
     hooks: {
       modDamageOut(_c, _s, d) {
-        if (d.attack && d.type === 'pierce' && !d.tags.includes('noaim')) {
+        // d.repeat: 여러 번 때리는 스킬의 '이후 타격' 미리보기 — 조준은 첫 관통 공격이 써 버린다
+        if (d.attack && d.type === 'pierce' && !d.tags.includes('noaim') && !d.repeat) {
           d.mult *= 2;
           d.crit = true;
         }

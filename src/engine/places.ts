@@ -142,14 +142,17 @@ export function purgeEssence(run: RunState, essenceUid: string): string | null {
   return removeEssence(run, essenceUid);
 }
 
-/** 병에 담아 둔 정수를 새긴다 (신전·거점 신전에서만, 골드를 낸다). pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) */
-export function inscribeFlask(run: RunState, idx: number, pick: string | null = null): string | null {
+/**
+ * 병에 담아 둔 정수를 새긴다 (신전·거점 신전에서만, 골드를 낸다). pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이).
+ * replace: 정수 자리가 꽉 찼을 때 깨뜨리고 바꿀 정수의 uid
+ */
+export function inscribeFlask(run: RunState, idx: number, pick: string | null = null, replace: string | null = null): string | null {
   if (run.screen !== 'shrine' && run.screen !== 'haven') return '신전에서만 새길 수 있다';
   const drop = run.flasks?.[idx];
   if (!drop) return '병이 비어 있다';
   const cost = inscribeCost(drop);
   if (run.player.gold < cost) return '골드가 부족하다';
-  const why = absorbEssence(run, drop, pick);
+  const why = absorbEssence(run, drop, pick, replace);
   if (why) return why;
   run.player.gold -= cost;
   run.flasks!.splice(idx, 1);

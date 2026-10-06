@@ -9,7 +9,9 @@ export type Sheet =
   | { kind: 'settings' }
   | { kind: 'codex' }
   | { kind: 'map' }
-  | { kind: 'pick'; title: string; purpose: 'upgrade-reward' | 'train-camp' | 'train-paid' | 'rune'; idx?: number };
+  | { kind: 'pick'; title: string; purpose: 'upgrade-reward' | 'train-camp' | 'train-paid' | 'rune'; idx?: number }
+  /** 정수 자리가 꽉 찼을 때 깨뜨릴 정수 고르기 — source 'reward': 보상의 items[idx] / 'flask': 정수 병[idx] (신전·거점에서 새기기) */
+  | { kind: 'swap-essence'; source: 'reward' | 'flask'; idx: number; pick: string | null };
 
 export interface Tip {
   title: string;

@@ -199,9 +199,9 @@ function roomDesc(r: Room): string {
     case 'merchant':
       return '떠돌이 상인이 좌판을 폈다.';
     case 'shrine':
-      return '오래된 신전. 정수를 지우거나 광기를 치료할 수 있다.';
+      return '오래된 신전. 병에 담은 정수를 새기거나, 정수를 지우거나, 광기를 치료할 수 있다.';
     case 'portal':
-      return '다음 층으로 이어지는 비석. 층 수호자가 지키고 있다.';
+      return '다음 층으로 이어지는 비석. 층 수호자가 지키고 있다. 비석 앞에서 숨을 고르고(체력 전부) 싸운다.';
     case 'lord':
       return '계층군주가 깨어났다. 쓰러뜨리면 판당 하나뿐인 계층정수를 얻는다.';
     case 'start':
@@ -285,7 +285,22 @@ function RoomPanel() {
     const boss = ENCOUNTERS.find((e) => e.id === f.bossEnc);
     const name = boss ? ENEMIES.get(boss.enemies[0].id)?.name : '';
     action = (
-      <button class="btn danger wide" onClick={() => confirmThen({ title: `「${name}」에게 도전할까요?`, icon: 'gi:dungeon-gate', body: f.act >= FINAL_ACT ? '마지막 싸움이다. 준비가 되었는지 확인하라.' : '층 수호자와 싸운다. 이기면 거점으로 간다.', ok: '도전한다', danger: true }, fightGuardian)}>
+      <button
+        class="btn danger wide"
+        onClick={() =>
+          confirmThen(
+            {
+              title: `「${name}」에게 도전할까요?`,
+              icon: 'gi:dungeon-gate',
+              body: `${f.act >= FINAL_ACT ? '마지막 싸움이다. 준비가 되었는지 확인하라.' : '층 수호자와 싸운다. 이기면 거점으로 간다.'}\n\n비석 앞에서 숨을 고른다 — 체력을 모두 채운 채 싸운다 (정신력은 그대로). 수호자의 공격은 그만큼 매섭다.`,
+              lines: run.player.hp < run.player.maxHp ? [{ label: '숨 고르기', value: `체력 ${run.player.hp} → ${run.player.maxHp}`, color: 'var(--good)' }] : undefined,
+              ok: '도전한다',
+              danger: true,
+            },
+            fightGuardian,
+          )
+        }
+      >
         <Icon name="gi:dungeon-gate" size={18} />
         {f.act >= FINAL_ACT ? `최후의 수호자 「${name}」에게 다가간다` : `층 수호자 「${name}」에게 도전`}
       </button>

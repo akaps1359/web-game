@@ -8,9 +8,12 @@ import {
   chooseLoot,
   equipFromBag,
   equipSkill,
+  essenceStats,
   finishCombat,
   newRun,
+  slotFull,
   takeLoot,
+  takesSlot,
   type RunState,
 } from '../engine/run';
 import { continueRift, distances, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
@@ -249,26 +252,59 @@ function pickTarget(run: RunState): number {
   return commit(best);
 }
 
-/** 병에 담아 둔 정수를 새길 수 있는 만큼 새긴다 (골드는 절반 넘게 남긴다) */
+/** 병에 담아 둔 정수를 새길 수 있는 만큼 새긴다 (골드는 절반 넘게 남긴다). 자리가 꽉 찼으면 더 나을 때만 가장 못한 정수와 바꾼다 */
 function inscribeAll(run: RunState) {
   for (let i = (run.flasks?.length ?? 0) - 1; i >= 0; i--) {
     const drop = run.flasks![i];
     if (run.player.gold < inscribeCost(drop) * 2) continue;
-    inscribeFlask(run, i, pickFor(run, drop));
+    let pick = pickFor(run, drop);
+    let rep: string | null = null;
+    const why = absorbBlock(run, drop, pick);
+    if (why) {
+      rep = slotFull(why) ? replaceFor(run, drop) : null;
+      if (!rep) continue;
+      pick = pickFor(run, drop, rep);
+    }
+    inscribeFlask(run, i, pick, rep);
   }
 }
 
 /**
  * 수호자 정수와 함께 배울 기술: 'skill' 항상 고른다 / 'core' 고르지 않는다 / 'auto' 빈 슬롯이 있으면 고른다.
- * 고를 땐 겹치지 않는 첫 기술 (보통 정수는 기술이 없다)
+ * 고를 땐 겹치지 않는 첫 기술 (보통 정수는 기술이 없다). replace: 깨뜨리고 바꿀 정수 (그 정수의 기술이 비우는 칸도 빈 칸으로 본다)
  */
 export const botEssence: { mode: 'skill' | 'core' | 'auto' } = { mode: 'auto' };
 
-function pickFor(run: RunState, drop: { id: string; color: number; guardian?: boolean }): string | null {
+function pickFor(run: RunState, drop: { id: string; color: number; guardian?: boolean }, replace: string | null = null): string | null {
   if (!drop.guardian || botEssence.mode === 'core') return null;
-  if (botEssence.mode === 'auto' && !run.slots.includes(null)) return null;
+  const old = replace ? run.essences.find((e) => e.uid === replace) : null;
+  const frees = !!old && run.skills.some((s) => s.from === old.uid && run.slots.includes(s.uid));
+  if (botEssence.mode === 'auto' && !run.slots.includes(null) && !frees) return null;
   const def = ESSENCES.get(drop.id);
-  return def?.actives.find((a) => !absorbBlock(run, drop, a)) ?? null;
+  return def?.actives.find((a) => !absorbBlock(run, drop, a, replace)) ?? null;
+}
+
+/** 봇이 보는 정수의 값 (정수 자리가 꽉 찼을 때 무엇을 깨뜨릴지): 힘·민첩·최대 체력·의지, 수호자 정수 */
+function essenceValue(id: string, guardian: boolean): number {
+  const st = essenceStats(id, guardian, true);
+  return (st.str ?? 0) * 8 + (st.dex ?? 0) * 4 + (st.maxHp ?? 0) + (st.will ?? 0) * 1.5 + (guardian ? 6 : 0);
+}
+
+/** 정수 자리가 꽉 찼으면 가장 못한 정수(계층정수 제외, 고른 기술이 있으면 그만큼 더 쳐 준다)를 깨뜨릴 후보로 — 새 정수가 그보다 나을 때만 */
+function replaceFor(run: RunState, drop: { id: string; color: number; guardian?: boolean }): string | null {
+  if (!slotFull(absorbBlock(run, drop, null))) return null;
+  let worst: string | null = null;
+  let ws = Infinity;
+  for (const e of run.essences) {
+    if (!takesSlot(e.id)) continue;
+    const v = essenceValue(e.id, !!e.guardian) + (e.skill ? 8 : 0);
+    if (v < ws) {
+      ws = v;
+      worst = e.uid;
+    }
+  }
+  if (!worst || essenceValue(drop.id, !!drop.guardian) <= ws) return null;
+  return absorbBlock(run, drop, null, worst) ? null : worst;
 }
 
 function handleReward(run: RunState, res: SimResult) {
@@ -278,9 +314,12 @@ function handleReward(run: RunState, res: SimResult) {
     if (it.kind === 'essence') {
       const drop = { id: it.id, color: it.color ?? 0, guardian: it.guardian };
       const pick = pickFor(run, drop);
-      // 흡수 한도가 차 있으면 병에 담아 두었다가 신전에서 새긴다
-      if (absorbBlock(run, drop, pick)) {
-        bottleEssence(run, it);
+      const why = absorbBlock(run, drop, pick);
+      if (why) {
+        // 정수 자리가 꽉 찼으면 더 나을 때만 가장 못한 정수를 깨뜨리고 바꾼다. 아니면 병에 담아 두었다가 신전에서 새긴다
+        const rep = slotFull(why) ? replaceFor(run, drop) : null;
+        if (rep) takeLoot(run, it, pickFor(run, drop, rep), rep);
+        else bottleEssence(run, it);
         continue;
       }
       takeLoot(run, it, pick);

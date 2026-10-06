@@ -330,10 +330,12 @@ describe('지도: 지나온 길', () => {
 describe('정수 병', () => {
   const drop = (id = 'thug', guardian = false): LootItem => ({ kind: 'essence', id, color: 0, guardian });
 
-  it('흡수 한도가 차 있어도 병에 담을 수 있고, 병은 둘까지', async () => {
-    const { absorbEssence, bottleEssence, FLASK_CAP } = await import('../src/engine/run');
+  it('정수 자리가 꽉 차 있어도 병에 담을 수 있고, 병은 둘까지', async () => {
+    const { absorbEssence, bottleEssence, essenceCap, FLASK_CAP } = await import('../src/engine/run');
     const run = newRun({ seed: 81, origin: 'soldier' });
-    expect(absorbEssence(run, { id: 'dog', color: 0 })).toBeNull(); // 레벨 1 → 한도 1 꽉 참
+    // 정수 자리(처음 4)를 채운다
+    for (const id of ['dog', 'gulls', 'rats', 'initiate']) expect(absorbEssence(run, { id, color: 0 })).toBeNull();
+    expect(run.essences.length).toBe(essenceCap(run));
     expect(absorbEssence(run, { id: 'thug', color: 0 })).not.toBeNull();
     const a = drop('thug');
     expect(bottleEssence(run, a)).toBeNull();

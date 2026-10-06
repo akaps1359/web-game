@@ -107,14 +107,15 @@ describe('전투', () => {
 });
 
 describe('런', () => {
-  it('정수 흡수와 한도', () => {
+  it('정수 흡수와 자리', () => {
     const run = newRun({ seed: 11, origin: 'hunter' });
     expect(absorbEssence(run, { id: 'thug', color: 0 })).toBeNull();
     // 보통 정수는 본질로만 (기술은 수호자 정수에서)
     expect(run.skills.some((s) => s.id === 'ess-thug-pipe')).toBe(false);
     expect(run.essences[0].core).toBe(true);
-    // 레벨 1 → 한도 1
-    expect(absorbEssence(run, { id: 'dog', color: 0 })).not.toBeNull();
+    // 처음엔 정수 자리 4 — 레벨과 상관없다
+    for (const id of ['dog', 'rats', 'sailor']) expect(absorbEssence(run, { id, color: 0 })).toBeNull();
+    expect(absorbEssence(run, { id: 'gulls', color: 0 })).not.toBeNull();
   });
 
   it('던전을 탐험하고 보스까지 갈 수 있다', () => {

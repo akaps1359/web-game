@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { inscribeFlask } from '../engine/places';
 import { ESSENCES, SKILLS } from '../engine/registry';
-import { absorbBlock, FLASK_CAP, inscribeCost, pourFlask } from '../engine/run';
+import { absorbBlock, FLASK_CAP, inscribeCost, pourFlask, slotFull } from '../engine/run';
 import { store } from '../state/store';
 import { applyAsk } from './ask';
 import { EssenceCard } from './cards';
@@ -31,7 +31,9 @@ export function FlaskList({ where }: { where: 'bag' | 'shrine' }) {
         const key = `${i}:${drop.id}`;
         const pick = where === 'shrine' && drop.guardian ? (picks[key] ?? null) : null;
         const block = absorbBlock(run, drop, pick);
-        const why = block ?? (poor ? '골드가 부족하다' : null);
+        // 정수 자리가 꽉 찼으면 가진 정수 하나를 깨뜨리고 바꿔 새길 수 있다 (SwapEssenceSheet)
+        const full = slotFull(block);
+        const why = full ? (poor ? '골드가 부족하다' : null) : (block ?? (poor ? '골드가 부족하다' : null));
         return (
           <EssenceCard
             id={drop.id}
@@ -42,27 +44,42 @@ export function FlaskList({ where }: { where: 'bag' | 'shrine' }) {
             footer={
               where === 'shrine' ? (
                 <div style={{ display: 'grid', gap: 6 }}>
+                  {full && !why && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{block} — 가진 정수 하나를 깨뜨리고 바꿔 새길 수 있다</div>}
                   {why && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{why}</div>}
-                  <button
-                    class="btn eldritch wide"
-                    disabled={!!why}
-                    onClick={() =>
-                      applyAsk(
-                        {
-                          title: `${name} 새기기`,
-                          icon: 'gi:heart-beats',
-                          color: 'var(--eldritch)',
-                          body: `${cost} 골드. 병에 담아 둔 정수를 몸에 새긴다${pick ? ` (기술: ${SKILLS.get(pick)?.name ?? ''})` : ''}. 정수 한도를 차지한다.`,
-                          ok: '새긴다',
-                        },
-                        (r) => inscribeFlask(r, i, pick),
-                        '정수를 새겼다',
-                      )
-                    }
-                  >
-                    <Icon name="gi:heart-beats" size={16} />
-                    새긴다{pick ? ` + ${SKILLS.get(pick)?.name ?? ''}` : drop.guardian ? ' (기술 없이)' : ''} · {cost}골드
-                  </button>
+                  {full ? (
+                    <button
+                      class="btn eldritch wide"
+                      disabled={!!why}
+                      onClick={() => {
+                        store.sheet = { kind: 'swap-essence', source: 'flask', idx: i, pick };
+                        store.emit();
+                      }}
+                    >
+                      <Icon name="gi:shattered-heart" size={16} />
+                      정수 하나를 깨뜨리고 새긴다{pick ? ` + ${SKILLS.get(pick)?.name ?? ''}` : ''} · {cost}골드
+                    </button>
+                  ) : (
+                    <button
+                      class="btn eldritch wide"
+                      disabled={!!why}
+                      onClick={() =>
+                        applyAsk(
+                          {
+                            title: `${name} 새기기`,
+                            icon: 'gi:heart-beats',
+                            color: 'var(--eldritch)',
+                            body: `${cost} 골드. 병에 담아 둔 정수를 몸에 새긴다${pick ? ` (기술: ${SKILLS.get(pick)?.name ?? ''})` : ''}. 정수 자리 하나를 차지한다.`,
+                            ok: '새긴다',
+                          },
+                          (r) => inscribeFlask(r, i, pick),
+                          '정수를 새겼다',
+                        )
+                      }
+                    >
+                      <Icon name="gi:heart-beats" size={16} />
+                      새긴다{pick ? ` + ${SKILLS.get(pick)?.name ?? ''}` : drop.guardian ? ' (기술 없이)' : ''} · {cost}골드
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

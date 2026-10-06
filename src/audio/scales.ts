@@ -28,6 +28,69 @@ export function weighted<T>(items: readonly (readonly [T, number])[]): T {
 /** 지수분포 대기시간(평균 mean) — 포아송 이벤트 간격에 사용 */
 export const expWait = (mean: number): number => -Math.log(1 - Math.random() * 0.999) * mean;
 
+// ---------------------------------------------------------------------------
+// Seeded random — 수호자마다 곡의 '정체성'(동기·리듬·악기 조합·화성 진행)을 고정할 때만 쓴다.
+// 연주 중의 우연(휴먼라이즈, 확률 음, 패턴 고르기)은 그대로 Math.random.
+// ---------------------------------------------------------------------------
+
+/** 문자열 → 32비트 해시 (FNV-1a) */
+export function hashSeed(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** 시드 고정 난수 (mulberry32) */
+export class SeedRng {
+  private s: number;
+  constructor(seed: string | number) {
+    this.s = typeof seed === 'number' ? seed >>> 0 : hashSeed(seed);
+  }
+  next(): number {
+    let t = (this.s = (this.s + 0x6d2b79f5) >>> 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+  rand(a: number, b: number): number {
+    return a + this.next() * (b - a);
+  }
+  int(a: number, b: number): number {
+    return Math.floor(this.rand(a, b + 1));
+  }
+  chance(p: number): boolean {
+    return this.next() < p;
+  }
+  pick<T>(arr: readonly T[]): T {
+    return arr[Math.floor(this.next() * arr.length)];
+  }
+  shuffle<T>(arr: readonly T[]): T[] {
+    const out = arr.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(this.next() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+  weighted<T>(items: readonly (readonly [T, number])[]): T {
+    let total = 0;
+    for (const [, w] of items) total += w;
+    let r = this.next() * total;
+    for (const [v, w] of items) {
+      r -= w;
+      if (r <= 0) return v;
+    }
+    return items[items.length - 1][0];
+  }
+  /** 갈래 난수: 같은 시드에서 이름별로 독립된 흐름 (예: 바퀴/구간마다) */
+  fork(tag: string | number): SeedRng {
+    return new SeedRng((Math.imul(this.s ^ hashSeed(String(tag)), 0x9e3779b1) ^ 0x5bd1e995) >>> 0);
+  }
+}
+
 /** 정신력 s가 `from` 이하로 내려가면 0→1로 증가, `to`에서 1 */
 export function below(s: number, from: number, to = 0): number {
   return clamp((from - s) / (from - to), 0, 1);
@@ -118,21 +181,32 @@ export function palette(act: number): Palette {
 export class Harmony {
   /** 현재 화음 근음의 음계 차수 */
   degree: number;
+  /** 조옮김(반음) — 보스곡 절정에서 한두 음 올릴 때 */
+  shift = 0;
   private idx = 0;
 
   constructor(
     readonly pal: Palette,
-    private readonly prog: readonly number[] = pal.prog,
-    private readonly wander = false,
+    private prog: readonly number[] = pal.prog,
+    private wander = false,
   ) {
     this.degree = prog[0];
   }
 
+  /** 으뜸음 (조옮김 포함) */
   get root(): number {
-    return this.pal.root;
+    return this.pal.root + this.shift;
   }
   get mode(): Mode {
     return this.pal.mode;
+  }
+
+  /** 진행을 바꾸고 첫 화음부터 (구간이 바뀔 때) */
+  setProg(prog: readonly number[], wander = false): void {
+    this.prog = prog.length ? prog : this.pal.prog;
+    this.wander = wander;
+    this.idx = 0;
+    this.degree = this.prog[0];
   }
 
   /** 다음 화음으로 이동 */
@@ -149,14 +223,14 @@ export class Harmony {
 
   /** 음계 차수(화음 근음 기준 offset) → MIDI. octave는 root 기준 옥타브 이동 */
   note(offset: number, octave = 0): number {
-    return degreeToMidi(this.pal.root + octave * 12, this.pal.mode, this.degree + offset);
+    return degreeToMidi(this.root + octave * 12, this.pal.mode, this.degree + offset);
   }
 
   /** 현재 화음의 근음 MIDI (octave 0 = 베이스 음역) */
   bass(octave = 0): number {
     const m = this.note(0, octave);
     // 베이스가 너무 높아지지 않게 접는다
-    return m - this.pal.root >= 12 ? m - 12 : m;
+    return m - this.root >= 12 ? m - 12 : m;
   }
 
   /** 3도 쌓기 화음. size=3 삼화음, 4 = 7화음. 결과는 octave 이동 적용 */
@@ -176,7 +250,7 @@ export class Harmony {
 
   /** 범위 내 음계음 */
   scaleIn(lo: number, hi: number): number[] {
-    return scaleNotesIn(this.pal.root, this.pal.mode, lo, hi);
+    return scaleNotesIn(this.root, this.pal.mode, lo, hi);
   }
 }
 

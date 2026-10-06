@@ -21,6 +21,8 @@ export interface KitOpts {
   softHat?: string;
   hatFrom?: number;
   phraseBars?: number;
+  /** 필인을 칠 마디 (주면 phraseBars 대신 이것으로 정하고, 해당 마디엔 거의 항상 친다) */
+  fillWhen?: (bar: number) => boolean;
   level?: number;
   sends?: Sends;
   /** 타이코 음높이 (MIDI) */
@@ -98,10 +100,11 @@ export function drumKit(rt: Runtime, o: KitOpts): Layer {
   const phrase = o.phraseBars ?? 4;
   const choice: Partial<Record<DrumVoice, string>> = {};
   const choose = (bar: number) => {
-    const isFill = bar % phrase === phrase - 1;
+    const isFill = o.fillWhen ? o.fillWhen(bar) : bar % phrase === phrase - 1;
+    const fillP = o.fillWhen ? 0.92 : 0.75;
     for (const key of used) {
       const fill = o.fills?.[key];
-      if (isFill && fill && chance(0.75)) {
+      if (isFill && fill && chance(fillP)) {
         choice[key] = fill;
         continue;
       }

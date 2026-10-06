@@ -12,6 +12,8 @@ export interface MoodEnv {
   echo: InputNode;
   sanity: number;
   intensity: number;
+  /** 곡의 정체성을 정하는 씨앗 (보스·정예·영주: 조우 id) */
+  seed?: string;
 }
 
 /** 엔진이 다루는 재생 단위(생성 음악 또는 오디오 파일 트랙) */
@@ -91,6 +93,20 @@ export interface Sends {
   echo?: number;
 }
 
+/**
+ * 구간(섹션) 하나의 레이어 묶음. 자기 Bag과 출력(드라이/리버브/에코 게인)을 갖고,
+ * 화성·박자·정신력·강도는 부모 런타임을 그대로 읽는다. 구간이 끝나면 페이드 후 dispose —
+ * 레이어를 계속 쌓지 않고 갈아 끼우기 위한 것.
+ */
+export interface Scope {
+  /** 레이어를 만들 때 넘길 하위 런타임 */
+  readonly rt: Runtime;
+  readonly disposed: boolean;
+  /** 출력 세 갈래를 함께 램프 */
+  fade(to: number, sec: number, t: number): void;
+  dispose(): void;
+}
+
 /** 무드 하나의 실행 상태. 레이어들은 이 객체를 통해 출력/화성/정신력 정보를 공유한다 */
 export class Runtime implements MoodInstance {
   readonly bag = new Bag();
@@ -102,7 +118,8 @@ export class Runtime implements MoodInstance {
   readonly rhythmic: boolean;
   readonly stepsPerBeat: number;
   readonly stepsPerBar: number;
-  readonly chordBars: number;
+  /** 화음이 바뀌는 마디 간격 (구간마다 바꿀 수 있다) */
+  chordBars: number;
   readonly baseBpm: number;
   bpm: number;
   sanity: number;
@@ -207,6 +224,53 @@ export class Runtime implements MoodInstance {
     link(this.echo, sends.echo);
   }
 
+  /**
+   * 구간용 하위 런타임을 만든다 (Scope 참고). 하위 런타임은 이 런타임을 프로토타입으로 삼아
+   * bag/out/verb/echo만 따로 갖는다 — 기존 레이어 함수를 그대로 쓸 수 있게.
+   */
+  fork(level = 1): Scope {
+    const ctx = this.ctx;
+    const bag = new Bag();
+    const out = bag.add(new Gain({ context: ctx, gain: level }));
+    const verb = bag.add(new Gain({ context: ctx, gain: level }));
+    const echo = bag.add(new Gain({ context: ctx, gain: level }));
+    out.connect(this.out);
+    verb.connect(this.verb);
+    echo.connect(this.echo);
+    const parent = this;
+    const child = Object.create(this) as Runtime;
+    Object.defineProperties(child, {
+      bag: { value: bag },
+      out: { value: out },
+      verb: { value: verb },
+      echo: { value: echo },
+      // 템포는 부모 시계의 것 — 하위 런타임에 따로 쓰면 안 된다
+      setTempoMod: { value: (m: number, r: number, t: number) => parent.setTempoMod(m, r, t) },
+    });
+    const scopes = this.scopes;
+    const scope: Scope = {
+      rt: child,
+      disposed: false,
+      fade(to, sec, t) {
+        if (scope.disposed) return;
+        for (const g of [out, verb, echo]) {
+          g.gain.cancelAndHoldAtTime(t);
+          g.gain.linearRampToValueAtTime(to, t + Math.max(0.01, sec));
+        }
+      },
+      dispose() {
+        if (scope.disposed) return;
+        (scope as { disposed: boolean }).disposed = true;
+        scopes.delete(scope);
+        bag.dispose();
+      },
+    };
+    scopes.add(scope);
+    return scope;
+  }
+  /** 살아 있는 구간들 (무드가 끝날 때 함께 정리) */
+  private readonly scopes = new Set<Scope>();
+
   // ---------------------------------------------------------------------
   // lifecycle
   // ---------------------------------------------------------------------
@@ -244,6 +308,7 @@ export class Runtime implements MoodInstance {
     if (this.disposed) return;
     this.disposed = true;
     this.layers = [];
+    for (const s of [...this.scopes]) s.dispose();
     this.bag.dispose();
   }
 

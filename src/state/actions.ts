@@ -39,10 +39,11 @@ function music() {
     case 'combat': {
       const cs = r.combat;
       const enc = cs?.enc ?? '';
-      if (enc.startsWith('lord')) sound.music('lord', act);
+      // 조우 id = 곡의 씨앗 (수호자·정예·영주마다 주제와 악기 조합이 다르다)
+      if (enc.startsWith('lord')) sound.music('lord', act, enc);
       else if (r.rift) sound.music('rift', act);
-      else if (cs?.kind === 'boss') sound.music('boss', act);
-      else if (cs?.kind === 'elite') sound.music('elite', act);
+      else if (cs?.kind === 'boss') sound.music('boss', act, enc);
+      else if (cs?.kind === 'elite') sound.music('elite', act, enc);
       else sound.music('combat', act);
       break;
     }
@@ -128,6 +129,7 @@ async function combatOver() {
   const won = r.combat?.phase === 'victory';
   const lv = r.player.level;
   const slots = r.slots.length;
+  const cap = essenceCap(r);
   finishCombat(r);
   store.combat = null;
   stage.showBattle(false);
@@ -137,9 +139,11 @@ async function combatOver() {
     saveMeta(store.meta);
     if (r.player.level > lv) {
       sound.sfx('levelUp');
-      store.toast(`레벨 ${r.player.level}! 정수 흡수 한도 ${essenceCap(r)}`, 'good', 3000);
+      store.toast(`레벨 ${r.player.level}!`, 'good', 3000);
       if (r.slots.length > slots) store.toast('스킬 슬롯 +1', 'good', 3000);
     }
+    // 층 수호자를 쓰러뜨리면 정수 자리가 하나 는다
+    if (essenceCap(r) > cap) store.toast(`정수 자리 +1 (${essenceCap(r)}자리)`, 'eldritch', 3000);
   }
   await refresh();
 }
@@ -288,12 +292,12 @@ export async function pickChoice(option: string) {
 
 // ───────────── 보상 ─────────────
 
-/** pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) */
-export async function take(item: LootItem, pick: string | null = null) {
+/** pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) · replace: 정수 자리가 꽉 찼을 때 깨뜨릴 정수 */
+export async function take(item: LootItem, pick: string | null = null, replace: string | null = null) {
   const r = run();
-  if (fail(takeLoot(r, item, pick))) return;
+  if (fail(takeLoot(r, item, pick, replace))) return;
   sound.sfx(item.kind === 'essence' ? 'essence' : item.kind === 'gold' ? 'coin' : 'select');
-  if (item.kind === 'essence') store.toast(pick ? `정수를 흡수했다 — 기술: ${SKILLS.get(pick)?.name ?? ''}` : '정수를 흡수했다', 'eldritch');
+  if (item.kind === 'essence') store.toast(`${replace ? '정수를 깨뜨리고 새 정수를 흡수했다' : '정수를 흡수했다'}${pick ? ` — 기술: ${SKILLS.get(pick)?.name ?? ''}` : ''}`, 'eldritch');
   await refresh();
 }
 

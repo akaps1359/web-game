@@ -168,6 +168,8 @@ type DamageOpts = {
   ignoreBlock?: boolean;
   poise?: number;
   tags?: string[];
+  /** 미리보기용: 같은 스킬이 이 대상을 이미 때린 타격으로 본다 (고정 가산 없음) */
+  repeat?: boolean;
 };
 
 const BUILTIN_MOVES: Record<string, MoveDef> = {
@@ -189,6 +191,15 @@ export const ACT_HP_MULT = [1, 1, 1.25, 1.65, 2.2, 2.0];
 /** 수호자(층 수호자·계층군주) 체력 배율 — 수호자 난이도 조절용 */
 export const BOSS_HP_MULT = { value: 1.1 };
 export const ACT_DMG_MULT = [1, 1, 1.1, 1.3, 1.5, 1.4];
+/**
+ * 정예·수호자 전투의 적 공격 배율 (층별, ACT_DMG_MULT 위에 곱한다) — 2026-10 밸런스 개편.
+ * 적 체력은 플레이어의 딜을 따라 오르는데(ACT_HP_MULT) 공격은 플레이어의 최대 체력을 따라가지 못해
+ * 3층부터 정예·수호자의 한 턴 피해가 최대 체력의 8~9% → 4~5%로 떨어졌다. 정예·수호자만 체력 곡선에 맞춰 다시 때린다 (일반전은 그대로).
+ * 정예 전투 = 정예·균열 수호자·추적자, 수호자 전투 = 층 수호자·계층군주. 수호자는 포탈 앞에서 숨을 고르고(체력 전부) 싸운다.
+ * 5층(최종 수호자, 세 단계)은 1.3이면 판 끝 사망이 몰려 1.2 (시뮬: 5층 수호자전 체력 손실 44~50% → 40~48%)
+ */
+export const ELITE_DMG_MULT = [1, 1, 1, 1.25, 1.35, 1.35];
+export const BOSS_DMG_MULT = [1, 1, 1.15, 1.3, 1.35, 1.2];
 /** 층별 적 정신 공격 배율 */
 export const ACT_SAN_MULT = [1, 1, 1, 0.75, 0.7, 0.8];
 
@@ -424,6 +435,8 @@ export class Combat {
       type: o.type,
       base: o.base,
       add: 0,
+      addEach: 0,
+      repeat: o.repeat,
       mult: 1,
       attack: o.attack ?? false,
       melee: o.melee ?? false,
@@ -442,6 +455,17 @@ export class Combat {
     };
   }
 
+  /**
+   * 고정 가산 1회 규칙 (2026-10 밸런스 개편): 내 공격의 고정 가산(힘·'+N' 효과 — 정수 패시브·유물·장신구·각인이 더하는 피해)은
+   * 스킬 한 번에 대상마다 첫 타격에만 붙는다 (여러 번 때려도 한 번, 광역은 대상마다 한 번).
+   * 턴당 타격 수가 늘수록(행동력·0행동력 스킬·다단 히트) 타격마다 붙는 가산이 곱으로 불어나던 것을 끊는다.
+   * 맞는 쪽에 걸린 효과(인장·부식 등 modDamageIn)와 '타격마다'로 설계된 효과(DamageCtx.addEach)는 그대로 타격마다
+   */
+  private flatSpent(d: DamageCtx): boolean {
+    if (d.src !== this.p || !d.attack || !d.skill) return false;
+    return !!d.repeat || !!d.skill.struck?.includes(d.tgt.uid);
+  }
+
   private computeDamage(d: DamageCtx, tgtKnown = true) {
     if (d.type !== 'true') {
       if (d.src) {
@@ -450,11 +474,17 @@ export class Combat {
         if (isEnemy(d.src) && d.attack) {
           const tide = this.run.floor?.tide ?? 0;
           if (tide > 0) d.mult *= 1 + 0.05 * tide;
-          d.mult *= ACT_DMG_MULT[Math.min(5, this.defOf(d.src).act)] ?? 1;
+          const act = Math.min(5, this.defOf(d.src).act);
+          d.mult *= ACT_DMG_MULT[act] ?? 1;
+          if (this.s.kind === 'elite') d.mult *= ELITE_DMG_MULT[act] ?? 1;
+          else if (this.s.kind === 'boss') d.mult *= BOSS_DMG_MULT[act] ?? 1;
           if (this.run.asc >= 1) d.mult *= 1.1;
         }
         this.fire(d.src, 'modDamageOut', d);
         for (const [h, self] of this.runeHooks(d.skill)) h.modDamageOut?.(this, self, d);
+        // 고정 가산은 스킬 한 번에 대상마다 첫 타격에만 (flatSpent 설명)
+        if (this.flatSpent(d)) d.add = 0;
+        d.add += d.addEach;
       }
       if (tgtKnown) {
         this.fire(d.tgt, 'modDamageIn', d);
@@ -473,9 +503,12 @@ export class Combat {
     if (d.cap !== undefined) d.amount = Math.min(d.amount, d.cap);
   }
 
-  /** 미리보기: 상태를 바꾸지 않고 최종 피해 계산 */
-  preview(src: Unit | null, tgt: Unit | null, base: number, type: DmgType | 'true', opts: { attack?: boolean; skill?: SkillUse } = {}): number {
-    const d = this.makeDamage({ src, tgt: tgt ?? this.p, base, type, attack: opts.attack ?? true, skill: opts.skill });
+  /**
+   * 미리보기: 상태를 바꾸지 않고 최종 피해 계산.
+   * repeat: 같은 스킬의 두 번째 이후 타격 (고정 가산 1회 규칙 — 여러 번 때리는 스킬의 '이후 타격' 숫자)
+   */
+  preview(src: Unit | null, tgt: Unit | null, base: number, type: DmgType | 'true', opts: { attack?: boolean; skill?: SkillUse; repeat?: boolean } = {}): number {
+    const d = this.makeDamage({ src, tgt: tgt ?? this.p, base, type, attack: opts.attack ?? true, skill: opts.skill, repeat: opts.repeat });
     const saved = this.hookDepth;
     this.previewing = true;
     try {
@@ -494,6 +527,8 @@ export class Combat {
     const dyingTarget = t === this.p && this.dying;
     if ((t.hp <= 0 && !dyingTarget) || (isEnemy(t) && t.dead) || this.over) return d;
     this.computeDamage(d);
+    // 고정 가산 1회 규칙: 이 스킬이 이 대상을 한 번 때렸다
+    if (d.src === this.p && d.attack && d.skill) (d.skill.struck ??= []).push(t.uid);
     let amt = d.amount;
 
     // 약점 / 버팀

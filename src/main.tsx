@@ -32,11 +32,19 @@ document.addEventListener(
   { capture: true, passive: true },
 );
 
-/** 핵심 장면은 실제 음원 (OpenGameArt, CC0) */
-function registerTracks(audio: { registerTrack(mood: string, url: string, opts?: { act?: number; volume?: number }): void }) {
+type TrackOpts = { act?: number; volume?: number; theme?: boolean; first?: boolean; end?: number };
+
+/**
+ * 핵심 장면은 실제 음원 (OpenGameArt, CC0).
+ * 보스 음원은 생성 곡을 대신하지 않고 '테마'로 섞는다: 수호자마다 다른 구간 구조의 생성 곡이 한 바퀴(약 2분 반)를 돌 때마다 한 번씩 끼운다.
+ * end = 루프용으로 붙은 꼬리(다시 시작하는 박) 앞에서 자르는 지점.
+ */
+function registerTracks(audio: { registerTrack(mood: string, url: string, opts?: TrackOpts): void }) {
   audio.registerTrack('title', TRACKS.title);
-  audio.registerTrack('boss', TRACKS.boss);
-  audio.registerTrack('boss', TRACKS.final, { act: 5 });
+  // volume: 음원이 생성 곡보다 2~2.5dB 작게 마스터링돼 있어 이어 들을 때 꺼지지 않게 맞춘 값 (오프라인 렌더로 잰 K-가중 음량)
+  audio.registerTrack('boss', TRACKS.boss, { theme: true, end: 36.8, volume: 1.3 });
+  // 최종 보스: 88초 합창으로 시작해 5층 생성 곡과 번갈아 이어진다
+  audio.registerTrack('boss', TRACKS.final, { act: 5, theme: true, first: true, end: 85.2, volume: 1.2 });
   audio.registerTrack('haven', TRACKS.haven);
 }
 

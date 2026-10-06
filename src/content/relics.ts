@@ -371,7 +371,7 @@ reg.relics([
     name: 'No.5 무한의 고리',
     icon: 'gi:ouroboros',
     rarity: 'boss',
-    desc: '스킬 슬롯 +1. 정수 흡수 한도 -1',
+    desc: '스킬 슬롯 +1. 정수 자리 -1',
     onGain(run) {
       run.slots.push(null);
     },

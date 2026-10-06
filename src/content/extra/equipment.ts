@@ -23,7 +23,8 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'basic', 'multi', 'combo'],
-    vals: { dmg: [2, 3, 4], hits: 2 },
+    // 2026-10: 고정 가산 1회 규칙(힘·숫돌이 대상마다 첫 타에만)으로 사브르(6+힘)보다 못해져 타격당 +1
+    vals: { dmg: [3, 4, 5], hits: 2 },
     desc: '{D:dmg} 참격 피해 {hits}회. 이번 턴 앞서 스킬을 2개 이상 썼으면 1회 추가',
     run: (c, u, t) => void hit(c, u, t, { hits: u.v('hits') + (combo(c) >= 2 ? 1 : 0) }),
   }),

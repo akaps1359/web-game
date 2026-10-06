@@ -1,10 +1,12 @@
 import type { Mood } from '../types';
 import { camp, event, explore, haven, merchant, title } from './ambient';
-import { boss, combat, elite, lord, rift } from './battle';
+import { combat, rift } from './battle';
 import type { MoodFactory } from './runtime';
+import { boss, bossSong, elite, eliteSong, lord, lordSong, type SongFactory } from './suite';
 import { defeat, victory } from './stingers';
 
 export type { MoodEnv, MoodFactory, MoodInstance } from './runtime';
+export type { SongFactory, SongOpts } from './suite';
 
 /** 무드 → 생성 음악 팩토리 ('silence' 제외) */
 export const MOODS: Record<Exclude<Mood, 'silence'>, MoodFactory> = {
@@ -21,6 +23,13 @@ export const MOODS: Record<Exclude<Mood, 'silence'>, MoodFactory> = {
   lord,
   victory,
   defeat,
+};
+
+/** 구간 구조를 가진 긴 곡 — 실제 음원을 '테마'로 사이사이 끼울 수 있다 (메들리) */
+export const SONGS: Partial<Record<Mood, SongFactory>> = {
+  boss: bossSong,
+  elite: eliteSong,
+  lord: lordSong,
 };
 
 /** 스팅어(짧게 울리고 침묵으로) */

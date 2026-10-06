@@ -279,7 +279,7 @@ export function gainXp(run: RunState, n: number): number {
     p.hp += 2;
     const cap = MAX_SLOTS + (run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0);
     if ([3, 6, 9].includes(p.level) && run.slots.length < cap) run.slots.push(null);
-    log(run, `레벨 ${p.level} — 정수 흡수 한도 ${essenceCap(run)}`);
+    log(run, `레벨 ${p.level}`);
   }
   return ups;
 }
@@ -342,12 +342,24 @@ export function socketRune(run: RunState, skillUid: string, runeIdx: number): bo
 
 // ───────────── 정수 ─────────────
 
+/**
+ * 정수 자리 (2026-10 밸런스 개편): 정수는 쌓이는 것이 아니라 고르는 것.
+ * 자리 = ESSENCE_SLOTS.base + 쓰러뜨린 층 수호자 수 (1층 4 → 5층 8). 레벨과는 상관없다.
+ * 꽉 차면 흡수할 때 가진 정수 하나를 깨뜨리고 바꾼다 (absorbEssence의 replace). 계층정수는 자리를 차지하지 않는다
+ */
+export const ESSENCE_SLOTS = { base: 4 };
+
 export function essenceCap(run: RunState): number {
-  return Math.max(1, run.player.level - (run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0));
+  return Math.max(1, ESSENCE_SLOTS.base + (run.stats?.bosses ?? 0) - (run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0));
+}
+
+/** 정수 자리를 차지하는 정수인가 (계층정수는 판당 하나·제거 불가라 자리를 차지하지 않는다) */
+export function takesSlot(id: string): boolean {
+  return !ESSENCES.get(id)?.lord;
 }
 
 export function essenceUsed(run: RunState): number {
-  return run.essences.reduce((sum, e) => sum + (ESSENCES.get(e.id)?.slotCost ?? 1), 0);
+  return run.essences.reduce((sum, e) => sum + (takesSlot(e.id) ? (ESSENCES.get(e.id)?.slotCost ?? 1) : 0), 0);
 }
 
 /**
@@ -393,25 +405,43 @@ function absorbShape(drop: EssenceDrop, pick: EssencePick): { core: boolean; ski
   return pick ? { core: true, skill: pick } : { core: true };
 }
 
-/** 흡수 불가 사유 */
-export function absorbBlock(run: RunState, drop: EssenceDrop, pick?: EssencePick): string | null {
+/** 자리가 꽉 차서 흡수할 수 없을 때의 사유 (앞부분이 이 글로 시작한다 — 화면·봇이 교체를 권할 때 본다) */
+export const SLOT_FULL = '정수 자리가 꽉 찼다';
+
+/** 이 사유가 '자리가 꽉 참'인가 (그렇다면 하나를 깨뜨리고 바꿀 수 있다) */
+export function slotFull(why: string | null | undefined): boolean {
+  return !!why && why.startsWith(SLOT_FULL);
+}
+
+/**
+ * 흡수 불가 사유.
+ * replace: 자리가 꽉 찼을 때 깨뜨리고 바꿀 정수의 uid (계층정수는 깨뜨릴 수 없다)
+ */
+export function absorbBlock(run: RunState, drop: EssenceDrop, pick?: EssencePick, replace?: string | null): string | null {
   const def = ESSENCES.get(drop.id);
   if (!def) return '알 수 없는 정수';
   if (pick && !def.actives.includes(pick)) return '이 정수에는 그런 기술이 없다';
   const shape = absorbShape(drop, pick);
   const same = run.essences.find((e) => e.id === drop.id);
   if (same) {
-    if (drop.guardian && !same.guardian) return null; // 수호자 정수로 승급
+    if (drop.guardian && !same.guardian) return null; // 수호자 정수로 승급 (자리는 그대로)
     return '같은 존재의 정수를 이미 흡수했다';
   }
   // 계층정수는 판당 하나뿐 (지울 수도 없다)
   if (def.lord && run.essences.some((e) => ESSENCES.get(e.id)?.lord)) return '계층정수는 판당 하나뿐이다';
-  // 기술이 겹치면 안 된다 (본질로 흡수한 정수는 기술이 없으니 상관없다)
+  const old = replace ? run.essences.find((e) => e.uid === replace) : undefined;
+  if (replace && !old) return '깨뜨릴 정수가 없다';
+  if (old && !takesSlot(old.id)) return '계층정수는 깨뜨릴 수 없다';
+  // 기술이 겹치면 안 된다 (본질로 흡수한 정수는 기술이 없으니 상관없다 · 깨뜨릴 정수의 기술은 빼고 본다)
   const actives = essenceActives({ ...drop, ...shape });
   for (const e of run.essences) {
+    if (e === old) continue;
     if (essenceActives(e).some((a) => actives.includes(a))) return '같은 능력을 주는 정수가 있다';
   }
-  if (essenceUsed(run) + (def.slotCost ?? 1) > essenceCap(run)) return `흡수 한도 초과 (레벨 ${run.player.level})`;
+  if (takesSlot(drop.id)) {
+    const used = essenceUsed(run) - (old ? (ESSENCES.get(old.id)?.slotCost ?? 1) : 0);
+    if (used + (def.slotCost ?? 1) > essenceCap(run)) return `${SLOT_FULL} (${essenceUsed(run)}/${essenceCap(run)})`;
+  }
   return null;
 }
 
@@ -446,10 +476,12 @@ export function eldritchInsight(drop: { id: string; guardian?: boolean }): numbe
 /**
  * core=true: 본질로 흡수 — 기술을 배우지 않고 최대 체력을 더 받는다 (coreHp).
  * 보통 정수는 언제나 본질로 흡수한다. 기술을 배울지는 수호자 정수(그 존재의 기술 전부)만 고른다.
+ * replace: 자리가 꽉 찼을 때 먼저 깨뜨릴 정수 (breakEssence — 그 정수가 준 것이 모두 사라진다)
  */
-export function absorbEssence(run: RunState, drop: EssenceDrop, pick?: EssencePick): string | null {
-  const why = absorbBlock(run, drop, pick);
+export function absorbEssence(run: RunState, drop: EssenceDrop, pick?: EssencePick, replace?: string | null): string | null {
+  const why = absorbBlock(run, drop, pick, replace);
   if (why) return why;
+  if (replace) breakEssence(run, replace);
   const { core, skill } = absorbShape(drop, pick);
   const def = need(ESSENCES, drop.id, '정수');
   const same = run.essences.find((e) => e.id === drop.id);
@@ -489,7 +521,7 @@ export function inscribeCost(drop: EssenceDrop): number {
   return Math.round((30 + 9 * Math.max(0, 9 - grade)) * (drop.guardian ? 1.5 : 1));
 }
 
-/** 떨어진 정수를 흡수하지 않고 병에 담는다 (흡수 한도가 차 있어도 된다) */
+/** 떨어진 정수를 흡수하지 않고 병에 담는다 (정수 자리가 꽉 차 있어도 된다) */
 export function bottleEssence(run: RunState, item: LootItem): string | null {
   if (item.kind !== 'essence') return '정수가 아니다';
   if (item.taken) return '이미 가져갔다';
@@ -542,6 +574,20 @@ export function removeEssence(run: RunState, essenceUid: string, free = false): 
   run.skills = run.skills.filter((x) => x.from !== es.uid);
   run.essences.splice(idx, 1);
   return null;
+}
+
+/**
+ * 정수를 깨뜨린다 — 자리가 꽉 찼을 때 새 정수와 바꾸면서 (값을 치르지 않는다).
+ * 그 정수가 준 스탯·최대 체력·패시브·기술이 모두 사라지지만, 이계의 흔적(최대 정신력 -5·통찰)은 남는다 — 돈을 내고 지울 때만 돌려받는다
+ */
+export function breakEssence(run: RunState, essenceUid: string): string | null {
+  const es = run.essences.find((e) => e.uid === essenceUid);
+  if (!es) return '정수가 없다';
+  if (!takesSlot(es.id)) return '계층정수는 깨뜨릴 수 없다';
+  const name = ESSENCES.get(es.id)?.name ?? '정수';
+  const why = removeEssence(run, essenceUid, true);
+  if (!why) log(run, `${name}을(를) 깨뜨렸다`);
+  return why;
 }
 
 // ───────────── 장비 / 유물 / 소모품 ─────────────
@@ -897,7 +943,8 @@ export function takeBeginEvents(run: RunState): CombatEvent[] {
   return ev;
 }
 
-export function startCombat(run: RunState, encId: string, opts: { anomaly?: string | null; ambush?: boolean } = {}): Combat {
+/** rested: 싸우기 전에 숨을 고르며 회복한 체력 (수호자 앞 — 연출로만 알린다, 회복은 부르는 쪽이 이미 했다) */
+export function startCombat(run: RunState, encId: string, opts: { anomaly?: string | null; ambush?: boolean; rested?: number } = {}): Combat {
   const enc = ENCOUNTERS.find((e) => e.id === encId);
   if (!enc) throw new Error(`알 수 없는 조우: ${encId}`);
   const anomaly = opts.anomaly !== undefined ? opts.anomaly : (enc.anomaly ?? null);
@@ -907,6 +954,10 @@ export function startCombat(run: RunState, encId: string, opts: { anomaly?: stri
   if (opts.ambush && !c.over) {
     c.s.ap = Math.max(0, c.s.ap - 1);
     c.emit({ t: 'text', text: '어둠 속에서 기습당했다! (행동력 -1)', tone: 'bad' });
+  }
+  if (opts.rested && !c.over) {
+    c.emit({ t: 'heal', uid: 'p', amount: opts.rested });
+    c.emit({ t: 'text', uid: 'p', text: `숨을 고르고 수호자 앞에 섰다 (체력 +${opts.rested})`, tone: 'good' });
   }
   beginEvents.set(run, [...c.events]);
   return c;
@@ -992,15 +1043,17 @@ export function finishCombat(run: RunState): RewardState | null {
   return reward;
 }
 
-/** 보상 개별 수령 */
-/** pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) */
-export function takeLoot(run: RunState, item: LootItem, pick: string | null = null): string | null {
+/**
+ * 보상 개별 수령.
+ * pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) · replace: 정수 자리가 꽉 찼을 때 깨뜨리고 바꿀 정수의 uid
+ */
+export function takeLoot(run: RunState, item: LootItem, pick: string | null = null, replace: string | null = null): string | null {
   if (item.taken) return '이미 가져갔다';
   const genesis = isGenesisLoot(item);
   if (genesis && run.genesis && run.genesis !== item.id) return '창세의 것은 판마다 하나뿐이다';
   switch (item.kind) {
     case 'essence': {
-      const why = absorbEssence(run, { id: item.id, color: item.color ?? 0, guardian: item.guardian }, pick);
+      const why = absorbEssence(run, { id: item.id, color: item.color ?? 0, guardian: item.guardian }, pick, replace);
       if (why) return why;
       break;
     }

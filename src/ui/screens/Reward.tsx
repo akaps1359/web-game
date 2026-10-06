@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { absorbBlock, eldritchInsight, essenceStats, FLASK_CAP, inscribeCost, isGenesisLoot } from '../../engine/run';
+import { absorbBlock, eldritchInsight, essenceStats, FLASK_CAP, inscribeCost, isGenesisLoot, slotFull } from '../../engine/run';
 import { bottle, choose, leaveReward, take } from '../../state/actions';
 import { store } from '../../state/store';
 import { EssenceCard, LootCard, lootInfo, lootName, STAT_NAME } from '../cards';
@@ -35,10 +35,10 @@ function askAbsorb(it: LootItem, pick: string | null) {
       icon: 'gi:heart-beats',
       color: 'var(--eldritch)',
       body: !it.guardian
-        ? '능력치와 패시브를 얻는다. 흡수한 정수는 정수 한도를 차지하고, 지우려면 신전에서 값을 치러야 한다.'
+        ? '능력치와 패시브, 최대 체력을 얻는다. 흡수한 정수는 정수 자리 하나를 차지하고, 지우려면 신전에서 값을 치르거나 자리가 꽉 찼을 때 새 정수와 바꿔야 한다.'
         : pick
-          ? '능력치와 패시브, 최대 체력, 그리고 고른 기술을 얻는다. 흡수한 정수는 정수 한도를 차지한다.'
-          : '능력치와 패시브, 최대 체력을 얻는다 (기술은 고르지 않았다). 흡수한 정수는 정수 한도를 차지한다.',
+          ? '능력치와 패시브, 최대 체력, 그리고 고른 기술을 얻는다. 흡수한 정수는 정수 자리 하나를 차지한다.'
+          : '능력치와 패시브, 최대 체력을 얻는다 (기술은 고르지 않았다). 흡수한 정수는 정수 자리 하나를 차지한다.',
       lines,
       ok: '흡수한다',
     },
@@ -131,11 +131,24 @@ export function RewardScreen() {
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 6 }}>
-                      {why && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{why}{why.startsWith('흡수 한도') ? ' — 병에 담아 두면 신전에서 새길 수 있다' : ''}</div>}
-                      <button class="btn eldritch wide" disabled={!!why} onClick={() => askAbsorb(it, pick)}>
-                        <Icon name="gi:heart-beats" size={18} />
-                        {it.guardian ? (pick ? `흡수한다 + ${SKILLS.get(pick)?.name ?? ''}` : '흡수한다 (기술 없이)') : '흡수한다'}
-                      </button>
+                      {why && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{why}{slotFull(why) ? ' — 가진 정수 하나를 깨뜨리고 바꾸거나, 병에 담아 두거나, 두고 떠날 수 있다' : ''}</div>}
+                      {slotFull(why) ? (
+                        <button
+                          class="btn eldritch wide"
+                          onClick={() => {
+                            store.sheet = { kind: 'swap-essence', source: 'reward', idx: rw.items.indexOf(it), pick };
+                            store.emit();
+                          }}
+                        >
+                          <Icon name="gi:shattered-heart" size={18} />
+                          정수 하나를 깨뜨리고 바꾼다{it.guardian && pick ? ` + ${SKILLS.get(pick)?.name ?? ''}` : ''}
+                        </button>
+                      ) : (
+                        <button class="btn eldritch wide" disabled={!!why} onClick={() => askAbsorb(it, pick)}>
+                          <Icon name="gi:heart-beats" size={18} />
+                          {it.guardian ? (pick ? `흡수한다 + ${SKILLS.get(pick)?.name ?? ''}` : '흡수한다 (기술 없이)') : '흡수한다'}
+                        </button>
+                      )}
                       <button class="btn ghost wide" disabled={flasks >= FLASK_CAP} onClick={() => askBottle(it)}>
                         <Icon name="gi:round-bottom-flask" size={16} />
                         {flasks >= FLASK_CAP ? `정수 병이 가득 찼다 (${flasks}/${FLASK_CAP})` : `병에 담기 (${flasks}/${FLASK_CAP})`}

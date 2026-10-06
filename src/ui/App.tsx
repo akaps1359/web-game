@@ -13,6 +13,7 @@ import { CharacterSheet } from './sheets/Character';
 import { SettingsSheet } from './sheets/Settings';
 import { PickSkillSheet } from './sheets/PickSkill';
 import { CodexSheet } from './sheets/Codex';
+import { SwapEssenceSheet } from './sheets/SwapEssence';
 import { AskView } from './ask';
 
 export function App() {
@@ -58,6 +59,7 @@ export function App() {
       {sheet?.kind === 'settings' && <SettingsSheet />}
       {sheet?.kind === 'pick' && <PickSkillSheet />}
       {sheet?.kind === 'codex' && <CodexSheet />}
+      {sheet?.kind === 'swap-essence' && <SwapEssenceSheet />}
       <Toasts />
       <TipView />
       <AskView />

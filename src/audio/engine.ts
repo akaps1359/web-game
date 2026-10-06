@@ -12,11 +12,12 @@ import {
   type BaseContext,
   type ToneAudioBuffer,
 } from 'tone';
-import { ACT_INDEPENDENT, MOODS, STINGERS, type MoodEnv, type MoodInstance } from './moods';
+import { Medley } from './medley';
+import { ACT_INDEPENDENT, MOODS, SONGS, STINGERS, type MoodEnv, type MoodInstance } from './moods';
 import { SanityFx } from './sanity';
 import { clamp } from './scales';
 import { SfxPlayer } from './sfx';
-import { TrackInstance, TrackLibrary, type TrackEntry } from './tracks';
+import { TrackInstance, TrackLibrary, type TrackEntry, type TrackOpts } from './tracks';
 import type { AudioSettings, Mood, Sfx } from './types';
 
 /** 리듬 중심 곡 — 정신력 심장박동을 겹치지 않는다 */
@@ -77,7 +78,7 @@ export class AudioEngine {
   private currentKey = '';
   private current?: MoodInstance;
   private outgoing: MoodInstance[] = [];
-  private pending?: { mood: Mood; act: number };
+  private pending?: { mood: Mood; act: number; seed?: string };
   private readonly tracks = new TrackLibrary();
   private hidden = false;
   private generation = 0;
@@ -154,14 +155,15 @@ export class AudioEngine {
 
     const p = this.pending;
     this.pending = undefined;
-    if (p) this.switchTo(p.mood, p.act);
+    if (p) this.switchTo(p.mood, p.act, p.seed);
   }
 
   // -------------------------------------------------------------------------
   // music
   // -------------------------------------------------------------------------
 
-  play(mood: Mood, act: number): void {
+  /** seed: 곡의 정체성 (보스·정예·영주는 조우 id — 수호자마다 다른 곡). 같은 무드+막+씨앗이면 무시 */
+  play(mood: Mood, act: number, seed?: string): void {
     // 문자열로 넘어오는 호출부(예: 사운드 파사드)를 위해 런타임에도 확인
     if (mood !== 'silence' && !Object.prototype.hasOwnProperty.call(MOODS, mood)) {
       console.warn('[audio] unknown mood', mood);
@@ -169,17 +171,18 @@ export class AudioEngine {
     }
     const a = clamp(Math.round(Number.isFinite(act) ? act : this.act), 1, 5);
     this.act = a;
-    const key = ACT_INDEPENDENT.has(mood) ? mood : `${mood}:${a}`;
+    const s = typeof seed === 'string' && seed ? seed : undefined;
+    const key = ACT_INDEPENDENT.has(mood) ? mood : s ? `${mood}:${a}:${s}` : `${mood}:${a}`;
     if (key === this.currentKey) return;
     this.currentKey = key;
     if (!this.g) {
-      this.pending = { mood, act: a };
+      this.pending = { mood, act: a, seed: s };
       return;
     }
-    this.switchTo(mood, a);
+    this.switchTo(mood, a, s);
   }
 
-  private switchTo(mood: Mood, act: number): void {
+  private switchTo(mood: Mood, act: number, seed?: string): void {
     const g = this.g;
     if (!g) return;
     const gen = ++this.generation;
@@ -191,7 +194,13 @@ export class AudioEngine {
     if (mood === 'silence') return;
 
     const track = this.tracks.find(mood, act);
-    if (track) {
+    // 구간 구조를 가진 곡(보스 등) + '테마' 음원: 생성 곡의 바퀴 사이사이에 음원을 끼운다
+    const song = SONGS[mood];
+    if (track?.theme && song) {
+      this.begin(new Medley(this.env(act, seed), { make: song, track, lib: this.tracks }), fadeIn);
+      return;
+    }
+    if (track && !track.theme) {
       const buf = this.tracks.ready(track.url);
       if (buf) {
         this.begin(this.makeTrack(track, act, mood, buf), fadeIn);
@@ -210,12 +219,12 @@ export class AudioEngine {
           /* 파일 실패 시 생성 음악 유지 */
         });
     }
-    this.begin(MOODS[mood](this.env(act)), fadeIn);
+    this.begin(MOODS[mood](this.env(act, seed)), fadeIn);
   }
 
-  private env(act: number): MoodEnv {
+  private env(act: number, seed?: string): MoodEnv {
     const g = this.g!;
-    return { act, dry: g.musicDry, verb: g.musicWet, echo: g.musicEcho, sanity: this.sanity, intensity: this.intensity };
+    return { act, dry: g.musicDry, verb: g.musicWet, echo: g.musicEcho, sanity: this.sanity, intensity: this.intensity, seed };
   }
 
   private makeTrack(track: TrackEntry, act: number, mood: Mood, buf: ToneAudioBuffer): MoodInstance {
@@ -273,8 +282,8 @@ export class AudioEngine {
     }
   }
 
-  registerTrack(mood: Mood, url: string, act?: number, volume?: number): void {
-    this.tracks.register(mood, url, act, volume);
+  registerTrack(mood: Mood, url: string, opts?: TrackOpts): void {
+    this.tracks.register(mood, url, opts);
   }
 
   // -------------------------------------------------------------------------

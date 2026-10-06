@@ -207,6 +207,16 @@ export const INSIGHT_SOURCES = '얻기 어렵다 — 수호자의 이계 정수,
 
 export type Seg = { t: string; k?: 'num' | 'up' | 'down' };
 
+/**
+ * 같은 대상을 여러 번 때리는 스킬인가 — 고정 가산(힘·'+N')은 스킬 한 번에 대상마다 첫 타격에만 붙으므로
+ * 미리보기에서 '이후 타격'과 '첫 타'를 나눠 보여 준다 (도탄처럼 다른 적에게 튕기는 스킬은 대상마다 첫 타라 제외)
+ */
+export function hitsSameTarget(def: SkillDef, lvl: number): boolean {
+  const hits = def.vals.hits;
+  if (hits !== undefined && lvlVal(hits, lvl) > 1) return true;
+  return def.tags.includes('multi') && def.vals.bounce === undefined;
+}
+
 /** 템플릿 {key} / {D:key} / {B:key}를 수치로 바꾼다 */
 export function skillDesc(def: SkillDef, lvl: number, opts: { c?: Combat | null; target?: Unit | null; use?: SkillUse | null } = {}): Seg[] {
   const out: Seg[] = [];
@@ -222,8 +232,12 @@ export function skillDesc(def: SkillDef, lvl: number, opts: { c?: Combat | null;
     const kind = m[1];
     const base = raw(m[2]);
     if (kind === 'D' && opts.c && opts.use) {
-      const v = opts.c.preview(opts.c.p, opts.target ?? null, base, opts.use.type ?? def.type ?? 'blunt', { attack: true, skill: opts.use });
-      out.push({ t: String(v), k: v > base ? 'up' : v < base ? 'down' : 'num' });
+      const type = opts.use.type ?? def.type ?? 'blunt';
+      const v = opts.c.preview(opts.c.p, opts.target ?? null, base, type, { attack: true, skill: opts.use });
+      // 여러 번 때리는 스킬: 고정 가산은 대상마다 첫 타에만 — '이후 타격(첫 타 N)'으로
+      const rest = hitsSameTarget(def, lvl) ? opts.c.preview(opts.c.p, opts.target ?? null, base, type, { attack: true, skill: opts.use, repeat: true }) : v;
+      out.push({ t: String(rest), k: rest > base ? 'up' : rest < base ? 'down' : 'num' });
+      if (rest !== v) out.push({ t: `(첫 타 ${v})`, k: v > rest ? 'up' : 'down' });
     } else if (kind === 'B' && opts.c && opts.use) {
       const v = opts.c.previewBlock(base, opts.use);
       out.push({ t: String(v), k: v > base ? 'up' : v < base ? 'down' : 'num' });

@@ -256,7 +256,7 @@ export function ShrineScreen() {
         </button>
         <button
           class="btn ghost"
-          onClick={() => showTip({ title: '정수', icon: 'gi:heart-beats', body: '정수는 레벨만큼 흡수할 수 있다. 지우면 그 정수가 준 스탯, 패시브, 스킬이 모두 사라진다.' })}
+          onClick={() => showTip({ title: '정수', icon: 'gi:heart-beats', body: '정수 자리는 4개에서 시작해 층 수호자를 쓰러뜨릴 때마다 하나씩 는다. 자리가 꽉 찼을 때 병의 정수를 새기려면 가진 정수 하나를 깨뜨리고 바꾼다. 지우면 그 정수가 준 스탯, 최대 체력, 패시브, 스킬이 모두 사라진다.' })}
         >
           ?
         </button>

@@ -2,6 +2,7 @@ import { ANOMALIES, ENCOUNTERS, EVENTS, FLOORS, type FloorSignal } from './regis
 import {
   FINAL_ACT,
   endRun,
+  healRun,
   log,
   loseSanityRun,
   rng,
@@ -489,6 +490,13 @@ export function enterRoom(run: RunState, id: number) {
   }
 }
 
+/**
+ * 수호자는 온전한 시험 (2026-10 밸런스 개편): 포탈 비석 앞에서 숨을 고르고 체력을 이 비율까지 채운 채 층 수호자와 싸운다 (정신력은 그대로).
+ * 막 안의 소모전(일반·정예)과 수호자전을 나눠, 수호자 사망이 '얼마나 깎이고 들어갔나'의 운이 아니라 그 싸움의 결과가 되게 —
+ * 그만큼 수호자의 공격은 세다 (combat.ts BOSS_DMG_MULT). 계층군주는 숨을 고르지 않는다
+ */
+export const GUARDIAN_REST = { hp: 1 };
+
 /** 포탈 비석 / 계층군주 전투 시작 */
 export function startGuardian(run: RunState): string | null {
   const f = run.floor;
@@ -504,7 +512,10 @@ export function startGuardian(run: RunState): string | null {
       else goHaven(run);
       return null;
     }
-    startCombat(run, f.bossEnc);
+    const p = run.player;
+    const rested = healRun(run, Math.round(p.maxHp * GUARDIAN_REST.hp) - p.hp);
+    if (rested > 0) log(run, `포탈 비석 앞에서 숨을 고른다 (체력 +${rested})`);
+    startCombat(run, f.bossEnc, { rested });
     return null;
   }
   if (room.type === 'lord') {

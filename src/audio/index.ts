@@ -10,16 +10,21 @@
 import { getContext, start as toneStart, type BaseContext } from 'tone';
 import { AudioEngine } from './engine';
 import { clamp } from './scales';
+import type { TrackOpts } from './tracks';
 import type { AudioSettings, Mood, Sfx } from './types';
 
 export type { AudioSettings, Mood, Sfx } from './types';
+export type { TrackOpts } from './tracks';
 
 export interface AbyssAudio {
   /** Must be called from a user gesture (tap). Resolves when the AudioContext is running. Safe to call many times. */
   unlock(): Promise<void>;
   readonly unlocked: boolean;
-  /** Crossfade (~2s) to the given mood. act 1..5 (5 = final). Same mood+act again = no-op. */
-  play(mood: Mood, opts?: { act?: number }): void;
+  /**
+   * Crossfade (~2s) to the given mood. act 1..5 (5 = final). Same mood+act(+seed) again = no-op.
+   * seed: identity of a long song (boss/elite/lord: the encounter id) — each guardian gets its own theme.
+   */
+  play(mood: Mood, opts?: { act?: number; seed?: string }): void;
   /** 0..100. Smoothly changes detune/dissonance/filters/whisper density of the current music. */
   setSanity(sanity: number): void;
   /** Intensity 0..1 within a track (e.g. boss phase 2, low HP). */
@@ -28,8 +33,12 @@ export interface AbyssAudio {
   settings: AudioSettings;
   /** persist to localStorage key 'abyss.audio' */
   applySettings(s: Partial<AudioSettings>): void;
-  /** Optional real audio files that override the generated music for a mood (+optional act). Lazy-loaded, looped, crossfaded. */
-  registerTrack(mood: Mood, url: string, opts?: { act?: number; volume?: number }): void;
+  /**
+   * Optional real audio files for a mood (+optional act). Lazy-loaded, crossfaded.
+   * Default: replaces the generated music (looped). theme: true → mixed into the long generated song instead
+   * (boss/elite/lord): played once between its cycles. first: play the theme first. end: cut point (s) before a loop tail.
+   */
+  registerTrack(mood: Mood, url: string, opts?: TrackOpts): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,8 +209,8 @@ export const audio: AbyssAudio = {
     return engine.ready;
   },
 
-  play(mood: Mood, opts?: { act?: number }): void {
-    engine.play(mood, opts?.act ?? engine.lastAct);
+  play(mood: Mood, opts?: { act?: number; seed?: string }): void {
+    engine.play(mood, opts?.act ?? engine.lastAct, opts?.seed);
   },
 
   setSanity(sanity: number): void {
@@ -231,8 +240,8 @@ export const audio: AbyssAudio = {
     engine.setSettings(next);
   },
 
-  registerTrack(mood: Mood, url: string, opts?: { act?: number; volume?: number }): void {
-    engine.registerTrack(mood, url, opts?.act, opts?.volume);
+  registerTrack(mood: Mood, url: string, opts?: TrackOpts): void {
+    engine.registerTrack(mood, url, opts);
   },
 };
 

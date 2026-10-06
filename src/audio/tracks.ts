@@ -6,6 +6,23 @@ import type { Mood } from './types';
 export interface TrackEntry {
   url: string;
   volume: number;
+  /**
+   * 생성 곡을 대체하지 않고 '테마'로 섞는다: 구간 구조를 가진 곡(보스·정예·영주)의 바퀴 사이사이에
+   * 한 번씩 끼워 넣는다 (medley.ts). false면 예전처럼 생성 곡 대신 반복 재생.
+   */
+  theme?: boolean;
+  /** 테마를 먼저 튼다 (최종 보스의 합창) */
+  first?: boolean;
+  /** 음원에서 쓸 끝 지점(초) — 루프용으로 붙은 꼬리(다시 시작하는 박)를 자른다 */
+  end?: number;
+}
+
+export interface TrackOpts {
+  act?: number;
+  volume?: number;
+  theme?: boolean;
+  first?: boolean;
+  end?: number;
 }
 
 interface CacheEntry {
@@ -25,9 +42,10 @@ export class TrackLibrary {
   private readonly cache = new Map<string, CacheEntry>();
   private clock = 0;
 
-  register(mood: Mood, url: string, act?: number, volume = 1): void {
-    const key = act ? `${mood}:${Math.round(act)}` : mood;
-    this.entries.set(key, { url, volume: clamp(volume, 0, 2) });
+  register(mood: Mood, url: string, o: TrackOpts = {}): void {
+    const key = o.act ? `${mood}:${Math.round(o.act)}` : mood;
+    const end = typeof o.end === 'number' && Number.isFinite(o.end) && o.end > 4 ? o.end : undefined;
+    this.entries.set(key, { url, volume: clamp(o.volume ?? 1, 0, 2), theme: !!o.theme, first: !!o.first, end });
   }
 
   find(mood: Mood, act: number): TrackEntry | undefined {

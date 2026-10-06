@@ -82,7 +82,8 @@ export function drone(rt: Runtime, o: DroneOpts): Layer {
   const depth = clamp((o.lfoOct ?? 0.7) / 1.2, 0, 1);
   const period = 1 / (o.lfoRate ?? 0.04);
   let nextBreath = 0;
-  let lastDegree = rt.harmony.degree;
+  // 차수가 아니라 실제 음높이를 본다 (보스곡 절정의 조옮김도 따라가게)
+  let lastBass = rt.harmony.bass(o.octave ?? 0);
   return {
     start(t) {
       src.start(t, 3);
@@ -96,8 +97,8 @@ export function drone(rt: Runtime, o: DroneOpts): Layer {
         gDark.gain.rampTo(1 - x * 0.6, dur, t);
         nextBreath = t + dur;
       }
-      if (o.follow && rt.isBar(s) && rt.harmony.degree !== lastDegree) {
-        lastDegree = rt.harmony.degree;
+      if (o.follow && rt.isBar(s) && rt.harmony.bass(o.octave ?? 0) !== lastBass) {
+        lastBass = rt.harmony.bass(o.octave ?? 0);
         src.glide(pitches().map(mtof), t, o.glide ?? 1.5);
       }
     },

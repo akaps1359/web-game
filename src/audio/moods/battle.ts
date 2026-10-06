@@ -6,7 +6,7 @@ import { bells, chords, drone, melody, pad, pipes, shimmer, swells, wind } from 
 import { drumKit, glassArp, ostinato, riser, stabs, type DrumVoice, type KitOpts, type OstinatoOpts } from './rhythm';
 import { createMood, type Layer, type MoodFactory, type Runtime } from './runtime';
 
-type Kind = 'combat' | 'elite' | 'boss';
+export type Kind = 'combat' | 'elite' | 'boss';
 
 /** 막별 음량 보정(dB) — 측정한 K-가중 음량을 일반 -19 / 보스 -17.5 근처로 */
 const KIND_GAIN: Record<Kind, readonly number[]> = {
@@ -15,7 +15,7 @@ const KIND_GAIN: Record<Kind, readonly number[]> = {
   boss: [0, 0, 0, 0, 1],
 };
 
-interface BattleAct {
+export interface BattleAct {
   /** 일반 전투 템포 */
   bpm: number;
   stepsPerBeat?: number;
@@ -43,7 +43,7 @@ export function tempoDrift(rt: Runtime, range: number, everyBars = 2): Layer {
 }
 
 /** 합창 화음 + 모음 변화 */
-function choirChords(rt: Runtime, o: { volume: number; octave: number; vowels: readonly Vowel[]; unease?: number; every?: number }): Layer {
+export function choirChords(rt: Runtime, o: { volume: number; octave: number; vowels: readonly Vowel[]; unease?: number; every?: number }): Layer {
   const ch = choir(rt, { volume: o.volume, attack: 0.9, release: 2.2 });
   rt.route(ch.output, { dry: 1, verb: 0.75 });
   let vi = 0;
@@ -58,7 +58,7 @@ function choirChords(rt: Runtime, o: { volume: number; octave: number; vowels: r
 }
 
 /** 반음 군집 드론이 8마디에 걸쳐 가라앉았다 되돌아온다 (영주) */
-function sinkingDrone(rt: Runtime, level = 0.35): Layer {
+export function sinkingDrone(rt: Runtime, level = 0.35): Layer {
   const notes = [rt.pal.root - 12, rt.pal.root - 11, rt.pal.root - 6].map(mtof);
   const src = rt.bag.add(new Sustain(rt.ctx, 'sawtooth', notes, [-12, 12], level));
   const lp = biquad(rt, 'lowpass', 240, 1.2);
@@ -86,7 +86,7 @@ function sinkingDrone(rt: Runtime, level = 0.35): Layer {
 // 막별 전투 설정
 // ---------------------------------------------------------------------------
 
-const ACTS: Record<number, BattleAct> = {
+export const ACTS: Record<number, BattleAct> = {
   // 1막: 항구 뒷골목 난투 — 통 북, 쇠사슬, 낡은 피아노
   1: {
     bpm: 100,
@@ -346,54 +346,8 @@ function battle(kind: Kind): MoodFactory {
   };
 }
 
+/** 일반 전투. 정예·보스·영주는 구간 구조를 가진 suite.ts의 곡을 쓴다 (막 설정 ACTS는 함께 쓴다) */
 export const combat = battle('combat');
-export const elite = battle('elite');
-export const boss = battle('boss');
-
-/** 숨겨진 층의 영주 — 7/8, 고정 미분음 오스티나토, 가라앉는 드론 */
-export const lord: MoodFactory = (env) =>
-  createMood(env, {
-    bpm: 216,
-    stepsPerBeat: 2,
-    beatsPerBar: 7,
-    chordBars: 2,
-    rhythmic: true,
-    tempoGain: 0.08,
-    gain: -0.5,
-    palette: (p) => ({ ...p, micro: p.micro + 18 }),
-    build: (rt) => [
-      drumKit(rt, {
-        patterns: {
-          K: ['X..x..x.X.....', 'X..x....X..x..'],
-          T: ['......x.....xo', '...o......x.x.'],
-          S: ['....X......X..'],
-          M: ['..?.......?...', 'x.......?.....'],
-          B: ['X.............'],
-          H: ['x.x.x.x.x.x.x.'],
-        },
-        fills: { K: 'X.xX.xX.x.xxxx', T: '......xxxxxxxx' },
-        softHat: 'x...x...x.....',
-        hatFrom: 0.4,
-        metalFreq: 140,
-      }),
-      ostinato(rt, {
-        patterns: [
-          [0, 0, 1, 0, 6, 0, 1],
-          [0, 6, 0, 1, 0, 11, 1],
-          [0, null, 0, 1, 6, 1, 0],
-        ],
-        grid: 2,
-        micro: [0, 35, -25, 0, 45, -30, 15],
-        doubleFrom: 0.35,
-        type: 'fatsawtooth',
-      }),
-      sinkingDrone(rt),
-      choirChords(rt, { volume: -13, octave: 1, vowels: ['u', 'a', 'o', 'i'], unease: 0.5 }),
-      swells(rt, { prob: 0.3, every: 2 }),
-      stabs(rt, { hits: [0, 8], every: 2, cluster: true, volume: -14 }),
-      riser(rt, { phraseBars: 4, beats: 4, pitched: true, impact: true, prob: 0.8 }),
-    ],
-  });
 
 /** 차원의 균열 — 5/4, 일렁이는 템포, 늘어진 테이프처럼 휘는 북, 온음음계 */
 export const rift: MoodFactory = (env) =>

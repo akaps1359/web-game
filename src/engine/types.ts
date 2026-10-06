@@ -154,7 +154,7 @@ export interface EssenceDef {
   eldritch?: boolean;
   /** 계층정수: 제거 불가 */
   lord?: boolean;
-  /** 흡수 한도 추가 소모 */
+  /** 정수 자리를 몇 칸 차지하는가 (기본 1) */
   slotCost?: number;
   /** 드롭 가중치 조절 (기본 1) */
   dropMul?: number;
@@ -195,8 +195,15 @@ export interface DamageCtx {
   tgt: Unit;
   type: DmgType | 'true';
   base: number;
-  /** 배율 전 가산 */
+  /**
+   * 배율 전 가산. 내 공격의 고정 가산(힘·'+N' 효과)은 스킬 한 번에 대상마다 첫 타격에만 붙는다 —
+   * 같은 스킬이 이미 때린 대상이면 공격자 쪽 훅(modDamageOut)이 더한 값은 0이 된다 (Combat.flatSpent)
+   */
   add: number;
+  /** 타격마다 붙는 가산 — '타격마다'로 설계된 효과만 (예: 시궁쥐 떼 정수 '무리 근성'). 고정 가산 1회 규칙을 받지 않는다 */
+  addEach: number;
+  /** 미리보기용: 같은 스킬의 두 번째 이후 타격으로 본다 */
+  repeat?: boolean;
   /** 누적 배율 */
   mult: number;
   /** 최종 피해 상한 */
@@ -316,6 +323,8 @@ export interface SkillUse {
   primary: EnemyUnit | null;
   /** 각인 등으로 바뀐 피해 속성 */
   type?: DmgType;
+  /** 이 사용으로 이미 때린 대상 uid (고정 가산 1회 규칙 — 엔진이 채운다) */
+  struck?: string[];
   v(key: string): number;
 }
 

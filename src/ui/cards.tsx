@@ -158,7 +158,7 @@ export function EssenceCard({
           </div>
           <div class="muted" style={{ fontSize: 12 }}>
             {def.grade}등급 {guardian ? '· 수호자 정수 (스탯 1.5배 + 기술 하나)' : `· ${def.colors[color]}`}
-            {def.lord ? ' · 계층정수 (제거 불가)' : ''}
+            {def.lord ? ' · 계층정수 (제거 불가 · 정수 자리를 차지하지 않는다)' : ''}
           </div>
         </div>
       </div>

@@ -184,7 +184,7 @@ function EssencesTab() {
   return (
     <div>
       <div class="panel" style={{ padding: 10, marginBottom: 10, fontSize: 13 }}>
-        흡수 {essenceUsed(run)}/{essenceCap(run)} — 레벨이 오르면 더 흡수할 수 있다. 지우려면 신전에서 비용을 내야 한다.
+        정수 자리 {essenceUsed(run)}/{essenceCap(run)} — 층 수호자를 쓰러뜨릴 때마다 자리가 하나 는다. 꽉 찼을 때 새 정수를 들이려면 가진 정수 하나를 깨뜨리고 바꾼다 (계층정수는 자리를 차지하지 않는다). 그냥 지우려면 신전에서 값을 치른다.
       </div>
       <div class="list">
         {run.essences.length === 0 && <div class="muted" style={{ fontSize: 13 }}>아직 흡수한 정수가 없다. 몬스터를 쓰러뜨리면 가끔 정수가 떨어진다.</div>}
@@ -287,7 +287,7 @@ function StatusTab() {
         ))}
       </div>
       <div class="muted" style={{ fontSize: 12, margin: '6px 2px' }}>
-        힘: 공격 피해 +1 / 민첩: 스킬 방어도 +1 / 의지: 받는 정신 피해 -5%
+        힘: 공격 피해 +1 (스킬 한 번에 대상마다 첫 타격에만) / 민첩: 스킬 방어도 +1 / 의지: 받는 정신 피해 -5%
       </div>
       <div class="section-label">통찰 {p.insight}</div>
       <div class="panel" style={{ padding: 12, fontSize: 13, whiteSpace: 'pre-line', color: 'var(--ink-2)' }}>

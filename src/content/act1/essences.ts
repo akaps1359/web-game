@@ -718,8 +718,9 @@ reg.essences([
       hooks: {
         modDamageOut(_c, s, d) {
           // multi 태그가 없어도 타격 횟수(hits)가 2 이상이면 여러 번 타격하는 스킬이다 (산탄 발사 등)
+          // '타격마다'로 설계된 효과라 고정 가산 1회 규칙을 받지 않는다 (addEach)
           const u = d.skill;
-          if (u && (u.def.tags.includes('multi') || u.v('hits') > 1)) d.add += s.n;
+          if (u && (u.def.tags.includes('multi') || u.v('hits') > 1)) d.addEach += s.n;
         },
       },
     },
