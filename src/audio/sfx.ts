@@ -141,6 +141,7 @@ const TRIM: Partial<Record<Sfx, number>> = {
   glitch: 2.2,
   thud: 1.2,
   swoosh: 2.4,
+  flatline: 1.6,
   click: 1.8,
   select: 4.8,
   error: 4.9,
@@ -281,6 +282,9 @@ const RECIPES: Record<Sfx, (x: Kit) => void> = {
   thud(x) {
     x.drum({ f: 55, pitchDecay: 0.08, octaves: 2.5, release: 0.45, vel: 1, cutoff: 600, verb: 0.35 });
     x.noise({ filter: 'lowpass', f0: 1800, f1: 300, glide: 0.2, release: 0.25, vel: 0.5, verb: 0.3 });
+  },
+  flatline(x) {
+    x.tone('sine', { f0: 988, attack: 0.01, hold: 2.2, release: 0.6, vel: 0.28, verb: 0.2 });
   },
   swoosh(x) {
     x.noise({ filter: 'bandpass', f0: 600, f1: 4500, glide: 0.25, q: 1.2, attack: 0.05, release: 0.25, vel: 0.55, verb: 0.3 });

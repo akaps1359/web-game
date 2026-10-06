@@ -22,6 +22,8 @@ export type Sfx =
   | 'glitch'
   | 'thud'
   | 'swoosh'
+  /** 즉사: 심장이 멎는 긴 소리 */
+  | 'flatline'
   | 'click'
   | 'select'
   | 'error'

@@ -1,13 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
 import { Combat, type CombatEvent } from '../src/engine/combat';
-import { ENCOUNTERS, SKILLS } from '../src/engine/registry';
+import { ENCOUNTERS, ENEMIES, SKILLS } from '../src/engine/registry';
 import { newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
 import type { CineName, EnemyUnit, MoveDef } from '../src/engine/types';
 import { autoTurn } from '../src/sim/bot';
 import { seized } from '../src/content/lib';
-import { DREAMS, FETUS, FETUS_LINES, REDREAM_HP } from '../src/content/act5/fetus';
+import {
+  BIRTH_CHOICE,
+  BIRTH_OPTIONS,
+  CORD,
+  CRY_BASE,
+  CRY_TURNS,
+  DREAMS,
+  FETUS,
+  FETUS_LINES,
+  GAZE_SAN,
+  GRASP_TURNS,
+  LINK_MULT,
+  LULL_MULT,
+  LULL_SAN,
+  LULL_TURNS,
+  REDREAM_HP,
+  SEVER_BLEED,
+  SEVER_HP,
+  SEVER_STR,
+  SHELL_LAYERS,
+  WAKE_CRY_TURNS,
+} from '../src/content/act5/fetus';
 import {
   DIGEST_HEAL,
   FALSE_DOOR_SIGHT,
@@ -554,4 +575,349 @@ describe('봇 — 5층의 모든 조우', () => {
       expect(c.s.phase, `seed ${seed}`).toBe('victory');
     }
   });
+});
+
+// ───────────── 탄생의 선택 (3단계, 시스템 창) ─────────────
+
+/** 태어난 것까지 넘긴다 */
+function toBorn(c: Combat): EnemyUnit {
+  const f = find(c, FETUS);
+  slay(c, f);
+  slay(c, f);
+  return f;
+}
+
+/** 태어난 것이 첫 차례를 마치게 해 선택지가 걸리게 한다 */
+function toChoice(c: Combat): EnemyUnit {
+  const f = toBorn(c);
+  c.endTurn();
+  return f;
+}
+
+const cordsIn = (c: Combat) => c.alive.filter((e) => e.def === CORD);
+
+describe('최종 수호자 별의 태아 — 탄생의 선택 (시스템 창)', () => {
+  it('태어난 것이 첫 차례를 마치면 시스템 창이 뜬다 — 고르기 전엔 기술·소모품·턴 종료가 막힌다', () => {
+    const c = startCombat(floor5(), 'a5-boss-fetus');
+    const f = toBorn(c);
+    // 태어나는 순간엔 아직 묻지 않는다: 먼저 첫 울음을 머금는다
+    expect(c.s.choice ?? null).toBeNull();
+    expect(f.intent?.move).toBe('cry');
+    c.endTurn();
+    expect(c.s.phase).toBe('player');
+    const ch = c.s.choice!;
+    expect(ch.id).toBe(BIRTH_CHOICE);
+    expect(ch.by).toBe(f.uid);
+    expect(ch.options.map((o) => o.id)).toEqual([...BIRTH_OPTIONS]);
+    expect(ch.text).toContain('{time}');
+    for (const o of ch.options) expect(o.desc.length).toBeGreaterThan(10);
+    expect(c.blockReason('weapon')).toBe('먼저 선택지를 고르세요');
+    expect(c.endTurn()).toBe('먼저 선택지를 고르세요');
+    expect(c.useConsumable(0)).toBe('먼저 선택지를 고르세요');
+    expect(c.choose('lullaby')).toBeNull();
+    expect(c.s.choice ?? null).toBeNull();
+    expect(c.blockReason('weapon')).toBeNull();
+    // 한 번만 묻는다
+    c.endTurn();
+    expect(c.s.choice ?? null).toBeNull();
+  });
+
+  it(`자장가를 부른다: 정신력 -${LULL_SAN}, ${LULL_TURNS}번의 차례 동안 잠든다(받는 피해 증가) — 첫 울음도 그동안 멈췄다가 깨어나면 이어진다`, () => {
+    const run = floor5();
+    const c = startCombat(run, 'a5-boss-fetus');
+    const f = toChoice(c);
+    expect(c.p.st['a5-cry']).toBe(CRY_TURNS);
+    const san = c.p.sanity;
+    const plain = c.preview(c.p, f, 50, 'pierce');
+    c.choose('lullaby');
+    expect(c.p.sanity).toBeLessThan(san);
+    expect(f.st['a5-cradled']).toBe(LULL_TURNS);
+    expect(f.intent?.move).toBe('nap');
+    expect(f.intent?.kind).toBe('sleep');
+    expect(c.preview(c.p, f, 50, 'pierce')).toBe(Math.floor(plain * LULL_MULT));
+    // 잠든 동안은 아무것도 하지 않고, 차오르던 울음도 멈춰 있다
+    for (let i = 0; i < LULL_TURNS; i++) {
+      c.drain();
+      c.endTurn();
+      expect(c.drain().some((x) => x.t === 'dmg' && x.src === f.uid)).toBe(false);
+      expect(c.p.st['a5-cry']).toBe(CRY_TURNS);
+    }
+    expect(f.st['a5-cradled'] ?? 0).toBe(0);
+    // 깨어나면 울음이 곧바로 이어진다
+    c.endTurn();
+    expect(c.p.st['a5-cry']).toBe(CRY_TURNS - 1);
+    // 울음을 머금고 있지 않았으면 깨어나자마자 머금는다 (짧게)
+    const d = startCombat(floor5(), 'a5-boss-fetus');
+    const g = toChoice(d);
+    delete d.p.st['a5-cry'];
+    d.choose('lullaby');
+    for (let i = 0; i < LULL_TURNS; i++) d.endTurn();
+    expect(g.intent?.move).toBe('wail');
+    d.endTurn();
+    expect(d.p.st['a5-cry']).toBe(WAKE_CRY_TURNS);
+  });
+
+  it(`탯줄을 끊는다: 탯줄이 모두 끊기고 다시 자라지 않는다 — 대신 최대 체력 ${SEVER_HP * 100}% 베임(방어도 무시)·출혈, 태어난 것 힘 +${SEVER_STR}`, () => {
+    const run = floor5();
+    const c = startCombat(run, 'a5-boss-fetus');
+    const f = toChoice(c);
+    expect(cordsIn(c).length).toBeGreaterThan(0);
+    c.p.block = 999;
+    const hp = c.p.hp;
+    const str = f.st.str ?? 0;
+    c.choose('sever');
+    expect(cordsIn(c).length).toBe(0);
+    expect(hp - c.p.hp).toBe(Math.ceil(c.p.maxHp * SEVER_HP));
+    expect(c.p.st.bleed).toBe(SEVER_BLEED);
+    expect(f.st.str ?? 0).toBe(str + SEVER_STR);
+    // 다시 자라지 않는다
+    for (let i = 0; i < 8; i++) expect(c.defOf(f).ai(c, f)).not.toBe('grow');
+    // 첫 울음엔 탯줄 몫이 없다
+    c.p.st['a5-cry'] = 1;
+    c.drain();
+    force(c, f, 'glare');
+    c.endTurn();
+    const cry = c.drain().find((x) => x.t === 'dmg' && x.tags.includes('a5-cry'));
+    expect(cry && cry.t === 'dmg' ? cry.amount : -1).toBe(CRY_BASE);
+  });
+
+  it(`그것의 눈을 본다: 정신력 -${GAZE_SAN}, 통찰 +1 — 주고받는 공격 피해 +25%, 어떤 속성으로도 버팀이 깎인다`, () => {
+    const c = startCombat(floor5(), 'a5-boss-fetus');
+    const f = toChoice(c);
+    const san = c.p.sanity;
+    const ins = c.p.insight;
+    const out = c.preview(c.p, f, 50, 'pierce');
+    const inn = c.preview(f, c.p, 50, 'blunt');
+    c.choose('gaze');
+    expect(c.p.sanity).toBeLessThan(san);
+    expect(c.p.insight).toBe(ins + 1);
+    expect(f.st['a5-dreamlink']).toBe(1);
+    expect(c.preview(c.p, f, 50, 'pierce')).toBe(Math.floor(out * LINK_MULT));
+    expect(c.preview(f, c.p, 50, 'blunt')).toBe(Math.floor(inn * LINK_MULT));
+    // 관통은 약점(참격·공허)이 아니지만 버팀이 깎인다
+    expect(f.weak).not.toContain('pierce');
+    const poise = f.poise;
+    c.damage({ src: c.p, tgt: f, base: 5, type: 'pierce', attack: true });
+    expect(f.poise).toBe(poise - 1);
+  });
+
+  it('선택지가 걸린 채 저장했다 불러와도 이어진다 (JSON)', () => {
+    const run = floor5();
+    const c = startCombat(run, 'a5-boss-fetus');
+    const f = toChoice(c);
+    const saved = JSON.parse(JSON.stringify(run)) as RunState;
+    const d = new Combat(saved);
+    expect(d.s.choice?.id).toBe(BIRTH_CHOICE);
+    expect(d.endTurn()).toBe('먼저 선택지를 고르세요');
+    expect(d.choose('sever')).toBeNull();
+    expect(d.alive.filter((e) => e.def === CORD).length).toBe(0);
+    expect(d.s.enemies.find((e) => e.uid === f.uid)!.mem.birth).toBe(2);
+  });
+
+  it('마지막 속삭임이 고른 것에 따라 달라진다', () => {
+    const lines: Record<string, string> = { lullaby: FETUS_LINES.endLullaby, sever: FETUS_LINES.endSever, gaze: FETUS_LINES.endGaze };
+    for (const opt of BIRTH_OPTIONS) {
+      const c = startCombat(floor5(), 'a5-boss-fetus');
+      const f = toChoice(c);
+      c.choose(opt);
+      c.drain();
+      slay(c, f);
+      expect(cines(c.drain(), 'whisper').map((x) => x.text)).toContain(lines[opt]);
+    }
+  });
+
+  it('봇의 고르는 기준: 체력이 넉넉하고 탯줄이 많으면 끊고, 체력이 모자라고 정신력이 넉넉하면 재우고, 약점으로 붕괴시킬 수 없으면 눈을 본다', () => {
+    const pickOf = (c: Combat) => [...c.s.choice!.options].sort((a, b) => (b.bot ?? 0) - (a.bot ?? 0))[0].id;
+    // 체력 가득, 탯줄 셋
+    const a = startCombat(floor5(), 'a5-boss-fetus');
+    const fa = toBorn(a);
+    while (cordsIn(a).length < 3) a.spawn(CORD, 1);
+    a.p.hp = a.p.maxHp;
+    a.p.sanity = Math.round(a.p.maxSanity * 0.5);
+    force(a, fa, 'glare');
+    a.endTurn();
+    a.p.hp = a.p.maxHp;
+    expect(pickOf(a)).toBe('sever');
+    // 체력 30%, 정신력 가득, 탯줄 하나
+    const b = startCombat(floor5(), 'a5-boss-fetus');
+    const fb = toBorn(b);
+    for (const x of cordsIn(b).slice(1)) b.kill(x);
+    b.p.maxHp = 200;
+    b.p.hp = 60;
+    b.p.maxSanity = 100;
+    b.p.sanity = 100;
+    force(b, fb, 'glare');
+    b.endTurn();
+    expect(pickOf(b)).toBe('lullaby');
+  });
+});
+
+describe('5층에는 즉사가 없다', () => {
+  it('5층 적의 어떤 행동도 즉사 의도가 아니고, 실행해도 즉사로 쓰러지지 않는다', () => {
+    const bad: string[] = [];
+    for (const def of ENEMIES.values()) {
+      if (def.act !== 5) continue;
+      for (const [id, m] of Object.entries(def.moves)) {
+        if (m.intent === 'death') bad.push(`${def.id}.${id}: 즉사 의도`);
+        const enc = ENCOUNTERS.find((x) => x.enemies.some((s) => s.id === def.id));
+        const c = startCombat(floor5(), enc?.id ?? 'a5-e-gug', { anomaly: null });
+        const e = c.alive.find((x) => x.def === def.id) ?? c.spawn(def.id);
+        if (!e) continue;
+        act(c, e, id);
+        if (c.s.doom) bad.push(`${def.id}.${id}: 즉사 (${c.s.doom})`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
+// ───────────── 출신 사이의 공정성 ─────────────
+
+const ORIGINS3 = ['soldier', 'hunter', 'occultist'] as const;
+
+/** 그 출신의 시작 덱 그대로, 5층다운 레벨 (기믹을 푸는지만 보려고 체력은 넉넉히) */
+function kit(origin: string, seed: number, str: number): RunState {
+  const run = newRun({ seed, origin });
+  run.act = 5;
+  run.floor = generateFloor(run, 5);
+  run.player.level = 11;
+  run.player.maxHp = run.player.hp = 9999;
+  run.player.sanity = run.player.maxSanity = 9999;
+  run.player.str = str;
+  run.player.maxAp = 4;
+  run.player.insight = 4;
+  run.light = 100;
+  return run;
+}
+
+/** 봇으로 끝까지 — 탄생의 선택이 뜨면 정해 둔 것을 고른다 */
+function fightPicking(c: Combat, pick?: string) {
+  c.snapshots = false;
+  let n = 0;
+  while (!c.over && n++ < 400) {
+    if (pick && c.s.choice?.id === BIRTH_CHOICE) c.choose(pick);
+    autoTurn(c);
+  }
+  return c;
+}
+
+describe('공정성 — 세 출신의 시작 덱', () => {
+  it('탄생의 선택: 세 출신 모두 셋 중 어느 것을 골라도 별의 태아를 이긴다 (봇, 시작 덱)', () => {
+    const lost: string[] = [];
+    for (const origin of ORIGINS3) {
+      for (const pick of BIRTH_OPTIONS) {
+        const c = fightPicking(startCombat(kit(origin, 41, 8), 'a5-boss-fetus'), pick);
+        const f = c.s.enemies.find((e) => e.def === FETUS)!;
+        if (c.s.phase !== 'victory') lost.push(`${origin} ${pick}: ${c.s.phase}`);
+        else if (f.mem.birth !== BIRTH_OPTIONS.indexOf(pick) + 1) lost.push(`${origin} ${pick}: 고르지 못했다`);
+      }
+    }
+    expect(lost).toEqual([]);
+  }, 120_000);
+
+  it('근접만 가진 덱도 뒷열의 기믹 물건(탯줄·삼켜진 기억·버린 목숨·깨어난 별·심판을 짊어진 대사제)에 닿는다', () => {
+    const melee = (run: RunState) => {
+      // 사냥꾼에게서 원거리(화염 플라스크)를 뺀다: 칼·톱니 베기·빠른 베기만
+      run.slots = run.slots.map((uid) => (run.skills.find((s) => s.uid === uid)?.id === 'fire-flask' ? null : uid));
+      return run;
+    };
+    const knife = (c: Combat) => c.skillInfo('weapon')!.def;
+    // 탯줄 (태아 + 탯줄 셋이면 하나는 뒷열)
+    const a = startCombat(melee(kit('hunter', 7, 4)), 'a5-boss-fetus');
+    toBorn(a);
+    while (cordsIn(a).length < 3) a.spawn(CORD, 1);
+    const back = cordsIn(a).find((x) => x.row === 1)!;
+    expect(back).toBeTruthy();
+    expect(a.validTargets(knife(a)).map((x) => x.uid)).toContain(back.uid);
+    // 삼켜진 기억 (앞열은 군주와 몽유병자로 가득)
+    const b = startCombat(melee(kit('hunter', 7, 4)), 'lord-a5');
+    act(b, find(b, 'dream-eater'), 'feast');
+    const mems = b.alive.filter((x) => x.def === MEMORY);
+    expect(mems.length).toBeGreaterThan(0);
+    for (const m of mems) {
+      expect(m.row).toBe(1);
+      expect(b.validTargets(knife(b)).map((x) => x.uid)).toContain(m.uid);
+    }
+    // 버린 목숨
+    const d = startCombat(melee(kit('hunter', 7, 4)), 'a5-saturn-cat');
+    slay(d, find(d, 'saturn-cat'));
+    const shade = find(d, SHADE);
+    shade.row = 1;
+    expect(d.validTargets(knife(d)).map((x) => x.uid)).toContain(shade.uid);
+    // 쉿을 어겨 깨어난 별
+    const w = startCombat(melee(kit('hunter', 7, 4)), 'a5-elite-warden');
+    act(w, find(w, 'cradle-warden'), 'quiet');
+    w.s.ap = 9;
+    for (let i = 0; i <= HUSH_LIMIT; i++) w.useSkill('armor');
+    const stars = w.alive.filter((x) => x.def === 'newborn-star');
+    expect(stars.length).toBe(HUSH_STARS);
+    for (const s of stars) expect(w.validTargets(knife(w)).map((x) => x.uid)).toContain(s.uid);
+    // 심판을 짊어진 대사제 (뒷열 — 공용 castDoom이 근접으로 닿게 한다)
+    const h = startCombat(melee(kit('hunter', 7, 4)), 'a5-elite-hierophant');
+    const priest = find(h, 'dream-hierophant');
+    expect(h.validTargets(knife(h)).map((x) => x.uid)).not.toContain(priest.uid);
+    act(h, priest, 'prayer');
+    expect(h.validTargets(knife(h)).map((x) => x.uid)).toContain(priest.uid);
+  });
+
+  it('약점으로 붕괴시킬 수 없는 출신에게도 다른 길이 있다 (탯줄·처치·시간·덫·눈)', () => {
+    // 알의 별자리 껍질: 탯줄이 끊기면 한 겹씩 갈라진다
+    const b = startCombat(floor5(), 'a5-boss-fetus');
+    const egg = find(b, FETUS);
+    slay(b, egg);
+    expect(egg.st['a5-shell']).toBe(SHELL_LAYERS);
+    b.kill(cordsIn(b)[0]);
+    expect(egg.st['a5-shell']).toBe(SHELL_LAYERS - 1);
+    expect(egg.mem.cracks).toBe(1);
+    // 졸음: 적을 쓰러뜨려도 깬다
+    const d = startCombat(floor5(), 'a5-boss-fetus');
+    const f = find(d, FETUS);
+    act(d, f, 'lullaby');
+    act(d, f, 'lullaby');
+    expect(d.p.st['a5-drowsy']).toBe(2);
+    d.kill(cordsIn(d)[0]);
+    expect(d.p.st['a5-drowsy'] ?? 0).toBe(0);
+    // 작은 손: 붕괴시키지 못해도 두 턴이 지나면 놓는다
+    const g = startCombat(floor5(), 'a5-boss-fetus');
+    const born = toBorn(g);
+    const shot = slotOf(g.run, 'aimed-shot');
+    g.useSkill(shot, born.uid);
+    act(g, born, 'grasp');
+    expect(g.s.cd[shot]).toBeGreaterThanOrEqual(90);
+    // (실제로는 적의 차례에 쥔다 — 이 테스트는 내 턴 중에 쥐었으므로 그 라운드의 적 차례를 하나 더 지난다)
+    for (let i = 0; i < GRASP_TURNS + 1; i++) {
+      if (i < GRASP_TURNS) expect(g.s.cd[shot]).toBeGreaterThanOrEqual(90);
+      force(g, born, 'lash');
+      g.endTurn();
+      if (g.s.choice) g.choose('lullaby');
+    }
+    expect(born.mem.specimen ?? 0).toBe(0);
+    expect(g.s.cd[shot] ?? 0).toBeLessThan(90);
+    // 탄생의 선택 「그것의 눈을 본다」: 약점이 없는 군인도 태어난 것을 붕괴시킬 수 있다
+    const s0 = startCombat(kit('soldier', 3, 4), 'a5-boss-fetus');
+    const nb = toChoice(s0);
+    s0.choose('gaze');
+    const before = nb.poise;
+    s0.useSkill('weapon', nb.uid);
+    expect(nb.poise).toBeLessThan(before);
+    // 꿈 사냥꾼의 꿈 갑옷: 덫이 닫힐 때 하나가 떨어져 나간다 (화염·비전이 없어 붕괴시킬 수 없는 군인도)
+    const s = startCombat(kit('soldier', 3, 4), 'stalker-a5');
+    const hunter = find(s, 'dream-hunter');
+    const dreams = hunter.st['a5-dreams'];
+    act(s, hunter, 'trap');
+    s.useSkill('weapon', hunter.uid);
+    expect(hunter.st['a5-dreams'] ?? 0).toBe(dreams - 1);
+  });
+
+  it('세 출신 모두 시작 덱으로 5층 기믹 전투를 이긴다 (봇, 체력은 넉넉히)', () => {
+    const lost: string[] = [];
+    const encs = ['a5-boss-fetus', 'lord-a5', 'a5-saturn-cat', 'a5-elite-warden', 'a5-elite-hierophant', 'a5-elite-gatekeeper', 'stalker-a5', 'rift-a5'];
+    for (const origin of ORIGINS3) {
+      for (const enc of encs) {
+        const c = fightPicking(startCombat(kit(origin, 101, 8), enc, { anomaly: null }));
+        if (c.s.phase !== 'victory') lost.push(`${origin} ${enc}: ${c.s.phase}${c.s.doom ? ` (${c.s.doom})` : ''}`);
+      }
+    }
+    expect(lost).toEqual([]);
+  }, 120_000);
 });

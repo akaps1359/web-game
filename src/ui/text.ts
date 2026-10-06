@@ -90,6 +90,7 @@ export const INTENT_ICON: Record<IntentKind, string> = {
   sleep: 'gi:sleepy',
   unknown: 'gi:help',
   special: 'gi:star-swirl',
+  death: 'gi:death-skull',
 };
 
 export const INTENT_COLOR: Record<IntentKind, string> = {
@@ -108,6 +109,7 @@ export const INTENT_COLOR: Record<IntentKind, string> = {
   sleep: '#8a8f96',
   unknown: '#8a8f96',
   special: '#d78cff',
+  death: '#ff2a3a',
 };
 
 export const ROOM_ICON: Record<RoomType, string> = {

@@ -9,31 +9,41 @@ import {
   BAIL_DMG,
   CATCH_STR,
   CHARM_AP,
+  CLAMP_TURNS,
   DISARMED,
   GUILTY_SAN,
   GUILTY_VULN,
   HANDPRINT,
   LINE,
   LINE_HP,
+  TIDE_AP,
+  TIDE_DMG,
+  TIDE_GAP,
   TRIAL,
   VERDICT_DMG,
   WATER_MAX,
   angler,
   bailWater,
+  callTide,
   canHook,
   charm,
   clampWeapon,
   cutLine,
   dazzle,
+  freeWeapon,
   handprints,
   hookSkill,
+  judge,
   leavePrint,
   plead,
   reelIn,
   releaseSkill,
+  resolveTide,
   riseWater,
   sentence,
   setPlayerSt,
+  tideObjective,
+  tideReady,
 } from './common';
 
 /*
@@ -189,7 +199,7 @@ reg.traits([
   {
     id: 'lamp-bound',
     name: '등명기',
-    desc: `등명기가 돌며 등대지기에게 방어도 ${LAMP_BLOCK}을 비추고, 세 번째 차례마다 섬광을 터뜨린다 (눈부심: 다음 내 턴 동안 적의 의도가 가려진다). 꺼진 등명기는 두 번까지 다시 밝힌다`,
+    desc: `등명기가 돌며 등대지기에게 방어도 ${LAMP_BLOCK}을 비추고, 세 번째 차례마다 섬광을 터뜨린다 (눈부심: 다음 내 턴 동안 적의 의도가 가려진다). 꺼진 등명기는 두 번까지 다시 밝힌다. 등명기는 후열에 있어도 근접으로 닿는다`,
     hooks: {
       onAnyDeath(c, s, victim) {
         if (!isEnemy(victim) || victim.def !== 'lamp' || victim === s.unit) return;
@@ -238,24 +248,26 @@ reg.traits([
   {
     id: 'a1-sinking',
     name: '가라앉는 배',
-    desc: `선장이 행동할 때마다 물이 1 차오른다 (최대 ${WATER_MAX}). 물이 ${WATER_MAX}이면 숨이 막혀 내 턴이 시작될 때 행동력 -1. 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 익사체를 쓰러뜨리면 물이 1 빠지고, 선장을 붕괴시키면 모두 빠진다`,
+    desc: `선장이 행동할 때마다 물이 1 차오른다 (최대 ${WATER_MAX}). 물이 ${WATER_MAX}이면 숨이 막혀 내 턴이 시작될 때 행동력 -1. 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 (선장 차례에 터지는 출혈·독·화상도 센다) 익사체를 쓰러뜨리면 물이 1 빠지고, 선장을 붕괴시키면 모두 빠진다. 물이 끝까지 차면 「만조」를 부른다 — 다음 선장 차례까지 물을 빼지 못하면 물에 잠겨 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시)와 다음 턴 행동력 -${TIDE_AP} (그 턴엔 숨을 참아 행동력이 줄지 않는다. 막든 맞든 ${TIDE_GAP}턴 동안 다시 부르지 않는다)`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
         if (!isEnemy(e)) return;
         e.mem.bail = 0;
         e.mem.bailed = 0;
-        // 붕괴·기절로 쉰 차례엔 차오르지 않는다 (수호자는 쉬면 stunGuard가 남는다)
-        if (!e.mem.stunGuard) riseWater(c, e);
+        // 붕괴·기절로 쉰 차례, 만조가 지나간 차례엔 차오르지 않는다 (수호자는 쉬면 stunGuard가 남는다)
+        if (!e.mem.stunGuard && last(e) !== 'hightide') riseWater(c, e);
       },
       onDamageTaken(c, s, d) {
         const e = s.unit;
-        if (!isEnemy(e) || e.mem.bailed || c.s.phase !== 'player' || d.src !== c.p) return;
+        if (!isEnemy(e) || e.mem.bailed) return;
+        // 내 턴에 준 피해, 그리고 선장 차례가 시작될 때 터지는 지속 피해(출혈·독·화상)도 센다 — 만조가 닿기 전이다
+        if (!((c.s.phase === 'player' && d.src === c.p) || d.tags.includes('dot'))) return;
         e.mem.bail = (e.mem.bail ?? 0) + d.amount;
         if (e.mem.bail >= BAIL_DMG) {
           e.mem.bailed = 1;
           bailWater(c, e);
-        }
+        } else if (e.mem.tide && !e.dead) tideObjective(c, e);
       },
     },
   },
@@ -273,12 +285,31 @@ reg.traits([
     },
   },
   {
+    id: 'a1-pincer',
+    name: '집게',
+    desc: `집게로 문 무기는 ${CLAMP_TURNS}턴 뒤에 놓는다. 붕괴시키거나 쓰러뜨리면 곧바로 놓는다`,
+    hooks: {
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        // 문 그 차례는 세지 않는다 — 내 턴 CLAMP_TURNS번 동안 문다
+        if (!isEnemy(e) || !e.mem.clamp || last(e) === 'clamp') return;
+        e.mem.clampLeft = (e.mem.clampLeft ?? 1) - 1;
+        if (e.mem.clampLeft <= 0) freeWeapon(c, '집게가 지쳐 무기를 놓았다');
+      },
+    },
+  },
+  {
     id: 'a1-judge',
     name: '재판관',
-    desc: `판결을 내린 다음 내 턴, 집행자에게 피해 ${VERDICT_DMG} 이상을 주면 무죄 (집행자 버팀 -${ACQUIT_POISE}), 못 주면 유죄 (정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}). 방어도에 막힌 피해도 센다`,
+    desc: `판결을 내리면, 집행자의 다음 차례가 오기 전까지 집행자에게 피해 ${VERDICT_DMG} 이상을 주면 무죄 (집행자 버팀 -${ACQUIT_POISE}), 못 주면 유죄 (정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}). 방어도에 막힌 피해, 집행자 차례에 터지는 출혈·독·화상도 센다`,
     hooks: {
       onDamageTaken(c, s, d) {
-        if (isEnemy(s.unit) && d.src === c.p) plead(c, s.unit, d.amount);
+        const dot = d.tags.includes('dot');
+        if (isEnemy(s.unit) && (d.src === c.p || dot)) plead(c, s.unit, d.amount, dot);
+      },
+      // 지속 피해가 터진 뒤, 행동하기 전에 판결한다
+      onUnitTurnStart(c) {
+        judge(c);
       },
     },
   },
@@ -618,7 +649,7 @@ reg.enemies([
       // 쇠사슬로 내리치며 판결을 내린다
       verdict: mv.attack('판결', VERDICT_HIT, {
         extra: ['debuff'],
-        desc: `다음 내 턴에 집행자에게 피해 ${VERDICT_DMG} 이상을 주지 못하면 유죄 (정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}). 채우면 무죄 (집행자 버팀 -${ACQUIT_POISE})`,
+        desc: `집행자의 다음 차례가 오기 전까지 집행자에게 피해 ${VERDICT_DMG} 이상을 주지 못하면 유죄 (정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}). 채우면 무죄 (집행자 버팀 -${ACQUIT_POISE}). 출혈·독·화상도 센다`,
         then: (c, e) => sentence(c, e),
       }),
     },
@@ -641,6 +672,7 @@ reg.enemies([
     weak: ['blunt', 'arcane'],
     resist: { slash: 0.5 },
     row: 0,
+    traits: ['a1-pincer'],
     moves: {
       claw: mv.attack('집게', 13),
       shell: mv.block('껍질 닫기', 15, { desc: '방어도 15' }),
@@ -654,7 +686,7 @@ reg.enemies([
       ),
       clamp: mv.attack('집게로 물기', 7, {
         extra: ['debuff'],
-        desc: '무기를 문다 — 게를 붕괴시키거나 쓰러뜨릴 때까지 무기 기본 공격을 쓸 수 없다',
+        desc: `무기를 문다 — ${CLAMP_TURNS}턴 동안 무기 기본 공격을 쓸 수 없다 (게를 붕괴시키거나 쓰러뜨리면 곧바로 놓는다)`,
         cine: 'crack',
         then: (c, e) => void clampWeapon(c, e),
       }),
@@ -731,6 +763,8 @@ reg.enemies([
     poise: 0,
     weak: ['blunt', 'pierce'],
     row: 1,
+    // 깨야 하는 기믹 물건 — 후열에 있어도 근접으로 닿는다 (근접 직업만 섬광을 못 막는 일이 없게)
+    reachable: true,
     moves: {
       // 등명기는 돈다: 두 번 비추고 세 번째에 섬광 (의도 이름이 남은 차례를 알려 준다)
       turn2: mv.buff('섬광까지 2', shine, { desc: `등대지기 방어도 ${LAMP_BLOCK}, 정신력 -2. 두 턴 뒤 섬광` }),
@@ -743,7 +777,7 @@ reg.enemies([
             e.mem.spins = 0;
             dazzle(c, e);
           },
-          desc: '화염 피해와 정신 피해, 그리고 눈부심 — 다음 내 턴 동안 적의 의도가 보이지 않는다 (힘을 모은 큰 공격은 보인다). 등명기를 깨면 걷힌다',
+          desc: '화염 피해와 정신 피해, 그리고 눈부심 — 다음 내 턴 동안 적의 의도가 보이지 않는다 (힘을 모은 큰 공격은 보인다). 등명기를 깨면 걷힌다 — 후열이어도 근접으로 닿는다',
         }),
         cine: 'beam',
       },
@@ -904,9 +938,25 @@ reg.enemies([
         }),
       ),
       shanty: mv.horror('익사자의 뱃노래', 10, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
+      // 퍼즐: 물이 끝까지 찬 채로 이 차례가 오면 물에 잠긴다 (큰 피해 + 헐떡임)
+      hightide: {
+        name: '만조',
+        intent: 'charge',
+        desc: `물이 끝까지 찬 채로 이 차례가 오면 물에 잠긴다 — 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시), 다음 턴 행동력 -${TIDE_AP}. 물을 빼라 — 한 턴에 선장에게 피해 ${BAIL_DMG} (출혈·독·화상도 센다), 익사체 처치, 또는 선장 붕괴`,
+        run: (c, e) => resolveTide(c, e),
+      },
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'anchor';
+      // 만조: 물이 끝까지 차면 다음 차례에 몰려온다 (부른 뒤엔 풀리거나 닿을 때까지 그대로 — 기절로 미뤄졌으면 목표를 새로 센다)
+      if (e.mem.tide) {
+        tideObjective(c, e);
+        return 'hightide';
+      }
+      if (tideReady(c, e)) {
+        callTide(c, e);
+        return 'hightide';
+      }
       const m = cycle(e, ['sword', 'muster', 'ready', 'shanty', 'sword', 'ready']);
       if (m === 'muster' && c.alive.length >= 4) return 'sword';
       return m;
@@ -1058,6 +1108,8 @@ reg.enemies([
     poise: 0,
     weak: ['slash', 'fire'],
     row: 0,
+    // 끊어야 하는 기믹 물건 — 전열이 차서 후열로 밀려나도 근접으로 닿는다
+    reachable: true,
     traits: ['a1-taut'],
     moves: {
       reel: {

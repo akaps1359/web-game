@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { garbleStable, mountWatcher, staticCracks } from '../cinema';
+import { garbleStable, mountWatcher, realWorld, staticCracks } from '../cinema';
 import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
 import { lvlVal, shownIntentOf } from '../../engine/combat';
-import type { EnemyUnit, Intent, SkillDef } from '../../engine/types';
+import type { CombatChoice, EnemyUnit, Intent, SkillDef } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
 import { stage } from '../../render/stage';
-import { endTurn, useItem, useSkill } from '../../state/actions';
+import { endTurn, pickChoice, useItem, useSkill } from '../../state/actions';
 import { store } from '../../state/store';
 import { saveMeta } from '../../state/meta';
 import { sound } from '../../sound';
@@ -22,14 +22,15 @@ export function CombatScreen() {
   const run = s.run!;
   const c = s.combat;
   const areaRef = useRef<HTMLDivElement>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
   const [, setTick] = useState(0);
 
   useLayoutEffect(() => {
     const el = areaRef.current;
     if (!el) return;
     const measure = () => {
-      const r = el.getBoundingClientRect();
-      stage.setBattleRect({ x: r.left, y: r.top, w: r.width, h: r.height });
+      // 기울어진 화면(침수)에서도 기울기 전 자리를 잰다 — 그림은 똑바로 서 있다
+      stage.setBattleRect(layoutBox(el));
       syncBattle(store.snap);
       setTick((t) => t + 1);
     };
@@ -76,155 +77,257 @@ export function CombatScreen() {
   // 적이 남긴 화면 상태 (물·금·기울기·어둠·뒤섞인 글자·지켜보는 눈·막대 뒤바뀜)
   // 연출이 재생되는 시점의 값 (엔진은 이미 턴 끝까지 계산해 두었다)
   const uiNow = snap.ui ?? c.uiVars();
+  // 즉사기를 막는 퍼즐 목표
+  const objective = snap.obj ?? c.s.obj ?? null;
   const ui = (k: string) => uiNow[k] ?? 0;
-  const tilt = ui('ui:tilt');
+  const tilt = Math.max(-15, Math.min(15, ui('ui:tilt')));
   const swap = !!ui('ui:swap');
+  // 기울어진 화면 안의 적 표시를 똑바로 선 그림 위로 (기울면 화면이 고정 위치 요소의 기준이 된다)
+  const place = tiltPlace(screenRef.current, tilt);
+  const areaTop = tilt && screenRef.current ? rect.y - layoutBox(screenRef.current).y : rect.y;
   const hpBar = <Bar kind="hp" value={p.hp} max={p.maxHp} block={p.block} label={(p.st.dying ? '사경 ' : '') + `${p.hp}/${p.maxHp}`} />;
   const sanBar = <Bar kind="san" value={p.sanity} max={run.player.maxSanity} label={`정신 ${p.sanity}`} />;
 
   return (
-    <div class={`screen combat ${tilt ? 'tilted' : ''}`} style={{ animation: 'none', transform: tilt ? `rotate(${Math.max(-15, Math.min(15, tilt))}deg)` : undefined }}>
-      <UiVarsLayer water={ui('ui:water')} cracks={ui('ui:cracks')} dark={ui('ui:dark')} eye={!!ui('ui:eye')} />
-      <div class="battle-top">
-        <span class="chip">
-          <Icon name="gi:sands-of-time" size={13} />
-          {c.s.turn}턴
-        </span>
-        {c.s.anomaly && <AnomalyChip id={c.s.anomaly} />}
-        {run.rift && (
-          <span class="chip" style={{ color: '#c08cff' }}>
-            균열 {run.rift.stage + 1}/{run.rift.encs.length}
+    <>
+      <div ref={screenRef} class={`screen combat ${tilt ? 'tilted' : ''}`} style={{ animation: 'none', transform: tilt ? `rotate(${tilt}deg)` : undefined }}>
+        <UiVarsLayer water={ui('ui:water')} cracks={ui('ui:cracks')} dark={ui('ui:dark')} eye={!!ui('ui:eye')} />
+        <div class="battle-top">
+          <span class="chip">
+            <Icon name="gi:sands-of-time" size={13} />
+            {c.s.turn}턴
           </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <button
-          class="chip"
-          onClick={() => {
-            s.meta.speed = s.meta.speed === 1 ? 2 : 1;
-            saveMeta(s.meta);
-            s.emit();
-          }}
-        >
-          <Icon name="gi:fast-forward-button" size={13} />x{s.meta.speed}
-        </button>
-        <button class="iconbtn" style={{ width: 34, height: 34 }} onClick={() => ((s.sheet = { kind: 'character' }), s.emit())} aria-label="소지품">
-          <Icon name="gi:knapsack" size={16} />
-        </button>
-        <button class="iconbtn" style={{ width: 34, height: 34 }} onClick={() => ((s.sheet = { kind: 'settings' }), s.emit())} aria-label="설정">
-          <Icon name="gi:settings-knobs" size={16} />
-        </button>
-      </div>
-
-      <div class="battle-area" ref={areaRef}>
-        {fx.banner && (
-          <div key={fx.banner.id} class={`banner ${fx.banner.tone}`}>
-            {fx.banner.text}
-          </div>
-        )}
-      </div>
-
-      {snap.e
-        .filter((e) => !e.dead)
-        .map((e) => {
-          const a = anchors.get(e.uid);
-          const real = c.s.enemies.find((x) => x.uid === e.uid);
-          if (!a || !real) return null;
-          return (
-            <EnemyOverlay
-              key={e.uid}
-              e={e}
-              real={real}
-              a={a}
-              focus={s.focus === e.uid}
-              valid={!!(validTargets?.has(e.uid) || itemSingle)}
-              onTap={() => tapEnemy(e.uid)}
-            />
-          );
-        })}
-
-      <div class="pbox panel">
-        <div class="prow">
-          <button id="p-anchor" class="badge" style={{ width: 30, height: 30, display: 'grid', placeItems: 'center' }} onClick={() => playerTip()}>
-            <Icon name={ORIGINS.get(run.origin)?.icon ?? 'gi:hood'} size={24} color="var(--brass-2)" />
+          {c.s.anomaly && <AnomalyChip id={c.s.anomaly} />}
+          {run.rift && (
+            <span class="chip" style={{ color: '#c08cff' }}>
+              균열 {run.rift.stage + 1}/{run.rift.encs.length}
+            </span>
+          )}
+          <div style={{ flex: 1 }} />
+          <button
+            class="chip"
+            onClick={() => {
+              s.meta.speed = s.meta.speed === 1 ? 2 : 1;
+              saveMeta(s.meta);
+              s.emit();
+            }}
+          >
+            <Icon name="gi:fast-forward-button" size={13} />x{s.meta.speed}
           </button>
-          {swap ? sanBar : hpBar}
-          {p.block > 0 && (
-            <span class="blockpill">
-              <Icon name="gi:shield" size={14} color="#8fc4ea" />
-              {p.block}
-            </span>
-          )}
-          {(p.st.barrier ?? 0) > 0 && (
-            <span class="blockpill" style={{ color: '#b0e0ff' }}>
-              <Icon name="gi:bubble-field" size={14} color="#b0e0ff" />
-              {p.st.barrier}
-            </span>
-          )}
+          <button class="iconbtn" style={{ width: 34, height: 34 }} onClick={() => ((s.sheet = { kind: 'character' }), s.emit())} aria-label="소지품">
+            <Icon name="gi:knapsack" size={16} />
+          </button>
+          <button class="iconbtn" style={{ width: 34, height: 34 }} onClick={() => ((s.sheet = { kind: 'settings' }), s.emit())} aria-label="설정">
+            <Icon name="gi:settings-knobs" size={16} />
+          </button>
         </div>
-        <div class="prow">
-          <div class="ap" title="행동력">
-            {Array.from({ length: Math.max(run.player.maxAp, p.ap) }, (_, i) => (
-              <i class={i < p.ap ? '' : 'off'} />
-            ))}
-          </div>
-          {ownGun && (
-            <div class="ammo" title="탄약">
-              {Array.from({ length: c.s.maxAmmo }, (_, i) => (
-                <i class={i < p.ammo ? '' : 'off'} />
-              ))}
+
+        {objective && (
+          <button
+            class={`obj-strip ${objective.lethal ? '' : 'warn'}`}
+            onClick={() =>
+              showTip(
+                objective.lethal
+                  ? {
+                      title: '즉사를 막는 방법',
+                      icon: 'gi:death-skull',
+                      color: '#ff2a3a',
+                      body: `${objective.text}
+
+${objective.fail ?? '막지 못하면 사경도 없이 그 자리에서 죽는다.'} 결계가 있으면 한 번 막아 준다.`,
+                    }
+                  : {
+                      title: '막아야 할 위협',
+                      icon: 'gi:hazard-sign',
+                      color: '#ffb040',
+                      body: `${objective.text}
+
+${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
+                    },
+              )
+            }
+          >
+            <Icon name={objective.lethal ? 'gi:death-skull' : 'gi:hazard-sign'} size={16} color={objective.lethal ? '#ff2a3a' : '#ffb040'} />
+            <span>{objective.text}</span>
+          </button>
+        )}
+
+        <div class="battle-area" ref={areaRef}>
+          {fx.banner && (
+            <div key={fx.banner.id} class={`banner ${fx.banner.tone}`}>
+              {fx.banner.text}
             </div>
           )}
-          <div class={swap ? 'swapped' : ''} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            {swap ? hpBar : sanBar}
-          </div>
-          {p.insight > 0 && (
-            <span class="chip" style={{ color: 'var(--ins)', padding: '1px 6px' }}>
-              <Icon name="gi:third-eye" size={12} />
-              {p.insight}
-            </span>
-          )}
         </div>
-        <StatusRow st={p.st} />
-      </div>
 
-      <InfoBox />
+        {snap.e
+          .filter((e) => !e.dead)
+          .map((e) => {
+            const a = anchors.get(e.uid);
+            const real = c.s.enemies.find((x) => x.uid === e.uid);
+            if (!a || !real) return null;
+            return (
+              <EnemyOverlay
+                key={e.uid}
+                e={e}
+                real={real}
+                a={a}
+                place={place}
+                areaTop={areaTop}
+                focus={s.focus === e.uid}
+                valid={!!(validTargets?.has(e.uid) || itemSingle)}
+                onTap={() => tapEnemy(e.uid)}
+              />
+            );
+          })}
 
-      <div class="skills">
-        {refs.map((ref, i) => (ref ? <SkillButton key={ref} r={ref} /> : <EmptySlot key={`e${i}`} />))}
-      </div>
-
-      <div class="footer">
-        {run.consumables.map((id, i) => {
-          const def = id ? CONSUMABLES.get(id) : null;
-          const key = `c${i}`;
-          return (
-            <button
-              class={`slot-item ${s.sel === key ? 'sel' : ''}`}
-              style={s.sel === key ? { borderColor: 'var(--brass-2)', boxShadow: '0 0 12px rgba(240,207,122,0.4)' } : undefined}
-              {...press(
-                () => {
-                  if (!def || s.busy) return;
-                  if (s.sel === key && def.target !== 'single') void useItem(i);
-                  else {
-                    s.sel = key;
-                    s.emit();
-                  }
-                },
-                () => def && showTip({ title: def.name, icon: def.icon, body: def.desc }),
-              )}
-            >
-              {def ? <Icon name={def.icon} size={22} color="var(--brass-2)" /> : <span class="muted">·</span>}
+        <div class="pbox panel">
+          <div class="prow">
+            <button id="p-anchor" class="badge" style={{ width: 30, height: 30, display: 'grid', placeItems: 'center' }} onClick={() => playerTip()}>
+              <Icon name={ORIGINS.get(run.origin)?.icon ?? 'gi:hood'} size={24} color="var(--brass-2)" />
             </button>
-          );
-        })}
-        <button class={`btn endturn ${!anyUsable && !s.busy ? 'ready' : ''}`} disabled={s.busy || c.s.phase !== 'player'} onClick={() => endTurn()}>
-          {s.busy ? '…' : '턴 종료'}
-        </button>
-      </div>
+            {swap ? sanBar : hpBar}
+            {p.block > 0 && (
+              <span class="blockpill">
+                <Icon name="gi:shield" size={14} color="#8fc4ea" />
+                {p.block}
+              </span>
+            )}
+            {(p.st.barrier ?? 0) > 0 && (
+              <span class="blockpill" style={{ color: '#b0e0ff' }}>
+                <Icon name="gi:bubble-field" size={14} color="#b0e0ff" />
+                {p.st.barrier}
+              </span>
+            )}
+          </div>
+          <div class="prow">
+            <div class="ap" title="행동력">
+              {Array.from({ length: Math.max(run.player.maxAp, p.ap) }, (_, i) => (
+                <i class={i < p.ap ? '' : 'off'} />
+              ))}
+            </div>
+            {ownGun && (
+              <div class="ammo" title="탄약">
+                {Array.from({ length: c.s.maxAmmo }, (_, i) => (
+                  <i class={i < p.ammo ? '' : 'off'} />
+                ))}
+              </div>
+            )}
+            <div class={swap ? 'swapped' : ''} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              {swap ? hpBar : sanBar}
+            </div>
+            {p.insight > 0 && (
+              <span class="chip" style={{ color: 'var(--ins)', padding: '1px 6px' }}>
+                <Icon name="gi:third-eye" size={12} />
+                {p.insight}
+              </span>
+            )}
+          </div>
+          <StatusRow st={p.st} />
+        </div>
 
+        <InfoBox />
+
+        <div class="skills">
+          {refs.map((ref, i) => (ref ? <SkillButton key={ref} r={ref} /> : <EmptySlot key={`e${i}`} />))}
+        </div>
+
+        <div class="footer">
+          {run.consumables.map((id, i) => {
+            const def = id ? CONSUMABLES.get(id) : null;
+            const key = `c${i}`;
+            return (
+              <button
+                class={`slot-item ${s.sel === key ? 'sel' : ''}`}
+                style={s.sel === key ? { borderColor: 'var(--brass-2)', boxShadow: '0 0 12px rgba(240,207,122,0.4)' } : undefined}
+                {...press(
+                  () => {
+                    if (!def || s.busy) return;
+                    if (s.sel === key && def.target !== 'single') void useItem(i);
+                    else {
+                      s.sel = key;
+                      s.emit();
+                    }
+                  },
+                  () => def && showTip({ title: def.name, icon: def.icon, body: def.desc }),
+                )}
+              >
+                {def ? <Icon name={def.icon} size={22} color="var(--brass-2)" /> : <span class="muted">·</span>}
+              </button>
+            );
+          })}
+          <button class={`btn endturn ${!anyUsable && !s.busy ? 'ready' : ''}`} disabled={s.busy || c.s.phase !== 'player'} onClick={() => endTurn()}>
+            {s.busy ? '…' : '턴 종료'}
+          </button>
+        </div>
+      </div>
+      {/* 피해 숫자는 기울어진 화면 밖에서 — 똑바로 선 그림 위에 뜬다 */}
       <Floaters />
+      {/* 전투 중 선택지 (연출이 끝난 내 턴에) — 화면 밖의 시스템 창처럼 */}
+      {c.s.choice && !s.busy && c.s.phase === 'player' && <ChoiceDialog ch={c.s.choice} />}
+    </>
+  );
+}
+
+/** 전투 중 선택지: 고르기 전에는 다른 것을 할 수 없다 */
+function ChoiceDialog({ ch }: { ch: CombatChoice }) {
+  return (
+    <div class="choice-veil">
+      <div class="choice-box">
+        <div class="choice-title">{realWorld(ch.title)}</div>
+        {ch.text && <div class="choice-msg">{realWorld(ch.text)}</div>}
+        <div class="choice-opts">
+          {ch.options.map((o) => (
+            <button key={o.id} class="choice-opt" onClick={() => void pickChoice(o.id)}>
+              <span class="choice-label">
+                {o.icon && <Icon name={o.icon} size={16} />}
+                {o.label}
+              </span>
+              <span class="choice-desc">{o.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
+}
+
+/** 변형(기울기)을 무시한 화면 좌표 상자 */
+function layoutBox(el: HTMLElement): { x: number; y: number; w: number; h: number } {
+  let x = 0;
+  let y = 0;
+  let n: HTMLElement | null = el;
+  while (n && n.id !== 'app') {
+    x += n.offsetLeft;
+    y += n.offsetTop;
+    n = n.offsetParent as HTMLElement | null;
+  }
+  // #app까지 올라왔으면 그 자리를 더한다 (offset*은 변형을 무시한다)
+  if (n) {
+    const r = n.getBoundingClientRect();
+    x += r.left;
+    y += r.top;
+  }
+  return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+}
+
+type Place = (x: number, y: number) => { x: number; y: number };
+const SAME: Place = (x, y) => ({ x, y });
+
+/** 화면 좌표의 점 → 기울어진 화면 안의 좌표 (화면을 돌린 뒤 그 점에 오게) */
+function tiltPlace(screen: HTMLElement | null, deg: number): Place {
+  if (!deg || !screen) return SAME;
+  const b = layoutBox(screen);
+  const cx = b.w / 2;
+  const cy = b.h / 2;
+  const t = (deg * Math.PI) / 180;
+  const cos = Math.cos(t);
+  const sin = Math.sin(t);
+  return (x, y) => {
+    const dx = x - b.x - cx;
+    const dy = y - b.y - cy;
+    return { x: cx + dx * cos + dy * sin, y: cy - dx * sin + dy * cos };
+  };
 }
 
 function AnomalyChip({ id }: { id: string }) {
@@ -302,6 +405,8 @@ function intentView(e: EnemyUnit, real: Intent | null): { icon: string; color: s
   if (!it) return null;
   if (it.hidden && c.p.insight < 5) return { icon: 'gi:help', color: '#8a8f96', text: '???' };
   const color = INTENT_COLOR[it.kind];
+  // 즉사기: 해골과 함께 크게
+  if (it.kind === 'death') return { icon: INTENT_ICON.death, color, text: '즉사', sub: it.label, charging: true };
   if (it.kind === 'stunned') return { icon: INTENT_ICON.stunned, color, text: '붕괴', sub: '행동 불가' };
   // 기절(얼어붙음 등)이면 계획한 행동 대신 쉰다는 것을 보여 준다
   if ((e.st.stun ?? 0) > 0) return { icon: INTENT_ICON.stunned, color: INTENT_COLOR.stunned, text: '기절', sub: '행동 불가' };
@@ -317,17 +422,20 @@ function intentView(e: EnemyUnit, real: Intent | null): { icon: string; color: s
   return { icon: INTENT_ICON[it.kind], color, text: '', sub: it.label };
 }
 
-function EnemyOverlay({ e, real, a, focus, valid, onTap }: { e: Snap['e'][number]; real: EnemyUnit; a: Anchor; focus: boolean; valid: boolean; onTap: () => void }) {
+function EnemyOverlay({ e, real, a, place, areaTop, focus, valid, onTap }: { e: Snap['e'][number]; real: EnemyUnit; a: Anchor; place: Place; areaTop: number; focus: boolean; valid: boolean; onTap: () => void }) {
   const def = ENEMIES.get(real.def);
   const iv = intentView(real, e.intent);
   const w = a.size * 0.95;
   const h = a.size * 1.1;
   const tip = () => enemyTip(real);
+  const feet = place(a.x, a.y);
+  const head = place(a.x, a.y - a.size * stage.battle.headroom(e.uid) - 30);
+  const plate = place(a.x, a.y + 4);
   return (
     <>
-      <div class={`enemy-hit ${focus ? 'focus' : ''} ${valid ? 'valid' : ''}`} style={{ left: a.x, top: a.y, width: w, height: h }} {...press(onTap, tip)} />
+      <div class={`enemy-hit ${focus ? 'focus' : ''} ${valid ? 'valid' : ''}`} style={{ left: feet.x, top: feet.y, width: w, height: h }} {...press(onTap, tip)} />
       {iv && (
-        <div class="enemy-ui" style={{ left: a.x, top: Math.max(stage.battle.rect.y - 4, a.y - a.size * stage.battle.headroom(e.uid) - 30) }}>
+        <div class="enemy-ui" style={{ left: head.x, top: Math.max(areaTop - 4, head.y) }}>
           <span class={`intent ${iv.charging ? 'charging' : ''}`} style={{ color: iv.color }}>
             <Icon name={iv.icon} size={17} color={iv.color} />
             {iv.text}
@@ -335,7 +443,7 @@ function EnemyOverlay({ e, real, a, focus, valid, onTap }: { e: Snap['e'][number
           </span>
         </div>
       )}
-      <div class="enemy-ui" style={{ left: a.x, top: a.y + 4 }}>
+      <div class="enemy-ui" style={{ left: plate.x, top: plate.y }}>
         <div class="eplate" style={{ width: Math.max(64, Math.min(116, (a.slot ?? 116) - 4)) }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span class="ename">{real.name}</span>

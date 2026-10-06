@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
 import { Combat, type CombatEvent } from '../src/engine/combat';
-import { ENEMIES } from '../src/engine/registry';
+import { ENEMIES, SKILLS } from '../src/engine/registry';
 import { finishCombat, newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
 import { autoTurn, incoming } from '../src/sim/bot';
@@ -18,12 +18,23 @@ import {
   EAR,
   EGG_TURNS,
   EGGS,
-  ESCAPE_DMG,
+  EGG_LINK_DMG,
+  ESCAPE_HITS,
   FALL_DMG,
+  FULL,
+  FULL_BLOCK,
+  FULL_DMG,
+  FULL_GAP,
+  FULL_MAX,
   HATCH_DMG,
+  HUNT,
+  HUNT_BITE_PCT,
+  HUNT_DMG,
+  HUNT_GAP,
   INCISE_N,
   INCISION,
   MAX_ANGLES,
+  MAX_INCISION,
   PLASTER,
   REVEAL_TURNS,
   REVEALED,
@@ -226,6 +237,174 @@ describe('각도의 왕 — 열린 각', () => {
   });
 });
 
+describe('각도의 왕 — 틴달로스의 사냥 (막아야 하는 큰 위협)', () => {
+  const WAIT = { move: '_wait', kind: 'unknown' as const, label: '관망' };
+
+  /** 세 각을 모두 연 뒤 3턴째를 시작한다 — 2턴째가 끝날 때 사냥을 부른다 (왕이 다른 것을 하지 않게 관망시킨다) */
+  function hunted(seed = 303) {
+    const { c, e } = fight('a3-boss-king', seed);
+    const k = e('angle-king');
+    for (let i = 0; i < MAX_ANGLES; i++) act(c, k, 'carve');
+    // 1턴째 끝: 초반이라 아직 부르지 않는다
+    c.p.block = 999;
+    c.endTurn();
+    expect(k.intent?.move).not.toBe('hunt');
+    expect(c.s.obj ?? null).toBeNull();
+    // 회반죽으로 하나 메워졌으니 다시 연다
+    act(c, k, 'carve');
+    expect(c.p.st[ANGLE]).toBe(MAX_ANGLES);
+    k.intent = { ...WAIT };
+    c.drain();
+    c.endTurn();
+    return { c, k };
+  }
+
+  it('세 각이 모두 열리면 다음 차례에 사냥을 부른다 — 내 턴이 시작될 때 이미 큰 공격 의도와 호박색 목표 띠가 보인다 (즉사가 아니다, 처음엔 경고 창)', () => {
+    const { c, k } = hunted();
+    expect(c.s.turn).toBe(3);
+    expect(c.s.phase).toBe('player');
+    expect(k.intent?.kind).toBe('charge');
+    expect(k.intent?.label).toBe(HUNT);
+    expect(c.s.obj?.block).toBe(PLASTER);
+    expect(c.s.obj?.break).toBe(k.uid);
+    expect(c.s.obj?.lethal ?? false).toBe(false);
+    expect(c.s.obj?.fail).toContain('30%');
+    expect(c.s.obj?.text).toContain('1턴 남음');
+    expect(c.s.obj?.text).not.toContain('즉사');
+    expect(cines(c.drain(), 'sysmsg').length).toBe(1);
+  });
+
+  it('끊지 못하면 모서리마다 사냥개가 문다 — 최대 체력의 30%(방어도 무시)와 출혈, 체력이 충분하면 살아남고 모서리는 닫힌다', () => {
+    const { c } = hunted();
+    c.p.hp = c.p.maxHp = 100;
+    // 회반죽에 모자란 방어도는 사냥개를 막지 못한다
+    c.p.block = PLASTER - 1;
+    c.drain();
+    c.endTurn();
+    const evs = c.drain();
+    expect(c.s.phase).toBe('player');
+    expect(c.s.doom).toBeUndefined();
+    expect(cines(evs, 'execute').length).toBe(0);
+    const bites = hitsTagged(evs, 'a3-hunt');
+    expect(bites.length).toBe(MAX_ANGLES);
+    for (const b of bites) {
+      expect(b.amount).toBe(Math.ceil(100 * HUNT_BITE_PCT));
+      expect(b.blocked).toBe(0);
+    }
+    expect(bites.reduce((n, b) => n + b.hpLoss, 0)).toBe(30);
+    expect(c.p.st.bleed ?? 0).toBeGreaterThan(0);
+    expect(c.p.st[ANGLE] ?? 0).toBe(0);
+    expect(c.s.obj ?? null).toBeNull();
+  });
+
+  it('방어도 12 이상으로 턴을 마치면 각 하나가 메워져 사냥이 빗나간다 — 목표가 바로 지워지고, 왕은 그 차례를 잃는다', () => {
+    const { c, k } = hunted();
+    c.p.block = 0;
+    for (let i = 0; i < 3; i++) c.useSkill('armor');
+    expect(c.p.block).toBeGreaterThanOrEqual(PLASTER);
+    c.drain();
+    c.endTurn();
+    const evs = c.drain();
+    expect(c.s.phase).toBe('player');
+    expect(c.s.obj ?? null).toBeNull();
+    expect(c.p.st[ANGLE]).toBe(MAX_ANGLES - 1);
+    expect(evs.some((ev) => ev.t === 'move' && ev.uid === k.uid && ev.move === 'lost')).toBe(true);
+    expect(hitsTagged(evs, 'a3-hunt').length).toBe(0);
+    // 사냥이 끝난 뒤 곧바로 다시 세 각을 열어도 한동안은 부르지 않는다
+    act(c, k, 'carve');
+    c.planIntent(k);
+    expect(k.intent?.move).not.toBe('hunt');
+    c.s.turn += HUNT_GAP;
+    c.planIntent(k);
+    expect(k.intent?.move).toBe('hunt');
+  });
+
+  it('왕에게 피해를 채워도 끊긴다 — 맞을 때마다 목표 띠의 남은 피해가 줄고, 다 채우면 그 차례의 사냥이 헛돈다', () => {
+    const { c, k } = hunted();
+    expect(c.s.obj?.hit).toEqual({ uid: k.uid, need: HUNT_DMG });
+    c.damage({ src: c.p, tgt: k, base: 2, type: 'true', attack: true });
+    expect(c.s.obj?.hit?.need).toBe(HUNT_DMG - 2);
+    expect(c.s.obj?.text).toContain(`피해 ${HUNT_DMG - 2}`);
+    c.damage({ src: c.p, tgt: k, base: HUNT_DMG, type: 'true', attack: true });
+    expect(c.s.obj ?? null).toBeNull();
+    expect(k.intent?.move).toBe('lost');
+    // 세 각은 그대로 열려 있지만 이번 사냥은 끝났다
+    expect(c.p.st[ANGLE]).toBe(MAX_ANGLES);
+    c.p.block = 0;
+    c.drain();
+    c.endTurn();
+    expect(c.s.phase).toBe('player');
+    expect(hitsTagged(c.drain(), 'a3-hunt').length).toBe(0);
+  });
+
+  it('왕을 붕괴시켜도 빗나간다 (모든 각이 닫힌다)', () => {
+    const { c, k } = hunted();
+    c.breakEnemy(k);
+    expect(c.s.obj ?? null).toBeNull();
+    expect(c.p.st[ANGLE] ?? 0).toBe(0);
+    c.p.block = 0;
+    c.endTurn();
+    expect(c.s.phase).toBe('player');
+  });
+
+  it('체력이 모자라면 사냥개에 물려 보통 피해처럼 사경에 든다 (곧바로 죽지는 않는다)', () => {
+    const { c } = hunted();
+    c.p.maxHp = 100;
+    c.p.hp = 20;
+    c.p.sanity = c.p.maxSanity = 100;
+    c.p.block = 0;
+    c.endTurn();
+    expect(c.s.doom).toBeUndefined();
+    expect(c.s.phase).toBe('player');
+    expect(c.p.st.dying).toBe(1);
+  });
+
+  it('체력이 절반 아래로 떨어지면 남은 모서리를 한꺼번에 열고, 그다음 차례에 사냥을 부른다', () => {
+    const { c, e } = fight('a3-boss-king');
+    const k = e('angle-king');
+    c.damage({ src: c.p, tgt: k, base: Math.ceil(k.maxHp * 0.6), type: 'true', attack: true });
+    k.intent = { ...WAIT };
+    c.endTurn();
+    // 1턴째 끝: 초반에는 열지 않는다
+    expect(k.intent?.move).not.toBe('flood');
+    k.intent = { ...WAIT };
+    c.endTurn();
+    expect(k.intent?.move).toBe('flood');
+    c.p.block = 0;
+    c.drain();
+    c.endTurn();
+    expect(c.p.st[ANGLE]).toBe(MAX_ANGLES);
+    expect(k.intent?.move).toBe('hunt');
+    expect(c.s.obj?.block).toBe(PLASTER);
+  });
+
+  it('사냥이 걸린 채로 저장했다 불러와도 그대로 이어진다', () => {
+    const { c } = hunted();
+    const saved: RunState = JSON.parse(JSON.stringify(c.run));
+    const c2 = new Combat(saved);
+    const k2 = c2.alive.find((x) => x.def === 'angle-king')!;
+    expect(k2.intent?.move).toBe('hunt');
+    expect(c2.s.obj?.block).toBe(PLASTER);
+    c2.p.block = 0;
+    c2.endTurn();
+    expect(c2.s.phase).toBe('player');
+    expect(hitsTagged(c2.drain(), 'a3-hunt').length).toBe(MAX_ANGLES);
+  });
+
+  it('봇은 목표 띠를 보고 사냥을 푼다 (방어도로 모서리를 메운다)', () => {
+    for (const seed of [303, 11, 42]) {
+      const { c } = hunted(seed);
+      c.p.block = 0;
+      autoTurn(c);
+      expect(c.s.phase, `#${seed}`).not.toBe('defeat');
+      expect(c.s.obj ?? null, `#${seed}`).toBeNull();
+      let n = 0;
+      while (!c.over && n++ < 300) autoTurn(c);
+      expect(c.s.phase, `#${seed}`).toBe('victory');
+    }
+  });
+});
+
 describe('산맥 너머의 것 — 보는 것과 보지 않는 것', () => {
   it('증기가 걷히면 경고(처음 한 번)와 함께 화면이 어두워지고, 드러나면 눈이 지켜본다', () => {
     const { c, e } = fight('a3-boss-peaks');
@@ -387,15 +566,21 @@ describe('렝의 대거미 — 몸속의 알', () => {
 });
 
 describe('샨탁 — 하늘로 채어 간다', () => {
-  it('샨탁에게 충분히 피해를 주면 빠져나와 떨어지지 않는다', () => {
+  it('샨탁을 공격으로 세 번 맞히면 빠져나와 떨어지지 않는다 (피해량이 아니라 맞힌 횟수 — 회피당한 공격은 세지 않는다)', () => {
     const { c, e } = fight('a3-shantak');
     const sh = e('shantak');
     act(c, sh, 'carry');
-    expect(c.p.st[ALOFT]).toBe(ESCAPE_DMG);
-    // (관통은 탄띠의 조준으로 치명타가 나므로 타격으로)
-    const d = c.damage({ src: c.p, tgt: sh, base: 5, type: 'blunt', attack: true });
-    expect(c.p.st[ALOFT]).toBe(ESCAPE_DMG - d.amount);
-    c.damage({ src: c.p, tgt: sh, base: 5, type: 'blunt', attack: true });
+    expect(c.p.st[ALOFT]).toBe(ESCAPE_HITS);
+    c.damage({ src: c.p, tgt: sh, base: 1, type: 'slash', attack: true });
+    expect(c.p.st[ALOFT]).toBe(ESCAPE_HITS - 1);
+    // 회피당한 공격은 세지 않는다
+    sh.st.evasive = 1;
+    c.damage({ src: c.p, tgt: sh, base: 9, type: 'slash', attack: true });
+    expect(c.p.st[ALOFT]).toBe(ESCAPE_HITS - 1);
+    // 공격이 아닌 피해(가시·지속 피해 등)도 세지 않는다
+    c.damage({ src: c.p, tgt: sh, base: 9, type: 'true' });
+    expect(c.p.st[ALOFT]).toBe(ESCAPE_HITS - 1);
+    for (let i = 1; i < ESCAPE_HITS; i++) c.damage({ src: c.p, tgt: sh, base: 1, type: 'slash', attack: true });
     expect(c.p.st[ALOFT] ?? 0).toBe(0);
     c.drain();
     c.endTurn();
@@ -447,6 +632,168 @@ describe('고대인 해부학자 — 절개선', () => {
     expect(hit[0].amount).toBe(pv);
     expect(c.p.st[INCISION] ?? 0).toBe(0);
     expect(ENEMIES.get('elder-vivisector')!.moves.vivisect.ultimate).toBe(true);
+  });
+});
+
+describe('고대인 해부학자 — 완전 해부 (즉사 퍼즐)', () => {
+  const WAIT = { move: '_wait', kind: 'unknown' as const, label: '관망' };
+
+  /** 절개선 넷을 긋고, 2턴째가 끝날 때 해부대를 펼치려다 완전 해부를 건다 → 3턴째 시작 */
+  function dissected(run: RunState = floor3()) {
+    const c = startCombat(run, 'a3-vivisector', { anomaly: null });
+    const v = c.alive.find((x) => x.def === 'elder-vivisector')!;
+    delete c.p.st.ward;
+    act(c, v, 'incise');
+    act(c, v, 'incise');
+    expect(c.p.st[INCISION]).toBe(MAX_INCISION);
+    c.p.block = 0;
+    c.endTurn();
+    v.intent = { ...WAIT };
+    v.mem.ci = 4;
+    c.p.block = 0;
+    c.drain();
+    c.endTurn();
+    return { c, v };
+  }
+
+  it('절개선이 다 그어진 채로 해부대를 펼치려 하면 완전 해부를 건다 — 내 턴이 시작될 때 이미 해골과 붉은 띠 (처음엔 속삭임), 내 턴 두 번', () => {
+    const { c, v } = dissected();
+    expect(c.s.turn).toBe(3);
+    expect(v.intent?.kind).toBe('death');
+    expect(v.intent?.move).toBe('opentable');
+    expect(c.s.obj?.lethal).toBe(true);
+    expect(c.s.obj?.hit).toEqual({ uid: v.uid, need: FULL_DMG });
+    expect(c.s.obj?.block).toBe(FULL_BLOCK);
+    expect(c.s.obj?.break).toBe(v.uid);
+    expect(c.s.obj?.text).toContain('2턴 남음');
+    expect(cines(c.drain(), 'whisper').length).toBe(1);
+    c.endTurn();
+    expect(v.intent?.move).toBe('fullcut');
+    expect(v.intent?.kind).toBe('death');
+    expect(c.s.obj?.text).toContain('1턴 남음');
+  });
+
+  it('막지 못하면 사경 없이 죽는다', () => {
+    const { c } = dissected();
+    c.endTurn();
+    c.endTurn();
+    expect(c.s.phase).toBe('defeat');
+    expect(c.s.doom).toBe(FULL);
+  });
+
+  it('해부학자에게 피해 18을 채우면 막힌다 — 띠의 남은 피해가 줄고(지속 피해도 센다), 절개선이 아물고, 해부학자는 다시 의도를 정한다', () => {
+    const { c, v } = dissected();
+    c.damage({ src: c.p, tgt: v, base: 5, type: 'true', attack: true });
+    expect(c.s.obj?.hit?.need).toBe(FULL_DMG - 5);
+    c.endTurn();
+    expect(c.s.obj).toBeTruthy();
+    // 출혈은 해부학자의 차례가 시작될 때 들어간다 — 완전 해부보다 먼저
+    c.apply(v, 'bleed', FULL_DMG, c.p);
+    c.endTurn();
+    expect(c.s.obj ?? null).toBeNull();
+    expect(c.s.doom).toBeUndefined();
+    expect(c.s.phase).toBe('player');
+    expect(c.p.st[INCISION] ?? 0).toBe(0);
+    expect(v.intent?.kind).not.toBe('death');
+  });
+
+  it('방어도 12 이상으로 턴을 마치면 막힌다 — 그 차례에는 메스를 거둔다', () => {
+    const { c, v } = dissected();
+    c.p.block = 0;
+    for (let i = 0; i < 3; i++) c.useSkill('armor');
+    expect(c.p.block).toBeGreaterThanOrEqual(FULL_BLOCK);
+    c.drain();
+    c.endTurn();
+    const evs = c.drain();
+    expect(c.s.phase).toBe('player');
+    expect(c.s.obj ?? null).toBeNull();
+    expect(evs.some((ev) => ev.t === 'move' && ev.uid === v.uid && ev.move === 'withdraw')).toBe(true);
+    expect(v.intent?.kind).not.toBe('death');
+  });
+
+  it('체력을 회복하면 절개선이 아물어 막히고, 붕괴시켜도 막힌다', () => {
+    const a = dissected();
+    a.c.heal(a.c.p, 1);
+    expect(a.c.s.obj ?? null).toBeNull();
+    expect(a.v.intent?.kind).not.toBe('death');
+    a.c.endTurn();
+    a.c.endTurn();
+    expect(a.c.s.phase).toBe('player');
+
+    const b = dissected();
+    b.v.poise = 1;
+    b.c.damage({ src: b.c.p, tgt: b.v, base: 1, type: 'pierce', attack: true });
+    expect(b.v.broken).toBe(2);
+    expect(b.c.s.obj ?? null).toBeNull();
+    b.c.endTurn();
+    b.c.endTurn();
+    expect(b.c.s.phase).toBe('player');
+  });
+
+  it('결계가 한 번 막는다 — 절개선이 아물고 싸움이 이어진다', () => {
+    const { c } = dissected();
+    c.endTurn();
+    c.p.st.ward = 1;
+    c.endTurn();
+    expect(c.s.phase).toBe('player');
+    expect(c.s.doom).toBeUndefined();
+    expect(c.p.st.ward ?? 0).toBe(0);
+    expect(c.p.st[INCISION] ?? 0).toBe(0);
+    expect(c.s.obj ?? null).toBeNull();
+  });
+
+  it('2턴째가 끝나기 전에는 걸지 않고, 끝난 뒤 3턴은 다시 걸지 않으며, 전투마다 두 번까지', () => {
+    const { c, e } = fight('a3-vivisector');
+    const v = e('elder-vivisector');
+    const def = ENEMIES.get('elder-vivisector')!;
+    delete c.p.st.ward;
+    act(c, v, 'incise');
+    act(c, v, 'incise');
+    v.mem.turns = 1;
+    v.mem.ci = 4;
+    // 1턴째: 아직 초반
+    expect(def.ai(c, v)).toBe('table');
+    for (let k = 0; k < FULL_MAX; k++) {
+      c.s.turn = 10 + k * 10;
+      c.apply(c.p, INCISION, MAX_INCISION, v);
+      v.mem.ci = 4;
+      expect(def.ai(c, v), `#${k}`).toBe('opentable');
+      c.heal(c.p, 1);
+      expect(v.mem.full ?? 0).toBe(0);
+      // 막힌 직후에는 다시 걸지 않는다
+      c.apply(c.p, INCISION, MAX_INCISION, v);
+      v.mem.ci = 4;
+      c.s.turn += FULL_GAP - 1;
+      expect(def.ai(c, v)).toBe('table');
+      c.clear(c.p, INCISION);
+    }
+    // 두 번 걸었으면 더는 걸지 않는다
+    c.s.turn = 99;
+    c.apply(c.p, INCISION, MAX_INCISION, v);
+    v.mem.ci = 4;
+    expect(def.ai(c, v)).toBe('table');
+  });
+
+  it('완전 해부가 걸린 채로 저장했다 불러와도 그대로 이어진다', () => {
+    const { c } = dissected();
+    const saved: RunState = JSON.parse(JSON.stringify(c.run));
+    const c2 = new Combat(saved);
+    const v2 = c2.alive.find((x) => x.def === 'elder-vivisector')!;
+    expect(v2.intent?.move).toBe('opentable');
+    expect(c2.s.obj?.lethal).toBe(true);
+    c2.endTurn();
+    c2.endTurn();
+    expect(c2.s.doom).toBe(FULL);
+  });
+
+  it('봇은 붉은 띠를 보고 완전 해부를 막고 이긴다 (시드 여럿)', () => {
+    for (const seed of [303, 11, 42]) {
+      const { c } = dissected(floor3(seed));
+      let n = 0;
+      while (!c.over && n++ < 300) autoTurn(c);
+      expect(c.s.doom, `#${seed}`).toBeUndefined();
+      expect(c.s.phase, `#${seed}`).toBe('victory');
+    }
   });
 });
 
@@ -596,5 +943,210 @@ describe('3층 정예·수호자 — 연출과 봇', () => {
       while (!c.over && n++ < 300) autoTurn(c);
       expect(c.s.phase, enc).toBe('victory');
     }
+  });
+});
+
+describe('3층 기믹의 출신 간 공정성 — 시작 덱으로', () => {
+  const ORIGINS = ['soldier', 'hunter', 'occultist'];
+
+  /** 3층에 막 들어선 그 출신의 시작 덱 (레벨 9, 체력 105, 행동력 3, 힘·민첩 0 — 정수·강화 없이). sturdy면 쓰러지지 않는다 */
+  function kit3(origin: string, seed = 303, sturdy = false): RunState {
+    const run = newRun({ seed, origin });
+    run.act = 3;
+    run.floor = generateFloor(run, 3);
+    run.player.level = 9;
+    run.player.maxHp = run.player.hp = sturdy ? 9999 : 105;
+    if (sturdy) run.player.sanity = run.player.maxSanity = 9999;
+    run.light = 100;
+    return run;
+  }
+
+  /** 근접 기본 공격만 남긴 사냥꾼 (화염 플라스크도 빼고) */
+  function meleeOnly(seed = 303): RunState {
+    const run = kit3('hunter', seed);
+    run.slots = run.slots.map((uid) => {
+      const owned = run.skills.find((x) => x.uid === uid);
+      return owned && SKILLS.get(owned.id)?.range === 'melee' ? uid : null;
+    });
+    return run;
+  }
+
+  /** 세 각을 열고 3턴째에 틴달로스의 사냥이 걸린 상태로 (twist면 왕이 후열에 숨은 채로). 오컬트 학자의 낡은 성서 결계는 먼저 걷어 낸다 */
+  function huntWith(run: RunState, twist = false) {
+    const c = startCombat(run, 'a3-boss-king', { anomaly: null });
+    const k = c.alive.find((x) => x.def === 'angle-king')!;
+    delete c.p.st.ward;
+    if (twist) act(c, k, 'twist');
+    for (let i = 0; i < MAX_ANGLES; i++) act(c, k, 'carve');
+    c.p.block = 999;
+    c.endTurn();
+    act(c, k, 'carve');
+    k.intent = { move: '_wait', kind: 'unknown', label: '관망' };
+    c.endTurn();
+    expect(k.intent?.move, run.origin).toBe('hunt');
+    return { c, k };
+  }
+
+  it('어느 출신이든 방어구 기본기만으로 회반죽(방어도 12)에 닿는다', () => {
+    for (const origin of ORIGINS) {
+      const c = startCombat(kit3(origin), 'a3-boss-king', { anomaly: null });
+      while (!c.blockReason('armor')) c.useSkill('armor');
+      expect(c.p.block, origin).toBeGreaterThanOrEqual(PLASTER);
+    }
+  });
+
+  it('어느 출신이든 시작 덱으로 틴달로스의 사냥을 봇이 끊는다 (체력 105, 사냥개에게 물리지 않는다)', () => {
+    for (const origin of ORIGINS) {
+      for (const seed of [303, 11, 42, 2026]) {
+        const { c } = huntWith(kit3(origin, seed));
+        c.drain();
+        autoTurn(c);
+        expect(hitsTagged(c.drain(), 'a3-hunt').length, `${origin} #${seed}`).toBe(0);
+        expect(c.s.phase, `${origin} #${seed}`).toBe('player');
+        expect(c.s.obj ?? null, `${origin} #${seed}`).toBeNull();
+      }
+    }
+  });
+
+  it('근접 공격만 가진 덱도 후열에 숨은 각도의 왕을 사냥 중에는 칠 수 있고(사냥 중엔 숨지 못한다), 사냥을 끊는다', () => {
+    const run = meleeOnly();
+    const { c, k } = huntWith(run, true);
+    expect(k.row).toBe(1);
+    expect(c.row(0).length).toBeGreaterThan(0);
+    const knife = SKILLS.get('w-knife')!;
+    expect(c.validTargets(knife).map((x) => x.uid)).toContain(k.uid);
+    // 숨어 있어도 사냥하는 동안에는 피해가 줄지 않는다
+    expect(c.preview(c.p, k, 10, 'slash')).toBe(c.preview(c.p, c.row(0)[0], 10, 'slash'));
+    c.drain();
+    autoTurn(c);
+    expect(hitsTagged(c.drain(), 'a3-hunt').length).toBe(0);
+    expect(c.s.obj ?? null).toBeNull();
+    // 사냥이 끝나면 다시 근접으로는 닿지 않는다
+    expect(c.validTargets(knife).map((x) => x.uid)).not.toContain(k.uid);
+    // 근접만으로도 끝까지 이긴다 (쓰러지지 않는 몸으로)
+    const sturdy = meleeOnly(11);
+    sturdy.player.maxHp = sturdy.player.hp = 9999;
+    sturdy.player.sanity = sturdy.player.maxSanity = 9999;
+    const c2 = startCombat(sturdy, 'a3-boss-king', { anomaly: null });
+    let n = 0;
+    while (!c2.over && n++ < 300) autoTurn(c2);
+    expect(c2.s.phase).toBe('victory');
+  });
+
+  it('어느 출신이든 무기 기본 공격만으로 두 턴 안에 몸속의 알을 죽인다 (어미에게 피해 20)', () => {
+    for (const origin of ORIGINS) {
+      const c = startCombat(kit3(origin, 303, true), 'a3-broodmother', { anomaly: null });
+      const m = c.alive.find((x) => x.def === 'leng-broodmother')!;
+      act(c, m, 'implant');
+      c.drain();
+      for (let turn = 0; turn < EGG_TURNS && (c.p.st[EGGS] ?? 0) > 0; turn++) {
+        while (!c.blockReason('weapon') && (c.p.st[EGGS] ?? 0) > 0) c.useSkill('weapon', m.uid);
+        m.intent = { move: '_wait', kind: 'unknown', label: '관망' };
+        c.endTurn();
+      }
+      expect(c.p.st[EGGS] ?? 0, origin).toBe(0);
+      expect(hitsTagged(c.drain(), 'a3-hatch').length, origin).toBe(0);
+    }
+    // 피해를 덜 주면 부화한다 (알이 있는 동안 센 피해만)
+    const c = startCombat(kit3('soldier', 303, true), 'a3-broodmother', { anomaly: null });
+    const m = c.alive.find((x) => x.def === 'leng-broodmother')!;
+    act(c, m, 'implant');
+    c.damage({ src: c.p, tgt: m, base: EGG_LINK_DMG - 1, type: 'true', attack: true });
+    expect(c.p.st[EGGS]).toBe(EGG_TURNS);
+    c.damage({ src: c.p, tgt: m, base: 1, type: 'true', attack: true });
+    expect(c.p.st[EGGS] ?? 0).toBe(0);
+  });
+
+  it('어느 출신이든 무기 기본 공격 셋으로 샨탁의 발톱에서 빠져나온다 (참격에 강해도)', () => {
+    for (const origin of ORIGINS) {
+      const c = startCombat(kit3(origin), 'a3-shantak', { anomaly: null });
+      const sh = c.alive.find((x) => x.def === 'shantak')!;
+      act(c, sh, 'carry');
+      for (let i = 0; i < ESCAPE_HITS; i++) expect(c.useSkill('weapon', sh.uid), origin).toBeNull();
+      expect(c.p.st[ALOFT] ?? 0, origin).toBe(0);
+    }
+  });
+
+  it('깨어난 원로는 늘 전열에 있어 어느 출신이든 칼날을 쳐낼 수 있다', () => {
+    for (const origin of ORIGINS) {
+      const c = startCombat(kit3(origin), 'lord-a3', { anomaly: null });
+      const el = c.alive.find((x) => x.def === 'awakened-elder')!;
+      expect(el.row, origin).toBe(0);
+      delete c.p.st.ward;
+      act(c, el, 'stillness');
+      expect(c.useSkill('weapon', el.uid), origin).toBeNull();
+      expect(c.p.st[BLADES], origin).toBe(BLADE_N - 1);
+    }
+  });
+
+  /** 완전 해부가 걸린 3턴째 (그 출신의 시작 덱) */
+  function fullWith(run: RunState) {
+    const c = startCombat(run, 'a3-vivisector', { anomaly: null });
+    const v = c.alive.find((x) => x.def === 'elder-vivisector')!;
+    delete c.p.st.ward;
+    act(c, v, 'incise');
+    act(c, v, 'incise');
+    c.endTurn();
+    v.intent = { move: '_wait', kind: 'unknown', label: '관망' };
+    v.mem.ci = 4;
+    c.endTurn();
+    expect(v.intent?.kind, run.origin).toBe('death');
+    return { c, v };
+  }
+
+  it('어느 출신이든 무기 기본 공격만으로 내 턴 두 번 안에 완전 해부를 막는다 (피해 18)', () => {
+    for (const origin of ORIGINS) {
+      const { c, v } = fullWith(kit3(origin, 303, true));
+      for (let turn = 0; turn < 2 && c.s.obj; turn++) {
+        while (!c.blockReason('weapon') && c.s.obj) c.useSkill('weapon', v.uid);
+        c.p.block = 0;
+        c.endTurn();
+      }
+      expect(c.s.doom, origin).toBeUndefined();
+      expect(c.s.phase, origin).toBe('player');
+    }
+  });
+
+  it('어느 출신이든 시작 덱으로 완전 해부를 봇이 막는다 (체력 105)', () => {
+    for (const origin of ORIGINS) {
+      for (const seed of [303, 11, 42, 2026]) {
+        const { c } = fullWith(kit3(origin, seed));
+        autoTurn(c);
+        if (c.s.obj) autoTurn(c);
+        expect(c.s.doom, `${origin} #${seed}`).toBeUndefined();
+        expect(c.s.obj ?? null, `${origin} #${seed}`).toBeNull();
+      }
+    }
+  });
+
+  it('쇼고스가 떼어 낸 원형질 조각은 후열로 밀려나도 근접으로 끊어 낼 수 있다', () => {
+    const c = startCombat(meleeOnly(), 'a3-boss-shoggoth', { anomaly: null });
+    const s = c.alive.find((x) => x.def === 'shoggoth')!;
+    c.damage({ src: c.p, tgt: s, base: Math.ceil(s.maxHp * 0.55), type: 'true', attack: true });
+    const blobs = c.alive.filter((x) => x.def === 'shoggoth-blob');
+    expect(blobs.length).toBe(4);
+    const back = blobs.filter((x) => x.row === 1);
+    expect(back.length).toBeGreaterThan(0);
+    const knife = SKILLS.get('w-knife')!;
+    const reach = c.validTargets(knife).map((x) => x.uid);
+    for (const b of back) expect(reach).toContain(b.uid);
+    // 평범한 원형질 조각(쇼고스 유충이 갈라진 것)은 그대로 전열만
+    const c2 = startCombat(meleeOnly(), 'a3-spawn-pair', { anomaly: null });
+    const extra = c2.spawn('shoggoth-blob', 1)!;
+    expect(c2.validTargets(knife).map((x) => x.uid)).not.toContain(extra.uid);
+  });
+
+  it('어느 출신이든 시작 덱으로 3층의 정예·수호자를 봇이 이긴다 — 즉사로 끝나는 판이 없다', () => {
+    const encs = ['a3-boss-shoggoth', 'a3-boss-king', 'a3-boss-peaks', 'lord-a3', 'a3-broodmother', 'a3-shantak', 'a3-vivisector', 'stalker-a3', 'rift-a3'];
+    const lost: string[] = [];
+    for (const origin of ORIGINS) {
+      for (const enc of encs) {
+        const c = startCombat(kit3(origin, 77, true), enc, { anomaly: null });
+        let n = 0;
+        while (!c.over && n++ < 300) autoTurn(c);
+        if (c.s.phase !== 'victory') lost.push(`${origin} ${enc}: ${c.s.phase} ${c.s.doom ?? ''} ${c.s.turn}턴`);
+      }
+    }
+    expect(lost).toEqual([]);
   });
 });

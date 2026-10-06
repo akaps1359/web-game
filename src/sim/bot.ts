@@ -40,6 +40,25 @@ function score(before: RunState, after: RunState, need: number, cost = 0): numbe
   }
   const pb = before.player;
   const pa = after.player;
+  // 즉사기를 막는 퍼즐 목표: 풀면 크게, 다가가면 그만큼
+  const ob = b.obj;
+  if (ob) {
+    const oa = a.obj;
+    if (!oa) s += 400;
+    else {
+      if (ob.hit && oa.hit) s += Math.max(0, ob.hit.need - oa.hit.need) * 4;
+      if (ob.break) {
+        const eb = b.enemies.find((x) => x.uid === ob.break);
+        const ea = a.enemies.find((x) => x.uid === ob.break);
+        if (eb && ea) s += Math.max(0, eb.poise - ea.poise) * 25 + (ea.broken === 2 && eb.broken !== 2 ? 300 : 0);
+      }
+      if (ob.block) s += (Math.min(ob.block, pa.block) - Math.min(ob.block, pb.block)) * 6;
+      if (ob.types && oa.types) s += (ob.types.length - oa.types.length) * 120;
+      if (ob.kill) s += ob.kill.filter((uid) => !b.enemies.find((x) => x.uid === uid)?.dead && a.enemies.find((x) => x.uid === uid)?.dead).length * 150;
+      // 가만히 있어야 풀리는 목표: 무엇이든 하면 손해
+      if (ob.quiet) s -= 200;
+    }
+  }
   const blockGain = pa.block - pb.block;
   const stillNeed = Math.max(0, need - pb.block);
   s += Math.min(blockGain, stillNeed) * 1.1 + Math.max(0, blockGain - stillNeed) * 0.15;
@@ -59,6 +78,12 @@ function score(before: RunState, after: RunState, need: number, cost = 0): numbe
 export function autoTurn(c: Combat) {
   const run = c.run;
   for (let guard = 0; guard < 20 && c.s.phase === 'player'; guard++) {
+    // 걸린 선택지부터 (콘텐츠가 정해 둔 우선순위대로)
+    if (c.s.choice) {
+      const o = [...c.s.choice.options].sort((a, b) => (b.bot ?? 0) - (a.bot ?? 0))[0];
+      if (!o || c.choose(o.id)) break;
+      continue;
+    }
     const refs = ['weapon', 'armor', ...(run.slots.filter(Boolean) as string[])];
     const need = incoming(c);
     let best: { ref: string; t: string | null; s: number } | null = null;

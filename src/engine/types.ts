@@ -29,7 +29,9 @@ export type IntentKind =
   | 'stunned'
   | 'sleep'
   | 'unknown'
-  | 'special';
+  | 'special'
+  /** 즉사기 (막지 못하면 그 자리에서 죽는다) */
+  | 'death';
 
 // ───────────── 유닛 ─────────────
 
@@ -254,6 +256,8 @@ export interface Hooks {
   onLethal?(c: Combat, s: HookSelf, d: DamageCtx): boolean;
   /** 누군가 죽었을 때 (모든 훅 소유자에게 전달) */
   onAnyDeath?(c: Combat, s: HookSelf, victim: Unit): void;
+  /** 플레이어가 전투 중 선택지(CombatChoice)를 골랐을 때 (모든 훅 소유자에게 전달) */
+  onChoice?(c: Combat, s: HookSelf, choice: string, option: string): void;
   /** 소유자 자신이 죽었을 때 (적 특성용) */
   onDeath?(c: Combat, s: HookSelf, d: DamageCtx | null): void;
   /** 스킬 AP 비용 보정 (반환값이 새 비용) */
@@ -407,7 +411,57 @@ export type CineName =
   /** 벌레 떼가 화면 가장자리에서 기어 들어와 지나간다 */
   | 'swarm'
   /** 만화식 임팩트 프레임 (큰 일격 순간의 정지 + 집중선) */
-  | 'impact';
+  | 'impact'
+  /** 즉사 (엔진의 executePlayer가 낸다) */
+  | 'execute';
+
+/**
+ * 퍼즐 목표: 즉사기 등을 막는 방법을 화면 위 띠로 보여 주고, 봇도 이걸 보고 움직인다.
+ * 판정·해제는 콘텐츠가 직접 한다 (엔진은 보관·표시만)
+ */
+export interface Objective {
+  /** 띠에 띄울 문구 (예: '대종에 20 피해를 줘라 — 1턴 남음') */
+  text: string;
+  /** 이 적에게 need만큼 더 피해를 주면 풀린다 (콘텐츠가 need를 줄여 간다) */
+  hit?: { uid: string; need: number };
+  /** 이 적을 붕괴시키면 풀린다 */
+  break?: string;
+  /** 내 턴을 이 방어도 이상으로 마치면 풀린다 */
+  block?: number;
+  /** 이 속성으로 차례대로 맞히면 풀린다 (남은 것만, 앞에서부터) */
+  types?: DmgType[];
+  /** 이번 턴 아무것도 하지 않으면 풀린다 */
+  quiet?: boolean;
+  /** 이 적들을 모두 쓰러뜨리면 풀린다 */
+  kill?: string[];
+  /** 못 막으면 즉사 (붉은 해골 띠). 없으면 큰 대가를 치르는 위협 (호박색 띠) — 즉사기는 엘리트 1~2종·수호자 1종에만 */
+  lethal?: boolean;
+  /** 못 막으면 일어나는 일 (띠를 누르면 보이는 설명, 예: '최대 체력의 30% 피해') */
+  fail?: string;
+}
+
+/**
+ * 전투 중 선택지 (최종 보스의 「탄생」 등) — 콘텐츠가 `Combat.offerChoice`로 건다.
+ * 고르기 전에는 기술·소모품·턴 종료가 막히고, 고르면 모든 훅 소유자의 onChoice가 불린다.
+ */
+export interface CombatChoice {
+  /** onChoice가 구분할 이름 */
+  id: string;
+  /** 대화창 제목 */
+  title: string;
+  /** 본문 */
+  text?: string;
+  /** 묻는 적 (연출 기준) */
+  by?: string;
+  options: {
+    id: string;
+    label: string;
+    desc: string;
+    icon?: string;
+    /** 봇이 고르는 우선순위 (클수록 먼저, 콘텐츠가 걸 때 상황에 맞춰 정한다) */
+    bot?: number;
+  }[];
+}
 
 export interface MoveDef {
   name: string;
@@ -458,6 +512,11 @@ export interface EnemyDef {
   /** 변신 후 모습 */
   forms?: { name: string; icon: string; visual: EnemyVisual }[];
   desc?: string;
+  /**
+   * 기믹 물건(등명기·대종·탯줄 등): 후열에 있어도 근접 공격이 닿는다.
+   * 깨야 풀리는 기믹이 근접 직업에게만 불리하지 않게 — 퍼즐 목표의 대상(setObjective)은 이 표시 없이도 닿는다
+   */
+  reachable?: boolean;
 }
 
 export interface EnemyVisual {

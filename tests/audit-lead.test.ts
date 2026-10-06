@@ -382,3 +382,90 @@ describe('정수 병', () => {
     expect(pourFlask(run, 0)).toBe('병이 비어 있다');
   });
 });
+
+describe('즉사기', () => {
+  it('막지 못하면 사경 없이 그 자리에서 패배하고, 판 끝 사유에 기술 이름이 남는다', async () => {
+    const { finishCombat } = await import('../src/engine/run');
+    const run = newRun({ seed: 91, origin: 'soldier' });
+    const c = startCombat(run, 'a1-cult', { anomaly: null });
+    expect(c.executePlayer(c.alive[0], '시험의 심판')).toBe(true);
+    expect(c.s.phase).toBe('defeat');
+    expect(c.s.doom).toBe('시험의 심판');
+    expect(c.p.hp).toBe(0);
+    finishCombat(run);
+    expect(run.over?.reason).toContain('시험의 심판');
+  });
+
+  it('결계가 있으면 하나를 깨뜨려 막는다', () => {
+    const run = newRun({ seed: 92, origin: 'soldier' });
+    const c = startCombat(run, 'a1-cult', { anomaly: null });
+    c.p.st.ward = 2;
+    const hp = c.p.hp;
+    expect(c.executePlayer(c.alive[0], '시험의 심판')).toBe(false);
+    expect(c.s.phase).toBe('player');
+    expect(c.p.st.ward).toBe(1);
+    expect(c.p.hp).toBe(hp);
+  });
+
+  it('퍼즐 목표는 저장(JSON)에 남고 스냅샷에도 실린다', () => {
+    const run = newRun({ seed: 93, origin: 'soldier' });
+    const c = startCombat(run, 'a1-cult', { anomaly: null });
+    c.s.obj = { text: '방어도 12 이상으로 턴을 마쳐라', block: 12 };
+    expect(c.snap().obj?.block).toBe(12);
+    const back = JSON.parse(JSON.stringify(run));
+    expect(back.combat.obj.text).toBe('방어도 12 이상으로 턴을 마쳐라');
+  });
+});
+
+describe('기믹 공정성: 근접도 닿는다', () => {
+  it('퍼즐 목표가 된 후열의 적은 근접 기술로도 노릴 수 있다', () => {
+    const run = newRun({ seed: 94, origin: 'hunter' });
+    const c = startCombat(run, 'a1-cult', { anomaly: null });
+    const melee = [...c.alive].length ? (run.skills.map((s) => c.skillInfo(s.uid)?.def).find((d) => d?.range === 'melee' && d.target === 'single') ?? null) : null;
+    if (!melee) return;
+    const back = c.alive.find((e) => e.row === 1) ?? c.alive[c.alive.length - 1];
+    back.row = 1;
+    if (!c.row(0).length) c.alive[0].row = 0;
+    expect(c.validTargets(melee).some((e) => e.uid === back.uid)).toBe(false);
+    c.s.obj = { text: '저것을 깨뜨려라', hit: { uid: back.uid, need: 10 } };
+    expect(c.validTargets(melee).some((e) => e.uid === back.uid)).toBe(true);
+    c.s.obj = null;
+    back.mem.reachable = 1;
+    expect(c.validTargets(melee).some((e) => e.uid === back.uid)).toBe(true);
+  });
+});
+
+describe('전투 중 선택지', () => {
+  it('고르기 전에는 기술·소모품·턴 종료가 막히고, 고르면 onChoice가 불리며 저장에도 남는다', async () => {
+    const { reg } = await import('../src/engine/registry');
+    reg.statuses([
+      {
+        id: 'zz-choice-probe',
+        name: '시험',
+        icon: 'gi:choice',
+        kind: 'buff',
+        desc: '선택지 시험',
+        hooks: {
+          onChoice(c, _s, choice, option) {
+            c.s.vars['zz-picked'] = choice === 'zz' && option === 'b' ? 2 : 1;
+          },
+        },
+      },
+    ]);
+    const run = newRun({ seed: 95, origin: 'soldier' });
+    const c = startCombat(run, 'a1-cult', { anomaly: null });
+    c.p.st['zz-choice-probe'] = 1;
+    c.offerChoice({ id: 'zz', title: '시험', options: [{ id: 'a', label: '가', desc: '가' }, { id: 'b', label: '나', desc: '나', bot: 5 }] });
+    expect(c.blockReason('weapon')).toBe('먼저 선택지를 고르세요');
+    expect(c.useConsumable(0)).toBe('먼저 선택지를 고르세요');
+    expect(c.endTurn()).toBe('먼저 선택지를 고르세요');
+    const back = JSON.parse(JSON.stringify(run));
+    expect(back.combat.choice.options.length).toBe(2);
+    expect(c.choose('없음')).toBe('없는 선택지');
+    // 봇은 우선순위가 높은 쪽을 고르고 턴을 이어 간다
+    const { autoTurn } = await import('../src/sim/bot');
+    autoTurn(c);
+    expect(c.s.vars['zz-picked']).toBe(2);
+    expect(c.s.choice ?? null).toBeNull();
+  });
+});

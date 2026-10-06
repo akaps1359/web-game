@@ -28,6 +28,15 @@ import {
   STARFALL,
   SWAP_CAP,
   WINDRIDE,
+  GLYPHS,
+  GLYPH_COUNT,
+  GLYPH_STAGGER,
+  GLYPH_TURNS,
+  JUDGMENT,
+  canInscribe,
+  dealableTypes,
+  SWAP_BREAK,
+  swapBreakNeed,
   addDark,
   issueCommand,
   orbCount,
@@ -45,6 +54,21 @@ function floor4(seed = 404, origin = 'soldier'): RunState {
   run.light = 100;
   return run;
 }
+
+/** 출신의 시작 덱 그대로 4층에 선 주인공 (레벨·체력·힘은 4층 기준) */
+function starter4(origin: string, seed = 404): RunState {
+  const run = newRun({ seed, origin });
+  run.act = 4;
+  run.floor = generateFloor(run, 4);
+  run.player.level = 12;
+  run.player.maxHp = run.player.hp = 160;
+  run.player.str = 6;
+  run.player.maxAp = 3;
+  run.light = 60;
+  return run;
+}
+
+const ORIGINS3 = ['soldier', 'hunter', 'occultist'];
 
 function fightToEnd(c: Combat) {
   let n = 0;
@@ -241,6 +265,134 @@ describe('4층 수호자 — 검은 파라오', () => {
     const c3 = startCombat(floor4(), 'a4-boss-pharaoh', { anomaly: null });
     c3.p.st.ward = 1;
     expect(issueCommand(c3, find(c3, 'black-pharaoh'))).toBe(false);
+  });
+});
+
+describe('4층 수호자 — 검은 파라오의 즉사 퍼즐 「심판의 상형문자」', () => {
+  /** 파라오가 상형문자를 새기고 심판을 예고한 직후 (다음 내 턴이 막 시작됨) */
+  function glyphFight(origin = 'soldier', seed = 404) {
+    const run = floor4(seed, origin);
+    const c = startCombat(run, 'a4-boss-pharaoh', { anomaly: null });
+    const ph = find(c, 'black-pharaoh');
+    c.s.turn = 2;
+    c.planIntent(ph);
+    expect(ph.intent!.move).toBe('inscribe');
+    c.drain();
+    c.endTurn();
+    return { run, c, ph };
+  }
+
+  it('지금 낼 수 있는 속성(무기 기본 공격 + 장착한 공격 기술)으로만 셋을 새기고, 내 턴이 시작될 때 이미 즉사 의도와 목표 띠가 보인다', () => {
+    // 첫 두 턴에는 새기지 않는다
+    const early = startCombat(floor4(), 'a4-boss-pharaoh', { anomaly: null });
+    expect(canInscribe(early, find(early, 'black-pharaoh'))).toBe(false);
+    expect(new Set(dealableTypes(early))).toEqual(new Set(['pierce', 'blunt']));
+
+    const { c, ph } = glyphFight();
+    expect(cines(c.drain(), 'scrawl').length).toBe(1);
+    expect(c.s.phase).toBe('player');
+    expect(ph.intent!.kind).toBe('death');
+    expect(ph.intent!.label).toBe(JUDGMENT);
+    const obj = c.s.obj!;
+    expect(obj.types!.length).toBe(GLYPH_COUNT);
+    for (const t of obj.types!) expect(['pierce', 'blunt']).toContain(t);
+    expect(obj.text).toContain(`${GLYPH_TURNS}턴 남음`);
+    expect(c.p.st[GLYPHS]).toBe(GLYPH_COUNT);
+    // 칼과 화염병을 든 사냥꾼에겐 참격·화염만
+    const h = glyphFight('hunter');
+    for (const t of h.c.s.obj!.types!) expect(['slash', 'fire']).toContain(t);
+  });
+
+  it('지우지 못하면 두 번째 내 턴이 끝난 뒤 「신들의 심판」 — 사경 없이 그 자리에서 패배한다', () => {
+    const { c } = glyphFight();
+    c.endTurn();
+    // 첫 차례엔 모래시계만 흐른다
+    expect(c.s.phase).toBe('player');
+    expect(c.s.obj!.text).toContain('1턴 남음');
+    c.endTurn();
+    expect(c.s.phase).toBe('defeat');
+    expect(c.s.doom).toBe(JUDGMENT);
+    expect(c.s.obj ?? null).toBeNull();
+  });
+
+  it('띠의 속성으로 차례대로 맞히면 앞에서부터 지워지고(틀린 속성은 아무 일도 없다), 다 지우면 심판이 흩어지고 파라오가 비틀거린다', () => {
+    const { c, ph } = glyphFight();
+    const types = [...c.s.obj!.types!];
+    const wrong = (['slash', 'pierce', 'blunt', 'fire', 'arcane', 'void'] as const).find((t) => t !== types[0])!;
+    c.damage({ src: c.p, tgt: ph, base: 1, type: wrong, attack: true });
+    expect(c.s.obj!.types).toEqual(types);
+    const poise = ph.poise;
+    types.forEach((t, i) => {
+      c.damage({ src: c.p, tgt: ph, base: 1, type: t, attack: true });
+      if (i < types.length - 1) {
+        expect(c.s.obj!.types).toEqual(types.slice(i + 1));
+        expect(c.p.st[GLYPHS]).toBe(types.length - i - 1);
+      }
+    });
+    expect(c.s.obj ?? null).toBeNull();
+    expect(c.p.st[GLYPHS]).toBeUndefined();
+    // 의도가 곧바로 바뀐다
+    expect(ph.intent!.kind).not.toBe('death');
+    expect(ph.broken === 2 || ph.poise <= poise - GLYPH_STAGGER).toBe(true);
+    c.endTurn();
+    c.endTurn();
+    expect(c.s.phase).toBe('player');
+    expect(c.s.doom).toBeUndefined();
+  });
+
+  it('결계가 있으면 심판을 한 번 막고, 전투는 다음 패턴으로 이어진다', () => {
+    const { c, ph } = glyphFight();
+    c.p.st.ward = 1;
+    c.endTurn();
+    c.endTurn();
+    expect(c.s.phase).toBe('player');
+    expect(c.p.st.ward).toBeUndefined();
+    expect(c.s.obj ?? null).toBeNull();
+    expect(ph.intent!.move).not.toBe('judgment');
+  });
+
+  it('파라오를 붕괴시키거나 기절시켜도 상형문자가 무너진다', () => {
+    const { c, ph } = glyphFight();
+    c.breakEnemy(ph);
+    expect(c.s.obj ?? null).toBeNull();
+    expect(c.p.st[GLYPHS]).toBeUndefined();
+    c.endTurn();
+    c.endTurn();
+    c.endTurn();
+    expect(c.s.phase).toBe('player');
+
+    const s = glyphFight();
+    expect(s.c.apply(s.ph, 'stun', 1, s.c.p)).toBe(1);
+    expect(s.c.s.obj ?? null).toBeNull();
+    expect(s.ph.intent!.kind).not.toBe('death');
+    s.c.endTurn();
+    s.c.endTurn();
+    expect(s.c.s.phase).toBe('player');
+  });
+
+  it('저장했다 불러와도 상형문자와 심판이 그대로 이어진다', () => {
+    const { run } = glyphFight();
+    const c2 = new Combat(JSON.parse(JSON.stringify(run)) as RunState);
+    const ph2 = find(c2, 'black-pharaoh');
+    expect(c2.shownIntent(ph2)!.kind).toBe('death');
+    for (const t of [...c2.s.obj!.types!]) c2.damage({ src: c2.p, tgt: ph2, base: 1, type: t, attack: true });
+    expect(c2.s.obj ?? null).toBeNull();
+
+    const c3 = new Combat(JSON.parse(JSON.stringify(run)) as RunState);
+    c3.endTurn();
+    c3.endTurn();
+    expect(c3.s.phase).toBe('defeat');
+    expect(c3.s.doom).toBe(JUDGMENT);
+  });
+
+  it('봇은 목표 띠를 보고 상형문자를 풀어 살아남는다 (출신마다)', () => {
+    for (const origin of ['soldier', 'hunter', 'occultist']) {
+      const { c } = glyphFight(origin);
+      autoTurn(c);
+      if (c.s.obj) autoTurn(c);
+      expect(c.s.obj ?? null, origin).toBeNull();
+      expect(c.s.phase, origin).not.toBe('defeat');
+    }
   });
 });
 
@@ -546,14 +698,156 @@ describe('4층 — 연출과 봇', () => {
     }
   });
 
-  it('다른 출신으로도 4층 정예·수호자를 이긴다 (화염·참격·비전이 새 규칙을 건드린다)', () => {
+  it('세 출신 모두 4층 정예·수호자를 이긴다 (시작 덱 그대로, 즉사는 체력과 무관하다)', () => {
     const special = ENCOUNTERS.filter((e) => e.act === 4 && e.kind !== 'normal');
-    for (const origin of ['hunter', 'occultist']) {
-      for (const enc of special) {
-        const run = floor4(55, origin);
-        const c = fightToEnd(startCombat(run, enc.id, { anomaly: null }));
-        expect(c.s.phase, `${origin} ${enc.id}`).toBe('victory');
+    for (const origin of ORIGINS3) {
+      for (const seed of [55, 56]) {
+        for (const enc of special) {
+          const run = floor4(seed, origin);
+          const c = fightToEnd(startCombat(run, enc.id, { anomaly: null }));
+          expect(c.s.phase, `${origin} ${seed} ${enc.id}`).toBe('victory');
+        }
       }
     }
-  }, 60_000);
+  }, 120_000);
+});
+
+describe('4층 — 출신 간 공정성 (시작 덱)', () => {
+  /** 상형문자를 새긴 직후 (시작 덱·4층 기준 레벨과 체력) */
+  function glyphs(run: RunState) {
+    const c = startCombat(run, 'a4-boss-pharaoh', { anomaly: null });
+    const ph = find(c, 'black-pharaoh');
+    c.s.turn = 2;
+    c.planIntent(ph);
+    expect(ph.intent!.move).toBe('inscribe');
+    c.endTurn();
+    expect(c.s.obj?.types?.length).toBe(GLYPH_COUNT);
+    return { c, ph };
+  }
+
+  /** 근접 기술만 남긴 사냥꾼 (사냥칼·톱니 베기·속베기) */
+  function meleeOnly(seed = 404): RunState {
+    const run = starter4('hunter', seed);
+    run.slots = run.slots.map((uid) => {
+      const id = run.skills.find((s) => s.uid === uid)?.id;
+      return id && SKILLS.get(id)!.range === 'melee' ? uid : null;
+    });
+    return run;
+  }
+
+  it('상형문자 퍼즐: 세 출신과 근접만 가진 덱 모두 시작 덱으로 두 턴 안에 푼다 (시드 12개)', () => {
+    const decks: [string, (seed: number) => RunState][] = [
+      ...ORIGINS3.map((o): [string, (seed: number) => RunState] => [o, (seed) => starter4(o, seed)]),
+      ['melee-only', meleeOnly],
+    ];
+    for (const [name, make] of decks) {
+      let solved = 0;
+      for (let seed = 1; seed <= 12; seed++) {
+        const { c } = glyphs(make(seed));
+        // 낼 수 있는 속성으로만 새긴다
+        const can = dealableTypes(c);
+        for (const t of c.s.obj!.types!) expect(can, name).toContain(t);
+        for (let k = 0; k < GLYPH_TURNS && c.s.obj && !c.over; k++) autoTurn(c);
+        if (!c.s.obj && c.s.phase !== 'defeat') solved++;
+      }
+      expect(solved, name).toBe(12);
+    }
+  });
+
+  it('근접만 가진 덱도 후열의 기믹 물건(구체·공허의 눈)과 별의 심판을 짊어진 적에는 닿는다 — 수호자 본체는 그대로 후열에 숨는다', () => {
+    const knife = SKILLS.get('w-knife')!;
+    // 문 너머의 존재: 뒤로 밀려난 구체
+    const g = startCombat(meleeOnly(), 'a4-boss-gate', { anomaly: null });
+    const gate = find(g, 'beyond-gate');
+    const orb = g.alive.find((x) => GATE_ORBS.includes(x.def))!;
+    g.moveRow(orb, 1);
+    expect(orb.row).toBe(1);
+    expect(g.validTargets(knife)).toContain(orb);
+    expect(g.validTargets(knife)).not.toContain(gate);
+    // 검은 별: 후열의 공허의 눈
+    const b = startCombat(meleeOnly(), 'lord-a4', { anomaly: null });
+    const eye = find(b, 'void-eye');
+    expect(eye.row).toBe(1);
+    expect(b.validTargets(knife)).toContain(eye);
+    // 시간의 파수꾼: 후열에서 별의 심판을 짊어지는 동안만
+    const w = startCombat(meleeOnly(), 'a4-warden', { anomaly: null });
+    const warden = find(w, 'time-warden');
+    expect(warden.row).toBe(1);
+    expect(w.validTargets(knife)).not.toContain(warden);
+    act(w, warden, 'sentence');
+    expect(w.p.st[DOOM]).toBeGreaterThan(0);
+    expect(w.validTargets(knife)).toContain(warden);
+    w.breakEnemy(warden);
+    expect(w.p.st[DOOM]).toBeUndefined();
+    expect(w.validTargets(knife)).not.toContain(warden);
+  });
+
+  it('어둠: 화염·비전이 없는 군인은 공허의 눈을 쓰러뜨리거나 검은 별을 붕괴시켜 걷어 낸다', () => {
+    const c = startCombat(starter4('soldier'), 'lord-a4', { anomaly: null });
+    expect(dealableTypes(c).some((t) => t === 'fire' || t === 'arcane')).toBe(false);
+    const star = find(c, 'black-star');
+    addDark(c, star, 3);
+    c.damage({ src: c.p, tgt: find(c, 'void-eye'), base: 999, type: 'pierce', attack: true });
+    expect(c.p.st[DARK]).toBe(2);
+    c.breakEnemy(star);
+    expect(c.p.st[DARK]).toBe(1);
+  });
+
+  it('얽힌 뿌리: 참격·화염이 없는 군인·오컬트 학자는 어머니를 공격해 끊는다', () => {
+    for (const origin of ['soldier', 'occultist']) {
+      const c = startCombat(starter4(origin), 'a4-mother', { anomaly: null });
+      expect(dealableTypes(c).some((t) => t === 'fire' || t === 'slash'), origin).toBe(false);
+      const mother = find(c, 'thousand-mother');
+      // 오컬트 학자의 낡은 성경(결계)은 뿌리를 한 번 막는다 — 여기선 끊는 법만 본다
+      delete c.p.st.ward;
+      act(c, mother, 'roots');
+      c.startPlayerTurn();
+      expect(c.s.ap, origin).toBe(c.p.maxAp - 1);
+      expect(c.useSkill('weapon', mother.uid), origin).toBeNull();
+      expect(c.p.st[ENTANGLE], origin).toBeUndefined();
+      c.startPlayerTurn();
+      expect(c.s.ap, origin).toBe(c.p.maxAp);
+    }
+  });
+
+  it('바람 타기: 세 출신 모두 시작 덱의 공격 기술로 한 턴(행동력 3)에 세 번 맞혀 떨어뜨린다', () => {
+    for (const origin of ORIGINS3) {
+      const c = startCombat(starter4(origin), 'stalker-a4', { anomaly: null });
+      const w = find(c, 'star-walker');
+      act(c, w, 'ride');
+      for (const ref of ['weapon', ...(c.run.slots.filter(Boolean) as string[])]) {
+        if (w.broken === 2 || c.s.ap <= 0) break;
+        const info = c.skillInfo(ref)!;
+        if (!info.def.tags.includes('attack') || c.blockReason(ref)) continue;
+        expect(c.useSkill(ref, w.uid), `${origin} ${ref}`).toBeNull();
+      }
+      expect(w.broken, origin).toBe(2);
+    }
+  });
+
+  it('사냥하는 공포: 화염이 없어도 공격하면 내 턴마다 한 번 등불이 밝아진다', () => {
+    const run = starter4('soldier');
+    run.light = 24;
+    const c = startCombat(run, 'rift-a4', { anomaly: null });
+    const h = find(c, 'hunting-horror');
+    expect(c.useSkill('weapon', h.uid)).toBeNull();
+    expect(run.light).toBe(24 + FIRE_LIGHT);
+    expect(c.useSkill('weapon', h.uid)).toBeNull();
+    expect(run.light).toBe(24 + FIRE_LIGHT);
+    c.startPlayerTurn();
+    expect(c.useSkill('weapon', h.uid)).toBeNull();
+    expect(run.light).toBe(24 + FIRE_LIGHT * 2);
+  });
+
+  it('몸 바꾸기: 붕괴시킬 약점(타격·공허)이 없는 사냥꾼도 준비하는 동안 피해를 주어 끊는다 (봇)', () => {
+    const c = startCombat(starter4('hunter'), 'a4-yith', { anomaly: null });
+    const y = find(c, 'yith-wanderer');
+    expect(y.weak.some((t) => dealableTypes(c).includes(t))).toBe(false);
+    act(c, y, 'reach');
+    expect(y.mem.charge).toBe(2);
+    expect(swapBreakNeed(y)).toBe(Math.round(y.maxHp * SWAP_BREAK));
+    autoTurn(c);
+    expect(y.hist[y.hist.length - 1]).not.toBe('bodyswap');
+    expect(c.s.phase).not.toBe('defeat');
+  });
 });

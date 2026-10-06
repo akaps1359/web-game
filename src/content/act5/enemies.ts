@@ -75,7 +75,7 @@ reg.statuses([
     name: '붙잡은 꿈',
     icon: 'gi:dream-catcher',
     kind: 'buff',
-    desc: `붙잡은 꿈 하나마다 받는 피해 -15% ({n}개). 붕괴시키면 꿈 하나가 풀려나 정신력 +${DREAM_SAN}`,
+    desc: `붙잡은 꿈 하나마다 받는 피해 -15% ({n}개). 붕괴시키거나 꿈 덫이 닫힐 때 꿈 하나가 풀려나 정신력 +${DREAM_SAN}`,
     hooks: {
       modDamageIn(_c, s, d) {
         if (d.tgt === s.unit && d.type !== 'true') d.mult *= Math.max(0.3, 1 - DREAM_CUT * s.n);
@@ -108,7 +108,7 @@ reg.statuses([
     name: '돌아가는 목숨',
     icon: 'gi:return-arrow',
     kind: 'buff',
-    desc: '{n}턴 뒤 토성의 고양이에게 돌아가 목숨 하나가 된다. 그 전에 쓰러뜨리면 그 목숨은 영영 사라진다',
+    desc: '{n}턴 뒤 토성의 고양이에게 돌아가 목숨 하나가 된다. 그 전에 쓰러뜨리면 그 목숨은 영영 사라진다 (뒷열에 있어도 근접으로 닿는다)',
   },
   {
     id: 'a5-digest',
@@ -147,7 +147,7 @@ reg.statuses([
     name: '꿈 덫',
     icon: 'gi:wolf-trap',
     kind: 'buff',
-    desc: '사냥꾼을 처음 공격한 일격이 덫에 걸린다 — 그 일격은 피해도 버팀도 깎지 못하고, 공격한 쪽은 그물에 걸린다 (다음 턴 행동력 -1). 사냥꾼의 차례가 오면 거둔다',
+    desc: `사냥꾼을 처음 공격한 일격이 덫에 걸린다 — 그 일격은 피해도 버팀도 깎지 못하고, 공격한 쪽은 그물에 걸린다 (다음 턴 행동력 -1). 대신 덫이 닫히며 사냥꾼이 붙잡은 꿈 하나가 떨어져 나간다 (정신력 +${DREAM_SAN}). 사냥꾼의 차례가 오면 거둔다`,
     hooks: {
       modDamageIn(c, s, d) {
         if (d.tgt !== s.unit || !d.attack || d.src !== c.p) return;
@@ -162,6 +162,12 @@ reg.statuses([
         cine(c, 'corners', { uid: e.uid });
         c.emit({ t: 'text', uid: 'p', text: '덫이 물었다! — 꿈 그물에 걸렸다', tone: 'bad' });
         c.apply(c.p, 'a5-snare', 1, e);
+        // 덫이 닫히는 순간 허리춤의 꿈 하나가 떨어져 나간다 — 약점(화염·비전)이 없어 붕괴시킬 수 없는 빌드도 꿈 갑옷을 벗길 수 있게
+        if ((e.st['a5-dreams'] ?? 0) > 0) {
+          c.apply(e, 'a5-dreams', -1);
+          c.emit({ t: 'text', uid: e.uid, text: '덫이 닫히며 허리춤의 꿈 하나가 떨어져 나갔다', tone: 'good' });
+          c.gainSanity(DREAM_SAN);
+        }
       },
     },
     tickStart(c, u) {
@@ -334,7 +340,7 @@ reg.traits([
   {
     id: 'a5-memory',
     name: '삼켜진 기억',
-    desc: `꿈을 먹는 자가 삼킨 당신의 기술이다 — 쓰러뜨리면 곧바로 되찾는다. ${DIGEST_TURNS}턴 안에 되찾지 못하면 소화되어 꿈을 먹는 자가 체력 ${DIGEST_HEAL}을 회복하고 힘 +1 (기술은 그때 돌아온다)`,
+    desc: `꿈을 먹는 자가 삼킨 당신의 기술이다 — 쓰러뜨리면 곧바로 되찾는다 (뒷열에 있어도 근접으로 닿는다). ${DIGEST_TURNS}턴 안에 되찾지 못하면 소화되어 꿈을 먹는 자가 체력 ${DIGEST_HEAL}을 회복하고 힘 +1 (기술은 그때 돌아온다)`,
     hooks: {
       onDeath(c, s) {
         const e = s.unit;
@@ -413,13 +419,13 @@ reg.traits([
   {
     id: 'a5-dream-catcher',
     name: '꿈 사냥',
-    desc: '붙잡은 꿈을 갑옷처럼 두른다 (꿈 하나마다 받는 피해 -15%). 붕괴시키면 꿈 하나가 풀려난다. 사냥이 길어질수록 꿈을 더 붙잡는다. 발치에 꿈 덫을 깔면, 다음 턴 처음 날아오는 일격을 물어 그물에 건다 — 약한 일격으로 먼저 터뜨려라',
+    desc: '붙잡은 꿈을 갑옷처럼 두른다 (꿈 하나마다 받는 피해 -15%). 붕괴시키면 꿈 하나가 풀려난다. 사냥이 길어질수록 꿈을 더 붙잡는다. 발치에 꿈 덫을 깔면, 다음 턴 처음 날아오는 일격을 물어 그물에 건다 — 약한 일격으로 먼저 터뜨려라 (덫이 닫힐 때 꿈 하나도 떨어져 나간다)',
     hooks: {},
   },
   {
     id: 'a5-cradle-hush',
     name: '요람의 정적',
-    desc: `요람에서 별들이 잠들어 있다. 수문장이 "쉿" 하면, 다음 턴 기술을 ${HUSH_LIMIT}번 넘게 쓰는 순간 갓 태어난 별 ${HUSH_STARS}이 깨어난다. 조용히 ${HUSH_LIMIT}번 이하로 마치면 수문장이 방심한다 (취약 ${HUSH_VULN})`,
+    desc: `요람에서 별들이 잠들어 있다. 수문장이 "쉿" 하면, 다음 턴 기술을 ${HUSH_LIMIT}번 넘게 쓰는 순간 갓 태어난 별 ${HUSH_STARS}이 깨어난다. 조용히 ${HUSH_LIMIT}번 이하로 마치면 수문장이 방심한다 (취약 ${HUSH_VULN}). 깨어난 별은 뒷열에 있어도 근접으로 닿는다`,
     hooks: {},
   },
 ]);
@@ -626,7 +632,12 @@ function digestMemory(c: Combat, m: EnemyUnit) {
 /** 소란에 요람의 별들이 깨어난다 */
 function wakeCradle(c: Combat) {
   let n = 0;
-  for (let i = 0; i < HUSH_STARS; i++) if (c.spawn('newborn-star', 1)) n++;
+  for (let i = 0; i < HUSH_STARS; i++) {
+    const star = c.spawn('newborn-star', 1);
+    if (!star) continue;
+    star.mem.reachable = 1;
+    n++;
+  }
   c.emit({ t: 'text', uid: 'p', text: n ? '소란에 요람의 별들이 깨어났다!' : '요람이 흔들린다', tone: 'bad' });
 }
 
@@ -644,6 +655,9 @@ function crossThreshold(c: Combat, e: EnemyUnit) {
     c.emit({ t: 'text', uid: e.uid, text: '꿈속으로 가라앉았다', tone: 'eldritch' });
   }
 }
+
+/** 꿈의 대사제의 기도 (별의 심판을 스스로 짊어진다) */
+const PRAYER = doomMove('끝나지 않는 꿈의 기도', 3, 40, 12);
 
 // ───────────── 일반 적 ─────────────
 
@@ -1002,6 +1016,8 @@ reg.enemies([
     poise: 0,
     weak: ['arcane', 'fire', 'slash'],
     row: 0,
+    // 기믹 물건: 쓰러뜨려야 목숨이 돌아오지 않는다 — 뒷열에 있어도 근접으로 닿는다
+    reachable: true,
     eldritch: true,
     tags: ['dream', 'saturn'],
     desc: '토성의 고양이가 버린 목숨. 그림자가 되어 맴돌다, 그대로 두면 제 몸으로 돌아가 다시 목숨이 된다.',
@@ -1031,6 +1047,8 @@ reg.enemies([
     poise: 0,
     weak: ['fire', 'slash', 'arcane'],
     row: 0,
+    // 기믹 물건: 쓰러뜨려야 기술을 되찾는다 — 뒷열에 있어도 근접으로 닿는다
+    reachable: true,
     tags: ['dream', 'memory'],
     traits: ['a5-memory'],
     desc: '꿈을 먹는 자가 삼킨 당신의 기억. 아직 다 소화되지 않아, 그 안에서 익숙한 이름이 비친다.',
@@ -1224,14 +1242,20 @@ reg.enemies([
         desc: '모든 적 방어도 14, 재생 3',
       }),
       spear: mv.attack('검은 별빛의 창', 14, { hits: 2, melee: false, type: 'void' }),
-      prayer: { ...doomMove('끝나지 않는 꿈의 기도', 3, 40, 12), ultimate: true, cine: 'bell' },
+      prayer: {
+        ...PRAYER,
+        ultimate: true,
+        cine: 'bell',
+        // (심판을 짊어진 동안 근접으로 닿게 하는 것은 공용 castDoom이 한다 — act4/common)
+        desc: `${PRAYER.desc} — 심판을 짊어진 동안은 뒷열에 있어도 근접으로 닿는다`,
+      },
       // 꿈의 성찬: 태아의 자장가를 나눠 준다 (졸음 — 적을 붕괴시키면 깬다)
       communion: mv.horror('꿈의 성찬', 12, {
         then: (c, e) => {
           lull(c, e, COMMUNION_DROWSY);
           for (const a of c.alive) c.apply(a, 'str', 1, e);
         },
-        desc: `정신 피해, 졸음 +${COMMUNION_DROWSY} (${DROWSY_MAX}이 되면 잠에 빠져 다음 턴 행동력 -${SLUMBER_AP}), 모든 적 힘 +1. 적을 붕괴시키면 번쩍 깨어난다 (대사제를 붕괴시키면 노래도 끊겨 힘이 흩어진다)`,
+        desc: `정신 피해, 졸음 +${COMMUNION_DROWSY} (${DROWSY_MAX}이 되면 잠에 빠져 다음 턴 행동력 -${SLUMBER_AP}), 모든 적 힘 +1. 적을 붕괴시키거나 쓰러뜨리면 번쩍 깨어난다 (대사제를 붕괴시키면 노래도 끊겨 힘이 흩어진다)`,
       }),
     },
     ai: (c, e) => {
@@ -1360,7 +1384,7 @@ reg.enemies([
           c.apply(e, 'a5-trap', 1, e);
           c.emit({ t: 'text', uid: e.uid, text: '창으로 몰아붙이고, 발치에 꿈 덫을 깔았다', tone: 'eldritch' });
         },
-        desc: '창으로 몰아붙이고 꿈 덫을 깐다 — 다음 내 턴, 사냥꾼을 처음 공격한 일격은 덫에 걸려 피해를 주지 못하고 그물에 걸린다 (다음 턴 행동력 -1). 약한 일격으로 먼저 덫을 터뜨려라',
+        desc: '창으로 몰아붙이고 꿈 덫을 깐다 — 다음 내 턴, 사냥꾼을 처음 공격한 일격은 덫에 걸려 피해를 주지 못하고 그물에 걸린다 (다음 턴 행동력 -1). 약한 일격으로 먼저 덫을 터뜨려라 — 덫이 닫히면 붙잡힌 꿈 하나가 떨어져 나간다',
       }),
       aim: mv.charge('사냥감을 겨눈다', 46),
       skewer: release(mv.attack('꿈 꿰뚫기', 46, { type: 'pierce', ultimate: true, cine: 'impact' })),

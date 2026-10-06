@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
 import { Combat, type CombatEvent } from '../src/engine/combat';
-import { ENCOUNTERS, ENEMIES, TRAITS } from '../src/engine/registry';
-import { finishCombat, newRun, startCombat, type RunState } from '../src/engine/run';
+import { ENCOUNTERS, ENEMIES, SKILLS, TRAITS } from '../src/engine/registry';
+import { finishCombat, gainXp, newRun, startCombat, type RunState } from '../src/engine/run';
 import type { EnemyUnit } from '../src/engine/types';
 import { autoTurn, incoming } from '../src/sim/bot';
 import { seized } from '../src/content/lib';
@@ -13,10 +13,13 @@ import {
   CAUGHT,
   CHARM_AP,
   CHARMED,
+  CLAMP_TURNS,
   DAZZLE,
   DISARMED,
   FLOOD,
+  GASP,
   GUILTY_SAN,
+  GUILTY_VULN,
   HANDPRINT,
   HOOKED,
   LINE,
@@ -24,6 +27,7 @@ import {
   TRIAL,
   VERDICT_DMG,
   WATER_MAX,
+  tideDamage,
 } from '../src/content/act1/common';
 import {
   BETRAY_DMG,
@@ -377,7 +381,7 @@ describe('1층 — 늙은 어부: 낚싯줄', () => {
 });
 
 describe('1층 — 익사한 선장: 차오르는 물', () => {
-  it('선장이 행동할 때마다 물이 1 차오르고, 셋이면 숨이 막혀 행동력 -1 (처음 차면 화면 밖의 당신에게 속삭인다)', () => {
+  it('선장이 행동할 때마다 물이 1 차오르고, 셋이면 숨이 막혀 행동력 -1', () => {
     const c = fight('lord-a1');
     c.endTurn();
     expect(c.p.st[FLOOD]).toBe(1);
@@ -387,21 +391,16 @@ describe('1층 — 익사한 선장: 차오르는 물', () => {
     c.endTurn();
     expect(c.p.st[FLOOD]).toBe(2);
     c.drain();
+    // 세 번째 차례는 닻을 들어올린다 → 물이 끝까지 차도, 닻부터 내려친다 (만조는 그다음)
     c.endTurn();
     const ev = c.drain();
     expect(c.p.st[FLOOD]).toBe(WATER_MAX);
+    expect(find(c, 'captain').intent?.move).toBe('anchor');
     expect(c.s.ap).toBe(c.p.maxAp - 1);
     expect(cines(ev, 'water').length).toBe(1);
-    expect(cines(ev, 'whisper').length).toBe(1);
-    c.drain();
-    c.endTurn();
-    // 더 차오르지 않고, 속삭임도 한 번뿐
-    expect(c.p.st[FLOOD]).toBe(WATER_MAX);
-    expect(c.s.ap).toBe(c.p.maxAp - 1);
-    expect(cines(c.drain(), 'whisper').length).toBe(0);
   });
 
-  it('한 턴에 선장에게 피해 20 이상을 주면 물이 1 빠진다 (한 턴에 한 번)', () => {
+  it('한 턴에 선장에게 피해 12 이상을 주면 물이 1 빠진다 (한 턴에 한 번)', () => {
     const c = fight('lord-a1');
     const cap = find(c, 'captain');
     c.endTurn();
@@ -476,6 +475,153 @@ describe('1층 — 익사한 선장: 차오르는 물', () => {
   });
 });
 
+/** 만조를 부르기 직전까지 (물 3, 닻을 내려친 뒤 선장이 만조를 부른다 — 내 턴이 시작되는 순간) */
+function untilTide(run: RunState = hero()): { c: Combat; cap: EnemyUnit; ev: CombatEvent[] } {
+  const c = fight('lord-a1', run);
+  const cap = find(c, 'captain');
+  let ev: CombatEvent[] = [];
+  for (let i = 0; i < 8 && cap.intent?.move !== 'hightide'; i++) {
+    c.drain();
+    c.endTurn();
+    ev = c.drain();
+  }
+  return { c, cap, ev };
+}
+
+describe('1층 — 익사한 선장: 만조 (퍼즐 · 큰 대가)', () => {
+  it('물이 끝까지 차면 만조를 부른다 — 내 턴이 시작될 때 이미 큰 공격 의도와 경고 띠(못 막으면 치를 대가)가 보이고, 처음엔 화면 너머로 속삭인다', () => {
+    const { c, cap, ev } = untilTide();
+    // 전투 초반 두 턴 안에는 오지 않는다
+    expect(c.s.turn).toBeGreaterThan(2);
+    expect(c.s.phase).toBe('player');
+    expect(cap.intent?.move).toBe('hightide');
+    expect(cap.intent?.kind).toBe('charge');
+    expect(c.s.obj?.text).toContain('1턴 남음');
+    expect(c.s.obj?.text).not.toContain('즉사');
+    // 즉사가 아니다 — 호박색 경고 띠, 누르면 대가가 보인다
+    expect(c.s.obj?.lethal).toBeUndefined();
+    expect(c.s.obj?.fail).toContain(`${tideDamage(c)}`);
+    expect(c.s.obj?.hit).toEqual({ uid: cap.uid, need: BAIL_DMG });
+    expect(c.s.obj?.kill).toEqual(c.alive.filter((e) => e.def === 'drowned').map((e) => e.uid));
+    expect(cines(ev, 'whisper').length).toBe(1);
+    // 만조가 몰려오는 턴엔 숨을 참는다 — 막을 행동력은 남겨 둔다
+    expect(c.p.st[FLOOD]).toBe(WATER_MAX);
+    expect(c.s.ap).toBe(c.p.maxAp);
+  });
+
+  it('물을 빼지 못하면 물에 잠긴다 — 최대 체력 30% 피해(방어도 무시), 다음 턴 행동력 -1, 물은 한 칸 빠진다 (체력이 충분하면 살아남는다)', () => {
+    const run = hero();
+    run.player.maxHp = run.player.hp = 100;
+    const { c, cap } = untilTide(run);
+    c.p.hp = c.p.maxHp;
+    const hp = c.p.hp;
+    // 익사체의 공격은 방어도가 막는다 — 만조만 방어도를 뚫는다
+    c.p.block = 999;
+    c.drain();
+    c.endTurn();
+    const ev = c.drain();
+    expect(c.s.phase).toBe('player');
+    expect(c.s.doom).toBeUndefined();
+    expect(cines(ev, 'water').length).toBe(1);
+    // 방어도를 무시하고 최대 체력의 30%
+    const tide = ev.find((x) => x.t === 'dmg' && x.tgt === 'p' && x.tags.includes('tide')) as Extract<CombatEvent, { t: 'dmg' }>;
+    expect(tide.hpLoss).toBe(Math.ceil(100 * 0.3));
+    expect(c.p.hp).toBe(hp - 30);
+    // 헐떡임: 다음 턴 행동력 -1 (물은 2라 숨 막힘은 없다)
+    expect(c.p.st[FLOOD]).toBe(WATER_MAX - 1);
+    expect(c.s.ap).toBe(c.p.maxAp - 1);
+    expect(c.s.obj).toBeNull();
+    expect(c.s.vars['a1-tideHits']).toBe(1);
+    // 지나간 차례엔 차오르지 않고, 곧바로 다시 부르지도 않는다
+    expect(cap.intent?.move).not.toBe('hightide');
+    // 헐떡임은 한 턴뿐 (그다음엔 물 높이에 따른 숨 막힘만)
+    c.endTurn();
+    expect(c.p.st[GASP]).toBeUndefined();
+    expect(c.s.ap).toBe(c.p.maxAp - ((c.p.st[FLOOD] ?? 0) >= WATER_MAX ? 1 : 0));
+  });
+
+  it('체력이 모자라면 보통 피해처럼 사경에 든다 (그 자리에서 죽지는 않는다)', () => {
+    const run = hero();
+    run.player.maxHp = 100;
+    run.player.hp = 20;
+    const { c } = untilTide(run);
+    c.p.hp = 20;
+    c.endTurn();
+    expect(c.s.phase).not.toBe('defeat');
+    expect(c.s.doom).toBeUndefined();
+    expect(c.dying).toBe(true);
+  });
+
+  it('선장에게 한 턴에 12를 주면 물이 빠져 만조가 물러간다 — 목표가 곧바로 지워지고 선장은 다른 행동을 고른다 (대가 없음)', () => {
+    const { c, cap } = untilTide();
+    c.damage({ src: c.p, tgt: cap, base: 10, type: 'true', attack: true });
+    // 맞을 때마다 남은 피해가 줄어든다
+    expect(c.s.obj?.hit?.need).toBe(BAIL_DMG - 10);
+    expect(c.s.obj?.text).toContain(`피해 ${BAIL_DMG - 10}`);
+    c.damage({ src: c.p, tgt: cap, base: BAIL_DMG - 10, type: 'true', attack: true });
+    expect(c.s.obj).toBeNull();
+    expect(c.p.st[FLOOD]).toBe(WATER_MAX - 1);
+    expect(cap.intent?.move).not.toBe('hightide');
+    expect(cap.intent?.kind).not.toBe('charge');
+    c.endTurn();
+    expect(c.s.phase).toBe('player');
+    expect(c.s.vars['a1-tideHits']).toBeUndefined();
+    expect(c.p.st[GASP]).toBeUndefined();
+    // 물은 다시 차지만, 막은 뒤 몇 턴 동안은 다시 부르지 않는다
+    expect(c.p.st[FLOOD]).toBe(WATER_MAX);
+    expect(cap.intent?.move).not.toBe('hightide');
+    let turns = 0;
+    while (cap.intent?.move !== 'hightide' && turns++ < 8) c.endTurn();
+    expect(cap.intent?.move).toBe('hightide');
+    expect(turns).toBeGreaterThanOrEqual(2);
+    expect(c.s.obj).not.toBeNull();
+  });
+
+  it('익사체를 쓰러뜨려도, 선장을 붕괴시켜도 만조가 물러간다', () => {
+    const a = untilTide();
+    const d = find(a.c, 'drowned');
+    a.c.kill(d);
+    a.c.kill(d);
+    expect(d.dead).toBe(true);
+    expect(a.c.s.obj).toBeNull();
+    expect(a.cap.intent?.move).not.toBe('hightide');
+    a.c.endTurn();
+    expect(a.c.s.phase).toBe('player');
+    expect(a.c.s.vars['a1-tideHits']).toBeUndefined();
+
+    const b = untilTide();
+    b.c.breakEnemy(b.cap);
+    expect(b.c.s.obj).toBeNull();
+    expect(b.c.p.st[FLOOD]).toBeUndefined();
+    expect(b.cap.intent?.move).toBe('_broken');
+    b.c.endTurn();
+    expect(b.c.s.phase).toBe('player');
+    expect(b.c.s.vars['a1-tideHits']).toBeUndefined();
+  });
+
+  it('저장했다 불러와도 만조는 이어진다', () => {
+    const { c } = untilTide();
+    const saved = JSON.parse(JSON.stringify(c.run)) as RunState;
+    const c2 = new Combat(saved);
+    expect(c2.s.obj?.text).toContain('1턴 남음');
+    expect(c2.alive.find((e) => e.def === 'captain')?.intent?.move).toBe('hightide');
+    const hp = c2.p.hp;
+    c2.endTurn();
+    expect(c2.s.phase).toBe('player');
+    expect(c2.s.vars['a1-tideHits']).toBe(1);
+    expect(c2.p.hp).toBeLessThan(hp);
+  });
+
+  it('봇은 목표를 보고 만조를 막는다 (시작 능력치의 세 출신)', () => {
+    for (const origin of ['soldier', 'hunter', 'occultist']) {
+      const { c } = untilTide(hero(101, origin));
+      autoTurn(c);
+      expect(c.s.phase, origin).not.toBe('defeat');
+      expect(c.s.vars['a1-tideHits'], origin).toBeUndefined();
+    }
+  });
+});
+
 describe('1층 정예 — 새 행동', () => {
   it('도살자의 고기 저울: 체력이 절반 이하면 곧장 도축을 준비하고, 토막내기 피해 +50% (의도 숫자에도 보인다)', () => {
     const run = hero();
@@ -514,7 +660,7 @@ describe('1층 정예 — 새 행동', () => {
     expect(c.p.st.bleed).toBe(10 + SALT_BLEED * 2);
   });
 
-  it('집행자의 판결: 내리치며 판결 — 다음 내 턴에 피해 18을 채우면 무죄 (버팀 -2, 방어도에 막힌 몫도 센다)', () => {
+  it('집행자의 판결: 내리치며 판결 — 집행자 차례 전까지 피해 15를 채우면 무죄 (버팀 -2, 방어도에 막힌 몫도 센다)', () => {
     const c = fight('a1-enforcer');
     const en = find(c, 'enforcer');
     expect(en.intent?.move).toBe('verdict');
@@ -534,7 +680,7 @@ describe('1층 정예 — 새 행동', () => {
     expect(c.p.sanity).toBeGreaterThan(san - GUILTY_SAN);
   });
 
-  it('집행자의 판결: 채우지 못하면 유죄 — 정신력 -10, 취약 2, 붉은 글씨', () => {
+  it('집행자의 판결: 채우지 못하면 집행자 차례에 유죄 — 정신력 -10, 취약 1, 붉은 글씨', () => {
     const c = fight('a1-enforcer');
     c.endTurn();
     c.drain();
@@ -543,7 +689,7 @@ describe('1층 정예 — 새 행동', () => {
     expect(c.p.st[TRIAL]).toBeUndefined();
     expect(cines(ev, 'scrawl').length).toBe(1);
     expect(ev.some((x) => x.t === 'sanity' && x.delta === -GUILTY_SAN)).toBe(true);
-    expect(ev.some((x) => x.t === 'status' && x.uid === 'p' && x.id === 'vuln' && x.n === 2)).toBe(true);
+    expect(ev.some((x) => x.t === 'status' && x.uid === 'p' && x.id === 'vuln' && x.n === GUILTY_VULN)).toBe(true);
   });
 
   it('집행자가 쓰러지면 판결은 무효', () => {
@@ -632,6 +778,182 @@ describe('1층 정예 — 새 행동', () => {
     expect(hits[0].amount).toBe(c.preview(w, c.p, DRAG_DMG, 'void'));
     expect(c.p.st[HANDPRINT]).toBeUndefined();
   });
+});
+
+describe('1층 — 출신마다 공정한 기믹 (시작 덱)', () => {
+  const ORIGINS3 = ['soldier', 'hunter', 'occultist'];
+
+  /** 시작 기술·장비 그대로, 그 층에 맞는 레벨 (체력은 가득) */
+  function starter(origin: string, lv: number, seed = 101, tide = 0): RunState {
+    const run = newRun({ seed, origin });
+    let guard = 0;
+    while (run.player.level < lv && guard++ < 30) gainXp(run, 60);
+    run.player.hp = run.player.maxHp;
+    if (run.floor) run.floor.tide = tide;
+    return run;
+  }
+
+  /** 한 턴 동안 이 기술들을 대상에게 (쓸 수 있는 만큼) 쓴다 */
+  function spend(c: Combat, refs: string[], target: EnemyUnit) {
+    for (let i = 0; i < 8 && !target.dead && c.s.phase === 'player'; i++) {
+      const ref = refs.find((r) => !c.blockReason(r));
+      if (!ref) break;
+      expect(c.useSkill(ref, target.uid), ref).toBeNull();
+    }
+  }
+
+  it('등명기는 후열에 있어도 근접으로 닿는다 — 근접 기술만 가진 덱도 첫 섬광 전에 깬다', () => {
+    const run = starter('hunter', 3);
+    // 화염 플라스크(원거리)를 빼고 근접 기술만
+    const melee = run.skills.filter((s) => ['serrate', 'quick-cut'].includes(s.id)).map((s) => s.uid);
+    run.slots = [...melee, null, null];
+    const c = fight('a1-boss-lightkeeper', run);
+    const lamp = find(c, 'lamp');
+    expect(lamp.row).toBe(1);
+    expect(ENEMIES.get('lamp')!.reachable).toBe(true);
+    expect(c.validTargets(SKILLS.get('serrate')!).map((e) => e.uid)).toContain(lamp.uid);
+    expect(c.validTargets(SKILLS.get('w-knife')!).map((e) => e.uid)).toContain(lamp.uid);
+    for (let t = 0; t < 3 && !lamp.dead; t++) {
+      spend(c, ['weapon', ...melee], lamp);
+      if (!lamp.dead) c.endTurn();
+    }
+    expect(lamp.dead).toBe(true);
+    // 섬광은 한 번도 터지지 않았다
+    expect(c.p.st[DAZZLE]).toBeUndefined();
+    expect(c.s.vars['a1-flashed']).toBeUndefined();
+  });
+
+  it('낚싯줄은 전열이 차 후열로 밀려나도 근접으로 닿고, 세 출신 모두 무기 기본 공격만으로 한 턴에 끊는다', () => {
+    for (const origin of ORIGINS3) {
+      const run = starter(origin, 3);
+      const c = fight('a1-boss-fisherman', run);
+      const f = find(c, 'fisherman');
+      // 전열을 채워 낚싯줄이 후열로 밀려나게 한다
+      c.spawn('crew', 0);
+      c.spawn('crew', 0);
+      c.endTurn();
+      const line = find(c, LINE);
+      expect(line.row, origin).toBe(1);
+      expect(c.validTargets(SKILLS.get('w-knife')!).map((e) => e.uid), origin).toContain(line.uid);
+      const uid = run.slots[f.mem.specimen - 1]!;
+      delete c.p.st.weak;
+      spend(c, ['weapon'], line);
+      expect(line.dead, origin).toBe(true);
+      expect(c.s.cd[uid] ?? 0, origin).toBeLessThan(90);
+    }
+  });
+
+  it('만조: 세 출신 모두 무기 기본 공격만으로도 물을 뺀다 (선장 차례에 터지는 출혈도 센다)', () => {
+    for (const origin of ORIGINS3) {
+      const { c, cap } = untilTide(starter(origin, 4, 101, 3));
+      expect(cap.intent?.move, origin).toBe('hightide');
+      expect(c.s.ap, origin).toBe(c.p.maxAp);
+      delete c.p.st.weak;
+      spend(c, ['weapon'], cap);
+      c.endTurn();
+      expect(c.s.vars['a1-tideHits'], origin).toBeUndefined();
+      expect(c.s.phase, origin).not.toBe('defeat');
+    }
+  });
+
+  it('만조: 선장 차례가 시작될 때 터지는 지속 피해(출혈)도 물 빼기에 센다', () => {
+    const { c, cap } = untilTide();
+    c.damage({ src: c.p, tgt: cap, base: BAIL_DMG - 4, type: 'true', attack: true });
+    expect(c.s.obj?.hit?.need).toBe(4);
+    c.apply(cap, 'bleed', 4, c.p);
+    c.endTurn();
+    expect(c.s.vars['a1-tideHits']).toBeUndefined();
+    expect(c.s.phase).toBe('player');
+  });
+
+  it('만조: 봇은 출신마다 시작 덱으로 물을 빼 대가를 피한다 (여러 시드)', () => {
+    for (const origin of ORIGINS3) {
+      for (const seed of [11, 22, 33, 44]) {
+        const { c } = untilTide(starter(origin, 4, seed, 3));
+        autoTurn(c);
+        expect(c.s.vars['a1-tideHits'], `${origin} #${seed}`).toBeUndefined();
+        expect(c.s.phase, `${origin} #${seed}`).not.toBe('defeat');
+      }
+    }
+  });
+
+  it('판결: 세 출신 모두 시작 덱으로 무죄를 받는다 (사냥꾼은 무기 기본 공격만으로도) — 집행자 차례에 터지는 출혈도 센다', () => {
+    // 봇 (출신마다 시작 덱)
+    for (const origin of ORIGINS3) {
+      const c = fight('a1-enforcer', starter(origin, 2, 202, 1));
+      c.endTurn();
+      expect(c.p.st[TRIAL], origin).toBe(VERDICT_DMG);
+      c.drain();
+      autoTurn(c);
+      const ev = c.drain();
+      expect(cines(ev, 'scrawl').length, origin).toBe(0);
+      expect(c.p.st[TRIAL], origin).toBeUndefined();
+    }
+    // 사냥꾼은 칼질 셋(무기 기본 공격)만으로도 그 턴에 채운다
+    const h = fight('a1-enforcer', starter('hunter', 2, 202, 0));
+    const hen = find(h, 'enforcer');
+    h.endTurn();
+    delete h.p.st.weak;
+    spend(h, ['weapon'], hen);
+    expect(h.p.st[TRIAL]).toBeUndefined();
+    // 모자란 몫은 집행자 차례가 시작될 때 터지는 지속 피해(출혈)가 채운다
+    const c = fight('a1-enforcer', starter('hunter', 2, 202, 0));
+    const en = find(c, 'enforcer');
+    c.endTurn();
+    c.damage({ src: c.p, tgt: en, base: VERDICT_DMG - 4, type: 'true', attack: true });
+    expect(c.p.st[TRIAL]).toBe(4);
+    c.apply(en, 'bleed', 4, c.p);
+    c.drain();
+    c.endTurn();
+    const ev = c.drain();
+    expect(cines(ev, 'scrawl').length).toBe(0);
+    expect(c.p.st[TRIAL]).toBeUndefined();
+    expect(ev.some((x) => x.t === 'text' && x.text.startsWith('무죄'))).toBe(true);
+  });
+
+  it('거대 게: 약점을 칠 수 없는 출신(사냥꾼)도 두 턴 뒤면 무기를 되찾는다', () => {
+    const c = fight('a1-crab', starter('hunter', 2, 303, 1));
+    const cr = find(c, 'crab');
+    // 사냥꾼의 시작 덱에는 게의 약점(타격·비전)이 없다
+    expect(cr.weak.some((w) => ['slash', 'fire'].includes(w))).toBe(false);
+    c.endTurn();
+    c.endTurn();
+    expect(c.p.st[DISARMED]).toBe(1);
+    expect(c.blockReason('weapon')).not.toBeNull();
+    for (let i = 0; i < CLAMP_TURNS - 1; i++) {
+      c.endTurn();
+      expect(c.p.st[DISARMED]).toBe(1);
+    }
+    c.endTurn();
+    expect(c.p.st[DISARMED]).toBeUndefined();
+    expect(c.blockReason('weapon')).toBeNull();
+    expect(cr.dead).toBe(false);
+  });
+
+  it('봇이 출신마다 시작 덱으로 1층 정예·수호자를 이긴다 (군주 제외)', () => {
+    const encs: [string, number, number][] = [
+      ['a1-butcher', 2, 1],
+      ['a1-enforcer', 2, 1],
+      ['a1-crab', 2, 1],
+      ['stalker-a1', 3, 4],
+      ['rift-a1', 3, 2],
+      ['a1-boss-lightkeeper', 3, 2],
+      ['a1-boss-queen', 3, 2],
+      ['a1-boss-fisherman', 3, 2],
+    ];
+    for (const [enc, lv, tide] of encs) {
+      for (const origin of ORIGINS3) {
+        for (const seed of [7, 8]) {
+          const run = starter(origin, lv, seed, tide);
+          const c = startCombat(run, enc, { anomaly: null });
+          c.snapshots = false;
+          let n = 0;
+          while (!c.over && n++ < 100) autoTurn(c);
+          expect(c.s.phase, `${enc} ${origin} #${seed}`).toBe('victory');
+        }
+      }
+    }
+  }, 60_000);
 });
 
 describe('1층 — 전체', () => {

@@ -828,7 +828,7 @@ export function finishCombat(run: RunState): RewardState | null {
   const cs = run.combat;
   if (!cs) return null;
   if (cs.phase === 'defeat') {
-    endRun(run, false, run.player.sanity <= 0 ? '정신이 무너졌다' : '심연에서 쓰러졌다');
+    endRun(run, false, cs.doom ? `「${cs.doom}」에 쓰러졌다` : run.player.sanity <= 0 ? '정신이 무너졌다' : '심연에서 쓰러졌다');
     run.combat = null;
     return null;
   }

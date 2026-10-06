@@ -813,6 +813,30 @@ export async function bossIntro(o: { name: string; sub: string; at: { x: number;
   title.remove();
 }
 
+/** 즉사: 시간이 멎고 화면이 깨지며 기술 이름이 새겨진다. 심장이 멎는 소리, 그리고 어둠 */
+async function executeFx(name: string, at: { x: number; y: number }) {
+  const was = stage.battle.timeScale;
+  stage.battle.timeScale = 0.02;
+  stage.flash(0xff0010, 0.6);
+  sound.sfx('heartbeat');
+  void crack(3, at, true);
+  const wrap = div('cine-full cine-exec');
+  wrap.innerHTML = `<div class="cine-exec-in"><span class="ic" style="width:72px;height:72px;color:#ff2a3a">${iconSvg('gi:death-skull')}</span><div class="cine-exec-name"></div><div class="cine-exec-sub">즉사</div></div>`;
+  (wrap.querySelector('.cine-exec-name') as HTMLElement).textContent = name;
+  await anim(wrap.querySelector('.cine-exec-in')!, [{ opacity: 0, transform: 'scale(1.6)', filter: 'blur(10px)' }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' }], { duration: 380, easing: 'ease-out', fill: 'forwards' });
+  sound.sfx('heartbeat', { volume: 0.7 });
+  await sleep(700);
+  sound.sfx('flatline');
+  document.body.classList.add('cine-gray');
+  await sleep(900);
+  const black = div('cine-full cine-black');
+  await anim(black, [{ opacity: 0 }, { opacity: 1 }], { duration: 900, fill: 'forwards' });
+  document.body.classList.remove('cine-gray');
+  stage.battle.timeScale = was || speed();
+  wrap.remove();
+  setTimeout(() => void anim(black, [{ opacity: 1 }, { opacity: 0 }], { duration: 900, fill: 'forwards' }).then(() => black.remove()), T(1400));
+}
+
 /** 수호자를 쓰러뜨린 순간: 느려지는 시간 + 임팩트 + 글자 */
 export async function bossFall(at: { x: number; y: number }) {
   const was = stage.battle.timeScale;
@@ -876,6 +900,8 @@ export async function playCine(name: CineName, o: { uid?: string; text?: string;
         return await swarm();
       case 'impact':
         return await impact(at, Math.max(1, o.n ?? 1));
+      case 'execute':
+        return await executeFx(o.text ?? '즉사', at);
     }
   } catch (err) {
     // 연출이 실패해도 게임은 계속된다

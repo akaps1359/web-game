@@ -1,5 +1,5 @@
 import type { Combat } from '../engine/combat';
-import type { CineName, DamageCtx, DmgType, EnemyUnit, SkillDef, SkillUse, TargetMode } from '../engine/types';
+import type { CineName, DamageCtx, DmgType, EnemyUnit, Objective, SkillDef, SkillUse, TargetMode } from '../engine/types';
 
 /** 스킬 정의 헬퍼 (기본값 채움) */
 export function skill(d: Omit<SkillDef, 'tags' | 'vals'> & { tags?: string[]; vals?: SkillDef['vals'] }): SkillDef {
@@ -101,4 +101,17 @@ export type UiVar = 'ui:water' | 'ui:cracks' | 'ui:tilt' | 'ui:dark' | 'ui:scram
 export function setUi(c: Combat, key: UiVar, n: number) {
   if (n) c.s.vars[key] = n;
   else delete c.s.vars[key];
+}
+
+/**
+ * 퍼즐 목표를 건다 (null이면 지운다). 화면 위 붉은 띠로 보이고, 봇도 이걸 보고 움직인다.
+ * 판정과 해제, 즉사 실행은 콘텐츠가 직접 한다 — 문구는 남은 턴과 해법을 짧게 (예: '대종을 깨뜨려라 — 1턴 남음')
+ */
+export function setObjective(c: Combat, obj: Objective | null) {
+  c.s.obj = obj;
+}
+
+/** 즉사기를 실행한다 (결계가 있으면 막힌다). 돌려주는 값: 실제로 죽었는가 */
+export function execute(c: Combat, by: EnemyUnit | null, name: string): boolean {
+  return c.executePlayer(by, name);
 }

@@ -11,25 +11,47 @@ import {
   BLADE_DMG,
   BLADE_N,
   BLADES,
+  callHunt,
+  cancelFull,
   closeAngles,
   closeIncisions,
   CUT_DMG,
   DIM_UNVEIL,
+  broodHurt,
+  EGG_LINK_DMG,
   EGG_POISON,
   EGG_TURNS,
   EGGS,
-  ESCAPE_DMG,
+  ESCAPE_HITS,
   FALL_DMG,
+  FULL,
+  FULL_BLOCK,
+  FULL_DMG,
+  FULL_MAX,
+  fullHit,
+  fullReady,
+  declareFull,
+  layOnTable,
+  resolveFull,
   HATCH_N,
+  HUNT,
+  HUNT_DMG,
+  HUNT_FAIL,
+  HUNT_GAP,
+  huntHit,
+  huntReady,
   implantEggs,
   incise,
   INCISE_N,
   LOOK_SAN,
   liftUp,
   MAX_ANGLES,
+  MAX_INCISION,
   MIMIC_SCREAM,
+  openAllAngles,
   openAngle,
   PLASTER,
+  resolveHunt,
   reveal,
   REVEAL_TURNS,
   REVEALED,
@@ -122,18 +144,18 @@ reg.traits([
   {
     id: 'a3-angles',
     name: '각도 속에 숨음',
-    desc: '후열에 있는 동안 받는 피해 40% 감소',
+    desc: '후열에 있는 동안 받는 피해 40% 감소 (틴달로스의 사냥 중에는 숨지 못한다)',
     hooks: {
       modDamageIn(_c, s, d) {
         const e = s.unit;
-        if (isEnemy(e) && e.row === 1) d.mult *= 0.6;
+        if (isEnemy(e) && e.row === 1 && !e.mem.hunt) d.mult *= 0.6;
       },
     },
   },
   {
     id: 'a3-angle-lord',
     name: '각도의 주인',
-    desc: `「유리를 긋는다」로 화면에 날카로운 각을 연다 (최대 ${MAX_ANGLES}) — 열린 각은 당신의 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메우고, 붕괴시키면 모두 닫힌다. 후열로 숨으면 각도가 비틀려 화면이 기운다`,
+    desc: `「유리를 긋는다」로 화면에 날카로운 각을 연다 (최대 ${MAX_ANGLES}) — 열린 각은 당신의 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메우고, 붕괴시키면 모두 닫힌다. 세 각이 모두 열리면 다음 차례에 「${HUNT}」 — 그때까지 사냥을 끊지 못하면 ${HUNT_FAIL}. 끊는 법: 왕에게 피해 ${HUNT_DMG}, 방어도 ${PLASTER} 이상으로 턴을 마쳐 각 하나를 메우기, 왕을 붕괴. 한 번 끝난 사냥은 ${HUNT_GAP}턴 뒤에야 다시 온다. 체력이 절반 아래로 떨어지면 남은 모서리를 한꺼번에 연다. 후열로 숨으면 각도가 비틀려 화면이 기운다`,
     hooks: {
       onCombatStart(c) {
         cine(c, 'whisper', { text: '당신의 화면은 모서리가 둥글다.\n그래서 아직 들어오지 못했다.' });
@@ -144,8 +166,10 @@ reg.traits([
       onUnitTurnEnd(c) {
         syncTilt(c);
       },
-      onDamageTaken(c) {
+      onDamageTaken(c, s, d) {
         syncTilt(c);
+        // 사냥을 부른 뒤 왕이 받은 피해를 센다 (적끼리 준 피해는 빼고)
+        if (isEnemy(s.unit) && !isEnemy(d.src)) huntHit(c, s.unit, d.amount);
       },
       onDeath(c) {
         closeAngles(c, '열린 각이 모두 닫혔다');
@@ -171,7 +195,7 @@ reg.traits([
   {
     id: 'a3-protoplasm',
     name: '원형질 분리',
-    desc: '체력이 75%·50%·25% 아래로 떨어질 때마다 원형질 조각 둘을 떼어낸다',
+    desc: '체력이 75%·50%·25% 아래로 떨어질 때마다 원형질 조각 둘을 떼어낸다. 떼어 낸 조각은 후열에 있어도 근접으로 닿는다 (삼켜지기 전에 끊어 낼 수 있게)',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -184,9 +208,43 @@ reg.traits([
           // 절반이 무너지면 화면 안쪽에서 원형질이 유리를 짚고, 마지막엔 유리에 그 울음을 적는다
           if (e.mem.shed === 2) cine(c, 'handprints', { n: 4 });
           if (e.mem.shed === 3) cine(c, 'scrawl', { text: '테켈리-리' });
-          c.spawn('shoggoth-blob', 0);
-          c.spawn('shoggoth-blob', 0);
+          // 쇼고스가 다시 삼킬 조각 — 전열이 차서 후열로 밀려나도 근접 출신이 끊어 낼 수 있다
+          for (let i = 0; i < 2; i++) {
+            const b = c.spawn('shoggoth-blob', 0);
+            if (b) b.mem.reachable = 1;
+          }
         }
+      },
+    },
+  },
+  {
+    id: 'a3-full-dissection',
+    name: '완전 해부',
+    desc: `절개선 ${MAX_INCISION}개가 다 그어진 채로 해부대를 펼치면 「${FULL}」 — 다음 다음 차례에 즉사 (사경 없음, 결계가 한 번 막는다). 내 턴 2번 안에 이것에게 피해 ${FULL_DMG}(출혈·독·화상 포함), 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복(절개선이 아문다), 붕괴 중 하나면 막는다. 전투마다 ${FULL_MAX}번까지`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || !e.mem.full) return;
+        if (d.broke) cancelFull(c, '해부학자가 무너졌다 — 완전 해부가 멈췄다');
+        else if (!isEnemy(d.src)) fullHit(c, e, d.amount);
+      },
+      onUnitTurnStart(c, s) {
+        // 피해 없이 무너졌을 때도 (버팀 깎기)
+        const e = s.unit;
+        if (isEnemy(e) && e.mem.full && e.broken === 2) cancelFull(c, '해부학자가 무너졌다 — 완전 해부가 멈췄다');
+      },
+      onDeath(c) {
+        cancelFull(c, '해부학자가 쓰러졌다');
+      },
+    },
+  },
+  {
+    id: 'a3-egg-link',
+    name: '이어진 알',
+    desc: `당신 몸속에 심은 알은 어미와 이어져 있다 — 알이 있는 동안 이것에게 피해 ${EGG_LINK_DMG}을 주면(출혈·독·화상 포함) 알이 함께 죽는다`,
+    hooks: {
+      onDamageTaken(c, _s, d) {
+        if (!isEnemy(d.src)) broodHurt(c, d.amount);
       },
     },
   },
@@ -898,6 +956,7 @@ reg.enemies([
     dread: 5,
     eldritch: true,
     tags: ['leng'],
+    traits: ['a3-egg-link'],
     desc: '렝의 골짜기를 메운 거미들의 어미. 얼어 죽은 탐사대원들을 고치로 감아 탑 안에 매달아 두었다.',
     moves: {
       fangs: mv.attack('독니', 12, { type: 'pierce', then: (c, e) => void c.apply(c.p, 'poison', 4, e), desc: '독 4' }),
@@ -923,7 +982,7 @@ reg.enemies([
         type: 'pierce',
         extra: ['debuff'],
         then: (c, e) => implantEggs(c, e),
-        desc: `산란관을 꽂아 알을 심는다 — 내 턴이 ${EGG_TURNS}번 끝나면 부화해 새끼 거미 ${HATCH_N}마리가 살을 찢고 나온다. 회복하거나 불로 지지면 알이 죽는다 (이미 알이 있으면 대신 독 ${EGG_POISON})`,
+        desc: `산란관을 꽂아 알을 심는다 — 내 턴이 ${EGG_TURNS}번 끝나면 부화해 새끼 거미 ${HATCH_N}마리가 살을 찢고 나온다. 그 사이 대거미에게 피해 ${EGG_LINK_DMG}을 주거나, 회복하거나, 불로 지지면 알이 죽는다 (이미 알이 있으면 대신 독 ${EGG_POISON})`,
       }),
       crouch: mv.charge('도약 준비', 32),
       leap: release(mv.attack('짓누르는 도약', 32, { ultimate: true, cine: 'impact' })),
@@ -981,7 +1040,7 @@ reg.enemies([
         extra: ['debuff'],
         cine: 'flip',
         then: (c, e) => liftUp(c, e),
-        desc: `움켜쥐고 하늘 높이 날아오른다 — 다음 턴 샨탁에게 피해를 ${ESCAPE_DMG} 주면 발톱에서 빠져나오고, 아니면 턴이 끝날 때 떨어진다 (피해 ${FALL_DMG}, 다음 턴 행동력 -1)`,
+        desc: `움켜쥐고 하늘 높이 날아오른다 — 다음 턴 샨탁을 공격으로 ${ESCAPE_HITS}번 맞히면 발톱에서 빠져나오고, 아니면 턴이 끝날 때 떨어진다 (피해 ${FALL_DMG}, 다음 턴 행동력 -1)`,
       }),
     },
     ai: (c, e) => {
@@ -1005,7 +1064,7 @@ reg.enemies([
     dread: 6,
     eldritch: true,
     tags: ['elder'],
-    traits: ['a3-anatomist'],
+    traits: ['a3-anatomist', 'a3-full-dissection'],
     desc: '얼음 속에서 먼저 깨어난 고대인. 깨어나자마자 탐사대의 천막에서 사람과 개를 갈라 보았다. 다섯 갈래 촉수 끝마다 메스가 들려 있다.',
     moves: {
       scalpels: mv.attack('다섯 개의 메스', 5, { hits: 3, melee: false, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 3, e), desc: '출혈 3' }),
@@ -1032,7 +1091,7 @@ reg.enemies([
         type: 'slash',
         extra: ['debuff'],
         then: (c, e) => incise(c, e),
-        desc: `메스 끝으로 절개선 ${INCISE_N}개를 긋는다 — 「생체 해부」가 절개선마다 ${CUT_DMG} 피해를 더 준다. 체력을 회복하면 아문다`,
+        desc: `메스 끝으로 절개선 ${INCISE_N}개를 긋는다 — 「생체 해부」가 절개선마다 ${CUT_DMG} 피해를 더 준다. ${MAX_INCISION}개가 다 그어진 채로 해부대를 펼치면 「${FULL}」이 온다. 체력을 회복하면 아문다`,
       }),
       // 피해 = 기본 + 절개선마다 CUT_DMG (의도에 그대로 보인다)
       table: { ...mv.charge('해부대를 펼친다', 0), dmg: (c: Combat) => vivisectDmg(c), desc: `다음 턴 생체 해부 — 그어 둔 절개선마다 피해 +${CUT_DMG}` },
@@ -1048,8 +1107,30 @@ reg.enemies([
         }),
         dmg: (c: Combat) => vivisectDmg(c),
       }),
+      // 즉사 퍼즐 「완전 해부」: 해부대에 눕힌다(준비) → 완전 해부(실행). 걸린 순간부터 내 턴 2번
+      opentable: {
+        name: '해부대에 눕힌다',
+        intent: 'death',
+        desc: `절개선이 다 그어졌다 — 다음 차례에 「${FULL}」 (즉사, 결계가 한 번 막는다). 내 턴 2번 안에 해부학자에게 피해 ${FULL_DMG}(출혈·독·화상 포함), 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복(절개선이 아문다), 붕괴 중 하나면 막는다`,
+        run: (c, e) => layOnTable(c, e),
+      },
+      fullcut: {
+        name: FULL,
+        intent: 'death',
+        ultimate: true,
+        desc: `이 차례에 「${FULL}」 — 막지 못하면 사경 없이 죽는다 (결계가 한 번 막는다). 해부학자에게 피해 ${FULL_DMG}(출혈·독·화상 포함), 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복(절개선이 아문다), 붕괴 중 하나면 막는다`,
+        run: (c, e) => resolveFull(c, e),
+      },
+      withdraw: {
+        name: '메스를 거둔다',
+        intent: 'unknown',
+        desc: '완전 해부가 막혔다 — 이번 차례에는 아무것도 하지 않는다',
+        run: (c, e) => void c.emit({ t: 'text', uid: e.uid, text: '메스를 거둔다', tone: 'info' }),
+      },
     },
     ai: (c, e) => {
+      // 완전 해부: 걸린 뒤엔 막히거나 닿을 때까지
+      if (e.mem.full) return (e.mem.fullStage ?? 1) >= 2 ? 'fullcut' : 'opentable';
       if (e.mem.charge) return 'vivisect';
       const o = opener(c, e, ['gas']);
       if (o) return o;
@@ -1057,7 +1138,13 @@ reg.enemies([
         e.mem.sutured = 1;
         return 'suture';
       }
-      return cycle(e, ['scalpels', 'incise', 'extract', 'scalpels', 'table']);
+      // 완전 해부가 남아 있는 동안에는 절개선을 두 번 긋는다 (다 쓰면 한 번)
+      const m = cycle(e, (e.mem.fulls ?? 0) < FULL_MAX ? ['scalpels', 'incise', 'extract', 'incise', 'table'] : ['scalpels', 'incise', 'extract', 'scalpels', 'table']);
+      if (m === 'table' && fullReady(c, e)) {
+        declareFull(c, e);
+        return 'opentable';
+      }
+      return m;
     },
     visual: { tint: 0x4a5a48, glow: 0xc0ffb0, scale: 1.35, fx: ['float'] },
   },
@@ -1156,8 +1243,30 @@ reg.enemies([
       carve: {
         name: '유리를 긋는다',
         intent: 'debuff',
-        desc: `화면에 날카로운 각 하나를 연다 (최대 ${MAX_ANGLES}) — 열린 각은 당신의 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메운다`,
+        desc: `화면에 날카로운 각 하나를 연다 (최대 ${MAX_ANGLES}) — 열린 각은 당신의 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메운다. 세 각이 모두 열리면 「${HUNT}」이 온다`,
         run: (c, e) => void openAngle(c, e),
+      },
+      flood: {
+        name: '모든 모서리가 열린다',
+        intent: 'debuff',
+        cine: { name: 'crack', n: 3 },
+        desc: `남은 모서리를 한꺼번에 연다 — 세 각이 모두 열리면 다음 차례에 「${HUNT}」이 온다`,
+        run: (c, e) => void openAllAngles(c, e),
+      },
+      // 막아야 하는 큰 위협: 세 각이 모두 열린 채로 이 차례가 오면 사냥개들이 들어온다
+      hunt: {
+        name: HUNT,
+        intent: 'charge',
+        ultimate: true,
+        cine: 'corners',
+        desc: `모든 모서리가 열렸다 — 이 차례까지 사냥을 끊지 못하면 ${HUNT_FAIL}. 그 뒤 모서리는 모두 닫힌다. 끊는 법: 각도의 왕에게 피해 ${HUNT_DMG} / 방어도 ${PLASTER} 이상으로 턴을 마쳐 각 하나를 메운다 / 왕을 붕괴시킨다`,
+        run: (c, e) => resolveHunt(c, e),
+      },
+      lost: {
+        name: '길을 잃은 사냥',
+        intent: 'unknown',
+        desc: '메워진 모서리 앞에서 사냥개들이 길을 잃었다 — 이번 차례에는 아무것도 하지 않는다',
+        run: (c, e) => void c.emit({ t: 'text', uid: e.uid, text: '사냥개들이 둥근 모서리 앞을 맴돈다', tone: 'info' }),
       },
       gnaw: mv.attack('시간 갉아먹기', 8, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'a3-timeworn', 1, e), desc: '다음 턴 행동력 -1' }),
       howl: mv.horror('시간 너머의 울부짖음', 11),
@@ -1166,16 +1275,30 @@ reg.enemies([
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'rend';
+      // 틴달로스의 사냥: 세 각이 모두 열리면 부른다 (부른 뒤엔 풀리거나 닿을 때까지 그대로)
+      if (e.mem.hunt) return 'hunt';
+      if (huntReady(c, e)) {
+        callHunt(c, e);
+        return 'hunt';
+      }
+      // 체력이 절반 아래로 떨어지면 한 번, 남은 모서리를 한꺼번에 연다 (초반 2턴에는 오지 않는다)
+      if (!e.mem.flooded && hpPct(e) <= 0.5 && c.s.turn >= 2 && (c.p.st[ANGLE] ?? 0) < MAX_ANGLES) {
+        e.mem.flooded = 1;
+        return 'flood';
+      }
+      const angles = c.p.st[ANGLE] ?? 0;
       const canWhelp = countDef(c, 'angle-whelp') === 0 && (e.mem.whelps ?? 0) < 4 && last(e) !== 'whelp';
       const recentRend = e.hist.slice(-3).includes('rend');
-      const canCarve = (c.p.st[ANGLE] ?? 0) < MAX_ANGLES && !e.hist.slice(-2).includes('carve');
-      if (e.row === 1) return pick(c, e, { gnaw: 3, howl: 2, whelp: canWhelp ? 3 : 0, twist: 2, corners: recentRend ? 0 : 1, carve: canCarve ? 2 : 0 });
+      const canCarve = angles < MAX_ANGLES && !e.hist.slice(-2).includes('carve');
+      // 세 각이 다 열려 사냥을 기다리는 동안에는 시간을 갉아먹거나(행동력 -1) 비틀지(약화) 않는다 — 사냥 턴에 어느 출신이든 온전히 풀 수 있게
+      const calm = angles < MAX_ANGLES;
+      if (e.row === 1) return pick(c, e, { gnaw: calm ? 3 : 0, howl: 2, whelp: canWhelp ? 3 : 0, twist: calm ? 2 : 0, corners: recentRend ? 0 : 1, carve: canCarve ? 2 : 0 });
       return (
         opener(c, e, ['howl', 'carve']) ??
         pick(c, e, {
           fang: 3,
-          gnaw: last(e) === 'gnaw' ? 0 : 2,
-          twist: c.row(1).length ? 2 : 0,
+          gnaw: last(e) === 'gnaw' || !calm ? 0 : 2,
+          twist: c.row(1).length && calm ? 2 : 0,
           whelp: canWhelp ? 2 : 0,
           corners: recentRend ? 0 : 1,
           carve: canCarve ? 2 : 0,

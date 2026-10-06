@@ -23,6 +23,11 @@ function setDoom(c: Combat, n: number) {
 function clearBearer(c: Combat, e: EnemyUnit) {
   delete e.mem.doomDmg;
   delete e.mem.doomSan;
+  // 심판을 짊어진 동안만 근접으로 닿게 해 두었던 것을 거둔다 (다른 까닭으로 닿는 적은 그대로)
+  if (e.mem.doomReach) {
+    delete e.mem.doomReach;
+    delete e.mem.reachable;
+  }
   if ((e.st[BEARER] ?? 0) > 0) {
     delete e.st[BEARER];
     c.emit({ t: 'status', uid: e.uid, id: BEARER, n: -1 });
@@ -54,7 +59,7 @@ reg.statuses([
     name: '별의 심판',
     icon: 'gi:falling-star',
     kind: 'debuff',
-    desc: '내 턴이 {n}번 더 끝나면 별이 떨어진다 — 방어도를 무시하는 큰 피해와 정신 피해. 심판을 짊어진 적(별 표식)을 붕괴시키거나 쓰러뜨리면 그 몫이 사라지고, 모두 없애면 심판이 풀린다',
+    desc: '내 턴이 {n}번 더 끝나면 별이 떨어진다 — 방어도를 무시하는 큰 피해와 정신 피해. 심판을 짊어진 적(별 표식)을 붕괴시키거나 쓰러뜨리면 그 몫이 사라지고, 모두 없애면 심판이 풀린다. 짊어진 적은 후열에 있어도 근접 공격이 닿는다',
     tickEnd(c, u, n) {
       if (isEnemy(u)) {
         delete u.st[DOOM];
@@ -81,7 +86,7 @@ reg.statuses([
     name: '심판의 매개',
     icon: 'gi:cursed-star',
     kind: 'buff',
-    desc: '별의 심판을 짊어지고 있다. 붕괴시키거나 쓰러뜨리면 그 몫의 심판이 사라진다',
+    desc: '별의 심판을 짊어지고 있다. 붕괴시키거나 쓰러뜨리면 그 몫의 심판이 사라진다. 후열에 있어도 근접 공격이 닿는다',
   },
 ]);
 
@@ -105,6 +110,11 @@ export function castDoom(c: Combat, caster: EnemyUnit, turns: number, dmg: numbe
   for (const b of bearers) {
     b.mem.doomDmg = (b.mem.doomDmg ?? 0) + each;
     b.mem.doomSan = (b.mem.doomSan ?? 0) + sanEach;
+    // 심판을 짊어진 적은 후열에 있어도 근접 공격이 닿는다 (근접만 가진 출신도 심판을 풀 수 있게)
+    if (!b.mem.reachable) {
+      b.mem.reachable = 1;
+      b.mem.doomReach = 1;
+    }
     if (!((b.st[BEARER] ?? 0) > 0)) c.apply(b, BEARER, 1, caster);
   }
   caster.mem.doomAt = c.s.turn;

@@ -18,6 +18,8 @@ import {
 import type {
   BlockCtx,
   CineName,
+  CombatChoice,
+  Objective,
   DamageCtx,
   DmgType,
   EncounterDef,
@@ -64,6 +66,12 @@ export interface CombatState {
   vars: Record<string, number>;
   /** 이번 전투에서 얻은 추가 골드 */
   bonusGold: number;
+  /** 지금 걸린 퍼즐 목표 (즉사기를 막는 방법 등) */
+  obj?: Objective | null;
+  /** 즉사기로 쓰러졌다면 그 기술 이름 */
+  doom?: string;
+  /** 플레이어가 골라야 하는 선택지 (고르기 전에는 기술·턴 종료가 막힌다) */
+  choice?: CombatChoice | null;
 }
 
 // ───────────── 이벤트 (연출용) ─────────────
@@ -87,6 +95,8 @@ export interface Snap {
   cd: Record<string, number>;
   /** 화면 상태 (vars의 'ui:' 값) — 연출이 재생되는 순서에 맞춰 화면이 바뀌게 */
   ui?: Record<string, number>;
+  /** 퍼즐 목표 */
+  obj?: Objective | null;
 }
 
 export type CombatEvent = (
@@ -124,7 +134,7 @@ export type CombatEvent = (
   /** 화면 연출 (게임 규칙과 무관). content/lib.ts의 cine()으로 낸다 */
   | { t: 'cine'; name: CineName; uid?: string; text?: string; n?: number }
   | { t: 'victory' }
-  | { t: 'defeat'; reason: 'hp' | 'madness' }
+  | { t: 'defeat'; reason: 'hp' | 'madness' | 'doom' }
 ) & { snap?: Snap };
 
 type DamageOpts = {
@@ -298,6 +308,7 @@ export class Combat {
       })),
       cd: { ...this.s.cd },
       ui: this.uiVars(),
+      obj: this.s.obj ? JSON.parse(JSON.stringify(this.s.obj)) : null,
     };
   }
 
@@ -916,15 +927,24 @@ export class Combat {
     let list = this.alive;
     if (def.range === 'melee') {
       const front = this.row(0);
-      if (front.length) list = front;
+      // 기믹 대상(퍼즐 목표·깨야 하는 물건)은 후열에 있어도 근접으로 닿는다 — 근접 직업만 손쓸 수 없게 되지 않도록
+      if (front.length) list = this.alive.filter((e) => e.row === 0 || this.reachable(e));
     }
     const taunts = list.filter((e) => (e.st.taunt ?? 0) > 0);
     return taunts.length ? taunts : list;
   }
 
+  /** 후열에 있어도 근접 공격이 닿는 적: 퍼즐 목표의 대상이거나, 기믹 물건(EnemyDef.reachable, e.mem.reachable) */
+  reachable(e: EnemyUnit): boolean {
+    const o = this.s.obj;
+    if (o && (o.hit?.uid === e.uid || o.break === e.uid || o.kill?.includes(e.uid))) return true;
+    return !!this.defOf(e).reachable || !!e.mem.reachable;
+  }
+
   /** 사용 불가 사유 */
   blockReason(ref: string): string | null {
     if (this.s.phase !== 'player') return '내 턴이 아닙니다';
+    if (this.s.choice) return '먼저 선택지를 고르세요';
     const info = this.skillInfo(ref);
     if (!info) return '사용할 수 없는 스킬';
     if ((this.s.cd[info.owned.uid] ?? 0) > 0) return `재사용 대기 ${this.s.cd[info.owned.uid]}턴`;
@@ -1022,6 +1042,7 @@ export class Combat {
 
   useConsumable(idx: number, targetUid?: string | null): string | null {
     if (this.s.phase !== 'player') return '내 턴이 아닙니다';
+    if (this.s.choice) return '먼저 선택지를 고르세요';
     const id = this.run.consumables[idx];
     if (!id) return '빈 칸';
     const def = need(CONSUMABLES, id, '소모품');
@@ -1096,6 +1117,7 @@ export class Combat {
 
   endTurn(): string | null {
     if (this.s.phase !== 'player') return '내 턴이 아닙니다';
+    if (this.s.choice) return '먼저 선택지를 고르세요';
     const p = this.p;
     this.fire(p, 'onTurnEnd');
     if (this.checkEnd()) return null;
@@ -1257,7 +1279,55 @@ export class Combat {
     this.cleanup();
   }
 
-  private defeat(reason: 'hp' | 'madness') {
+  /** 전투 중 선택지를 건다 — 플레이어가 고를 때까지 기술·소모품·턴 종료가 막힌다 (이미 걸려 있으면 바꾼다) */
+  offerChoice(ch: CombatChoice) {
+    if (this.over) return;
+    this.s.choice = ch;
+  }
+
+  /** 걸어 둔 선택지를 거둔다 (그 id의 선택지가 걸려 있을 때만, id가 없으면 무엇이든) */
+  withdrawChoice(id?: string) {
+    if (this.s.choice && (!id || this.s.choice.id === id)) this.s.choice = null;
+  }
+
+  /** 걸린 선택지를 고른다 — 모든 훅 소유자의 onChoice가 불린다 */
+  choose(option: string): string | null {
+    const ch = this.s.choice;
+    if (!ch) return '고를 것이 없습니다';
+    if (this.s.phase !== 'player' || this.over) return '내 턴이 아닙니다';
+    const o = ch.options.find((x) => x.id === option);
+    if (!o) return '없는 선택지';
+    this.s.choice = null;
+    this.emit({ t: 'text', uid: 'p', text: o.label, tone: 'eldritch' });
+    this.fire('all', 'onChoice', ch.id, option);
+    this.fixRows();
+    this.checkEnd();
+    return null;
+  }
+
+  /**
+   * 즉사기: 막지 못하면 사경도 없이 그 자리에서 죽는다. 결계가 있으면 하나를 깨뜨려 대신 막는다.
+   * 돌려주는 값: 실제로 죽었는가
+   */
+  executePlayer(by: EnemyUnit | null, name: string): boolean {
+    if (this.over) return false;
+    if ((this.p.st.ward ?? 0) > 0) {
+      this.p.st.ward -= 1;
+      if (this.p.st.ward <= 0) delete this.p.st.ward;
+      this.emit({ t: 'status', uid: 'p', id: 'ward', n: -1 });
+      this.emit({ t: 'text', uid: 'p', text: '결계가 죽음을 막았다', tone: 'good' });
+      return false;
+    }
+    this.s.obj = null;
+    this.s.doom = name;
+    this.emit({ t: 'cine', name: 'execute', uid: by?.uid, text: name });
+    this.p.hp = 0;
+    this.p.sanity = 0;
+    this.defeat('doom');
+    return true;
+  }
+
+  private defeat(reason: 'hp' | 'madness' | 'doom') {
     if (this.s.phase === 'defeat') return;
     this.s.phase = 'defeat';
     this.emit({ t: 'defeat', reason });
@@ -1265,6 +1335,8 @@ export class Combat {
 
   private cleanup() {
     const p = this.p;
+    // 전투가 끝나면 걸려 있던 선택지도 거둔다
+    this.s.choice = null;
     p.block = 0;
     p.st = {};
     if (p.hp <= 0) p.hp = 1;

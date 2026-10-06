@@ -1,8 +1,8 @@
 import { reg, SKILLS } from '../../engine/registry';
 import { isEnemy, MAX_ROW, type Combat } from '../../engine/combat';
-import type { CineName, EnemyUnit, MoveDef, Unit } from '../../engine/types';
-import { cine, setUi } from '../lib';
-import { flipRows } from './common';
+import type { CineName, DmgType, EnemyUnit, MoveDef, Unit } from '../../engine/types';
+import { cine, execute, setObjective, setUi } from '../lib';
+import { DOOM, flipRows } from './common';
 
 /**
  * 4층(별들의 궁정) 정예·수호자 패턴 (2026-10 확장) — 4층 전용 상태·상수·도구.
@@ -169,11 +169,121 @@ export function judgeCommand(c: Combat, e: EnemyUnit) {
   }
   setSt(c, c.p, COMMAND, 0);
   c.emit({ t: 'text', uid: e.uid, text: '불복 — 왕이 노한다', tone: 'bad' });
-  if (once(c, 'a4-defied')) cine(c, 'scrawl', { uid: e.uid, text: '불경하구나' });
   c.horror(e, DEFY_SAN);
   if (c.over || e.dead) return;
   c.apply(c.p, 'dread', 2, e);
   c.apply(e, 'str', DEFY_STR, e);
+}
+
+// ───────────── 검은 파라오: 심판의 상형문자 (즉사 퍼즐) ─────────────
+
+/** 상형문자 (플레이어 상태, n = 남은 상형문자 수). 순서·남은 턴은 퍼즐 목표(c.s.obj)와 파라오의 mem에 */
+export const GLYPHS = 'a4-glyphs';
+export const GLYPH_COUNT = 3;
+/** 상형문자를 지울 수 있는 내 턴 수 */
+export const GLYPH_TURNS = 2;
+/** 심판이 끝난 뒤 다시 새기기까지 / 전투마다 최대 횟수 */
+export const GLYPH_GAP = 6;
+export const GLYPH_MAX = 2;
+/** 상형문자를 모두 지우면 파라오가 비틀거린다 (버팀) */
+export const GLYPH_STAGGER = 4;
+export const JUDGMENT = '신들의 심판';
+
+const TYPE_NAME: Record<DmgType, string> = { slash: '참격', pierce: '관통', blunt: '타격', fire: '화염', arcane: '비전', void: '공허' };
+
+/**
+ * 지금 낼 수 있는 피해 속성: 무기 기본 공격 + 장착한 공격 기술 (공허 각인을 새긴 기술은 공허).
+ * 상형문자를 지우는 두 턴 안에 쓸 수 없는 기술(빼앗겨 잠긴 기술, 전투당 1회 기술, 행동력이 모자란 기술)은 뺀다
+ */
+export function dealableTypes(c: Combat): DmgType[] {
+  const out: DmgType[] = [];
+  for (const ref of ['weapon', ...c.run.slots.filter((x): x is string => !!x)]) {
+    const info = c.skillInfo(ref);
+    if (!info?.def.type || !info.def.tags.includes('attack')) continue;
+    if (ref !== 'weapon' && ((c.s.cd[ref] ?? 0) > GLYPH_TURNS || c.costOf(info) > c.p.maxAp)) continue;
+    const t: DmgType = info.owned.runes.includes('void-rune') ? 'void' : info.def.type;
+    if (!out.includes(t)) out.push(t);
+  }
+  return out;
+}
+
+/** 새길 상형문자: 낼 수 있는 속성 중에서만 (셋이 넘으면 서로 다르게, 모자라면 겹쳐서) */
+export function chooseGlyphs(c: Combat): DmgType[] {
+  const pool = dealableTypes(c);
+  if (!pool.length) return [];
+  const order = c.rng.shuffle([...pool]);
+  return Array.from({ length: GLYPH_COUNT }, (_, i) => order[i] ?? c.rng.pick(pool));
+}
+
+function glyphText(types: DmgType[], turns: number): string {
+  return `상형문자: ${types.map((t) => TYPE_NAME[t]).join(' → ')} — ${turns > 0 ? `${turns}턴 남음` : '심판이 내린다'}`;
+}
+
+/** 새길 수 있는가: 둘째 턴이 끝난 뒤 계획할 때부터(새기는 것은 셋째 턴), 별의 심판이 걸려 있지 않을 때, 지난 심판 뒤 GLYPH_GAP턴, 전투마다 GLYPH_MAX번 */
+export function canInscribe(c: Combat, e: EnemyUnit): boolean {
+  if (e.mem.glyphs || (e.mem.judges ?? 0) >= GLYPH_MAX) return false;
+  if (c.s.turn < 2 || (c.p.st[DOOM] ?? 0) > 0) return false;
+  if (c.s.turn - (e.mem.judgedAt ?? -99) < GLYPH_GAP) return false;
+  return dealableTypes(c).length > 0;
+}
+
+/** 심판의 상형문자를 새긴다: 퍼즐 목표(속성 순서)와 남은 턴을 건다 */
+export function inscribe(c: Combat, e: EnemyUnit): boolean {
+  const types = chooseGlyphs(c);
+  if (!types.length) return false;
+  e.mem.glyphs = 1;
+  e.mem.glyphTurns = GLYPH_TURNS;
+  e.mem.judges = (e.mem.judges ?? 0) + 1;
+  setSt(c, c.p, GLYPHS, types.length);
+  setObjective(c, { text: glyphText(types, GLYPH_TURNS), types, lethal: true });
+  c.emit({ t: 'text', uid: e.uid, text: '심판의 상형문자를 새긴다', tone: 'eldritch' });
+  // 처음엔 화면 유리에 붉은 상형문자가 새겨진다 (제4의 벽), 다음부터는 짧게
+  if (once(c, 'a4-glyph-cine')) cine(c, 'scrawl', { uid: e.uid, text: types.map((t) => TYPE_NAME[t]).join(' · ') });
+  else cine(c, 'glitch', { uid: e.uid, n: 1 });
+  return true;
+}
+
+/** 심판을 거둔다 (풀림·붕괴·처치·실행 모두) */
+function endGlyphs(c: Combat, e: EnemyUnit) {
+  delete e.mem.glyphs;
+  delete e.mem.glyphTurns;
+  e.mem.judgedAt = c.s.turn;
+  setSt(c, c.p, GLYPHS, 0);
+  if (c.s.obj?.types) setObjective(c, null);
+}
+
+/** 앞의 상형문자 하나를 지운다. 다 지우면 심판이 흩어지고 파라오가 비틀거린다 (의도도 바로 바뀐다) */
+function eraseGlyph(c: Combat, e: EnemyUnit) {
+  const rest = (c.s.obj?.types ?? []).slice(1);
+  if (rest.length) {
+    setSt(c, c.p, GLYPHS, rest.length);
+    setObjective(c, { text: glyphText(rest, e.mem.glyphTurns ?? 0), types: rest, lethal: true });
+    c.emit({ t: 'text', uid: e.uid, text: '상형문자 하나가 지워졌다', tone: 'good' });
+    return;
+  }
+  endGlyphs(c, e);
+  c.emit({ t: 'text', uid: e.uid, text: '상형문자가 모두 지워졌다 — 심판이 흩어진다', tone: 'good' });
+  if (e.broken === 0 && e.maxPoise > 0) {
+    e.poise = Math.max(0, e.poise - GLYPH_STAGGER);
+    if (e.poise === 0) c.breakEnemy(e);
+    else c.emit({ t: 'text', uid: e.uid, text: `비틀거린다 (버팀 -${GLYPH_STAGGER})`, tone: 'info' });
+  }
+  if (!e.dead && e.broken !== 2 && e.intent?.move === 'judgment') c.planIntent(e);
+}
+
+/** 신들의 심판: 아직 기한이 남았으면 모래시계만 흐르고, 기한이 다했는데 상형문자가 남아 있으면 즉사 (결계가 한 번 막는다) */
+export function judge(c: Combat, e: EnemyUnit) {
+  if (!e.mem.glyphs) {
+    c.emit({ t: 'text', uid: e.uid, text: '심판이 흩어졌다', tone: 'info' });
+    return;
+  }
+  if ((e.mem.glyphTurns ?? 0) > 0) {
+    c.emit({ t: 'text', uid: e.uid, text: '모래시계가 흐른다 — 심판이 다가온다', tone: 'eldritch' });
+    return;
+  }
+  endGlyphs(c, e);
+  // 결계가 막으면 다음 패턴으로 이어진다 (엔진이 '결계가 죽음을 막았다'를 띄운다)
+  execute(c, e, JUDGMENT);
 }
 
 // ───────────── 별의 자손 군주 ─────────────
@@ -247,6 +357,7 @@ function starfall(c: Combat) {
 // ───────────── 검은 별 ─────────────
 
 export const BLACK_STAR = 'black-star';
+export const VOID_EYE = 'void-eye';
 /** 어둠 (n 1~3) */
 export const DARK = 'a4-dark';
 export const DARK_MAX = 3;
@@ -338,6 +449,7 @@ export function eclipse(c: Combat, e: EnemyUnit) {
 
 // ───────────── 정예 ─────────────
 
+export const MOTHER = 'thousand-mother';
 /** 천 마리 새끼의 어머니: 얽힌 뿌리 (n = 남은 턴) */
 export const ENTANGLE = 'a4-entangle';
 export const ROOT_TURNS = 2;
@@ -352,9 +464,25 @@ export function entangle(c: Combat, e: EnemyUnit) {
 export const SWAP_CAP = 0.25;
 export const SWAP_GAP = 0.2;
 export const SWAP_MAX = 2;
+/** 준비하는 동안 이만큼(최대 체력 비율) 피해를 받으면 몸 바꾸기가 끊긴다 — 붕괴시킬 약점이 없는 출신도 끊을 수 있게 */
+export const SWAP_BREAK = 0.06;
+
+export const swapBreakNeed = (e: EnemyUnit): number => Math.max(1, Math.round(e.maxHp * SWAP_BREAK));
+
+/** 몸 바꾸기를 준비하던 방랑자가 피해를 받는다: 쌓여 문턱을 넘으면 끊긴다 */
+export function shakeReach(c: Combat, e: EnemyUnit, n: number) {
+  if (e.mem.charge !== 2 || n <= 0 || e.hp <= 0) return;
+  e.mem.reachHit = (e.mem.reachHit ?? 0) + n;
+  if (e.mem.reachHit < swapBreakNeed(e)) return;
+  delete e.mem.charge;
+  delete e.mem.reachHit;
+  c.emit({ t: 'text', uid: e.uid, text: '몸 바꾸기가 끊겼다', tone: 'good' });
+  if (c.s.phase === 'player' && e.broken !== 2) c.planIntent(e);
+}
 
 export function bodySwap(c: Combat, e: EnemyUnit) {
   delete e.mem.charge;
+  delete e.mem.reachHit;
   const gap = Math.min(SWAP_CAP, c.p.hp / Math.max(1, c.p.maxHp) - e.hp / Math.max(1, e.maxHp));
   if (gap <= 0 || c.dying) {
     c.emit({ t: 'text', uid: e.uid, text: '바꿀 만한 몸이 아니다', tone: 'info' });
@@ -387,11 +515,11 @@ export function syncLampDark(c: Combat) {
   setUi(c, 'ui:dark', Math.max(0, Math.min(70, 70 - c.run.light)));
 }
 
-/** 불꽃이 어둠을 밀어낸다 (화염 피해·화상): 등불이 밝아지고, 준비하던 사냥의 횟수도 줄어든다 */
+/** 불꽃이 어둠을 밀어낸다 (화염 피해·화상, 다른 공격은 내 턴마다 한 번): 등불이 밝아지고, 준비하던 사냥의 횟수도 줄어든다 */
 export function flare(c: Combat, e: EnemyUnit) {
   if (c.run.light >= 100) return;
   c.run.light = Math.min(100, c.run.light + FIRE_LIGHT);
-  c.emit({ t: 'text', uid: 'p', text: `불꽃이 어둠을 밀어낸다 (등불 +${FIRE_LIGHT})`, tone: 'good' });
+  c.emit({ t: 'text', uid: 'p', text: `빛에 움찔한다 (등불 +${FIRE_LIGHT})`, tone: 'good' });
   syncLampDark(c);
   if (e.intent?.move === 'hunt') e.intent.hits = huntHits(c);
 }
@@ -399,6 +527,45 @@ export function flare(c: Combat, e: EnemyUnit) {
 // ───────────── 상태 등록 ─────────────
 
 reg.statuses([
+  {
+    id: GLYPHS,
+    name: '심판의 상형문자',
+    icon: 'gi:eye-of-horus',
+    kind: 'debuff',
+    desc: `검은 파라오가 새긴 상형문자 {n}개 — 위 띠에 적힌 속성으로 파라오를 차례대로 맞히면 앞에서부터 하나씩 지워진다 (틀린 속성은 아무 일도 없다). 기한 안에 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사 (결계가 한 번 막는다). 파라오를 붕괴시키거나 기절시켜도 지워진다`,
+    hooks: {
+      onDamageDealt(c, s, d) {
+        if (s.unit !== c.p || d.src !== c.p || !d.attack || d.amount <= 0 || !isEnemy(d.tgt) || d.tgt.def !== PHARAOH) return;
+        const e = d.tgt;
+        if (!e.mem.glyphs || c.s.obj?.types?.[0] !== d.type) return;
+        eraseGlyph(c, e);
+      },
+      onTurnEnd(c, s) {
+        if (s.unit !== c.p) return;
+        const e = alive(c, PHARAOH);
+        if (!e?.mem.glyphs) return;
+        e.mem.glyphTurns = Math.max(0, (e.mem.glyphTurns ?? 0) - 1);
+        const types = c.s.obj?.types ?? [];
+        if (types.length) setObjective(c, { text: glyphText(types, e.mem.glyphTurns), types, lethal: true });
+        if (e.mem.glyphTurns === 0) c.emit({ t: 'text', uid: e.uid, text: '모래가 다 떨어졌다 — 신들의 심판이 내린다', tone: 'bad' });
+      },
+      onBreak(c, s, victim) {
+        if (s.unit !== c.p || victim.def !== PHARAOH || !victim.mem.glyphs) return;
+        endGlyphs(c, victim);
+        c.emit({ t: 'text', uid: victim.uid, text: '붕괴 — 상형문자가 무너졌다', tone: 'good' });
+      },
+      // 기절시키면 읊던 심판이 끊긴다 (수호자 기절 규칙에 막혀 기절하지 않으면 그대로)
+      onApplied(c, s, target, id) {
+        if (s.unit !== c.p || id !== 'stun' || !isEnemy(target) || target.def !== PHARAOH || !target.mem.glyphs) return;
+        endGlyphs(c, target);
+        c.emit({ t: 'text', uid: target.uid, text: '기절 — 읊던 심판이 끊겼다', tone: 'good' });
+        if (target.broken !== 2 && target.intent?.move === 'judgment') c.planIntent(target);
+      },
+      onAnyDeath(c, s, victim) {
+        if (s.unit === c.p && isEnemy(victim) && victim.def === PHARAOH && victim.mem.glyphs) endGlyphs(c, victim);
+      },
+    },
+  },
   {
     id: COMMAND,
     name: '왕의 명령',
@@ -477,7 +644,7 @@ reg.statuses([
     name: '어둠',
     icon: 'gi:night-sky',
     kind: 'debuff',
-    desc: `검은 별이 빛을 먹었다 (최대 ${DARK_MAX}). 2 이상이면 적의 의도가 어둠에 묻힌다 (힘을 모으는 것과 일식은 보인다, 통찰 ${DARK_REVEAL}이면 모두 보인다). ${DARK_MAX}이 되면 검은 별이 일식을 일으킨다. 검은 별을 화염이나 비전으로 공격하면 1 걷힌다 (내 턴마다 한 번)`,
+    desc: `검은 별이 빛을 먹었다 (최대 ${DARK_MAX}). 2 이상이면 적의 의도가 어둠에 묻힌다 (힘을 모으는 것과 일식은 보인다, 통찰 ${DARK_REVEAL}이면 모두 보인다). ${DARK_MAX}이 되면 검은 별이 일식을 일으킨다. 걷어 내는 법: 검은 별을 화염이나 비전으로 공격 (내 턴마다 한 번), 공허의 눈을 쓰러뜨림, 검은 별을 붕괴시킴 — 저마다 1씩`,
     hooks: {
       onTurnStart(c, s) {
         if (s.unit !== c.p) return;
@@ -491,6 +658,13 @@ reg.statuses([
         c.s.vars['a4-lit'] = c.s.turn;
         lighten(c, 1);
       },
+      // 화염·비전이 없는 출신도 어둠을 걷을 수 있게: 빛을 먹던 눈이 감기거나, 별이 무너지면 빛이 돌아온다
+      onAnyDeath(c, s, victim) {
+        if (s.unit === c.p && isEnemy(victim) && victim.def === VOID_EYE && !victim.fled) lighten(c, 1);
+      },
+      onBreak(c, s, victim) {
+        if (s.unit === c.p && victim.def === BLACK_STAR) lighten(c, 1);
+      },
     },
   },
   {
@@ -498,7 +672,7 @@ reg.statuses([
     name: '얽힌 뿌리',
     icon: 'gi:tree-roots',
     kind: 'debuff',
-    desc: '검은 뿌리가 발목을 휘감았다 — 내 턴이 시작될 때 행동력 -1 ({n}턴). 화염이나 참격 기술을 쓰면 끊어진다',
+    desc: '검은 뿌리가 발목을 휘감았다 — 내 턴이 시작될 때 행동력 -1 ({n}턴). 화염이나 참격 기술을 쓰거나, 어머니를 공격해 피해를 주면 끊어진다',
     tickStart(c, u) {
       if (isEnemy(u)) {
         setSt(c, u, ENTANGLE, 0);
@@ -515,6 +689,13 @@ reg.statuses([
         if (t !== 'fire' && t !== 'slash') return;
         setSt(c, c.p, ENTANGLE, 0);
         c.emit({ t: 'text', uid: 'p', text: '뿌리를 끊어 냈다', tone: 'good' });
+      },
+      // 화염·참격이 없는 출신도: 뿌리의 주인을 때리면 움찔하며 풀린다
+      onDamageDealt(c, s, d) {
+        if (s.unit !== c.p || d.src !== c.p || !d.attack || d.amount <= 0 || !isEnemy(d.tgt) || d.tgt.def !== MOTHER) return;
+        if (!((c.p.st[ENTANGLE] ?? 0) > 0)) return;
+        setSt(c, c.p, ENTANGLE, 0);
+        c.emit({ t: 'text', uid: 'p', text: '어머니가 움찔하자 뿌리가 풀렸다', tone: 'good' });
       },
     },
   },

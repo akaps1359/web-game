@@ -32,24 +32,35 @@ import {
   SWAP_CAP,
   SWAP_GAP,
   SWAP_MAX,
+  SWAP_BREAK,
   UNISON_DMG,
   UNISON_SAN,
   COMMAND,
+  GLYPH_COUNT,
+  GLYPH_GAP,
+  GLYPH_MAX,
+  GLYPH_STAGGER,
+  GLYPH_TURNS,
+  JUDGMENT,
   addDark,
   armQuake,
   bodySwap,
   callStar,
+  canInscribe,
   eclipse,
   entangle,
   flare,
   foldForward,
   huntHits,
+  inscribe,
   issueCommand,
+  judge,
   judgeCommand,
   once,
   overturn,
   recountUnison,
   rideWind,
+  shakeReach,
   syncLampDark,
   unfold,
   unisonHits,
@@ -207,8 +218,12 @@ reg.traits([
   {
     id: 'a4-bodythief',
     name: '몸 도둑',
-    desc: `당신이 자신보다 체력 비율이 ${Math.round(SWAP_GAP * 100)}%p 이상 높으면 「몸 바꾸기」를 준비한다 — 다음 차례 체력 비율이 서로 뒤바뀐다 (최대 ${Math.round(SWAP_CAP * 100)}%p, 방어도로 막을 수 없다). 준비하는 동안 붕괴시키면 끊긴다 (전투마다 ${SWAP_MAX}번까지)`,
-    hooks: {},
+    desc: `당신이 자신보다 체력 비율이 ${Math.round(SWAP_GAP * 100)}%p 이상 높으면 「몸 바꾸기」를 준비한다 — 다음 차례 체력 비율이 서로 뒤바뀐다 (최대 ${Math.round(SWAP_CAP * 100)}%p, 방어도로 막을 수 없다). 준비하는 동안 붕괴시키거나, 최대 체력의 ${Math.round(SWAP_BREAK * 100)}%만큼 피해(지속 피해 포함)를 주면 끊긴다 (전투마다 ${SWAP_MAX}번까지)`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit) && d.tgt === s.unit) shakeReach(c, s.unit, d.hpLoss + d.blocked);
+      },
+    },
   },
   {
     id: 'a4-orbshield',
@@ -282,6 +297,12 @@ reg.traits([
     },
   },
   {
+    id: 'a4-hieroglyph',
+    name: '심판의 상형문자',
+    desc: `전투 셋째 턴부터, 별의 심판이 걸려 있지 않을 때 상형문자 ${GLYPH_COUNT}개를 새긴다 — 지금 당신이 낼 수 있는 피해 속성(무기 기본 공격과 장착한 공격 기술)으로만. 내 턴 ${GLYPH_TURNS}번 안에 그 속성으로 파라오를 차례대로 맞혀 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사 (결계가 한 번 막는다). 틀린 속성은 아무 일도 없고, 파라오를 붕괴시키거나 기절시켜도 지워진다. 다 지우면 파라오가 비틀거린다 (버팀 -${GLYPH_STAGGER}). 심판이 끝나면 ${GLYPH_GAP}턴 뒤에야 다시 새긴다 (전투마다 ${GLYPH_MAX}번까지)`,
+    hooks: {},
+  },
+  {
     id: 'a4-overturn',
     name: '뒤집히는 대지',
     desc: `체력을 일정량 잃을 때마다(흔들리는 대지) 고통에 몸부림치며 다음 행동이 「대지를 뒤집는다」로 바뀐다 — 덮치고, 모든 적의 열을 뒤바꾸고, 방어도 ${FLIP_BLOCK}. 문턱은 최대 체력의 ${Math.round(QUAKE_FIRST * 100)}%에서 뒤집을 때마다 ${Math.round(QUAKE_STEP * 100)}%p씩 오른다. 내 턴에 무너뜨리면 하려던 행동은 다음 차례로 미뤄진다`,
@@ -290,7 +311,7 @@ reg.traits([
   {
     id: 'a4-lighteater',
     name: '빛을 먹는 별',
-    desc: `「빛을 삼킨다」와 공허의 눈이 당신에게 어둠을 쌓는다 (최대 ${DARK_MAX}). 어둠 2부터 적의 의도가 어둠에 묻히고(통찰 ${DARK_REVEAL}이면 보인다), ${DARK_MAX}이 되면 일식을 일으킨다. 검은 별을 화염이나 비전으로 공격하면 어둠이 1 걷힌다 (내 턴마다 한 번)`,
+    desc: `「빛을 삼킨다」와 공허의 눈이 당신에게 어둠을 쌓는다 (최대 ${DARK_MAX}). 어둠 2부터 적의 의도가 어둠에 묻히고(통찰 ${DARK_REVEAL}이면 보인다), ${DARK_MAX}이 되면 일식을 일으킨다. 검은 별을 화염이나 비전으로 공격하면(내 턴마다 한 번), 공허의 눈을 쓰러뜨리면, 검은 별을 붕괴시키면 어둠이 1씩 걷힌다`,
     hooks: {},
   },
   {
@@ -319,7 +340,7 @@ reg.traits([
   {
     id: 'a4-lightshy',
     name: '빛을 꺼리는 자',
-    desc: `등불이 50 이상이면 주는 공격 피해 -25%. 화염 피해(화상 포함)를 받을 때마다 불꽃이 어둠을 밀어내 등불 +${FIRE_LIGHT}`,
+    desc: `등불이 50 이상이면 주는 공격 피해 -25%. 화염 피해(화상 포함)를 받을 때마다 불꽃이 어둠을 밀어내 등불 +${FIRE_LIGHT}. 다른 공격에도 내 턴마다 한 번은 움찔해 등불 +${FIRE_LIGHT}`,
     hooks: {
       onCombatStart(c) {
         // 화면의 어둠이 지금 등불을 따라간다
@@ -329,7 +350,15 @@ reg.traits([
         if (d.src === s.unit && d.attack && c.run.light >= 50) d.mult *= 0.75;
       },
       onDamageTaken(c, s, d) {
-        if (isEnemy(s.unit) && d.tgt === s.unit && (d.type === 'fire' || d.tags.includes('burn')) && d.amount > 0) flare(c, s.unit);
+        if (!isEnemy(s.unit) || d.tgt !== s.unit || d.amount <= 0) return;
+        if (d.type === 'fire' || d.tags.includes('burn')) {
+          flare(c, s.unit);
+          return;
+        }
+        // 화염이 없는 출신도 등불을 지킬 수 있게: 다른 공격은 내 턴마다 한 번
+        if (d.src !== c.p || !d.attack || c.s.vars['a4-flare'] === c.s.turn) return;
+        c.s.vars['a4-flare'] = c.s.turn;
+        flare(c, s.unit);
       },
     },
   },
@@ -781,6 +810,8 @@ reg.enemies([
     icon: 'gi:unstable-orb',
     act: 4,
     tier: 'minion',
+    reachable: true,
+    desc: '문 너머의 존재를 감싼 구체. 후열에 있어도 근접 공격이 닿는다.',
     hp: [24, 27],
     poise: 0,
     weak: ['slash', 'pierce', 'fire'],
@@ -797,6 +828,8 @@ reg.enemies([
     icon: 'gi:frozen-orb',
     act: 4,
     tier: 'minion',
+    reachable: true,
+    desc: '문 너머의 존재를 감싼 구체. 후열에 있어도 근접 공격이 닿는다.',
     hp: [24, 27],
     poise: 0,
     weak: ['blunt', 'pierce', 'fire'],
@@ -822,6 +855,8 @@ reg.enemies([
     icon: 'gi:extraction-orb',
     act: 4,
     tier: 'minion',
+    reachable: true,
+    desc: '문 너머의 존재를 감싼 구체. 후열에 있어도 근접 공격이 닿는다.',
     hp: [24, 27],
     poise: 0,
     weak: ['slash', 'arcane', 'fire'],
@@ -858,6 +893,8 @@ reg.enemies([
     icon: 'gi:eyeball',
     act: 4,
     tier: 'minion',
+    reachable: true,
+    desc: '검은 별에게 빛을 먹여 어둠을 쌓는 눈. 쓰러뜨리면 먹힌 빛이 돌아온다(어둠 -1). 후열에 있어도 근접 공격이 닿는다.',
     hp: [20, 24],
     poise: 0,
     weak: ['fire', 'pierce', 'arcane'],
@@ -989,7 +1026,7 @@ reg.enemies([
         melee: false,
         cine: 'ink',
         then: (c, e) => entangle(c, e),
-        desc: `검은 뿌리가 솟아 발목을 휘감는다 — ${ROOT_TURNS}턴 동안 내 턴이 시작될 때 행동력 -1. 화염이나 참격 기술을 쓰면 끊어진다`,
+        desc: `검은 뿌리가 솟아 발목을 휘감는다 — ${ROOT_TURNS}턴 동안 내 턴이 시작될 때 행동력 -1. 화염이나 참격 기술을 쓰거나, 어머니를 공격해 피해를 주면 끊어진다`,
       }),
       bleat: mv.horror('천 개의 울음', 12, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       rear: mv.charge('숲이 일어선다', 42),
@@ -1041,9 +1078,10 @@ reg.enemies([
         name: '몸 바꾸기 준비',
         intent: 'charge',
         charging: true,
-        desc: `시간 너머에서 당신의 몸을 더듬는다 — 다음 차례 「몸 바꾸기」: 체력 비율이 서로 뒤바뀐다 (최대 ${Math.round(SWAP_CAP * 100)}%p, 방어도로 막을 수 없다). 붕괴시키면 끊긴다`,
+        desc: `시간 너머에서 당신의 몸을 더듬는다 — 다음 차례 「몸 바꾸기」: 체력 비율이 서로 뒤바뀐다 (최대 ${Math.round(SWAP_CAP * 100)}%p, 방어도로 막을 수 없다). 붕괴시키거나 최대 체력의 ${Math.round(SWAP_BREAK * 100)}%만큼 피해를 주면 끊긴다`,
         run(c, e) {
           e.mem.charge = 2;
+          e.mem.reachHit = 0;
           e.mem.reaches = (e.mem.reaches ?? 0) + 1;
           c.emit({ t: 'text', uid: e.uid, text: '시간 너머에서 당신의 몸을 더듬는다…', tone: 'eldritch' });
         },
@@ -1078,7 +1116,7 @@ reg.enemies([
       if (o) return o;
       if (canDoom(c, e, 6)) return 'sentence';
       const gap = c.p.hp / Math.max(1, c.p.maxHp) - hpPct(e);
-      if (gap >= SWAP_GAP && (e.mem.reaches ?? 0) < SWAP_MAX && !c.dying && !e.hist.includes('bodyswap')) return 'reach';
+      if (gap >= SWAP_GAP && (e.mem.reaches ?? 0) < SWAP_MAX && !c.dying && !e.hist.includes('bodyswap') && last(e) !== 'reach') return 'reach';
       if ((e.mem.h2 ?? 0) - e.hp >= 20 && !e.hist.includes('rewind')) return 'rewind';
       return pick(c, e, { gun: 3, swap: e.hist.includes('swap') ? 0 : 2, rise: e.hist.slice(-2).includes('collapse') ? 0 : 1 });
     },
@@ -1169,7 +1207,7 @@ reg.enemies([
     dread: 8,
     eldritch: true,
     tags: ['outer'],
-    traits: ['a4-scarab-curse', 'a4-unmasking', 'a4-liar'],
+    traits: ['a4-scarab-curse', 'a4-unmasking', 'a4-liar', 'a4-hieroglyph'],
     desc: '모래 아래 피라미드에서 되살아난 왕. 그 가면 아래엔 얼굴이 없다.',
     moves: {
       curse: {
@@ -1222,6 +1260,24 @@ reg.enemies([
           judgeCommand(c, e);
         },
       },
+      // 즉사 퍼즐: 상형문자 셋(지금 당신이 낼 수 있는 속성)을 새기고, 두 턴 안에 차례대로 맞혀 지우지 못하면 신들의 심판
+      inscribe: {
+        name: '심판의 상형문자',
+        intent: 'special',
+        extra: ['death'],
+        desc: `상형문자 ${GLYPH_COUNT}개를 새긴다 — 지금 당신이 낼 수 있는 피해 속성으로만. 내 턴 ${GLYPH_TURNS}번 안에 그 속성으로 파라오를 차례대로 맞혀 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사`,
+        run(c, e) {
+          inscribe(c, e);
+        },
+      },
+      judgment: {
+        name: JUDGMENT,
+        intent: 'death',
+        desc: `상형문자를 기한 안에 모두 지우지 못하면 사경 없이 즉사 (결계가 한 번 막는다). 위 띠에 적힌 속성으로 파라오를 차례대로 맞혀 지우거나, 파라오를 붕괴시키거나 기절시키면 흩어진다. 기한이 남은 차례엔 모래시계만 흐른다`,
+        run(c, e) {
+          judge(c, e);
+        },
+      },
     },
     onSpawn: (c) => {
       c.spawn('pharaoh-scarab', 0);
@@ -1229,10 +1285,13 @@ reg.enemies([
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'pyramid';
+      // 상형문자가 새겨져 있는 동안은 심판만 바라본다
+      if (e.mem.glyphs) return 'judgment';
       const o = opener(c, e, ['kneel']);
       if (o) return o;
       const scarabs = countDef(c, 'pharaoh-scarab');
       if (scarabs === 0 && (e.mem.swarms ?? 0) < 3 && last(e) !== 'swarm') return 'swarm';
+      if (canInscribe(c, e)) return 'inscribe';
       if (canDoom(c, e, 7)) return 'curse';
       if (!e.form) return cycle(e, ['wind', 'mercy', 'rise', 'wind', 'kneel']);
       const m = cycle(e, ['thousand', 'command', 'thousand', 'rise'], 'c2');

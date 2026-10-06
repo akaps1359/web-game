@@ -533,7 +533,7 @@ async function step(ev: CombatEvent) {
       return;
     case 'defeat':
       store.emit();
-      banner(ev.reason === 'madness' ? '광기에 삼켜졌다' : '쓰러졌다', 'bad', 2000);
+      banner(ev.reason === 'madness' ? '광기에 삼켜졌다' : ev.reason === 'doom' ? '즉사' : '쓰러졌다', 'bad', 2000);
       stage.flash(0x000000, 0.7);
       await wait(1400);
       return;

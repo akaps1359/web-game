@@ -276,6 +276,16 @@ export async function endTurn() {
   await refresh();
 }
 
+/** 전투 중 선택지를 고른다 */
+export async function pickChoice(option: string) {
+  const c = store.combat;
+  if (!c || store.busy) return;
+  store.sel = null;
+  if (fail(c.choose(option))) return;
+  sound.sfx('sting');
+  await refresh();
+}
+
 // ───────────── 보상 ─────────────
 
 /** pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) */
