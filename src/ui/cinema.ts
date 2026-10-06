@@ -756,30 +756,6 @@ export async function impact(at: { x: number; y: number }, strong = 1) {
 
 // ───────────── 컷인 · 등장 ─────────────
 
-/** 필살기 컷인: 화면을 비스듬히 가르는 띠에 기술 이름 */
-export async function cutIn(o: { name: string; sub?: string; icon?: string; art?: string; side: 'enemy' | 'player'; color: string }) {
-  const band = div(`cine-cut ${o.side}`, layer());
-  band.style.setProperty('--cc', o.color);
-  const portrait = div('cine-cut-face', band);
-  if (o.art && hasArt(o.art)) portrait.style.backgroundImage = `url("${artUrl('enemies', o.art)}")`;
-  else if (o.icon) portrait.innerHTML = `<span class="ic" style="width:64px;height:64px;color:${o.color}">${iconSvg(o.icon)}</span>`;
-  const txt = div('cine-cut-text', band);
-  txt.innerHTML = `<div class="cine-cut-name"></div>${o.sub ? '<div class="cine-cut-sub"></div>' : ''}`;
-  (txt.querySelector('.cine-cut-name') as HTMLElement).textContent = o.name;
-  if (o.sub) (txt.querySelector('.cine-cut-sub') as HTMLElement).textContent = o.sub;
-  sound.sfx('swoosh');
-  if (o.side === 'enemy') sound.sfx('charge', { pitch: 1.4, volume: 0.5 });
-  const dir = o.side === 'enemy' ? 1 : -1;
-  await Promise.all([
-    anim(band, [{ transform: 'skewY(-7deg) scaleY(0)', opacity: 0 }, { transform: 'skewY(-7deg) scaleY(1)', opacity: 1 }], { duration: 110, easing: 'ease-out', fill: 'forwards' }),
-    anim(txt, [{ transform: `translateX(${dir * 60}vw)` }, { transform: 'translateX(0)' }], { duration: 230, easing: 'cubic-bezier(.2,.9,.3,1)', fill: 'forwards' }),
-    anim(portrait, [{ transform: `translateX(${-dir * 50}vw)` }, { transform: 'translateX(0)' }], { duration: 260, easing: 'cubic-bezier(.2,.9,.3,1)', fill: 'forwards' }),
-  ]);
-  await sleep(o.side === 'enemy' ? 560 : 420);
-  await anim(band, [{ transform: 'skewY(-7deg) translateX(0)', opacity: 1 }, { transform: `skewY(-7deg) translateX(${-dir * 40}vw)`, opacity: 0 }], { duration: 170, easing: 'ease-in', fill: 'forwards' });
-  band.remove();
-}
-
 /** 수호자 등장: 위아래 검은 띠 + 이름 */
 export async function bossIntro(o: { name: string; sub: string; at: { x: number; y: number } }) {
   const top = div('cine-bar top');

@@ -46,6 +46,7 @@ import {
   type Pt,
 } from './vfxRecipes';
 import { blurredSilhouette, silhouetteCells, VT } from './vfxTextures';
+import { castSkill, enemyUltimate, type CastTarget } from './vfxSkills';
 import { PlayerWard } from './vfxWard';
 
 export interface Rect {
@@ -900,7 +901,7 @@ export class Battle extends Container {
     uid: string,
     type: DmgType | 'true',
     amount: number,
-    o: { crit?: boolean; weak?: boolean; blocked?: boolean | number; hpLoss?: number; shellBreak?: boolean; firearm?: boolean; src?: string } = {},
+    o: { crit?: boolean; weak?: boolean; blocked?: boolean | number; hpLoss?: number; shellBreak?: boolean; firearm?: boolean; src?: string; heavy?: boolean } = {},
   ) {
     const v = this.views.get(uid);
     const a = this.anchor(uid);
@@ -910,7 +911,8 @@ export class Battle extends Container {
     const big = !!(o.crit || o.weak);
     const blocked = typeof o.blocked === 'number' ? o.blocked > 0 : !!o.blocked;
     const fullBlock = blocked && (o.hpLoss ?? amount) <= 0;
-    const power = clamp(0.85 + amount / 40, 0.85, 1.3) * (big ? 1.25 : 1) * (fullBlock ? 0.7 : 1);
+    // heavy: 큰 기술(희귀·금기·행동력 2 이상)의 일격 — 한층 크게
+    const power = clamp(0.85 + amount / 40, 0.85, 1.3) * (big ? 1.25 : 1) * (o.heavy ? 1.2 : 1) * (fullBlock ? 0.7 : 1);
     const from = o.src && o.src !== 'p' ? (this.center(o.src) ?? this.eye()) : this.eye();
     const c: HitCtx = { x, y, size: a.size, power, from };
     const col = TYPE_COLOR[type];
@@ -951,6 +953,11 @@ export class Battle extends Container {
     if (big) {
       critBurst(fx, c, col, !!o.weak && !o.crit);
       if (v) v.freezeT = 0.075;
+    }
+    if (o.heavy && !fullBlock) {
+      glow(fx, 'fxB', x, y, a.size * 2.2, col, 0.42, { alpha: 0.5 });
+      ring(fx, 'fxA', x, y, a.size * 0.4, a.size * 2.8, 0.4, col, { alpha: 0.6, soft: true });
+      if (v) v.freezeT = Math.max(v.freezeT, 0.06);
     }
     if (blocked) {
       blockedHit(fx, c, !!o.shellBreak);
@@ -1043,6 +1050,29 @@ export class Battle extends Container {
         v?.telegraph('other');
         softPulse(fx, x, y, a.size, 0xe86a8a);
     }
+  }
+
+  /** 적의 몸 중심·크기·발밑 (시전 연출의 대상) */
+  private castTarget(uid: string): CastTarget | null {
+    const a = this.anchor(uid);
+    return a ? { x: a.x, y: a.y - a.size * 0.5, size: a.size, feet: a.y } : null;
+  }
+
+  /**
+   * 플레이어 큰 기술의 시전 연출 (컷인 대신 기술 자체가 화면 안에서 터진다).
+   * weight: 2 = 희귀·행동력 2 이상, 3 = 금기. 돌려주는 값: 맞기까지 기다릴 시간(ms)
+   */
+  cast(school: string, dtype: DmgType | undefined, weight: number, uids: string[]): number {
+    const targets = uids.map((u) => this.castTarget(u)).filter((t): t is CastTarget => !!t);
+    return castSkill(this.vfx, { school, dtype, weight, r: this.rect, eye: this.eye(), muzzle: this.muzzlePoint(), targets });
+  }
+
+  /** 적의 필살기: 힘을 모았다가 터진다. 돌려주는 값: 터지기까지(ms) */
+  ultimate(uid: string, tint: number): number {
+    const t = this.castTarget(uid);
+    if (!t) return 0;
+    this.views.get(uid)?.tintFlash(tint, 0.5);
+    return enemyUltimate(this.vfx, t, tint);
   }
 
   /** 색 파동 (예전 API) */

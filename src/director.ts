@@ -1,13 +1,13 @@
 import type { CombatEvent, Snap } from './engine/combat';
 import { ENEMIES, FLOORS, MADNESS, SKILLS, STATUSES } from './engine/registry';
 import { lvlVal } from './engine/combat';
-import { bossFall, bossIntro, cineCenter, cutIn, impact, playCine } from './ui/cinema';
+import { bossFall, bossIntro, cineCenter, impact, playCine } from './ui/cinema';
 import type { DmgType } from './engine/types';
 import { stage } from './render/stage';
 import type { VignetteKind } from './render/vfxTextures';
 import { sound } from './sound';
 import { store } from './state/store';
-import { DMG_COLOR, DMG_NAME, SCHOOL_COLOR, SCHOOL_NAME } from './ui/text';
+import { DMG_COLOR, DMG_NAME } from './ui/text';
 
 // ───────────── 떠오르는 글자 ─────────────
 
@@ -100,8 +100,8 @@ export function syncBattle(snap: Snap | null) {
 
 let queue: CombatEvent[] = [];
 let running: Promise<void> | null = null;
-/** 지금 연출 중인 플레이어 스킬 (총기 연출 판단용) */
-let curSkill: { school: string; dtype?: DmgType } | null = null;
+/** 지금 연출 중인 플레이어 스킬 (총기 연출 판단용, weight: 큰 기술이면 2~3) */
+let curSkill: { school: string; dtype?: DmgType; weight: number } | null = null;
 
 /**
  * 재생 시작. 주의: 빈 큐로 run()을 부르면 async 함수가 동기적으로 끝나 버려
@@ -173,8 +173,6 @@ const hexNum = (s: string) => parseInt(s.replace('#', ''), 16);
 
 /** 이미 등장 연출을 보여 준 전투 (전투 상태 객체 기준) */
 const introduced = new WeakSet<object>();
-/** 이번 턴에 플레이어 컷인을 이미 보여 줬는가 */
-let playerCutTurn = -1;
 
 /** 수호자 전투가 시작되면 이름과 함께 등장 연출 */
 async function maybeBossIntro() {
@@ -189,17 +187,34 @@ async function maybeBossIntro() {
   await bossIntro({ name: boss.name, sub, at: cineCenter(boss.uid) });
 }
 
-/** 큰 기술(희귀·금기·행동력 2 이상)을 쓰면 컷인 — 한 턴에 한 번만 */
-async function maybePlayerCut(skillId: string, name: string, echo?: boolean) {
-  const c = store.combat;
+/** 기술의 무게: 0 = 기본 공격, 1 = 보통, 2 = 희귀·행동력 2 이상, 3 = 금기 (메아리는 가볍게) */
+function skillWeight(skillId: string, echo?: boolean): number {
   const def = SKILLS.get(skillId);
-  if (!c || !def || echo || def.tags.includes('basic')) return;
+  if (!def || def.tags.includes('basic')) return 0;
+  if (echo) return 1;
+  if (def.rarity === 'forbidden') return 3;
   const owned = store.run?.skills.find((x) => x.id === skillId);
-  const cost = lvlVal(def.cost, owned?.lvl ?? 0);
-  const big = def.rarity === 'rare' || def.rarity === 'forbidden' || cost >= 2;
-  if (!big || playerCutTurn === c.s.turn) return;
-  playerCutTurn = c.s.turn;
-  await cutIn({ name, sub: SCHOOL_NAME[def.school], icon: def.icon, side: 'player', color: SCHOOL_COLOR[def.school] });
+  return def.rarity === 'rare' || lvlVal(def.cost, owned?.lvl ?? 0) >= 2 ? 2 : 1;
+}
+
+/** 계열마다 시전할 때 화면 전체에 번지는 기운 */
+const CAST_MOOD: Record<string, VignetteKind> = { forbidden: 'void', occult: 'arcane', alchemy: 'fire', essence: 'blood', resolve: 'ward' };
+
+/** 큰 기술의 시전 연출 (컷인 없이 화면 안에서) — 맞기까지 기다린다 */
+async function castBig(ev: Extract<CombatEvent, { t: 'skill' }>, weight: number) {
+  const c = store.combat;
+  const uids = ev.target ? [ev.target] : (c?.alive.map((e) => e.uid) ?? []);
+  const lead = stage.battle.cast(ev.school, ev.dtype, weight, uids);
+  const mood = CAST_MOOD[ev.school];
+  if (mood) stage.vignette(mood, weight >= 3 ? 0.6 : 0.4, 900);
+  if (ev.school === 'forbidden') {
+    stage.splitPulse(weight >= 3 ? 1.4 : 1);
+    sound.sfx('riftOpen', { volume: 0.6 });
+  } else if (ev.school === 'firearm') sound.sfx('tick', { volume: 0.7 });
+  else if (ev.school === 'occult') sound.sfx('charge', { volume: 0.5 });
+  else sound.sfx('swoosh', { volume: 0.6 });
+  await wait(lead);
+  if (ev.school === 'alchemy') sound.sfx('glass', { volume: 0.7 });
 }
 
 async function step(ev: CombatEvent) {
@@ -221,13 +236,15 @@ async function step(ev: CombatEvent) {
       return;
     case 'skill': {
       store.emit();
-      curSkill = { school: ev.school, dtype: ev.dtype };
+      const weight = skillWeight(ev.skill, ev.echo);
+      curSkill = { school: ev.school, dtype: ev.dtype, weight };
       const fxName = ev.dtype ? SFX_BY_TYPE[ev.dtype] : 'select';
       if (ev.school === 'firearm' && ev.dtype === 'pierce') sound.sfx('gunshot');
       else if (!ev.dtype) sound.sfx('buff');
       else sound.sfx(fxName, { volume: 0.5 });
       banner(ev.echo ? `${ev.name} (메아리)` : ev.name, 'player', 700);
-      await maybePlayerCut(ev.skill, ev.name, ev.echo);
+      // 큰 기술은 컷인 대신 기술 자체가 화면 안에서 터진다
+      if (weight >= 2) await castBig(ev, weight);
       await wait(140);
       return;
     }
@@ -241,12 +258,18 @@ async function step(ev: CombatEvent) {
       else if (ev.kind === 'block') sound.sfx('block', { volume: 0.6 });
       else if (ev.kind === 'summon') sound.sfx('riftOpen', { volume: 0.6 });
       store.emit();
-      // 필살기 컷인, 행동에 붙은 화면 연출
+      // 필살기: 컷인 없이 적이 힘을 모았다가 터뜨린다 (행동 이름은 머리 위 글자로)
       if (ev.ult) {
         const real = store.combat?.s.enemies.find((e) => e.uid === ev.uid);
         const def = real ? ENEMIES.get(real.def) : undefined;
-        const color = ev.kind === 'horror' ? '#9a5cff' : def?.eldritch ? '#30d8a8' : '#d23a3a';
-        await cutIn({ name: ev.name, sub: real?.name, art: real?.def, icon: def?.icon, side: 'enemy', color });
+        const color = ev.kind === 'horror' ? 0x9a5cff : def?.eldritch ? 0x30d8a8 : 0xd23a3a;
+        const at = stage.battle.center(ev.uid);
+        if (at) stage.punch(at.x, at.y, 0.03, 0.5);
+        stage.vignette(ev.kind === 'horror' ? 'arcane' : def?.eldritch ? 'void' : 'blood', 0.45, 900);
+        sound.sfx('charge', { volume: 0.8 });
+        await wait(stage.battle.ultimate(ev.uid, color));
+        if (at) stage.shockwave(at.x, at.y, { amplitude: 16, wavelength: 140, speed: 1000, radius: 420, brightness: 1.12, dur: 0.4 });
+        stage.shake(7, 0.25);
       }
       if (ev.cine) {
         const cn = typeof ev.cine === 'string' ? { name: ev.cine } : ev.cine;
@@ -310,8 +333,16 @@ async function step(ev: CombatEvent) {
       const firearm = ev.src === 'p' && ev.attack && ev.dtype === 'pierce' && curSkill?.school === 'firearm';
       const es = ev.snap?.e.find((e) => e.uid === ev.tgt);
       const shellBreak = ev.blocked > 0 && !!es && es.block <= 0;
-      stage.battle.hit(ev.tgt, ev.dtype, ev.amount, { crit: ev.crit, weak: ev.weak, blocked: ev.blocked, hpLoss: ev.hpLoss, shellBreak, firearm, src: ev.src });
+      const heavy = ev.src === 'p' && ev.attack && (curSkill?.weight ?? 0) >= 2;
+      stage.battle.hit(ev.tgt, ev.dtype, ev.amount, { crit: ev.crit, weak: ev.weak, blocked: ev.blocked, hpLoss: ev.hpLoss, shellBreak, firearm, src: ev.src, heavy });
       const big = ev.crit || ev.weak;
+      if (heavy && !big) {
+        const hc = stage.battle.center(ev.tgt);
+        if (hc) {
+          stage.punch(hc.x, hc.y, 0.03, 0.22);
+          if ((curSkill?.weight ?? 0) >= 3) stage.shockwave(hc.x, hc.y, { amplitude: 14, wavelength: 110, speed: 1000, radius: 340, brightness: 1.1, dur: 0.32 });
+        }
+      }
       // 아주 큰 일격엔 만화식 임팩트 프레임
       const maxHp = es?.maxHp ?? 0;
       if (ev.src === 'p' && ev.attack && ev.hpLoss >= Math.max(25, maxHp * 0.22)) await impact(stage.battle.center(ev.tgt) ?? p, ev.hpLoss >= maxHp * 0.4 ? 1.5 : 1);
@@ -326,7 +357,7 @@ async function step(ev: CombatEvent) {
       floater(p.x, p.y, ev.hpLoss > 0 ? `${ev.hpLoss}` : ev.blocked > 0 ? `(${ev.blocked})` : '0', DMG_COLOR[ev.dtype], 'num', big ? 36 : 28);
       if (ev.weak) floater(p.x, p.y - 34, `약점 · ${DMG_NAME[ev.dtype]}`, DMG_COLOR[ev.dtype], 'word', 16);
       if (ev.crit) floater(p.x, p.y - 52, '치명타!', '#ffe080', 'word', 18);
-      if (ev.amount > 0) stage.shake(big ? 8 : ev.dtype === 'blunt' ? 5 : firearm ? 4 : 3, big ? 0.2 : 0.15);
+      if (ev.amount > 0) stage.shake(big ? 8 : heavy ? 6 : ev.dtype === 'blunt' ? 5 : firearm ? 4 : 3, big || heavy ? 0.2 : 0.15);
       sound.sfx(ev.blocked > 0 && ev.hpLoss === 0 ? 'block' : SFX_BY_TYPE[ev.dtype], { pitch: 0.92 + Math.random() * 0.16 });
       await wait(big ? 260 : 200);
       return;
