@@ -10,6 +10,13 @@ export function Icon({ name, size = 22, color, class: cls, style }: { name: stri
   return <span class={`ic ${cls ?? ''}`} style={{ width: size, height: size, color, ...style }} dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
+/**
+ * 탭은 pointerup에서 처리한다. 그 사이 확인 창·설명 창이 뜨면, 브라우저가 터치 뒤에 보내는 click이
+ * 같은 자리에 새로 뜬 창(바깥 = 닫기, 단추 = 확인)을 눌러 버린다 (안드로이드 크롬 등).
+ * 그래서 처리한 터치는 touchend를 막아 click이 생기지 않게 한다. 렌더마다 press()가 새로 만들어지므로 모듈에 둔다.
+ */
+let swallowClick = false;
+
 /** 탭 / 길게 누르기 */
 export function press(onTap?: () => void, onLong?: () => void) {
   let timer = 0;
@@ -25,6 +32,7 @@ export function press(onTap?: () => void, onLong?: () => void) {
   return {
     onPointerDown(e: PointerEvent) {
       fired = false;
+      swallowClick = false;
       sx = e.clientX;
       sy = e.clientY;
       clear();
@@ -34,6 +42,7 @@ export function press(onTap?: () => void, onLong?: () => void) {
       if (onLong)
         timer = window.setTimeout(() => {
           fired = true;
+          swallowClick = true;
           timer = 0;
           onLong();
           if (navigator.vibrate) navigator.vibrate(10);
@@ -45,7 +54,14 @@ export function press(onTap?: () => void, onLong?: () => void) {
     onPointerUp() {
       const had = !!timer || !onLong;
       clear();
-      if (!fired && had && !inner) onTap?.();
+      if (!fired && had && !inner) {
+        swallowClick = true;
+        onTap?.();
+      }
+    },
+    onTouchEnd(e: TouchEvent) {
+      if (swallowClick && e.cancelable) e.preventDefault();
+      swallowClick = false;
     },
     onPointerCancel: clear,
     onContextMenu(e: Event) {

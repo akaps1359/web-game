@@ -19,7 +19,7 @@ export function Title() {
       <div class="screen" onPointerDown={unlock}>
         <div class="sheet-head" style={{ padding: '14px 14px 4px' }}>
           <button class="iconbtn" onClick={() => setMode('main')} aria-label="뒤로">
-            <Icon name="gi:arrow-cursor" size={18} style={{ transform: 'scaleX(-1)' }} />
+            <Icon name="gi:return-arrow" size={18} />
           </button>
           <h2 class="title grow">출신을 고르세요</h2>
         </div>

@@ -29,7 +29,7 @@ export function CodexSheet() {
                       title: e.name,
                       icon: e.icon,
                       sub: `${e.act}층 · ${e.tier === 'boss' ? '수호자' : e.tier === 'elite' ? '정예' : '일반'}`,
-                      body: e.desc ?? '',
+                      body: e.desc ?? '심연에서 마주친 존재. 더 알려진 것은 없다.',
                       lines: [
                         { label: '처치', value: `${rec.kills}` },
                         { label: '알아낸 약점', value: rec.weak.length ? rec.weak.map((w) => DMG_NAME[w]).join(', ') : '없음' },

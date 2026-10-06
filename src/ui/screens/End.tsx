@@ -7,7 +7,8 @@ export function EndScreen() {
   const run = store.run!;
   const won = !!run.over?.won;
   const st = run.stats;
-  const mins = Math.round((Date.now() - st.startedAt) / 60000);
+  // 실제로 플레이한 시간 (예전 저장에는 없어서 시작 시각부터 잰다)
+  const mins = Math.max(1, Math.round((st.playMs ? st.playMs : Date.now() - st.startedAt) / 60000));
   const rows: [string, string][] = [
     ['출신', ORIGINS.get(run.origin)?.name ?? ''],
     ['도달', `${run.act}층${FLOORS.get(run.act) ? ` · ${FLOORS.get(run.act)!.name}` : ''}`],

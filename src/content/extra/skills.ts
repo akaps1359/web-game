@@ -1,17 +1,18 @@
 import { reg, STATUSES } from '../../engine/registry';
 import { lvlVal, type Combat } from '../../engine/combat';
 import type { EnemyUnit, SkillUse } from '../../engine/types';
-import { combo, dealt, detonate, guard, hit, needAmmo, reload, skill, spendAmmo } from '../lib';
+import { combo, dealt, detonate, guard, hit, needAmmo, reload, seized, skill, spendAmmo } from '../lib';
 
 /**
  * 재사용 대기 중인 다른 스킬 중 남은 대기가 가장 긴 것 (전투당 1회 스킬·대기를 되돌리는 스킬 제외).
  * 대기를 되돌리는 기술('refresh' — 임기응변·되감기)끼리 서로 되돌리면 한 턴에 끝없이 쓰는 고리가 된다.
+ * 표본으로 빼앗긴 기술(3층 '표본 채집' — 대기 99로 잠김)도 건드리지 않는다: 쓰러뜨려야 되찾는다 (되감기·시간 표류와 같은 규칙)
  */
 function longestCooldown(c: Combat, u: SkillUse | null): string | null {
   let best: string | null = null;
   let bestN = 0;
   for (const [uid, n] of Object.entries(c.s.cd)) {
-    if ((u && uid === u.owned.uid) || n <= bestN) continue;
+    if ((u && uid === u.owned.uid) || n <= bestN || seized(c, uid)) continue;
     const info = c.skillInfo(uid);
     if (!info || lvlVal(info.def.cd, info.owned.lvl) >= 99 || info.def.tags.includes('refresh')) continue;
     best = uid;
@@ -93,7 +94,7 @@ reg.skills([
     range: 'melee',
     target: 'single',
     type: 'slash',
-    tags: ['attack', 'combo'],
+    tags: ['attack', 'combo', 'energy'],
     vals: { dmg: [8, 9] },
     desc: '{D:dmg} 참격 피해. 이번 턴 앞서 스킬을 2개 이상 썼으면 행동력 +1',
     run: (c, u, t) => {
@@ -227,7 +228,8 @@ reg.skills([
     run: (c, u, t) => {
       spendAmmo(c, 1);
       const ds = hit(c, u, t);
-      if (ds.some((d) => d.broke) && !c.over) {
+      // 버팀을 0으로 만든 그 공격에 쓰러졌으면 붕괴가 아니다 (붕괴는 살아남은 적에게만 일어난다)
+      if (ds.some((d) => d.broke) && t && !t.dead && t.broken === 2 && !c.over) {
         c.apply(c.p, 'aim', 1, c.p);
         c.s.ammo = Math.min(c.s.maxAmmo, c.s.ammo + 2);
       }
@@ -636,7 +638,7 @@ reg.skills([
     vals: { dmg: [8, 10] },
     desc: '방어도를 무시하고 {D:dmg} + 통찰 공허 피해. 준 체력 피해의 절반만큼 정신력 회복',
     run: (c, u, t) => {
-      const ds = hit(c, u, t, { dmg: u.v('dmg') + c.p.insight, ignoreBlock: true });
+      const ds = hit(c, u, t, { dmg: u.v('dmg') + Math.floor(c.p.insight * u.power), ignoreBlock: true });
       const n = Math.floor(dealt(ds) / 2);
       if (n > 0) c.gainSanity(n);
     },

@@ -148,7 +148,7 @@ export const ACT_DMG_MULT = [1, 1, 1.1, 1.3, 1.5, 1.4];
 /** 층별 적 정신 공격 배율 */
 export const ACT_SAN_MULT = [1, 1, 1, 0.75, 0.7, 0.8];
 
-/** 정신력이 이 값 이하로 떨어지면 붕괴 */
+/** 붕괴(정신력 0) 뒤 정신력이 이 값으로 돌아온다 — 최대 정신력이 이보다 낮으면 최대 정신력까지만 */
 export const BREAKDOWN_RESET = 60;
 export const MAX_MADNESS = 4;
 
@@ -165,6 +165,11 @@ export class Combat {
   events: CombatEvent[] = [];
   /** 시뮬레이터에서는 끈다 */
   snapshots = true;
+  /**
+   * 미리보기 계산 중 (화면을 그릴 때마다 불린다). 훅은 이때 수치만 바꾸고 상태(방어도·카운터·연출)는 건드리면 안 된다
+   * — 예: 철의 성의가 의도 말풍선을 그릴 때마다 방어도를 깎던 문제
+   */
+  previewing = false;
   private hookDepth = 0;
 
   constructor(run: RunState) {
@@ -392,7 +397,7 @@ export class Combat {
           const tide = this.run.floor?.tide ?? 0;
           if (tide > 0) d.mult *= 1 + 0.05 * tide;
           d.mult *= ACT_DMG_MULT[Math.min(5, this.defOf(d.src).act)] ?? 1;
-          if (this.run.asc >= 2) d.mult *= 1.1;
+          if (this.run.asc >= 1) d.mult *= 1.1;
         }
         this.fire(d.src, 'modDamageOut', d);
         for (const [h, self] of this.runeHooks(d.skill)) h.modDamageOut?.(this, self, d);
@@ -414,8 +419,13 @@ export class Combat {
   preview(src: Unit | null, tgt: Unit | null, base: number, type: DmgType | 'true', opts: { attack?: boolean; skill?: SkillUse } = {}): number {
     const d = this.makeDamage({ src, tgt: tgt ?? this.p, base, type, attack: opts.attack ?? true, skill: opts.skill });
     const saved = this.hookDepth;
-    this.computeDamage(d, !!tgt);
-    this.hookDepth = saved;
+    this.previewing = true;
+    try {
+      this.computeDamage(d, !!tgt);
+    } finally {
+      this.previewing = false;
+      this.hookDepth = saved;
+    }
     return d.amount;
   }
 
@@ -461,8 +471,9 @@ export class Combat {
       amt -= b;
       d.blocked += b;
     }
-    d.hpLoss = amt;
     const dying = t === this.p && this.dying;
+    // 사경(체력 0) 중에는 체력이 더 줄지 않는다 — 대신 정신력이 깎인다 (아래). '체력을 잃으면' 효과가 헛돌지 않게 체력 손실은 0
+    d.hpLoss = dying ? 0 : amt;
     if (!dying) t.hp -= amt;
     if (t === this.p && amt > 0) this.run.stats.dmgTaken += amt;
     if (d.src === this.p && amt > 0) this.run.stats.dmgDealt += amt;
@@ -497,6 +508,11 @@ export class Combat {
   /** 사경: 체력 0에서 정신력으로 버티는 상태 */
   get dying(): boolean {
     return (this.p.st.dying ?? 0) > 0;
+  }
+
+  /** 체력 0이지만 사경으로 버티며 싸우는 나 (상태이상·턴 효과는 계속 돌아간다) */
+  private isDyingPlayer(u: Unit): boolean {
+    return u === this.p && this.dying;
   }
 
   private enterDying() {
@@ -554,7 +570,11 @@ export class Combat {
       return;
     }
     if (!t.minion) this.run.stats.kills++;
-    if (d ? d.src === this.p || d.src === null : byPlayer) this.fire(this.p, 'onKill', t, d);
+    if (d ? d.src === this.p || d.src === null : byPlayer) {
+      this.fire(this.p, 'onKill', t, d);
+      // 쓰러뜨린 스킬에 새긴 각인의 처치 효과 (사냥 각인) — 다시 일어선 적은 처치가 아니므로 여기서만 준다
+      for (const [h, self] of this.runeHooks(d?.skill)) h.onKill?.(this, self, t, d);
+    }
     this.fire('all', 'onAnyDeath', t);
   }
 
@@ -586,7 +606,12 @@ export class Combat {
   previewBlock(amount: number, fromSkill?: SkillUse): number {
     const b: BlockCtx = { unit: this.p, amount, fromSkill };
     if (fromSkill) b.amount += this.p.dex;
-    this.fire(this.p, 'modBlock', b);
+    this.previewing = true;
+    try {
+      this.fire(this.p, 'modBlock', b);
+    } finally {
+      this.previewing = false;
+    }
     return Math.max(0, Math.floor(b.amount));
   }
 
@@ -629,7 +654,8 @@ export class Combat {
 
   /** 상태 부여. 음수면 감소. 실제 적용된 변화량 반환 */
   apply(target: Unit, id: string, n: number, src: Unit | null = null): number {
-    if (this.over || target.hp <= 0 || n === 0) return 0;
+    // 사경(체력 0)인 나는 아직 싸우는 중이다: 버프·해제·턴 효과가 그대로 걸린다
+    if (this.over || (target.hp <= 0 && !this.isDyingPlayer(target)) || n === 0) return 0;
     const def = need(STATUSES, id, '상태');
     let amount = n;
     if (n > 0) {
@@ -684,7 +710,12 @@ export class Combat {
     let n = amount * (1 + 0.05 * Math.min(6, this.p.insight)) * Math.max(0.5, 1 - 0.05 * this.p.will);
     n *= ACT_SAN_MULT[Math.min(5, this.run.act)] ?? 1;
     if ((this.p.st.dread ?? 0) > 0) n *= 1.5;
-    for (const [h, self] of this.sources(this.p)) if (h.modSanityLoss) n = h.modSanityLoss(this, self, n);
+    this.previewing = true;
+    try {
+      for (const [h, self] of this.sources(this.p)) if (h.modSanityLoss) n = h.modSanityLoss(this, self, n);
+    } finally {
+      this.previewing = false;
+    }
     return Math.max(0, Math.floor(n));
   }
 
@@ -732,7 +763,8 @@ export class Combat {
       this.defeat('madness');
       return;
     }
-    this.p.sanity = BREAKDOWN_RESET;
+    // 이계 정수·금기로 최대 정신력이 60 아래로 깎였으면 최대치까지만 (최대를 넘겨 채우지 않는다)
+    this.p.sanity = Math.min(BREAKDOWN_RESET, this.p.maxSanity);
     this.fire(this.p, 'onBreakdown');
   }
 
@@ -982,7 +1014,7 @@ export class Combat {
 
   private tickStatuses(u: Unit, when: 'start' | 'end') {
     for (const id of Object.keys(u.st)) {
-      if (this.over || u.hp <= 0) return;
+      if (this.over || (u.hp <= 0 && !this.isDyingPlayer(u))) return;
       const def = STATUSES.get(id);
       const n = u.st[id];
       if (!def || !n) continue;

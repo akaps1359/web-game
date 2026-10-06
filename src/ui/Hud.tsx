@@ -51,7 +51,7 @@ export function RunHud({ compact }: { compact?: boolean }) {
       />
       {!compact && <Stat icon="gi:two-coins" color="var(--brass-2)" value={p.gold} />}
       <div class="grow" />
-      <button class="stat" onClick={openChar} aria-label="캐릭터">
+      <button class="stat hud-char" onClick={openChar} aria-label="캐릭터">
         <span class="chip" style={{ padding: '3px 8px', color: 'var(--brass-2)' }}>
           <Icon name="gi:knapsack" size={15} />
           <span class="num">Lv {p.level}</span>

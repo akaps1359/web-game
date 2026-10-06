@@ -65,6 +65,8 @@ export interface FloorState {
   shops?: Record<string, ShopState>;
   /** 신전 방마다 한 번 정해진 금기의 봉헌 후보 (다시 들어와도 같다) */
   offers?: Record<string, string[]>;
+  /** 지나온 길 (방 id 순서, 지도에 발자국으로 그린다). 예전 저장에는 없다 */
+  trail?: number[];
 }
 
 export const GRID_W = 7;
@@ -140,6 +142,7 @@ export function generateFloor(run: RunState, act: number): FloorState {
       recentEnc: [],
       bossEnc: '',
       vars: {},
+      trail: [start.id],
     };
     assignRooms(run, f, dist);
     start.type = 'start';
@@ -349,6 +352,8 @@ export function moveTo(run: RunState, to: number): string | null {
     if (res.madness) log(run, '어둠이 정신을 갉아먹는다… 광기에 사로잡혔다');
     if (run.over) return null;
   }
+  // 지도에 그릴 발자국 (예전 저장이면 떠나온 방부터, 너무 길면 오래된 것부터 지운다)
+  f.trail = [...(f.trail ?? [f.pos]), to].slice(-80);
   f.pos = to;
   run.stats.rooms++;
   reveal(run, f, to);

@@ -111,7 +111,7 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     type: 'pierce',
-    tags: ['attack', 'basic', 'ammo', 'gun', 'multi'],
+    tags: ['attack', 'basic', 'ammo', 'gun'],
     vals: { dmg: [7, 9, 11] },
     desc: '탄약 1 소모, {D:dmg} 관통 피해. 탄약이 없으면 쏘지 않고 재장전',
     run: (c, u, t) => {

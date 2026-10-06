@@ -87,7 +87,7 @@ export function layoutEnemies(rect: Rect, list: { uid: string; row: 0 | 1; scale
     if (front[i]) order.push(front[i]);
     if (back[i] && i % 2 === 0) order.push(back[i]);
   }
-  const PLATE = 68; // 발밑 이름표·체력·버팀·상태 높이
+  const PLATE = 78; // 발밑 이름표·체력·버팀·상태 한 줄 높이 (4 + 이름 16 + 체력 11 + 버팀 16 + 상태 20 + 틈) — 모자라면 상태 아이콘이 아래 내 정보 칸을 덮는다
   const INTENT = 34; // 머리 위 의도 표시
   const HEAD = 1.25; // 형체 높이 ÷ 크기 (그림 기준)
   const feet = rect.y + rect.h - PLATE;
@@ -252,9 +252,10 @@ class EnemyView extends Container {
     let tex: Texture;
     let white: Texture;
     let top = 0.15;
+    let cx = 0.5;
     if (art) {
       try {
-        ({ tex, white, top } = await artTextures(art));
+        ({ tex, white, top, cx } = await artTextures(art));
       } catch {
         // 그림을 못 불러오면 아이콘으로
         [tex, white] = await Promise.all([iconTexture(icon, { size: 300, tint, glow }), iconTexture(icon, { size: 300, tint, flat: true })]);
@@ -268,8 +269,10 @@ class EnemyView extends Container {
     const ay = this.isArt ? 0.97 : 0.847;
     // 발에서 형체 윗단까지의 높이 (크기 대비) — 의도 표시를 머리 위에 띄우는 데 쓴다
     this.headroom = this.isArt ? (ay - top) * 1.32 : 1.08;
-    this.body.anchor.set(0.5, ay);
-    this.flash.anchor.set(0.5, ay);
+    // 그림 속 형체가 한쪽으로 치우쳐 있어도 발이 자리 한가운데(이름표 위)에 오게
+    const ax = this.isArt ? cx : 0.5;
+    this.body.anchor.set(ax, ay);
+    this.flash.anchor.set(ax, ay);
     this.body.texture = tex;
     this.flash.texture = white;
     this.cells = undefined;

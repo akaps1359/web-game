@@ -233,6 +233,40 @@ h2.title {
 .hud .grow {
   flex: 1;
 }
+/* 체력·골드가 세 자리, 레벨이 두 자리가 되면 줄이 넘쳐 설정 단추가 화면 밖으로 밀려났다.
+   좁은 화면에선 간격을 줄이고, 그래도 넘치면 소지품 칩의 「정수 n/m」 글자가 먼저 줄어든다 */
+.hud .iconbtn {
+  flex: none;
+}
+.hud .hud-char {
+  min-width: 0;
+}
+.hud .hud-char .chip {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.hud .hud-char .chip .muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 420px) {
+  .hud {
+    gap: 5px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .hud .stat {
+    gap: 2px;
+  }
+  .hud .stat .num {
+    font-size: 13px;
+  }
+  .hud .stat > .muted {
+    font-size: 10px !important;
+  }
+}
 
 .bar {
   position: relative;

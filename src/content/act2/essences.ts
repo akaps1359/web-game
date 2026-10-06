@@ -233,7 +233,7 @@ reg.skills([
     tags: ['block'],
     vals: { barrier: [8, 12] },
     desc: '보호막 {barrier} (턴이 지나도 유지)',
-    run: (c, u) => void c.apply(c.p, 'barrier', u.v('barrier'), c.p),
+    run: (c, u) => void c.apply(c.p, 'barrier', Math.floor(u.v('barrier') * u.power), c.p),
   }),
   ess({
     id: 'ess-walled-nun-lament',
@@ -485,8 +485,9 @@ reg.skills([
     desc: '적 전체에 {D:dmg} 비전 피해. 이번 전투에서 쓸 때마다 이 기술의 피해가 {per}씩 늘어난다',
     run: (c, u, t) => {
       const k = c.s.vars.a2cres ?? 0;
-      hit(c, u, t, { dmg: u.v('dmg') + k * u.v('per') });
-      c.s.vars.a2cres = k + 1;
+      // 쌓인 추가 피해도 위력(메아리·절약 각인)을 따르고, 메아리 사본은 한 번 더 쌓지 않는다 (한 번 쓰면 한 번만 커진다)
+      hit(c, u, t, { dmg: u.v('dmg') + Math.floor(k * u.v('per') * u.power) });
+      if (!u.echo) c.s.vars.a2cres = k + 1;
     },
   }),
   ess({

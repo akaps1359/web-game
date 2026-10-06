@@ -1,12 +1,13 @@
 import { useState } from 'preact/hooks';
 import { EQUIPS, MADNESS, RELICS, RUNES, SKILLS } from '../../engine/registry';
 import { equipFromBag, equipSkill, essenceCap, essenceUsed, socketRune, unequip, xpToNext } from '../../engine/run';
-import type { EquipSlot } from '../../engine/types';
+import type { EquipSlot, School } from '../../engine/types';
 import { applyAsk } from '../ask';
 import { discardSkill, skillLockReason } from '../../engine/shop';
 import { store } from '../../state/store';
 import { EssenceCard, LootCard, SkillCard } from '../cards';
 import { Icon, Sheet, showTip } from '../components';
+import { SCHOOL_NAME } from '../text';
 
 type Tab = 'skills' | 'essences' | 'equip' | 'relics' | 'status';
 
@@ -305,7 +306,9 @@ function StatusTab() {
         })}
       </div>
       <div class="section-label">기술 계열</div>
-      <div class="muted" style={{ fontSize: 12 }}>{[...new Set(run.skills.map((s) => SKILLS.get(s.id)?.school))].join(' · ')}</div>
+      <div class="muted" style={{ fontSize: 12 }}>
+        {[...new Set(run.skills.map((s) => SKILLS.get(s.id)?.school).filter((x): x is School => !!x))].map((x) => SCHOOL_NAME[x]).join(' · ')}
+      </div>
     </div>
   );
 }

@@ -33,6 +33,8 @@ function encPool(run: RunState, kind: 'normal' | 'elite') {
       e.act === run.act &&
       e.kind === kind &&
       !e.early &&
+      // 가중치 0 = 특정 이벤트 전용 전투 (미고의 원통·틴달로스의 사냥개 등) — 무작위로 고르지 않는다
+      (e.weight ?? 1) > 0 &&
       !e.id.startsWith('rift') &&
       !e.id.startsWith('stalker') &&
       !e.id.startsWith('lord'),
@@ -168,6 +170,8 @@ reg.events([
           {
             label: '대국을 받아들인다',
             hint: '이기면 무작위 스킬 2개 강화, 지면 정신력 -15 (통찰이 높을수록 유리)',
+            // 이겨도 얻을 것이 없으면 지는 위험만 남는다 (피의 제단·연회와 같은 규칙)
+            disabled: !run.skills.some((s) => canUpgradeSkill(run, s)) && '강화할 스킬이 없다',
             go: (r, e) => {
               const win = rng(r, 'event').chance(Math.min(0.75, 0.45 + 0.05 * r.player.insight));
               if (win) {

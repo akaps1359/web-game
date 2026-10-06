@@ -1,6 +1,6 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { ENCOUNTERS, ENEMIES, FLOORS } from '../../engine/registry';
-import { distances, lightCost, type Room } from '../../engine/dungeon';
+import { lightCost, type Room } from '../../engine/dungeon';
 import { FINAL_ACT } from '../../engine/run';
 import { fightGuardian, move, riftEnter, useItem } from '../../state/actions';
 import { store } from '../../state/store';
@@ -13,25 +13,39 @@ import { openShop } from '../../engine/shop';
 import { refresh } from '../../state/actions';
 import { sound } from '../../sound';
 import { confirmThen } from '../ask';
+import { MapView } from './DungeonMap';
 
 export function DungeonScreen() {
   const run = store.run!;
   const f = run.floor!;
   const floorDef = FLOORS.get(f.act);
   const here = f.rooms[f.pos];
-  const dist = distances(f, f.pos);
-  const stalker = f.stalker?.active ? f.stalker : null;
   // 이동 확인: 이웃 방을 누르면 먼저 선택만 하고, 확인 버튼으로 이동
   const [picked, setPicked] = useState<number | null>(null);
+  // 이동 연출: 핀이 다음 방으로 걸어간 뒤에 실제로 들어간다
+  const [walking, setWalking] = useState<number | null>(null);
   const target = picked !== null && here.links.includes(picked) ? picked : null;
   const select = (id: number) => {
     setPicked(target === id ? null : id);
   };
   const confirmMove = () => {
-    if (target === null) return;
+    if (target === null || walking !== null) return;
     setPicked(null);
-    void move(target);
+    setWalking(target);
+    sound.sfx('footstep', { volume: 0.5 });
+    setTimeout(() => {
+      setWalking(null);
+      void move(target);
+    }, 420);
   };
+
+  // 등불이 줄어든 만큼 잠깐 띄운다
+  const prevLight = useRef(run.light);
+  const [drop, setDrop] = useState<{ n: number; k: number } | null>(null);
+  useEffect(() => {
+    if (run.light < prevLight.current) setDrop({ n: prevLight.current - run.light, k: Date.now() });
+    prevLight.current = run.light;
+  }, [run.light]);
 
   const roomTip = (r: Room) => {
     if (!r.scouted) {
@@ -71,7 +85,8 @@ export function DungeonScreen() {
   const lightName = run.light >= 75 ? '밝음' : run.light >= 25 ? '희미함' : '어둠';
 
   return (
-    <div class="screen">
+    <div class="screen dungeon">
+      <div class={`screen-dark ${run.light < 25 ? 'dim' : ''}`} />
       <RunHud />
       <XpBar />
       <div class="floorbar">
@@ -94,6 +109,9 @@ export function DungeonScreen() {
           <Icon name="gi:high-tide" size={13} color="#6fb6ea" />
           {hours(f.hours)} · 조수 {f.tide}
         </button>
+        <button class="chip" aria-label="지도 보는 법" onClick={showLegend}>
+          <Icon name="gi:scroll-unfurled" size={14} color="var(--brass-2)" />
+        </button>
       </div>
       <button
         class="lightbar"
@@ -106,77 +124,23 @@ export function DungeonScreen() {
           })
         }
       >
-        <Icon name="gi:old-lantern" size={16} color={lightColor} />
+        <span class={`lamp ${run.light < 25 ? 'low' : run.light < 75 ? 'mid' : ''}`}>
+          <Icon name="gi:old-lantern" size={16} color={lightColor} />
+        </span>
         <div class="lightbar-track">
-          <i style={{ width: `${lightPct}%`, background: `linear-gradient(90deg, #6a3a10, ${lightColor})` }} />
+          <i style={{ width: `${lightPct}%`, background: `linear-gradient(90deg, #6a3a10, ${lightColor})`, boxShadow: `0 0 ${4 + lightPct / 10}px ${lightColor}` }} />
         </div>
-        <span class="num" style={{ color: lightColor, fontSize: 12, minWidth: 26 }}>
+        <span class="num" style={{ color: lightColor, fontSize: 12, minWidth: 26, position: 'relative' }}>
           {run.light}
+          {drop && (
+            <span key={drop.k} class="light-drop">
+              -{drop.n}
+            </span>
+          )}
         </span>
       </button>
 
-      <div class="map-wrap">
-        <div class="map" style={{ aspectRatio: `${f.w} / ${f.h}` }}>
-          <svg class="corridors" viewBox={`0 0 ${f.w * 100} ${f.h * 100}`} preserveAspectRatio="none">
-            {f.rooms.flatMap((r) =>
-              r.links
-                .filter((l) => l > r.id && r.seen && f.rooms[l].seen)
-                .map((l) => {
-                  const o = f.rooms[l];
-                  const lit = r.visited || o.visited;
-                  return (
-                    <line
-                      x1={r.x * 100 + 50}
-                      y1={r.y * 100 + 50}
-                      x2={o.x * 100 + 50}
-                      y2={o.y * 100 + 50}
-                      stroke={lit ? 'rgba(201,162,74,0.55)' : 'rgba(150,150,150,0.25)'}
-                      stroke-width={lit ? 7 : 5}
-                      stroke-dasharray={lit ? undefined : '10 10'}
-                      stroke-linecap="round"
-                    />
-                  );
-                }),
-            )}
-          </svg>
-          {f.rooms
-            .filter((r) => r.seen)
-            .map((r) => {
-              const adj = here.links.includes(r.id);
-              const cur = r.id === f.pos;
-              const showStalker = stalker && stalker.room === r.id && (dist[r.id] <= 3 || r.visited);
-              const icon = r.rift ? 'gi:magic-portal' : r.scouted ? ROOM_ICON[r.type] : 'gi:help';
-              const color = r.rift ? '#c08cff' : r.scouted ? ROOM_COLOR[r.type] : '#5a5f66';
-              const faded = r.cleared && r.type !== 'merchant' && r.type !== 'shrine' && !cur;
-              return (
-                <button
-                  key={r.id}
-                  class={`room ${cur ? 'cur' : ''} ${adj ? 'adj' : ''} ${r.scouted ? '' : 'unknown'} ${faded ? 'faded' : ''} ${r.rift ? 'rift' : ''} ${target === r.id ? 'target' : ''}`}
-                  style={`left:${((r.x + 0.5) / f.w) * 100}%;top:${((r.y + 0.5) / f.h) * 100}%;--rc:${color}`}
-                  {...press(() => (adj && !store.busy ? select(r.id) : roomTip(r)), () => roomTip(r))}
-                >
-                  {r.scouted && r.type === 'empty' && !r.rift ? <i class="dot" /> : <Icon name={icon} size={22} color={color} />}
-                  {cur && <span class="me" />}
-                  {(r.flooded || r.inverted || (r.meteor !== undefined && !f.vars['meteor' + r.id]) || (r.frozen !== undefined && !r.cleared)) && (
-                    <span class="mods">
-                      {r.flooded && (f.act === 2 ? <Icon name="gi:burning-embers" size={11} color="#c9a27a" /> : <Icon name="gi:water-drop" size={11} color="#6fb6ea" />)}
-                      {r.inverted && r.scouted && <Icon name="gi:cycle" size={11} color="#ff80c0" />}
-                      {r.meteor !== undefined && !f.vars['meteor' + r.id] && <Icon name="gi:burning-meteor" size={11} color="#ff9a4a" />}
-                      {r.frozen !== undefined &&
-                        !r.cleared &&
-                        (f.hours < r.frozen ? <Icon name="gi:ice-cube" size={11} color="#9fd8ff" /> : <Icon name="gi:melting-ice-cube" size={11} color="#ff8a6a" />)}
-                    </span>
-                  )}
-                  {showStalker && (
-                    <span class="stalker">
-                      <Icon name="gi:evil-eyes" size={16} color="#ff3040" />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-        </div>
-      </div>
+      <MapView target={target} walking={walking} onRoom={select} onTip={roomTip} />
 
       {target !== null ? <MoveConfirm id={target} onCancel={() => setPicked(null)} onConfirm={confirmMove} /> : <RoomPanel />}
 
@@ -204,6 +168,20 @@ export function DungeonScreen() {
       </div>
     </div>
   );
+}
+
+function showLegend() {
+  const kinds = ['combat', 'elite', 'treasure', 'event', 'camp', 'merchant', 'shrine', 'portal', 'lord'] as const;
+  showTip({
+    title: '지도 보는 법',
+    icon: 'gi:scroll-unfurled',
+    body: [
+      '핀이 지금 있는 곳이다. 금빛으로 흐르는 길 끝의 방을 누르면 그리로 간다.',
+      '발자국은 지나온 길, 체크(✓)는 이미 다녀간 방이다. 물음표는 어두워서 안이 보이지 않는 방.',
+      '등불이 어두워질수록 내 주변만 밝게 보인다.',
+    ].join('\n'),
+    lines: kinds.map((k) => ({ label: ROOM_NAME[k], value: roomDesc({ type: k } as Room), color: ROOM_COLOR[k] })),
+  });
 }
 
 function roomDesc(r: Room): string {

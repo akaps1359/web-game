@@ -8,6 +8,7 @@ import { layoutEnemies, type Anchor } from '../../render/battle';
 import { stage } from '../../render/stage';
 import { endTurn, useItem, useSkill } from '../../state/actions';
 import { store } from '../../state/store';
+import { saveMeta } from '../../state/meta';
 import { sound } from '../../sound';
 import { Bar, Icon, press, Segs, showTip } from '../components';
 import { DMG_COLOR, DMG_ICON, DMG_NAME, INTENT_COLOR, INTENT_ICON, RARITY_COLOR, SCHOOL_COLOR, SCHOOL_NAME, skillDesc, statusText } from '../text';
@@ -89,6 +90,7 @@ export function CombatScreen() {
           class="chip"
           onClick={() => {
             s.meta.speed = s.meta.speed === 1 ? 2 : 1;
+            saveMeta(s.meta);
             s.emit();
           }}
         >
@@ -218,9 +220,9 @@ function AnomalyChip({ id }: { id: string }) {
   const a = ANOMALIES.get(id);
   if (!a) return null;
   return (
-    <button class="chip" style={{ color: '#c08cff', borderColor: 'rgba(192,140,255,0.5)' }} onClick={() => showTip({ title: a.name, icon: a.icon, color: '#c08cff', body: a.desc })}>
+    <button class="chip shrink" style={{ color: '#c08cff', borderColor: 'rgba(192,140,255,0.5)' }} onClick={() => showTip({ title: a.name, icon: a.icon, color: '#c08cff', body: a.desc })}>
       <Icon name={a.icon} size={13} />
-      {a.name}
+      <span class="nm">{a.name}</span>
     </button>
   );
 }
@@ -242,9 +244,27 @@ function playerTip() {
 function StatusRow({ st, max }: { st: Record<string, number>; max?: number }) {
   const ids = Object.keys(st).filter((id) => st[id] && STATUSES.has(id) && !STATUSES.get(id)!.hidden);
   if (!ids.length) return null;
+  // 적 이름표 아래는 한 줄만 (두 줄이 되면 아래 내 정보 칸에 가려진다) — 넘치는 것은 「+N」을 눌러 본다
+  const cap = max ? Math.max(1, Math.floor((max + 2) / 22)) : ids.length;
+  const shown = ids.length > cap ? ids.slice(0, cap - 1) : ids;
+  const rest = ids.slice(shown.length);
+  const restTip = () =>
+    showTip({
+      title: '상태',
+      icon: 'gi:magnifying-glass',
+      // 이름과 수치만 — 풀이는 아래 용어 목록이 붙인다
+      body: rest.map((id) => `${STATUSES.get(id)!.name} ${st[id]}`).join(' · '),
+    });
   return (
     <div class="st-row" style={max ? { maxWidth: max } : { justifyContent: 'flex-start', maxWidth: 'none' }}>
-      {ids.map((id) => {
+      {rest.length > 0 && (
+        <span class="st" style={{ pointerEvents: 'auto', order: 1 }} {...press(restTip, restTip)}>
+          <span class="num" style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>
+            +{rest.length}
+          </span>
+        </span>
+      )}
+      {shown.map((id) => {
         const d = STATUSES.get(id)!;
         return (
           <span
@@ -383,18 +403,19 @@ function enemyTip(e: EnemyUnit) {
   });
 }
 
-function skillTip(def: SkillDef, lvl: number, runes: string[], use?: ReturnType<NonNullable<typeof store.combat>['makeUse']>) {
+/** cost·cd: 전투 중 실제 값 (각인·유물이 바꾼 행동력·재사용 대기) */
+function skillTip(def: SkillDef, lvl: number, runes: string[], use?: ReturnType<NonNullable<typeof store.combat>['makeUse']>, cost = lvlVal(def.cost, lvl), cd = lvlVal(def.cd, lvl)) {
   const c = store.combat;
   const segs = skillDesc(def, lvl, { c, target: c?.enemy(store.focus) ?? null, use: use ?? null });
   showTip({
-    title: def.name + (lvl > 0 ? ' +' : ''),
+    title: def.name + (lvl > 0 ? '+' : ''),
     sub: `${SCHOOL_NAME[def.school]} · ${RANGE_NAME[def.range]} · ${TARGET_NAME[def.target]}${def.type ? ` · ${DMG_NAME[def.type]}` : ''}`,
     icon: def.icon,
     color: SCHOOL_COLOR[def.school],
     body: segs.map((x) => x.t).join('') + (runes.length ? `\n\n각인: ${runes.map((r) => RUNES.get(r)?.name).join(', ')}` : ''),
     lines: [
-      { label: '행동력', value: String(lvlVal(def.cost, lvl)) },
-      { label: '재사용 대기', value: lvlVal(def.cd, lvl) >= 99 ? '전투당 1회' : `${lvlVal(def.cd, lvl)}턴` },
+      { label: '행동력', value: String(cost) },
+      { label: '재사용 대기', value: cd >= 99 ? '전투당 1회' : cd > 0 ? `${cd}턴` : '없음' },
     ],
   });
 }
@@ -426,7 +447,7 @@ function SkillButton({ r }: { r: string }) {
     s.emit();
   };
   return (
-    <button class={`skill ${sel ? 'sel' : ''} ${why && !cd ? 'off' : ''}`} {...press(tap, () => skillTip(def, owned.lvl, owned.runes, c.makeUse(info)))}>
+    <button class={`skill ${sel ? 'sel' : ''} ${why && !cd ? 'off' : ''}`} {...press(tap, () => skillTip(def, owned.lvl, owned.runes, c.makeUse(info), cost, c.cdOf(info)))}>
       {cost > 0 ? (
         <span class="cost">
           {Array.from({ length: cost }, () => (
@@ -489,7 +510,7 @@ function InfoBox() {
     const target = c.enemy(s.focus) ?? (info.def.target === 'single' ? c.validTargets(info.def)[0] : null);
     const segs = skillDesc(info.def, info.owned.lvl, { c, target, use });
     const why = c.blockReason(s.sel!);
-    const cd = lvlVal(info.def.cd, info.owned.lvl);
+    const cd = c.cdOf(info);
     return (
       <div class="infobox panel">
         <Icon name={info.def.icon} size={30} color={SCHOOL_COLOR[info.def.school]} />
@@ -519,7 +540,7 @@ function InfoBox() {
     const it = e.intent;
     const move = it ? c.moveDef(e, it.move) : null;
     return (
-      <div class="infobox panel" {...press(() => enemyTip(e))}>
+      <div class="infobox panel" role="button" {...press(() => enemyTip(e))}>
         <Icon name={ENEMIES.get(e.def)?.icon ?? 'gi:help'} size={30} />
         <div class="txt">
           <div class="nm">{e.name}</div>

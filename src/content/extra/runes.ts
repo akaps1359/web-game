@@ -1,6 +1,7 @@
 import { reg } from '../../engine/registry';
 import { isEnemy, lvlVal } from '../../engine/combat';
 import type { SkillDef } from '../../engine/types';
+import { seized } from '../lib';
 
 const isAttack = (s: SkillDef) => s.tags.includes('attack');
 const notBasic = (s: SkillDef) => !s.tags.includes('basic');
@@ -28,8 +29,9 @@ reg.runes([
     desc: '이 스킬로 적을 처치하면 행동력 +1 (사용당 1회)',
     fits: isAttack,
     hooks: {
-      onDamageDealt(c, _s, d) {
-        if (!isEnemy(d.tgt) || d.tgt.hp > 0 || d.hpLoss <= 0 || c.s.phase !== 'player') return;
+      // 체력이 0이 된 순간이 아니라 처치가 확정된 뒤에 (망자의 귀환·다시 얼어붙는 시체처럼 다시 일어서는 적은 처치가 아니다)
+      onKill(c) {
+        if (c.s.phase !== 'player') return;
         // 이번 사용(usedTotal 기준)에서 한 번만
         const key = c.s.usedTotal + 1;
         if (c.s.vars.xHuntRune === key) return;
@@ -94,10 +96,11 @@ reg.runes([
     hooks: {
       afterSkill(c, _s, u) {
         // 대기 1인 스킬은 건드리지 않는다: 공명 각인 둘이 서로의 대기를 0으로 만들며 한 턴에 끝없이 쓰는 고리 방지
+        // 표본으로 빼앗긴 기술(대기 99로 잠김)은 '가장 긴 대기'로 치지 않는다 (줄여 봐야 소용없고, 진짜 대기 중인 기술이 밀린다)
         let best: string | null = null;
         let bestN = 1;
         for (const [uid, n] of Object.entries(c.s.cd)) {
-          if (uid === u.owned.uid || n <= bestN) continue;
+          if (uid === u.owned.uid || n <= bestN || seized(c, uid)) continue;
           const info = c.skillInfo(uid);
           if (!info || lvlVal(info.def.cd, info.owned.lvl) >= 99) continue;
           best = uid;

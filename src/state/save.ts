@@ -2,7 +2,18 @@ import { SAVE_VERSION, type RunState } from '../engine/run';
 
 const KEY = 'abyss.run';
 
+/** 마지막으로 저장한 때 (실제 플레이 시간 누적용) */
+let lastTick = 0;
+/** 이 이상 아무것도 안 한 시간은 플레이 시간에 넣지 않는다 (자리를 비웠거나 며칠 뒤 이어하기) */
+const IDLE_MS = 3 * 60_000;
+
 export function saveRun(run: RunState | null) {
+  const now = Date.now();
+  if (run) {
+    const dt = now - lastTick;
+    if (lastTick && dt > 0 && dt < IDLE_MS) run.stats.playMs = (run.stats.playMs ?? 0) + dt;
+  }
+  lastTick = now;
   try {
     if (!run || run.over) localStorage.removeItem(KEY);
     else localStorage.setItem(KEY, JSON.stringify(run));

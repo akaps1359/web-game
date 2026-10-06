@@ -58,7 +58,8 @@ export const mv = {
       desc: o.desc,
       run(c, e) {
         if (o.dmg) c.enemyAttack(e, { type: o.type ?? 'void' });
-        if (!c.over) c.horror(e, sanity);
+        // 공격하다 반격·가시에 쓰러졌으면 공포도 끝 (공격의 부가 효과와 같은 규칙)
+        if (!c.over && !e.dead) c.horror(e, sanity);
         if (!c.over && !e.dead) o.then?.(c, e);
       },
     };

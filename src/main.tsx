@@ -18,7 +18,7 @@ document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: fals
 for (const ev of ['pointerdown', 'touchend', 'click']) document.addEventListener(ev, () => void sound.unlock(), { capture: true });
 
 // 누를 수 있는 것은 무엇이든 누르는 순간 짧은 소리 (눌렸는지 바로 알 수 있게). 막힌 단추는 둔탁한 소리
-const PRESSABLE = 'button, a, [role="button"], .card, .chip, .tab, .skill-tile, .room, .slot-item, .enemy-hit, .skill, .chip-anom';
+const PRESSABLE = 'button, a, [role="button"], .card, .chip, .tab, .skill-tile, .room, .slot-item, .enemy-hit, .skill, .chip-anom, .st';
 document.addEventListener(
   'pointerdown',
   (e) => {

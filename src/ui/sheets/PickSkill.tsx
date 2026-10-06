@@ -43,7 +43,8 @@ export function PickSkillSheet() {
     if (!after || after.lvl <= before) return;
     sound.sfx('levelUp');
     setDone({ id: after.id, lvl: after.lvl });
-    setTimeout(close, 1700);
+    // 연출을 눌러 먼저 닫고 다른 창(소지품 등)을 열었으면 그 창은 닫지 않는다
+    setTimeout(() => store.sheet === sheet && close(), 1700);
   };
 
   return (
@@ -65,7 +66,10 @@ export function PickSkillSheet() {
             return (
               <div class="skill-tile off">
                 <Icon name={d.icon} size={30} color={SCHOOL_COLOR[d.school]} />
-                <span class="nm">{d.name}+</span>
+                <span class="nm">
+                  {d.name}
+                  {s.lvl > 0 ? '+' : ''}
+                </span>
               </div>
             );
           })}

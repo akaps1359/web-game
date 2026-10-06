@@ -11,8 +11,10 @@ const RANGE = { melee: '근접', ranged: '원거리', self: '자신' } as const;
 export function SkillCard({ id, lvl = 0, runes = [], sel, off, onClick, right }: { id: string; lvl?: number; runes?: string[]; sel?: boolean; off?: boolean; onClick?: () => void; right?: ComponentChildren }) {
   const def = SKILLS.get(id);
   if (!def) return null;
-  const cost = lvlVal(def.cost, lvl);
-  const cd = lvlVal(def.cd, lvl);
+  // 새긴 각인이 바꾸는 행동력·재사용 대기도 반영 (전투의 costOf·cdOf와 같게)
+  const base = lvlVal(def.cd, lvl);
+  const cost = Math.max(0, lvlVal(def.cost, lvl) + runes.reduce((n, r) => n + (RUNES.get(r)?.costMod ?? 0), 0));
+  const cd = Math.max(base > 0 ? 1 : 0, base + runes.reduce((n, r) => n + (RUNES.get(r)?.cdMod ?? 0), 0));
   return (
     <button
       class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''}`}

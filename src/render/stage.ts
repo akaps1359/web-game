@@ -60,6 +60,8 @@ class Stage {
 
   private resize() {
     if (!this.app) return;
+    // resizeTo는 다음 프레임에야 화면 크기를 바꾼다 — 먼저 맞추지 않으면 배경이 이전 크기로 남는다 (회전 등)
+    this.app.resize();
     const w = this.app.screen.width;
     const h = this.app.screen.height;
     this.backdrop?.resize(w, h);

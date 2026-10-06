@@ -269,3 +269,23 @@ describe('지속 피해 밸런스', () => {
     expect(e.st.burn ?? 0).toBe(0);
   });
 });
+
+describe('지도: 지나온 길', () => {
+  it('층을 시작하면 시작 방에서, 이동할 때마다 발자국이 이어진다 (예전 저장도 떠나온 방부터)', async () => {
+    const { moveTo } = await import('../src/engine/dungeon');
+    const run = newRun({ seed: 71, origin: 'soldier' });
+    const f = run.floor!;
+    expect(f.trail).toEqual([f.start]);
+    const a = f.rooms[f.pos].links[0];
+    run.screen = 'dungeon';
+    expect(moveTo(run, a)).toBeNull();
+    expect(f.trail).toEqual([f.start, a]);
+    // 예전 저장: trail 없음
+    delete f.trail;
+    run.screen = 'dungeon';
+    run.combat = null;
+    const b = f.rooms[f.pos].links.find((x) => x !== f.start) ?? f.start;
+    expect(moveTo(run, b)).toBeNull();
+    expect(f.trail).toEqual([a, b]);
+  });
+});

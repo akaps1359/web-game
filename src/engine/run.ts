@@ -7,7 +7,9 @@ import {
   EQUIPS,
   ESSENCES,
   FLOORS,
+  MADNESS,
   ORIGINS,
+  PERKS,
   RELICS,
   RUNES,
   SKILLS,
@@ -16,6 +18,8 @@ import {
 import type {
   EquipSlot,
   EssenceStats,
+  HookSelf,
+  Hooks,
   OwnedEssence,
   OwnedItem,
   OwnedRelic,
@@ -339,7 +343,7 @@ export function essenceUsed(run: RunState): number {
  * 본질로 흡수하면 기술 대신 최대 체력을 더 받는다 (등급이 높을수록 많이).
  * 힘·민첩을 늘리면 피해가 눈덩이처럼 불어나 체력으로만 보상한다.
  */
-export const CORE_HP = { base: 3, step: 1 };
+export const CORE_HP = { base: 2.5, step: 0.75 };
 
 export function coreHp(grade: number, guardian = false): number {
   return Math.round((CORE_HP.base + CORE_HP.step * Math.max(0, 9 - grade)) * (guardian ? 1.5 : 1));
@@ -556,10 +560,39 @@ export function gainSanityRun(run: RunState, n: number): number {
   return amt;
 }
 
+/** 전투 밖에서 플레이어에게 걸린 훅 (유물·장비·특성·광기·정수 패시브). 전투 중 Combat.sources(p)에서 상태이상만 뺀 것 */
+function* runHooks(run: RunState): Generator<[Hooks, HookSelf]> {
+  const p = run.player;
+  for (const r of run.relics) {
+    const d = RELICS.get(r.id);
+    if (d?.hooks) yield [d.hooks, { kind: 'relic', id: r.id, unit: p, n: r.n, ref: r }];
+  }
+  for (const slot of ['weapon', 'armor', 'trinket1', 'trinket2'] as const) {
+    const it = run.equip[slot];
+    const d = it && EQUIPS.get(it.id);
+    if (it && d?.hooks) yield [d.hooks, { kind: 'equip', id: it.id, unit: p, n: it.lvl }];
+  }
+  for (const id of run.perks) {
+    const d = PERKS.get(id);
+    if (d?.hooks) yield [d.hooks, { kind: 'perk', id, unit: p, n: 1 }];
+  }
+  for (const id of run.madness) {
+    const d = MADNESS.get(id);
+    if (d?.hooks) yield [d.hooks, { kind: 'madness', id, unit: p, n: 1 }];
+  }
+  for (const es of run.essences) {
+    const d = ESSENCES.get(es.id);
+    if (d?.passive.hooks) yield [d.passive.hooks, { kind: 'essence', id: es.id, unit: p, n: es.guardian ? 2 : 1 }];
+  }
+}
+
 /** 전투 밖 정신력 손실. 붕괴 시 광기 id 반환 */
 export function loseSanityRun(run: RunState, n: number): { lost: number; madness?: string; fatal?: boolean } {
   const p = run.player;
-  const amt = Math.max(0, Math.floor(n * (1 + 0.05 * Math.min(6, p.insight)) * Math.max(0.5, 1 - 0.05 * p.will)));
+  let x = n * (1 + 0.05 * Math.min(6, p.insight)) * Math.max(0.5, 1 - 0.05 * p.will);
+  // '받는 정신 피해' 효과(은 십자가·공허의 심장·깨진 정신·정수 패시브 등)는 전투 밖(어둠 속 이동·이벤트)에서도 똑같이 적용된다
+  for (const [h, self] of runHooks(run)) if (h.modSanityLoss) x = h.modSanityLoss(null, self, x);
+  const amt = Math.max(0, Math.floor(x));
   p.sanity -= amt;
   run.stats.sanityLost += amt;
   if (p.sanity > 0) return { lost: amt };
@@ -569,7 +602,7 @@ export function loseSanityRun(run: RunState, n: number): { lost: number; madness
     endRun(run, false, '광기에 삼켜졌다');
     return { lost: amt, fatal: true };
   }
-  p.sanity = BREAKDOWN_RESET;
+  p.sanity = Math.min(BREAKDOWN_RESET, p.maxSanity);
   return { lost: amt, madness: res.id ?? undefined };
 }
 
@@ -697,7 +730,8 @@ export function rollEssenceDrops(run: RunState, killed: { def: string; tier: str
     const es = ESSENCES.get(k.def);
     if (!es) continue;
     const chance = k.tier === 'boss' ? 1 : k.tier === 'elite' ? 0.5 : k.tier === 'normal' ? 0.07 : 0;
-    if (!r.chance(chance * (es.dropMul ?? 1)) && !(forceGuardian && k.tier === 'boss')) continue;
+    // 균열 수호자(정예 등급)는 쓰러뜨리면 반드시 수호자 정수를 남긴다 — 하수인·보통 적은 평소 확률
+    if (!r.chance(chance * (es.dropMul ?? 1)) && !(forceGuardian && (k.tier === 'boss' || k.tier === 'elite'))) continue;
     if (out.some((o) => o.id === es.id)) continue;
     out.push({ kind: 'essence', id: es.id, color: r.int(0, es.actives.length - 1), guardian: k.tier === 'boss' || forceGuardian });
   }

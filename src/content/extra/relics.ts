@@ -271,8 +271,11 @@ reg.relics([
         if (!c || n <= 0) return n;
         const a = Math.min(Math.floor(c.p.block / 2), Math.floor(n));
         if (a <= 0) return n;
-        c.p.block -= a * 2;
-        c.emit({ t: 'text', uid: 'p', text: '성의가 정신을 지켰다', tone: 'info' });
+        // 미리보기(의도 말풍선)에서는 줄어든 값만 알려 주고 방어도는 쓰지 않는다
+        if (!c.previewing) {
+          c.p.block -= a * 2;
+          c.emit({ t: 'text', uid: 'p', text: '성의가 정신을 지켰다', tone: 'info' });
+        }
         return n - a;
       },
     },

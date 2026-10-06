@@ -57,6 +57,12 @@ export function detonate(c: Combat, u: SkillUse, t: EnemyUnit, per: number, base
   return c.damage({ src: c.p, tgt: t, base: dmg, type: u.type ?? 'arcane', attack: true, skill: u, tags: ['detonate'] });
 }
 
+/** 3층 '표본 채집'으로 빼앗겨 잠긴 기술인가 (빼앗은 적을 쓰러뜨려야 되찾는다 — 대기를 되돌리는 효과로는 풀리지 않는다) */
+export function seized(c: Combat, uid: string): boolean {
+  const slot = c.run.slots.indexOf(uid);
+  return slot >= 0 && c.alive.some((e) => !!e.mem.specimen && e.mem.specimen - 1 === slot);
+}
+
 /** 이 스킬로 피해를 준 총합 */
 export function dealt(ds: DamageCtx[]): number {
   return ds.reduce((s, d) => s + d.hpLoss, 0);

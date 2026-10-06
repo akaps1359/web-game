@@ -135,7 +135,8 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     type: 'pierce',
-    tags: ['attack', 'ammo', 'gun'],
+    // 탄약 수만큼 여러 번 타격한다 (vals.hits가 없어 태그로 알린다 — 시궁쥐 떼 '무리 근성' 등)
+    tags: ['attack', 'ammo', 'gun', 'multi'],
     vals: { dmg: [5, 7] },
     desc: '남은 탄약을 모두 소모. 탄약 1발당 {D:dmg} 관통 피해 1회',
     canUse: needAmmo(1),

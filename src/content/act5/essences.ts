@@ -48,7 +48,7 @@ reg.skills([
     desc: '방어도 {B:blk}, 보호막 {barrier}. 다음 턴까지 방어도 유지',
     run: (c, u) => {
       guard(c, u);
-      c.apply(c.p, 'barrier', u.v('barrier'), c.p);
+      c.apply(c.p, 'barrier', Math.floor(u.v('barrier') * u.power), c.p);
       c.apply(c.p, 'retain', 1, c.p);
     },
   }),
@@ -147,7 +147,7 @@ reg.skills([
     vals: { barrier: [8, 10], san: 3 },
     desc: '보호막 {barrier} (턴이 지나도 유지), 정신력 +{san}',
     run: (c, u) => {
-      c.apply(c.p, 'barrier', u.v('barrier'), c.p);
+      c.apply(c.p, 'barrier', Math.floor(u.v('barrier') * u.power), c.p);
       c.gainSanity(u.v('san'));
     },
   }),
@@ -199,7 +199,7 @@ reg.skills([
     tags: ['block'],
     vals: { barrier: [9, 12] },
     desc: '보호막 {barrier} (턴이 지나도 유지)',
-    run: (c, u) => void c.apply(c.p, 'barrier', u.v('barrier'), c.p),
+    run: (c, u) => void c.apply(c.p, 'barrier', Math.floor(u.v('barrier') * u.power), c.p),
   }),
   // 별을 삼킨 것
   ess({
@@ -749,7 +749,7 @@ reg.skills([
     vals: { barrier: [6, 8] },
     desc: '보호막 {barrier}, 회피 1',
     run: (c, u) => {
-      c.apply(c.p, 'barrier', u.v('barrier'), c.p);
+      c.apply(c.p, 'barrier', Math.floor(u.v('barrier') * u.power), c.p);
       c.apply(c.p, 'evasive', 1, c.p);
     },
   }),

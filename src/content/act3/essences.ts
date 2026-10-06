@@ -671,7 +671,7 @@ reg.skills([
     tags: ['attack', 'insight'],
     vals: { dmg: [8, 10], per: 2, cap: 8 },
     desc: '{D:dmg} 공허 피해. 통찰 1당 피해 +{per} (통찰 {cap}까지)',
-    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * Math.min(u.v('cap'), c.p.insight) }),
+    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * Math.min(u.v('cap'), c.p.insight) * u.power) }),
   }),
   ess({
     id: 'ess-beyond-peaks-mist',
@@ -1174,7 +1174,8 @@ reg.essences([
       desc: '정신력을 잃을 때마다 그만큼 방어도를 얻는다 (전투마다 최대 60)',
       hooks: {
         modSanityLoss(c, s, amount) {
-          if (!c || amount <= 0) return amount;
+          // 미리보기(의도 말풍선을 그릴 때)에는 방어도를 주지 않는다 — 실제로 정신력을 잃을 때만
+          if (!c || c.previewing || amount <= 0) return amount;
           const used = c.s.vars.a3veil ?? 0;
           const g = Math.min(Math.floor(amount), 30 * s.n - used);
           if (g > 0) {

@@ -197,7 +197,7 @@ reg.skills([
     desc: '체력 {heal} 회복, 보호막 {barrier}',
     run: (c, u) => {
       c.heal(c.p, u.v('heal'));
-      c.apply(c.p, 'barrier', u.v('barrier'), c.p);
+      c.apply(c.p, 'barrier', Math.floor(u.v('barrier') * u.power), c.p);
     },
   }),
   // 외신의 시종
@@ -425,7 +425,7 @@ reg.skills([
     tags: ['attack'],
     vals: { dmg: [8, 11], per: [4, 5] },
     desc: '{D:dmg} 공허 피해. 이번 턴 앞서 쓴 스킬 하나당 +{per}',
-    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * combo(c) }),
+    run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * combo(c) * u.power) }),
   }),
   ess({
     id: 'ess-chaos-avatar-masks',

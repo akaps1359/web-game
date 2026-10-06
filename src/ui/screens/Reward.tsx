@@ -23,6 +23,8 @@ function askAbsorb(it: LootItem, core: boolean) {
   const st = essenceStats(it.id, it.guardian, core);
   const lines = Object.entries(st).map(([k, v]) => ({ label: STAT_NAME[k as keyof EssenceStats], value: `${(v as number) >= 0 ? '+' : ''}${v}`, color: '#b0ffc4' }));
   for (const a of core ? [] : essenceActives({ id: it.id, color: it.color ?? 0, guardian: it.guardian })) lines.push({ label: '기술', value: SKILLS.get(a)?.name ?? a, color: '#ffcf9a' });
+  // 이계의 정수는 처음 흡수할 때 대가를 치른다 (같은 정수를 수호자판으로 바꿀 때는 없음)
+  if (def?.eldritch && !store.run?.essences.some((e) => e.id === it.id)) lines.push({ label: '이계의 대가', value: '최대 정신력 -5, 통찰 +1', color: 'var(--eldritch)' });
   confirmThen(
     {
       title: `${name} — ${core ? '본질로' : '기술로'} 흡수`,
@@ -89,6 +91,8 @@ export function RewardScreen() {
                 id={it.id}
                 color={it.color ?? 0}
                 guardian={it.guardian}
+                // 흡수한 뒤에는 실제로 흡수한 모습 (본질이면 기술 없이 체력 추가)
+                core={it.taken ? run.essences.find((e) => e.id === it.id)?.core : undefined}
                 footer={
                   it.taken ? (
                     <div class="chip" style={{ justifySelf: 'center', color: 'var(--eldritch)' }}>

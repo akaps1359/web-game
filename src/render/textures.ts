@@ -21,11 +21,14 @@ function loadUrl(url: string): Promise<HTMLImageElement> {
   });
 }
 
-const artCache = new Map<string, Promise<{ tex: Texture; white: Texture; top: number }>>();
+const artCache = new Map<string, Promise<{ tex: Texture; white: Texture; top: number; cx: number }>>();
 
 /** 몬스터 그림 + 피격 플래시용 흰 실루엣 */
-/** 적 그림: 본 텍스처, 흰 실루엣, 형체 윗단의 높이 비율(0=그림 맨 위, 1=맨 아래 — 의도 표시를 머리 위에 놓는 데 씀) */
-export function artTextures(key: string): Promise<{ tex: Texture; white: Texture; top: number }> {
+/**
+ * 적 그림: 본 텍스처, 흰 실루엣, 형체 윗단의 높이 비율(0=그림 맨 위, 1=맨 아래 — 의도 표시를 머리 위에 놓는 데 씀),
+ * 형체 아랫부분(몸통·발)의 가로 중심 비율 (그림이 한쪽으로 치우쳐 그려져도 발밑 이름표 위에 서게)
+ */
+export function artTextures(key: string): Promise<{ tex: Texture; white: Texture; top: number; cx: number }> {
   let p = artCache.get(key);
   if (p) return p;
   p = (async () => {
@@ -56,7 +59,17 @@ export function artTextures(key: string): Promise<{ tex: Texture; white: Texture
       top = y / N;
       break find;
     }
-    return { tex: Texture.from(c), white: Texture.from(w), top };
+    // 아랫부분(무기·팔이 뻗은 윗부분은 빼고)의 불투명한 점들의 가로 평균
+    let sum = 0;
+    let cnt = 0;
+    for (let y = Math.floor(N * (top + (1 - top) * 0.45)); y < N; y++)
+      for (let x = 0; x < N; x++)
+        if (px[(y * N + x) * 4 + 3] > 90) {
+          sum += x + 0.5;
+          cnt++;
+        }
+    const cx = cnt ? Math.max(0.35, Math.min(0.65, sum / cnt / N)) : 0.5;
+    return { tex: Texture.from(c), white: Texture.from(w), top, cx };
   })();
   artCache.set(key, p);
   return p;
