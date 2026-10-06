@@ -9,6 +9,7 @@ import { sound } from './sound';
 import { attachAudio } from './audioBridge';
 import { setOnLook } from './render/battle';
 import { store } from './state/store';
+import { TRACKS } from './state/prefetch';
 
 // iOS: 핀치 확대 / 길게 눌러 선택 방지
 document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -32,21 +33,30 @@ document.addEventListener(
 
 /** 핵심 장면은 실제 음원 (OpenGameArt, CC0) */
 function registerTracks(audio: { registerTrack(mood: string, url: string, opts?: { act?: number; volume?: number }): void }) {
-  const base = import.meta.env.BASE_URL;
-  audio.registerTrack('title', `${base}audio/title-haunting-piano.mp3`);
-  audio.registerTrack('boss', `${base}audio/boss-dramatic-encounter.mp3`);
-  audio.registerTrack('boss', `${base}audio/final-endgame-choir.mp3`, { act: 5 });
-  audio.registerTrack('haven', `${base}audio/haven-beach-dreams.mp3`);
+  audio.registerTrack('title', TRACKS.title);
+  audio.registerTrack('boss', TRACKS.boss);
+  audio.registerTrack('boss', TRACKS.final, { act: 5 });
+  audio.registerTrack('haven', TRACKS.haven);
+}
+
+/** 첫 화면(index.html)을 걷어낸다 */
+function hideSplash() {
+  const el = document.getElementById('splash');
+  if (!el || el.classList.contains('gone')) return;
+  el.classList.add('gone');
+  setTimeout(() => el.remove(), 700);
 }
 
 async function boot() {
+  // 무슨 일이 있어도 오래 가리고 있지는 않게
+  setTimeout(hideSplash, 6000);
   render(<App />, document.getElementById('app')!);
   // 적 그림이 늦게 불러와지면 의도 표시 위치를 다시 잡는다
   setOnLook(() => store.emit());
   if (import.meta.env.DEV) {
     // 개발용 디버그 핸들 (브라우저 콘솔에서 상태 확인)
-    const [{ store }, actions] = await Promise.all([import('./state/store'), import('./state/actions')]);
-    (window as unknown as { __game: unknown }).__game = { store, actions, stage };
+    const [{ store }, actions, textures] = await Promise.all([import('./state/store'), import('./state/actions'), import('./render/textures')]);
+    (window as unknown as { __game: unknown }).__game = { store, actions, stage, textures };
   }
   try {
     await stage.init(document.getElementById('stage')!);
@@ -68,6 +78,8 @@ async function boot() {
       .catch((err) => console.warn('오디오 모듈을 불러오지 못함', err));
   }
   await refresh();
+  // 그래픽과 첫 화면이 준비된 뒤에 걷어낸다 (배경이 비어 보이지 않게)
+  requestAnimationFrame(hideSplash);
 }
 
 void boot();

@@ -15,12 +15,68 @@
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- 글꼴은 화면을 막지 않게 따로 받는다 (받기 전엔 기본 글꼴) -->
     <link
-      rel="stylesheet"
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Nanum+Myeongjo:wght@700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Nanum+Myeongjo:wght@700;800&family=Noto+Sans+KR:wght@400;500;700&display=swap" />
+    </noscript>
+    <!-- 첫 화면: 게임을 받는 동안 빈 화면 대신 (게임이 뜨면 사라진다) -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #07090c;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(ellipse at 50% 42%, #1c1610 0%, #07090c 72%);
+        transition: opacity 0.6s ease;
+      }
+      #splash.gone {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash .t {
+        font-family: 'Nanum Myeongjo', 'AppleMyungjo', serif;
+        font-weight: 800;
+        font-size: 44px;
+        letter-spacing: 0.18em;
+        color: #e9c97a;
+        text-shadow: 0 0 24px rgba(233, 201, 122, 0.35);
+        animation: splash-glow 2.4s ease-in-out infinite;
+        text-align: center;
+      }
+      #splash .s {
+        margin-top: 16px;
+        font: 500 12px system-ui, sans-serif;
+        letter-spacing: 0.3em;
+        color: #8a7d66;
+        text-align: center;
+      }
+      @keyframes splash-glow {
+        50% {
+          opacity: 0.55;
+          text-shadow: 0 0 40px rgba(233, 201, 122, 0.55);
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash">
+      <div>
+        <div class="t">심연행</div>
+        <div class="s">심연으로 내려가는 중</div>
+      </div>
+    </div>
     <div id="stage"></div>
     <div id="app"></div>
     <script type="module" src="/src/main.tsx"></script>

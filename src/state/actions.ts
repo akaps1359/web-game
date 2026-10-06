@@ -19,6 +19,7 @@ import { essenceCap } from '../engine/run';
 import { tipOnce } from '../ui/tips';
 import { loadRun, saveRun } from './save';
 import { store } from './store';
+import { pausePrefetch, prefetchFloor } from './prefetch';
 
 function run(): RunState {
   if (!store.run) throw new Error('진행 중인 판이 없습니다');
@@ -80,6 +81,9 @@ export async function refresh() {
     stage.setSanity(r.player.sanity);
     sound.sanity(r.player.sanity);
     stage.setDarkness(r.screen === 'dungeon' ? Math.max(0, (50 - r.light) / 50) : 0);
+    // 지도에서 노는 동안 곧 만날 적 그림·음악을 미리 받아 둔다 (전투 중에는 쉰다)
+    pausePrefetch(r.screen === 'combat');
+    if (r.screen === 'dungeon') prefetchFloor(r);
   } else stage.setAct(0);
 
   if (r?.screen === 'combat' && r.combat) {

@@ -1,6 +1,6 @@
 import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import type { DmgType, EnemyDef, EnemyUnit, IntentKind } from '../engine/types';
-import { artTextures, hasArt, iconTexture, softCircle } from './textures';
+import { artTextures, dropArt, hasArt, holdArt, iconTexture, softCircle } from './textures';
 import { E_IN, lerpColor, rand, Vfx } from './vfx';
 import {
   blockedHit,
@@ -241,6 +241,14 @@ class EnemyView extends Container {
 
   /** AI 일러스트 사용 여부 */
   isArt = false;
+  /** 지금 붙잡고 있는 적 그림 (쓰는 동안 캐시에서 지워지지 않게) */
+  heldArt: string | null = null;
+
+  override destroy(options?: Parameters<Container['destroy']>[0]) {
+    if (this.heldArt) dropArt(this.heldArt);
+    this.heldArt = null;
+    super.destroy(options);
+  }
 
   async setLook(icon: string, tint: number, glow: number, fx: string[], art?: string) {
     const key = art ? `art:${art}` : `${icon}|${tint}|${glow}`;
@@ -253,9 +261,13 @@ class EnemyView extends Container {
     let white: Texture;
     let top = 0.15;
     let cx = 0.5;
+    // 불러오는 사이 캐시에서 지워지지 않게 먼저 붙잡는다
+    const want = art;
+    const pending = want ? artTextures(want) : null;
+    if (want) holdArt(want);
     if (art) {
       try {
-        ({ tex, white, top, cx } = await artTextures(art));
+        ({ tex, white, top, cx } = await pending!);
       } catch {
         // 그림을 못 불러오면 아이콘으로
         [tex, white] = await Promise.all([iconTexture(icon, { size: 300, tint, glow }), iconTexture(icon, { size: 300, tint, flat: true })]);
@@ -264,7 +276,12 @@ class EnemyView extends Container {
     } else {
       [tex, white] = await Promise.all([iconTexture(icon, { size: 300, tint, glow }), iconTexture(icon, { size: 300, tint, flat: true })]);
     }
-    if (this.look !== key) return;
+    if (this.look !== key || this.destroyed) {
+      if (want) dropArt(want);
+      return;
+    }
+    if (this.heldArt) dropArt(this.heldArt);
+    this.heldArt = want ?? null;
     this.isArt = !!art;
     const ay = this.isArt ? 0.97 : 0.847;
     // 발에서 형체 윗단까지의 높이 (크기 대비) — 의도 표시를 머리 위에 띄우는 데 쓴다

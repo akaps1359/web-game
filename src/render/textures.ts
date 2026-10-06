@@ -21,28 +21,59 @@ function loadUrl(url: string): Promise<HTMLImageElement> {
   });
 }
 
-const artCache = new Map<string, Promise<{ tex: Texture; white: Texture; top: number; cx: number }>>();
+type Art = { tex: Texture; white: Texture; top: number; cx: number };
 
-/** 몬스터 그림 + 피격 플래시용 흰 실루엣 */
+/** 적 그림은 화면에서 이보다 크게 그려지지 않는다 (해상도 2배 기준, 수호자 포함) — 메모리를 아끼려고 줄여 둔다 */
+const ART_MAX = 640;
+/** 지금 쓰이지 않는 적 그림은 최근 것 이만큼만 남긴다 (아이폰 사파리는 그림 메모리가 넉넉지 않다) */
+const ART_KEEP = 24;
+
+interface ArtEntry {
+  p: Promise<Art>;
+  art?: Art;
+  /** 이 그림을 쓰는 적 수 (0이어야 지울 수 있다) */
+  refs: number;
+  used: number;
+}
+const artCache = new Map<string, ArtEntry>();
+let artClock = 0;
+
+/** 캔버스를 그림(ImageBitmap)으로 옮기고 캔버스 메모리는 바로 돌려준다 (iOS는 캔버스 메모리 총량에 제한이 있다) */
+async function toBitmapTexture(c: HTMLCanvasElement): Promise<Texture> {
+  if (typeof createImageBitmap !== 'function') return Texture.from(c);
+  try {
+    const bmp = await createImageBitmap(c);
+    c.width = c.height = 0;
+    return Texture.from(bmp);
+  } catch {
+    return Texture.from(c);
+  }
+}
+
 /**
- * 적 그림: 본 텍스처, 흰 실루엣, 형체 윗단의 높이 비율(0=그림 맨 위, 1=맨 아래 — 의도 표시를 머리 위에 놓는 데 씀),
+ * 적 그림: 본 텍스처, 흰 실루엣(피격 섬광), 형체 윗단의 높이 비율(0=그림 맨 위, 1=맨 아래 — 의도 표시를 머리 위에 놓는 데 씀),
  * 형체 아랫부분(몸통·발)의 가로 중심 비율 (그림이 한쪽으로 치우쳐 그려져도 발밑 이름표 위에 서게)
  */
-export function artTextures(key: string): Promise<{ tex: Texture; white: Texture; top: number; cx: number }> {
-  let p = artCache.get(key);
-  if (p) return p;
-  p = (async () => {
+export function artTextures(key: string): Promise<Art> {
+  const hit = artCache.get(key);
+  if (hit) {
+    hit.used = ++artClock;
+    return hit.p;
+  }
+  const e: ArtEntry = { refs: 0, used: ++artClock, p: Promise.resolve() as unknown as Promise<Art> };
+  e.p = (async () => {
     const img = await loadUrl(artUrl('enemies', key));
+    const k = Math.min(1, ART_MAX / Math.max(img.naturalWidth, img.naturalHeight));
     const c = document.createElement('canvas');
-    c.width = img.naturalWidth;
-    c.height = img.naturalHeight;
+    c.width = Math.round(img.naturalWidth * k);
+    c.height = Math.round(img.naturalHeight * k);
     const g = c.getContext('2d')!;
-    g.drawImage(img, 0, 0);
+    g.drawImage(img, 0, 0, c.width, c.height);
     const w = document.createElement('canvas');
     w.width = c.width;
     w.height = c.height;
     const wg = w.getContext('2d')!;
-    wg.drawImage(img, 0, 0);
+    wg.drawImage(c, 0, 0);
     wg.globalCompositeOperation = 'source-in';
     wg.fillStyle = '#ffffff';
     wg.fillRect(0, 0, w.width, w.height);
@@ -52,8 +83,9 @@ export function artTextures(key: string): Promise<{ tex: Texture; white: Texture
     s.width = N;
     s.height = N;
     const sg = s.getContext('2d', { willReadFrequently: true })!;
-    sg.drawImage(img, 0, 0, N, N);
+    sg.drawImage(c, 0, 0, N, N);
     const px = sg.getImageData(0, 0, N, N).data;
+    s.width = s.height = 0;
     let top = 0;
     find: for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (px[(y * N + x) * 4 + 3] > 90) {
       top = y / N;
@@ -69,10 +101,51 @@ export function artTextures(key: string): Promise<{ tex: Texture; white: Texture
           cnt++;
         }
     const cx = cnt ? Math.max(0.35, Math.min(0.65, sum / cnt / N)) : 0.5;
-    return { tex: Texture.from(c), white: Texture.from(w), top, cx };
+    const [tex, white] = await Promise.all([toBitmapTexture(c), toBitmapTexture(w)]);
+    e.art = { tex, white, top, cx };
+    evictArt();
+    return e.art;
   })();
-  artCache.set(key, p);
-  return p;
+  // 못 불러왔으면 다음에 다시 시도하게 지운다
+  e.p.catch(() => {
+    if (artCache.get(key) === e) artCache.delete(key);
+  });
+  artCache.set(key, e);
+  return e.p;
+}
+
+/** 적이 이 그림을 쓰는 동안 캐시에서 지워지지 않게 붙잡는다 (artTextures로 먼저 불러야 한다) */
+export function holdArt(key: string) {
+  const e = artCache.get(key);
+  if (!e) return;
+  e.refs++;
+  e.used = ++artClock;
+}
+
+/** 다 쓴 그림을 놓는다. 쓰이지 않는 그림이 많으면 오래된 것부터 지운다 */
+export function dropArt(key: string) {
+  const e = artCache.get(key);
+  if (e) e.refs = Math.max(0, e.refs - 1);
+  evictArt();
+}
+
+function evictArt() {
+  if (artCache.size <= ART_KEEP) return;
+  const idle = [...artCache.entries()].filter(([, e]) => e.refs === 0 && e.art).sort((a, b) => a[1].used - b[1].used);
+  for (const [k, e] of idle) {
+    if (artCache.size <= ART_KEEP) break;
+    artCache.delete(k);
+    for (const t of [e.art!.tex, e.art!.white]) {
+      const res = (t.source as { resource?: unknown }).resource as { close?: () => void } | undefined;
+      t.destroy(true);
+      res?.close?.();
+    }
+  }
+}
+
+/** 지금 캐시에 있는 적 그림 수 (점검용) */
+export function artCacheSize() {
+  return artCache.size;
 }
 
 const bgCache = new Map<string, Promise<Texture>>();
