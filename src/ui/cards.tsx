@@ -85,11 +85,31 @@ export function StatChips({ st }: { st: EssenceStats }) {
   );
 }
 
-/** core: 본질로 흡수한 정수 (기술 없음, 최대 체력 추가) */
-export function EssenceCard({ id, color, guardian, core, footer }: { id: string; color: number; guardian?: boolean; core?: boolean; footer?: ComponentChildren }) {
+/**
+ * 정수 카드. core: 본질로 흡수한 정수 (최대 체력 추가), skill: 수호자 정수와 함께 고른 기술.
+ * choose: 수호자 정수를 흡수하기 전 — 그 존재의 기술 중 하나를 고른다 (다시 누르면 취소, 고르지 않아도 된다)
+ */
+export function EssenceCard({
+  id,
+  color,
+  guardian,
+  core,
+  skill,
+  choose,
+  footer,
+}: {
+  id: string;
+  color: number;
+  guardian?: boolean;
+  core?: boolean;
+  skill?: string;
+  choose?: { pick: string | null; onPick: (id: string | null) => void };
+  footer?: ComponentChildren;
+}) {
   const def = ESSENCES.get(id);
   if (!def) return null;
-  const actives = essenceActives({ id, color, guardian, core });
+  if (choose) core = true;
+  const actives = choose ? def.actives : essenceActives({ id, color, guardian, core, skill });
   return (
     <div class={`essence-card ${def.eldritch ? 'eldritch' : ''}`}>
       <div class="row">
@@ -101,15 +121,10 @@ export function EssenceCard({ id, color, guardian, core, footer }: { id: string;
             {def.name}
           </div>
           <div class="muted" style={{ fontSize: 12 }}>
-            {def.grade}등급 {guardian ? '· 수호자 정수 (스탯 1.5배, 능력 전부)' : `· ${def.colors[color]}`}
+            {def.grade}등급 {guardian ? '· 수호자 정수 (스탯 1.5배 + 기술 하나)' : `· ${def.colors[color]}`}
             {def.lord ? ' · 계층정수 (제거 불가)' : ''}
           </div>
         </div>
-        {core && guardian && (
-          <span class="chip" style={{ color: 'var(--eldritch)', alignSelf: 'flex-start' }}>
-            본질
-          </span>
-        )}
       </div>
       <StatChips st={essenceStats(id, guardian, core)} />
       {def.eldritch && (
@@ -121,9 +136,18 @@ export function EssenceCard({ id, color, guardian, core, footer }: { id: string;
         <b style={{ color: '#ffcf9a' }}>패시브 · {def.passive.name}</b>
         <div class="dim">{def.passive.desc}</div>
       </div>
-      {actives.map((a) => (
-        <SkillCard id={a} />
-      ))}
+      {choose && (
+        <div class="section-label" style={{ margin: '2px 0 -2px' }}>
+          기술 하나를 함께 배울 수 있다 — 누르면 고르고, 다시 누르면 취소
+        </div>
+      )}
+      {actives.map((a) =>
+        choose ? (
+          <SkillCard id={a} sel={choose.pick === a} onClick={() => choose.onPick(choose.pick === a ? null : a)} right={<span class="chip">{choose.pick === a ? '고름' : '고르기'}</span>} />
+        ) : (
+          <SkillCard id={a} />
+        ),
+      )}
       {footer}
     </div>
   );

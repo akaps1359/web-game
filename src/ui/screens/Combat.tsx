@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { garbleStable, mountWatcher, staticCracks } from '../cinema';
 import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
-import { lvlVal } from '../../engine/combat';
+import { lvlVal, shownIntentOf } from '../../engine/combat';
 import type { EnemyUnit, Intent, SkillDef } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
@@ -72,8 +73,18 @@ export function CombatScreen() {
   const refs = ['weapon', 'armor', ...run.slots];
   const anyUsable = refs.some((r) => r && !c.blockReason(r));
 
+  // 적이 남긴 화면 상태 (물·금·기울기·어둠·뒤섞인 글자·지켜보는 눈·막대 뒤바뀜)
+  // 연출이 재생되는 시점의 값 (엔진은 이미 턴 끝까지 계산해 두었다)
+  const uiNow = snap.ui ?? c.uiVars();
+  const ui = (k: string) => uiNow[k] ?? 0;
+  const tilt = ui('ui:tilt');
+  const swap = !!ui('ui:swap');
+  const hpBar = <Bar kind="hp" value={p.hp} max={p.maxHp} block={p.block} label={(p.st.dying ? '사경 ' : '') + `${p.hp}/${p.maxHp}`} />;
+  const sanBar = <Bar kind="san" value={p.sanity} max={run.player.maxSanity} label={`정신 ${p.sanity}`} />;
+
   return (
-    <div class="screen" style={{ animation: 'none' }}>
+    <div class={`screen combat ${tilt ? 'tilted' : ''}`} style={{ animation: 'none', transform: tilt ? `rotate(${Math.max(-15, Math.min(15, tilt))}deg)` : undefined }}>
+      <UiVarsLayer water={ui('ui:water')} cracks={ui('ui:cracks')} dark={ui('ui:dark')} eye={!!ui('ui:eye')} />
       <div class="battle-top">
         <span class="chip">
           <Icon name="gi:sands-of-time" size={13} />
@@ -136,7 +147,7 @@ export function CombatScreen() {
           <button id="p-anchor" class="badge" style={{ width: 30, height: 30, display: 'grid', placeItems: 'center' }} onClick={() => playerTip()}>
             <Icon name={ORIGINS.get(run.origin)?.icon ?? 'gi:hood'} size={24} color="var(--brass-2)" />
           </button>
-          <Bar kind="hp" value={p.hp} max={p.maxHp} block={p.block} label={(p.st.dying ? '사경 ' : '') + `${p.hp}/${p.maxHp}`} />
+          {swap ? sanBar : hpBar}
           {p.block > 0 && (
             <span class="blockpill">
               <Icon name="gi:shield" size={14} color="#8fc4ea" />
@@ -163,8 +174,8 @@ export function CombatScreen() {
               ))}
             </div>
           )}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <Bar kind="san" value={p.sanity} max={run.player.maxSanity} label={`정신 ${p.sanity}`} />
+          <div class={swap ? 'swapped' : ''} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            {swap ? hpBar : sanBar}
           </div>
           {p.insight > 0 && (
             <span class="chip" style={{ color: 'var(--ins)', padding: '1px 6px' }}>
@@ -284,8 +295,10 @@ function StatusRow({ st, max }: { st: Record<string, number>; max?: number }) {
   );
 }
 
-function intentView(e: EnemyUnit, it: Intent | null): { icon: string; color: string; text: string; sub?: string; charging?: boolean } | null {
+function intentView(e: EnemyUnit, real: Intent | null): { icon: string; color: string; text: string; sub?: string; charging?: boolean } | null {
   const c = store.combat!;
+  // 속임수 의도는 통찰이 모자라면 가짜로 보인다
+  const it = shownIntentOf(real, c.p.insight);
   if (!it) return null;
   if (it.hidden && c.p.insight < 5) return { icon: 'gi:help', color: '#8a8f96', text: '???' };
   const color = INTENT_COLOR[it.kind];
@@ -379,15 +392,15 @@ function enemyTip(e: EnemyUnit) {
   const def = ENEMIES.get(e.def);
   if (!def) return;
   const traits = (def.traits ?? []).map((t) => TRAITS.get(t)).filter(Boolean);
-  const it = e.intent;
-  const move = it ? store.combat!.moveDef(e, it.move) : null;
+  const it = store.combat!.shownIntent(e);
+  const move = it && it.move !== '_disguise' ? store.combat!.moveDef(e, it.move) : null;
   showTip({
     title: e.name,
     sub: `${def.tier === 'boss' ? '수호자' : def.tier === 'elite' ? '정예' : def.tier === 'minion' ? '하수인' : '일반'} · ${e.row === 0 ? '전열' : '후열'}`,
     icon: def.icon,
     color: def.eldritch ? '#4fffc4' : '#e9e3d6',
     body:
-      (it ? `의도: ${it.hidden && store.combat!.p.insight < 5 ? '???' : `${it.label}${move?.desc ? ` — ${move.desc}` : ''}`}` : '') +
+      (it ? `의도: ${it.hidden && store.combat!.p.insight < 5 ? '???' : `${it.label}${(it.desc ?? move?.desc) ? ` — ${it.desc ?? move?.desc}` : ''}`}` : '') +
       (traits.length ? `\n\n${traits.map((t) => `【${t!.name}】 ${t!.desc}`).join('\n')}` : ''),
     lines: [
       { label: '체력', value: def.tier === 'boss' ? woundWord(e.hp / Math.max(1, e.maxHp)) : `${e.hp}/${e.maxHp}` },
@@ -431,6 +444,8 @@ function SkillButton({ r }: { r: string }) {
   const cost = c.costOf(info);
   const sel = s.sel === r;
   const color = info.basic ? '#cfc8b8' : SCHOOL_COLOR[def.school];
+  // 기억을 빼앗기면 이름이 뒤섞여 보인다 (기본기는 그대로)
+  const scrambled = !!(s.snap?.ui ?? c.s.vars)['ui:scramble'] && !info.basic;
   const tap = () => {
     if (s.busy) return;
     if (sel) {
@@ -459,8 +474,8 @@ function SkillButton({ r }: { r: string }) {
       )}
       {info.basic && <span class="basic-tag">{info.basic === 'weapon' ? '무기' : '방어'}</span>}
       <Icon name={def.icon} size={24} color={color} />
-      <span class="sn" style={{ color: def.rarity === 'basic' ? '#e9e3d6' : RARITY_COLOR[def.rarity] === '#cfc8b8' ? '#e9e3d6' : RARITY_COLOR[def.rarity] }}>
-        {def.name}
+      <span class={`sn ${scrambled ? 'scrambled' : ''}`} style={{ color: def.rarity === 'basic' ? '#e9e3d6' : RARITY_COLOR[def.rarity] === '#cfc8b8' ? '#e9e3d6' : RARITY_COLOR[def.rarity] }}>
+        {scrambled ? garbleStable(def.name) : def.name}
         {owned.lvl > 0 ? '+' : ''}
       </span>
       {owned.runes.length > 0 && <span class="rune-dot" />}
@@ -508,15 +523,16 @@ function InfoBox() {
   if (info) {
     const use = c.makeUse(info);
     const target = c.enemy(s.focus) ?? (info.def.target === 'single' ? c.validTargets(info.def)[0] : null);
-    const segs = skillDesc(info.def, info.owned.lvl, { c, target, use });
+    const scrambled = !!(s.snap?.ui ?? c.s.vars)['ui:scramble'] && !info.basic;
+    const segs = skillDesc(info.def, info.owned.lvl, { c, target, use }).map((x) => (scrambled ? { ...x, t: garbleStable(x.t) } : x));
     const why = c.blockReason(s.sel!);
     const cd = c.cdOf(info);
     return (
       <div class="infobox panel">
         <Icon name={info.def.icon} size={30} color={SCHOOL_COLOR[info.def.school]} />
         <div class="txt">
-          <div class="nm">
-            {info.def.name}
+          <div class={`nm ${scrambled ? 'scrambled' : ''}`}>
+            {scrambled ? garbleStable(info.def.name) : info.def.name}
             {info.owned.lvl > 0 ? '+' : ''}
             <span class="muted" style={{ fontSize: 11, fontWeight: 500 }}>
               {RANGE_NAME[info.def.range]} · {TARGET_NAME[info.def.target]}
@@ -537,14 +553,14 @@ function InfoBox() {
   }
   const e = c.enemy(s.focus);
   if (e) {
-    const it = e.intent;
-    const move = it ? c.moveDef(e, it.move) : null;
+    const it = c.shownIntent(e);
+    const move = it && it.move !== '_disguise' ? c.moveDef(e, it.move) : null;
     return (
       <div class="infobox panel" role="button" {...press(() => enemyTip(e))}>
         <Icon name={ENEMIES.get(e.def)?.icon ?? 'gi:help'} size={30} />
         <div class="txt">
           <div class="nm">{e.name}</div>
-          {it ? (it.hidden && c.p.insight < 5 ? '의도를 알 수 없다' : `${it.label}${move?.desc ? ` — ${move.desc}` : ''}`) : ''}
+          {it ? (it.hidden && c.p.insight < 5 ? '의도를 알 수 없다' : `${it.label}${(it.desc ?? move?.desc) ? ` — ${it.desc ?? move?.desc}` : ''}`) : ''}
           <div class="muted" style={{ fontSize: 11 }}>
             길게 눌러 자세히
           </div>
@@ -568,6 +584,25 @@ export function Floaters() {
           {f.text}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** 전투 내내 남는 화면 상태: 차오른 물, 금 간 유리, 어둠, 지켜보는 눈 (누르기는 통과) */
+function UiVarsLayer({ water, cracks, dark, eye }: { water: number; cracks: number; dark: number; eye: boolean }) {
+  const eyeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!eye || !eyeRef.current) return;
+    return mountWatcher(eyeRef.current);
+  }, [eye]);
+  const crackSvg = useMemo(() => (cracks > 0 ? staticCracks(cracks) : ''), [cracks]);
+  if (!water && !cracks && !dark && !eye) return null;
+  return (
+    <div class="ui-layer">
+      {eye && <div class="ui-eye" ref={eyeRef} />}
+      {dark > 0 && <div class="ui-dark" style={{ opacity: Math.min(1, dark / 100) }} />}
+      {cracks > 0 && <div class="ui-cracks" dangerouslySetInnerHTML={{ __html: crackSvg }} />}
+      <div class="ui-water" style={{ height: `${Math.max(0, Math.min(3, water)) * 13}vh`, opacity: water > 0 ? 1 : 0 }} />
     </div>
   );
 }

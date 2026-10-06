@@ -8,7 +8,7 @@ export const mv = {
   attack(
     name: string,
     dmg: MoveDef['dmg'],
-    o: { hits?: MoveDef['hits']; melee?: boolean; type?: DmgType; extra?: IntentKind[]; then?: Then; desc?: string } = {},
+    o: { hits?: MoveDef['hits']; melee?: boolean; type?: DmgType; extra?: IntentKind[]; then?: Then; desc?: string; ultimate?: boolean; cine?: MoveDef['cine'] } = {},
   ): MoveDef {
     return {
       name,
@@ -18,6 +18,8 @@ export const mv = {
       melee: o.melee ?? true,
       extra: o.extra,
       desc: o.desc,
+      ultimate: o.ultimate,
+      cine: o.cine,
       run(c, e) {
         c.enemyAttack(e, { type: o.type });
         if (!c.over && !e.dead) o.then?.(c, e);

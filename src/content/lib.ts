@@ -1,5 +1,5 @@
 import type { Combat } from '../engine/combat';
-import type { DamageCtx, DmgType, EnemyUnit, SkillDef, SkillUse, TargetMode } from '../engine/types';
+import type { CineName, DamageCtx, DmgType, EnemyUnit, SkillDef, SkillUse, TargetMode } from '../engine/types';
 
 /** 스킬 정의 헬퍼 (기본값 채움) */
 export function skill(d: Omit<SkillDef, 'tags' | 'vals'> & { tags?: string[]; vals?: SkillDef['vals'] }): SkillDef {
@@ -76,4 +76,29 @@ export function killed(ds: DamageCtx[]): boolean {
 /** 적 행동용: 플레이어에게 상태 부여 */
 export function debuffPlayer(c: Combat, e: EnemyUnit, id: string, n: number) {
   c.apply(c.p, id, n, e);
+}
+
+/**
+ * 화면 연출을 낸다 (게임 규칙과 무관 — 봇·시뮬레이션에선 아무 일도 없다). 이름별 모습은 CineName 설명 참고.
+ * uid: 연출의 중심이 되는 적, text: 글자 (whisper·sysmsg·scrawl), n: 세기·개수
+ */
+export function cine(c: Combat, name: CineName, o: { uid?: string; text?: string; n?: number } = {}) {
+  c.emit({ t: 'cine', name, uid: o.uid, text: o.text, n: o.n });
+}
+
+/**
+ * 전투 화면 전체에 계속 남는 연출 상태 (Combat.vars의 'ui:' 값, 0이면 꺼짐). 화면에만 영향, 규칙은 내용 쪽에서 따로 짠다.
+ * - 'ui:water' 0~3: 화면 아래에서 물이 차오른 높이
+ * - 'ui:cracks' 0~3: 깨진 화면 유리
+ * - 'ui:tilt' -15~15: 화면이 기운 각도
+ * - 'ui:dark' 0~100: 화면이 어두워진 정도 (%)
+ * - 'ui:scramble' 0/1: 스킬 이름·설명이 뒤섞여 보인다 (기억을 빼앗김)
+ * - 'ui:eye' 0/1: 거대한 눈이 배경에서 지켜본다
+ * - 'ui:swap' 0/1: 체력과 정신력 막대가 자리를 바꿔 보인다
+ */
+export type UiVar = 'ui:water' | 'ui:cracks' | 'ui:tilt' | 'ui:dark' | 'ui:scramble' | 'ui:eye' | 'ui:swap';
+
+export function setUi(c: Combat, key: UiVar, n: number) {
+  if (n) c.s.vars[key] = n;
+  else delete c.s.vars[key];
 }

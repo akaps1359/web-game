@@ -1,5 +1,6 @@
+import { useState } from 'preact/hooks';
 import { inscribeFlask } from '../engine/places';
-import { ESSENCES } from '../engine/registry';
+import { ESSENCES, SKILLS } from '../engine/registry';
 import { absorbBlock, FLASK_CAP, inscribeCost, pourFlask } from '../engine/run';
 import { store } from '../state/store';
 import { applyAsk } from './ask';
@@ -12,6 +13,7 @@ import { Icon } from './components';
  */
 export function FlaskList({ where }: { where: 'bag' | 'shrine' }) {
   const run = store.run!;
+  const [picks, setPicks] = useState<Record<string, string | null>>({});
   const flasks = run.flasks ?? [];
   if (!flasks.length && where === 'shrine') return null;
   return (
@@ -25,44 +27,42 @@ export function FlaskList({ where }: { where: 'bag' | 'shrine' }) {
         const name = ESSENCES.get(drop.id)?.name ?? '정수';
         const cost = inscribeCost(drop);
         const poor = run.player.gold < cost;
-        const modes = drop.guardian ? [false, true] : [true];
-        // 어느 방식으로도 못 새기면 그 까닭을 보여 준다 (흡수 한도 등)
-        const reasons = modes.map((core) => absorbBlock(run, drop, core));
-        const why = reasons.every(Boolean) ? reasons[0] : poor ? '골드가 부족하다' : null;
+        // 수호자 정수는 새길 때 기술 하나를 함께 고른다 (신전에서만)
+        const key = `${i}:${drop.id}`;
+        const pick = where === 'shrine' && drop.guardian ? (picks[key] ?? null) : null;
+        const block = absorbBlock(run, drop, pick);
+        const why = block ?? (poor ? '골드가 부족하다' : null);
         return (
           <EssenceCard
             id={drop.id}
             color={drop.color}
             guardian={drop.guardian}
-            core={drop.guardian ? undefined : true}
+            core
+            choose={where === 'shrine' && drop.guardian ? { pick, onPick: (id) => setPicks({ ...picks, [key]: id }) } : undefined}
             footer={
               where === 'shrine' ? (
                 <div style={{ display: 'grid', gap: 6 }}>
                   {why && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{why}</div>}
-                  <div class={drop.guardian ? 'absorb-btns' : ''}>
-                    {modes.map((core) => (
-                      <button
-                        class="btn eldritch wide"
-                        disabled={poor || !!reasons[modes.indexOf(core)]}
-                        onClick={() =>
-                          applyAsk(
-                            {
-                              title: `${name} 새기기`,
-                              icon: 'gi:heart-beats',
-                              color: 'var(--eldritch)',
-                              body: `${cost} 골드. ${drop.guardian ? (core ? '기술 없이 본질로 새긴다.' : '이 존재의 기술을 모두 배운다.') : '병에 담아 둔 정수를 몸에 새긴다.'} 정수 한도를 차지한다.`,
-                              ok: '새긴다',
-                            },
-                            (r) => inscribeFlask(r, i, core),
-                            '정수를 새겼다',
-                          )
-                        }
-                      >
-                        <Icon name="gi:heart-beats" size={16} />
-                        {drop.guardian ? (core ? '본질로' : '기술로') : '새긴다'} · {cost}골드
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    class="btn eldritch wide"
+                    disabled={!!why}
+                    onClick={() =>
+                      applyAsk(
+                        {
+                          title: `${name} 새기기`,
+                          icon: 'gi:heart-beats',
+                          color: 'var(--eldritch)',
+                          body: `${cost} 골드. 병에 담아 둔 정수를 몸에 새긴다${pick ? ` (기술: ${SKILLS.get(pick)?.name ?? ''})` : ''}. 정수 한도를 차지한다.`,
+                          ok: '새긴다',
+                        },
+                        (r) => inscribeFlask(r, i, pick),
+                        '정수를 새겼다',
+                      )
+                    }
+                  >
+                    <Icon name="gi:heart-beats" size={16} />
+                    새긴다{pick ? ` + ${SKILLS.get(pick)?.name ?? ''}` : drop.guardian ? ' (기술 없이)' : ''} · {cost}골드
+                  </button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

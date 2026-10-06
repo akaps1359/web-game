@@ -1,11 +1,13 @@
 import type { CombatEvent, Snap } from './engine/combat';
-import { ENEMIES, MADNESS, STATUSES } from './engine/registry';
+import { ENEMIES, FLOORS, MADNESS, SKILLS, STATUSES } from './engine/registry';
+import { lvlVal } from './engine/combat';
+import { bossFall, bossIntro, cineCenter, cutIn, impact, playCine } from './ui/cinema';
 import type { DmgType } from './engine/types';
 import { stage } from './render/stage';
 import type { VignetteKind } from './render/vfxTextures';
 import { sound } from './sound';
 import { store } from './state/store';
-import { DMG_COLOR, DMG_NAME } from './ui/text';
+import { DMG_COLOR, DMG_NAME, SCHOOL_COLOR, SCHOOL_NAME } from './ui/text';
 
 // ───────────── 떠오르는 글자 ─────────────
 
@@ -169,11 +171,43 @@ const VIG_BY_TYPE: Record<DmgType | 'true', VignetteKind> = {
 
 const hexNum = (s: string) => parseInt(s.replace('#', ''), 16);
 
+/** 이미 등장 연출을 보여 준 전투 (전투 상태 객체 기준) */
+const introduced = new WeakSet<object>();
+/** 이번 턴에 플레이어 컷인을 이미 보여 줬는가 */
+let playerCutTurn = -1;
+
+/** 수호자 전투가 시작되면 이름과 함께 등장 연출 */
+async function maybeBossIntro() {
+  const c = store.combat;
+  if (!c || introduced.has(c.s)) return;
+  introduced.add(c.s);
+  const boss = c.alive.find((e) => c.defOf(e).tier === 'boss');
+  if (!boss) return;
+  const def = c.defOf(boss);
+  const lord = c.s.enemies.some((e) => e.def === def.id) && (store.run?.floor?.rooms[store.run.floor.pos]?.type === 'lord');
+  const sub = def.id === 'star-fetus' ? '최후의 수호자' : lord ? '계층군주' : `${def.act}층 · ${FLOORS.get(def.act)?.name ?? ''}의 수호자`;
+  await bossIntro({ name: boss.name, sub, at: cineCenter(boss.uid) });
+}
+
+/** 큰 기술(희귀·금기·행동력 2 이상)을 쓰면 컷인 — 한 턴에 한 번만 */
+async function maybePlayerCut(skillId: string, name: string, echo?: boolean) {
+  const c = store.combat;
+  const def = SKILLS.get(skillId);
+  if (!c || !def || echo || def.tags.includes('basic')) return;
+  const owned = store.run?.skills.find((x) => x.id === skillId);
+  const cost = lvlVal(def.cost, owned?.lvl ?? 0);
+  const big = def.rarity === 'rare' || def.rarity === 'forbidden' || cost >= 2;
+  if (!big || playerCutTurn === c.s.turn) return;
+  playerCutTurn = c.s.turn;
+  await cutIn({ name, sub: SCHOOL_NAME[def.school], icon: def.icon, side: 'player', color: SCHOOL_COLOR[def.school] });
+}
+
 async function step(ev: CombatEvent) {
   switch (ev.t) {
     case 'turn':
       curSkill = null;
       syncBattle(store.snap);
+      if (ev.side === 'player' && ev.turn === 1) await maybeBossIntro();
       if (ev.side === 'player') {
         banner(`${ev.turn}턴 — 당신의 차례`, 'player', 900);
         sound.sfx('turnStart');
@@ -193,6 +227,7 @@ async function step(ev: CombatEvent) {
       else if (!ev.dtype) sound.sfx('buff');
       else sound.sfx(fxName, { volume: 0.5 });
       banner(ev.echo ? `${ev.name} (메아리)` : ev.name, 'player', 700);
+      await maybePlayerCut(ev.skill, ev.name, ev.echo);
       await wait(140);
       return;
     }
@@ -206,6 +241,17 @@ async function step(ev: CombatEvent) {
       else if (ev.kind === 'block') sound.sfx('block', { volume: 0.6 });
       else if (ev.kind === 'summon') sound.sfx('riftOpen', { volume: 0.6 });
       store.emit();
+      // 필살기 컷인, 행동에 붙은 화면 연출
+      if (ev.ult) {
+        const real = store.combat?.s.enemies.find((e) => e.uid === ev.uid);
+        const def = real ? ENEMIES.get(real.def) : undefined;
+        const color = ev.kind === 'horror' ? '#9a5cff' : def?.eldritch ? '#30d8a8' : '#d23a3a';
+        await cutIn({ name: ev.name, sub: real?.name, art: real?.def, icon: def?.icon, side: 'enemy', color });
+      }
+      if (ev.cine) {
+        const cn = typeof ev.cine === 'string' ? { name: ev.cine } : ev.cine;
+        await playCine(cn.name, { uid: ev.uid, n: cn.n, text: cn.text });
+      }
       await wait(320);
       return;
     }
@@ -266,6 +312,9 @@ async function step(ev: CombatEvent) {
       const shellBreak = ev.blocked > 0 && !!es && es.block <= 0;
       stage.battle.hit(ev.tgt, ev.dtype, ev.amount, { crit: ev.crit, weak: ev.weak, blocked: ev.blocked, hpLoss: ev.hpLoss, shellBreak, firearm, src: ev.src });
       const big = ev.crit || ev.weak;
+      // 아주 큰 일격엔 만화식 임팩트 프레임
+      const maxHp = es?.maxHp ?? 0;
+      if (ev.src === 'p' && ev.attack && ev.hpLoss >= Math.max(25, maxHp * 0.22)) await impact(stage.battle.center(ev.tgt) ?? p, ev.hpLoss >= maxHp * 0.4 ? 1.5 : 1);
       if (big) {
         const c = stage.battle.center(ev.tgt);
         if (c) {
@@ -359,6 +408,8 @@ async function step(ev: CombatEvent) {
     }
     case 'death': {
       store.emit();
+      const fallen = store.combat?.s.enemies.find((e) => e.uid === ev.uid);
+      if (fallen && ENEMIES.get(fallen.def)?.tier === 'boss') await bossFall(stage.battle.center(ev.uid) ?? unitPoint(ev.uid));
       stage.battle.death(ev.uid);
       sound.sfx('enemyDeath');
       syncBattle(store.snap);
@@ -467,6 +518,11 @@ async function step(ev: CombatEvent) {
         await wait(600);
       }
       await wait(120);
+      return;
+    }
+    case 'cine': {
+      store.emit();
+      await playCine(ev.name, { uid: ev.uid, text: ev.text, n: ev.n });
       return;
     }
     case 'victory':

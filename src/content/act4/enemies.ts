@@ -3,12 +3,66 @@ import { isEnemy } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import { DMG_TYPES, type EnemyUnit } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
+import { cine, setUi } from '../lib';
 import { canDoom, castDoom, dimLight, doomDesc, doomMove, flipRows, lockSkill, mostHurt, reviveAlly, setWeak } from './common';
+import {
+  DARK,
+  DARK_MAX,
+  DARK_REVEAL,
+  DEFY_SAN,
+  DEFY_STR,
+  ECLIPSE_SAN,
+  ECLIPSE_STR,
+  ENTANGLE,
+  FIRE_LIGHT,
+  FLIP_BLOCK,
+  FLIP_DMG,
+  GATE_ORBS,
+  HUNT_DMG,
+  LIAR_REVEAL,
+  QUAKE_FIRST,
+  QUAKE_STEP,
+  RIDE_HITS,
+  ROOT_TURNS,
+  STAR_DMG,
+  STAR_MIN,
+  STAR_PCT,
+  STAR_TURNS,
+  STARFALL,
+  SWAP_CAP,
+  SWAP_GAP,
+  SWAP_MAX,
+  UNISON_DMG,
+  UNISON_SAN,
+  COMMAND,
+  addDark,
+  armQuake,
+  bodySwap,
+  callStar,
+  eclipse,
+  entangle,
+  flare,
+  foldForward,
+  huntHits,
+  issueCommand,
+  judgeCommand,
+  once,
+  overturn,
+  recountUnison,
+  rideWind,
+  syncLampDark,
+  unfold,
+  unisonHits,
+  withCine,
+} from './patterns';
 
 /** 문 너머의 존재를 이루는 구체들 */
-export const GATE_ORBS = ['gate-orb-hunger', 'gate-orb-seal', 'gate-orb-gaze'];
+export { GATE_ORBS };
 
 const echoDmg = (e: EnemyUnit) => Math.max(8, Math.min(32, e.mem.echoSeen ?? 0));
+
+/** 별의 자손 군주의 행동 순서 (흔들리는 대지에 밀려난 행동은 다음 차례로 미뤄진다) */
+const LORD_CYCLE = ['sweep', 'transmit', 'starcall', 'sweep'];
 
 // ───────────── 특성 ─────────────
 
@@ -101,7 +155,7 @@ reg.traits([
   {
     id: 'a4-masks',
     name: '천의 가면',
-    desc: '지난 턴 당신이 가한 가장 강한 일격을 기억했다가 「메아리」로 되돌려준다. 가면을 바꿔 쓰면 약점이 바뀐다',
+    desc: '지난 턴 당신이 가한 가장 강한 일격을 기억했다가 「메아리」로 되돌려준다. 가면을 바꿔 쓰면 약점이 바뀐다. 가면 하나는 거짓말을 한다 — 「천 개의 가면」을 쓰는 척 덮칠 때가 있다 (통찰 5면 보인다)',
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -135,13 +189,26 @@ reg.traits([
     name: '시간의 기록',
     desc: '지난 몸을 기억한다 — 「시간 되감기」로 두 차례 전의 체력으로 돌아간다',
     hooks: {
+      onUnitTurnStart(c) {
+        // 「정신 교환」으로 뒤섞였던 기억은 봉인이 풀리면 제자리를 찾는다
+        setUi(c, 'ui:scramble', 0);
+      },
       onUnitTurnEnd(_c, s) {
         const e = s.unit;
         if (!isEnemy(e)) return;
         e.mem.h2 = e.mem.h1 ?? e.hp;
         e.mem.h1 = e.hp;
       },
+      onDeath(c) {
+        setUi(c, 'ui:scramble', 0);
+      },
     },
+  },
+  {
+    id: 'a4-bodythief',
+    name: '몸 도둑',
+    desc: `당신이 자신보다 체력 비율이 ${Math.round(SWAP_GAP * 100)}%p 이상 높으면 「몸 바꾸기」를 준비한다 — 다음 차례 체력 비율이 서로 뒤바뀐다 (최대 ${Math.round(SWAP_CAP * 100)}%p, 방어도로 막을 수 없다). 준비하는 동안 붕괴시키면 끊긴다 (전투마다 ${SWAP_MAX}번까지)`,
+    hooks: {},
   },
   {
     id: 'a4-orbshield',
@@ -151,6 +218,29 @@ reg.traits([
       modDamageIn(c, _s, d) {
         const n = c.alive.filter((x) => GATE_ORBS.includes(x.def)).length;
         if (n > 0) d.mult *= Math.max(0.2, 1 - 0.2 * n);
+      },
+    },
+  },
+  {
+    id: 'a4-unison',
+    name: '하나 되는 빛',
+    desc: '「모든 것이 하나」의 빛은 문과 살아 있는 구체마다 한 줄기씩 모인다 — 구체를 부수면 모이던 빛줄기가 바로 줄어든다',
+    hooks: {
+      onAnyDeath(c, _s, victim) {
+        if (isEnemy(victim) && GATE_ORBS.includes(victim.def)) recountUnison(c);
+      },
+    },
+  },
+  {
+    id: 'a4-folding',
+    name: '접히는 차원',
+    desc: '차원을 접는 동안(힘을 모으는 동안) 문이 전열로 끌려 나와 근접 공격이 닿는다. 접힌 차원이 펴지면 다시 뒤로 물러난다',
+    hooks: {
+      onUnitTurnEnd(c, s) {
+        if (isEnemy(s.unit)) unfold(c, s.unit);
+      },
+      onDeath(c) {
+        setUi(c, 'ui:tilt', 0);
       },
     },
   },
@@ -167,12 +257,41 @@ reg.traits([
         e.name = '얼굴 없는 파라오';
         setWeak(c, e, ['void', 'arcane']);
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
+        cine(c, 'shatter', { uid: e.uid });
+        // 제4의 벽: 지금까지의 죽음을 세고 있었다
+        cine(c, 'whisper', { uid: e.uid, text: '너는 {deaths}번 죽었다.\n이번이 몇 번째일지\n세어 볼까.' });
         c.emit({ t: 'text', uid: e.uid, text: '황금 가면이 떨어진다. 그 아래엔 아무것도 없다', tone: 'eldritch' });
         c.loseSanity(10, true);
         c.apply(e, 'str', 2, e);
         if (e.broken !== 2) c.planIntent(e);
       },
     },
+  },
+  {
+    id: 'a4-liar',
+    name: '거짓의 왕',
+    desc: `가면을 쓴 동안 그가 베푸는 '자비'는 거짓 의도다 — 실제로는 등을 찌른다 (통찰 ${LIAR_REVEAL}이면 진짜 의도가 보인다). 가면이 벗겨지면 「왕의 명령」으로 당신의 기술 하나를 지목한다 — 그 턴에 쓰지 않으면 정신 피해 ${DEFY_SAN}, 공포 2, 힘 +${DEFY_STR}`,
+    hooks: {
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e)) return;
+        // 붕괴로 건너뛴 차례의 명령은 흩어진다 (따랐든 아니든 이번 차례로 끝)
+        if ((c.p.st[COMMAND] ?? 0) > 0) c.clear(c.p, COMMAND);
+        delete e.mem.obeyed;
+      },
+    },
+  },
+  {
+    id: 'a4-overturn',
+    name: '뒤집히는 대지',
+    desc: `체력을 일정량 잃을 때마다(흔들리는 대지) 고통에 몸부림치며 다음 행동이 「대지를 뒤집는다」로 바뀐다 — 덮치고, 모든 적의 열을 뒤바꾸고, 방어도 ${FLIP_BLOCK}. 문턱은 최대 체력의 ${Math.round(QUAKE_FIRST * 100)}%에서 뒤집을 때마다 ${Math.round(QUAKE_STEP * 100)}%p씩 오른다. 내 턴에 무너뜨리면 하려던 행동은 다음 차례로 미뤄진다`,
+    hooks: {},
+  },
+  {
+    id: 'a4-lighteater',
+    name: '빛을 먹는 별',
+    desc: `「빛을 삼킨다」와 공허의 눈이 당신에게 어둠을 쌓는다 (최대 ${DARK_MAX}). 어둠 2부터 적의 의도가 어둠에 묻히고(통찰 ${DARK_REVEAL}이면 보인다), ${DARK_MAX}이 되면 일식을 일으킨다. 검은 별을 화염이나 비전으로 공격하면 어둠이 1 걷힌다 (내 턴마다 한 번)`,
+    hooks: {},
   },
   {
     id: 'a4-event-horizon',
@@ -200,10 +319,17 @@ reg.traits([
   {
     id: 'a4-lightshy',
     name: '빛을 꺼리는 자',
-    desc: '등불이 50 이상이면 주는 공격 피해 -25%',
+    desc: `등불이 50 이상이면 주는 공격 피해 -25%. 화염 피해(화상 포함)를 받을 때마다 불꽃이 어둠을 밀어내 등불 +${FIRE_LIGHT}`,
     hooks: {
+      onCombatStart(c) {
+        // 화면의 어둠이 지금 등불을 따라간다
+        syncLampDark(c);
+      },
       modDamageOut(c, s, d) {
         if (d.src === s.unit && d.attack && c.run.light >= 50) d.mult *= 0.75;
+      },
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit) && d.tgt === s.unit && (d.type === 'fire' || d.tags.includes('burn')) && d.amount > 0) flare(c, s.unit);
       },
     },
   },
@@ -743,9 +869,11 @@ reg.enemies([
       feed: {
         name: '빛 흡수',
         intent: 'heal',
-        desc: '검은 별 체력 8 회복',
+        extra: ['debuff'],
+        desc: '검은 별 체력 8 회복, 당신에게 어둠 +1',
         run(c, e) {
           c.heal(c.alive.find((x) => x.def === 'black-star') ?? e, 8);
+          addDark(c, e, 1);
         },
       },
     },
@@ -793,14 +921,25 @@ reg.enemies([
         },
       },
       whisper: mv.horror('혼돈의 속삭임', 13, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      // 거짓 의도: 「천 개의 가면」을 쓰는 척한다 (통찰 5면 보인다)
+      grin: {
+        ...mv.attack('웃는 가면', 9, {
+          hits: 2,
+          melee: false,
+          type: 'void',
+          then: (c, e) => void c.apply(c.p, 'dread', 1, e),
+          desc: '가면을 바꿔 쓰는 척하다가 웃으며 덮친다 (거짓 의도), 공포 1',
+        }),
+        disguise: { kind: 'buff', label: '천 개의 가면' },
+      },
       rise: mv.charge('기어오는 혼돈', 44),
-      crawl: release(mv.attack('천 개의 팔', 44, { melee: false, type: 'void' })),
+      crawl: release(withCine(mv.attack('천 개의 팔', 44, { melee: false, type: 'void', ultimate: true }), 'handprints', 8)),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'crawl';
       const o = opener(c, e, ['whisper']);
       if (o) return o;
-      const m = cycle(e, ['echo', 'masks', 'echo', 'rise', 'whisper']);
+      const m = cycle(e, ['echo', 'masks', 'grin', 'echo', 'rise', 'whisper']);
       if (m === 'echo') e.mem.echoPlanType = e.mem.echoSeenType ?? -1;
       return m;
     },
@@ -845,9 +984,16 @@ reg.enemies([
         { desc: '모든 새끼 체력 10 회복, 힘 +2' },
       ),
       vines: mv.attack('휘감는 덩굴', 7, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
+      // 땅에서 솟는 뿌리 — 다음 두 턴 행동력을 붙든다. 화염·참격 기술이 끊는다
+      roots: mv.attack('얽히는 뿌리', 6, {
+        melee: false,
+        cine: 'ink',
+        then: (c, e) => entangle(c, e),
+        desc: `검은 뿌리가 솟아 발목을 휘감는다 — ${ROOT_TURNS}턴 동안 내 턴이 시작될 때 행동력 -1. 화염이나 참격 기술을 쓰면 끊어진다`,
+      }),
       bleat: mv.horror('천 개의 울음', 12, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       rear: mv.charge('숲이 일어선다', 42),
-      trample: release(mv.attack('검은 숲의 짓밟기', 42)),
+      trample: release(mv.attack('검은 숲의 짓밟기', 42, { ultimate: true, cine: 'impact' })),
     },
     onSpawn: (c) => void c.spawn('goat-spawn', 0),
     ai: (c, e) => {
@@ -857,6 +1003,7 @@ reg.enemies([
       if (young === 0 && births < 5 && last(e) !== 'birth') return 'birth';
       return pick(c, e, {
         vines: 3,
+        roots: (c.p.st[ENTANGLE] ?? 0) > 0 || e.hist.includes('roots') ? 0 : 2,
         bleat: 2,
         rear: e.hist.slice(-2).includes('trample') ? 0 : 1,
         milk: young && !e.hist.includes('milk') ? 2 : 0,
@@ -878,14 +1025,42 @@ reg.enemies([
     dread: 6,
     eldritch: true,
     tags: ['time'],
-    traits: ['a4-judge', 'a4-chronicle'],
+    traits: ['a4-judge', 'a4-chronicle', 'a4-bodythief'],
     moves: {
       sentence: doomMove('시간의 선고', 3, 34, 10),
       gun: mv.attack('번개 총', 7, { hits: 2, melee: false, type: 'arcane' }),
-      swap: mv.horror('정신 교환', 11, { then: (c) => void lockSkill(c, 2), desc: '당신의 기억을 훔쳐 간다 — 무작위 스킬 하나가 다음 턴 동안 봉인된다' }),
+      swap: mv.horror('정신 교환', 11, {
+        then: (c) => {
+          // 기억을 빼앗긴 턴엔 기술의 이름과 설명이 뒤섞여 보인다 (방랑자의 다음 차례에 제자리를 찾는다)
+          if (lockSkill(c, 2)) setUi(c, 'ui:scramble', 1);
+        },
+        desc: '당신의 기억을 훔쳐 간다 — 무작위 스킬 하나가 다음 턴 동안 봉인된다',
+      }),
+      // 몸 바꾸기: 한 차례 예고(붕괴시키면 끊긴다) → 체력 비율이 서로 뒤바뀐다
+      reach: {
+        name: '몸 바꾸기 준비',
+        intent: 'charge',
+        charging: true,
+        desc: `시간 너머에서 당신의 몸을 더듬는다 — 다음 차례 「몸 바꾸기」: 체력 비율이 서로 뒤바뀐다 (최대 ${Math.round(SWAP_CAP * 100)}%p, 방어도로 막을 수 없다). 붕괴시키면 끊긴다`,
+        run(c, e) {
+          e.mem.charge = 2;
+          e.mem.reaches = (e.mem.reaches ?? 0) + 1;
+          c.emit({ t: 'text', uid: e.uid, text: '시간 너머에서 당신의 몸을 더듬는다…', tone: 'eldritch' });
+        },
+      },
+      bodyswap: {
+        name: '몸 바꾸기',
+        intent: 'special',
+        cine: 'timestop',
+        desc: `당신이 더 멀쩡하면 체력 비율이 서로 뒤바뀐다 — 그 차이(최대 ${Math.round(SWAP_CAP * 100)}%p)만큼 당신은 체력을 잃고 방랑자는 회복한다 (방어도로 막을 수 없다)`,
+        run(c, e) {
+          bodySwap(c, e);
+        },
+      },
       rewind: {
         name: '시간 되감기',
         intent: 'heal',
+        cine: 'glitch',
         desc: '두 차례 전의 체력으로 되돌아간다 (최대 45 회복)',
         run(c, e) {
           const n = Math.min(45, (e.mem.h2 ?? e.hp) - e.hp);
@@ -894,13 +1069,16 @@ reg.enemies([
         },
       },
       rise: mv.charge('시간을 접는다', 42),
-      collapse: release(mv.attack('시간 붕괴', 42, { melee: false, type: 'arcane' })),
+      collapse: release(mv.attack('시간 붕괴', 42, { melee: false, type: 'arcane', ultimate: true, cine: 'crack' })),
     },
     ai: (c, e) => {
+      if (e.mem.charge === 2) return 'bodyswap';
       if (e.mem.charge) return 'collapse';
       const o = opener(c, e, ['gun']);
       if (o) return o;
       if (canDoom(c, e, 6)) return 'sentence';
+      const gap = c.p.hp / Math.max(1, c.p.maxHp) - hpPct(e);
+      if (gap >= SWAP_GAP && (e.mem.reaches ?? 0) < SWAP_MAX && !c.dying && !e.hist.includes('bodyswap')) return 'reach';
       if ((e.mem.h2 ?? 0) - e.hp >= 20 && !e.hist.includes('rewind')) return 'rewind';
       return pick(c, e, { gun: 3, swap: e.hist.includes('swap') ? 0 : 2, rise: e.hist.slice(-2).includes('collapse') ? 0 : 1 });
     },
@@ -922,22 +1100,50 @@ reg.enemies([
     dread: 9,
     eldritch: true,
     tags: ['outer'],
-    traits: ['a4-orbshield'],
+    traits: ['a4-orbshield', 'a4-unison', 'a4-folding'],
     desc: '모든 시간과 공간이 맞닿는 문. 무지갯빛 구체들이 그것을 감싼다.',
     moves: {
       rays: mv.attack('구체의 빛', 6, { hits: 3, melee: false, type: 'arcane' }),
-      oneness: mv.horror('모든 것이 하나', 14, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      // 문과 살아 있는 구체마다 한 줄기 — 구체가 부서지면 준비하던 의도가 바로 줄어든다 (a4-unison)
+      oneness: {
+        name: '모든 것이 하나',
+        intent: 'horror',
+        extra: ['attack'],
+        sanity: UNISON_SAN,
+        dmg: UNISON_DMG,
+        hits: (c) => unisonHits(c),
+        melee: false,
+        cine: 'beam',
+        desc: `구체들의 빛이 하나로 모인다 — 문과 살아 있는 구체마다 한 줄기씩 ${UNISON_DMG} 비전 피해 (구체를 부수면 바로 줄어든다), 그리고 정신 피해`,
+        run(c, e) {
+          // 제4의 벽: 모든 시간이 하나인 문은 화면 너머의 지금도 안다
+          if (once(c, 'a4-unison')) cine(c, 'whisper', { uid: e.uid, text: '모든 것이 하나다.\n{hour}의 너도,\n문 앞에 설 모든 너도.' });
+          c.enemyAttack(e, { type: 'arcane' });
+          if (!c.over && !e.dead) c.horror(e, UNISON_SAN);
+        },
+      },
       open: mv.summon(
         '문이 열린다',
         (c, e) => {
           e.mem.reforms = (e.mem.reforms ?? 0) + 1;
           for (const id of GATE_ORBS) if (!countDef(c, id)) c.spawn(id, 0);
           c.emit({ t: 'text', uid: e.uid, text: '부서진 구체들이 다시 맺힌다', tone: 'eldritch' });
+          // 제4의 벽: 문 너머의 것들이 화면 안쪽에서 유리를 짚는다 (처음 한 번)
+          if (once(c, 'a4-gate-open')) cine(c, 'handprints', { uid: e.uid, n: 6 });
         },
         '부서진 구체들을 다시 맺는다 (두 번까지)',
       ),
-      rise: mv.charge('차원이 접힌다', 42),
-      crush: release(mv.attack('차원 압착', 42, { melee: false, type: 'void' })),
+      rise: {
+        ...mv.charge('차원이 접힌다', 42),
+        cine: 'blackhole',
+        desc: '차원을 접어 힘을 모은다 — 다음 차례 「차원 압착」. 그동안 문이 전열로 끌려 나와 근접 공격이 닿는다',
+        run(c, e) {
+          e.mem.charge = 1;
+          c.emit({ t: 'text', uid: e.uid, text: '힘을 모은다…', tone: 'bad' });
+          foldForward(c, e);
+        },
+      },
+      crush: release(mv.attack('차원 압착', 42, { melee: false, type: 'void', ultimate: true, cine: 'shatter' })),
     },
     onSpawn: (c) => {
       for (const id of GATE_ORBS) c.spawn(id, 0);
@@ -963,7 +1169,7 @@ reg.enemies([
     dread: 8,
     eldritch: true,
     tags: ['outer'],
-    traits: ['a4-scarab-curse', 'a4-unmasking'],
+    traits: ['a4-scarab-curse', 'a4-unmasking', 'a4-liar'],
     desc: '모래 아래 피라미드에서 되살아난 왕. 그 가면 아래엔 얼굴이 없다.',
     moves: {
       curse: {
@@ -974,21 +1180,48 @@ reg.enemies([
           castDoom(c, e, 3, 30, 8, c.alive.filter((x) => x.def === 'pharaoh-scarab'));
         },
       },
-      swarm: mv.summon(
-        '풍뎅이 떼를 부른다',
-        (c, e) => {
-          e.mem.swarms = (e.mem.swarms ?? 0) + 1;
-          c.spawn('pharaoh-scarab', 0);
-          c.spawn('pharaoh-scarab', 0);
-        },
-        '검은 풍뎅이 떼 둘을 부른다',
-      ),
+      swarm: {
+        ...mv.summon(
+          '풍뎅이 떼를 부른다',
+          (c, e) => {
+            e.mem.swarms = (e.mem.swarms ?? 0) + 1;
+            c.spawn('pharaoh-scarab', 0);
+            c.spawn('pharaoh-scarab', 0);
+          },
+          '검은 풍뎅이 떼 둘을 부른다',
+        ),
+        cine: 'swarm',
+      },
       wind: mv.attack('사막의 열풍', 8, { hits: 2, melee: false, type: 'fire' }),
       kneel: mv.horror('무릎 꿇어라', 13, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
+      // 거짓 의도 (가면을 쓴 동안): 자비를 베푸는 척 등을 찌른다 — 통찰 LIAR_REVEAL이면 보인다
+      mercy: {
+        name: '배신의 칼날',
+        intent: 'attack',
+        dmg: 10,
+        hits: 2,
+        melee: false,
+        cine: 'glitch',
+        disguise: { kind: 'buff', label: '자비를 베푼다', reveal: LIAR_REVEAL },
+        desc: '자비를 베푸는 척하다가 등을 찌른다 (거짓 의도)',
+        run(c, e) {
+          if (once(c, 'a4-lie')) cine(c, 'scrawl', { uid: e.uid, text: '믿었어?' });
+          c.enemyAttack(e, { type: 'void' });
+        },
+      },
       rise: mv.charge('피라미드의 그림자', 44),
-      pyramid: release(mv.attack('어둠의 피라미드', 44, { melee: false, type: 'void' })),
+      pyramid: release(mv.attack('어둠의 피라미드', 44, { melee: false, type: 'void', ultimate: true, cine: 'impact' })),
       thousand: mv.attack('천 개의 형상', 5, { hits: 4, melee: false, type: 'void' }),
-      laugh: mv.horror('혼돈의 웃음', 15, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
+      // 가면이 벗겨진 뒤: 기술 하나를 지목하고, 그 턴에 쓰지 않으면 벌한다 (의도에 지목한 기술 이름이 보인다)
+      command: {
+        name: '왕의 명령',
+        intent: 'special',
+        extra: ['horror', 'buff'],
+        desc: `당신의 기술 하나를 지목해 명령한다 — 이번 턴 그 기술을 쓰면 흡족해하고, 쓰지 않으면 정신 피해 ${DEFY_SAN}, 공포 2, 힘 +${DEFY_STR}`,
+        run(c, e) {
+          judgeCommand(c, e);
+        },
+      },
     },
     onSpawn: (c) => {
       c.spawn('pharaoh-scarab', 0);
@@ -1001,7 +1234,10 @@ reg.enemies([
       const scarabs = countDef(c, 'pharaoh-scarab');
       if (scarabs === 0 && (e.mem.swarms ?? 0) < 3 && last(e) !== 'swarm') return 'swarm';
       if (canDoom(c, e, 7)) return 'curse';
-      return e.form ? cycle(e, ['thousand', 'laugh', 'thousand', 'rise'], 'c2') : cycle(e, ['wind', 'rise', 'wind', 'kneel']);
+      if (!e.form) return cycle(e, ['wind', 'mercy', 'rise', 'wind', 'kneel']);
+      const m = cycle(e, ['thousand', 'command', 'thousand', 'rise'], 'c2');
+      // 지목할 기술이 없거나 결계에 막히면 형상을 흩뿌린다
+      return m === 'command' && !issueCommand(c, e) ? 'thousand' : m;
     },
     visual: { tint: 0x1a1612, glow: 0xffc040, scale: 1.45 },
     forms: [{ name: '얼굴 없는 파라오', icon: 'gi:pschent-double-crown', visual: { tint: 0x0c0a10, glow: 0xb060ff, scale: 1.5, fx: ['flicker'] } }],
@@ -1020,18 +1256,21 @@ reg.enemies([
     dread: 9,
     eldritch: true,
     tags: ['star'],
-    traits: ['a4-aligned'],
+    traits: ['a4-aligned', 'a4-overturn'],
     desc: '별에서 내려온 자손들의 왕. 그 꿈은 궁정 아래, 우주 한가운데서 뒤척이는 무언가에 닿아 있다.',
     moves: {
       sweep: mv.attack('촉수 휩쓸기', 7, { hits: 3, melee: false }),
+      // 흔들리는 대지가 무너졌을 때(반응), 또는 떨어지는 별을 피해 뒤로 숨을 때
       flip: {
         name: '대지를 뒤집는다',
         intent: 'special',
-        extra: ['block'],
-        desc: '모든 적의 전열과 후열을 뒤바꾸고 방어도 16',
+        extra: ['attack', 'block'],
+        dmg: FLIP_DMG,
+        melee: false,
+        cine: 'flip',
+        desc: `땅을 뒤집어 덮친다 — 모든 적의 전열과 후열이 뒤바뀌고 방어도 ${FLIP_BLOCK}`,
         run(c, e) {
-          flipRows(c);
-          c.gainBlock(e, 16);
+          overturn(c, e);
         },
       },
       spawn: mv.summon(
@@ -1043,31 +1282,60 @@ reg.enemies([
         },
         '별의 유충 둘을 낳는다',
       ),
-      transmit: mv.horror('꿈의 송신', 14, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
-      rise: mv.charge('별의 무게를 끌어내린다', 46),
-      fall: release(mv.attack('별이 떨어진다', 46, { melee: false })),
+      transmit: mv.horror('꿈의 송신', 14, {
+        then: (c, e) => {
+          c.apply(c.p, 'dread', 2, e);
+          // 꿈속의 거대한 눈이 화면을 덮고 당신의 손끝을 따라본다 (남발하지 않게 두 번까지)
+          e.mem.dreams = (e.mem.dreams ?? 0) + 1;
+          if (e.mem.dreams <= 2) cine(c, 'eye', { uid: e.uid });
+        },
+        desc: '정신 피해, 공포 2',
+      }),
+      // 별을 부른다: 내 턴이 두 번 끝나면 전열에 떨어진다 (군주는 뒤로 숨는다 — 전열을 비우면 끌려 나온다)
+      starcall: {
+        name: '별을 부른다',
+        intent: 'special',
+        ultimate: true,
+        desc: `하늘의 별 하나를 끌어내린다 — 내 턴이 ${STAR_TURNS}번 끝나면 전열에 떨어진다: 전열의 적은 저마다 최대 체력의 ${Math.round(STAR_PCT * 100)}%(최소 ${STAR_MIN}) 피해, 당신은 ${STAR_DMG} 피해 (방어도가 먼저 막는다). 군주를 붕괴시키거나 쓰러뜨리면 별이 흩어진다`,
+        run(c, e) {
+          callStar(c, e);
+        },
+      },
       awaken: mv.buff(
         '별빛 각성',
         (c, e) => {
           e.mem.awoken = 1;
           c.apply(e, 'str', 3, e);
           c.emit({ t: 'text', uid: e.uid, text: '별빛이 눈을 뜬다', tone: 'eldritch' });
+          // 제4의 벽: 꿈꾸는 것은 누구인가 (5층 별의 태아의 복선)
+          cine(c, 'whisper', { uid: e.uid, text: '{time}.\n너는 아직 깨어 있다고\n믿는구나.' });
         },
         { desc: '힘 +3' },
       ),
     },
-    onSpawn: (c) => {
+    onSpawn: (c, e) => {
       c.spawn('star-larva', 1);
       c.spawn('star-larva', 1);
+      armQuake(c, e);
     },
     ai: (c, e) => {
-      if (e.mem.charge) return 'fall';
+      if (e.mem.overturn) {
+        // 뒤집기에 밀려난 행동은 사라지지 않고 다음 차례로 미뤄진다
+        if (e.mem.postpone && e.mem.cyc) e.mem.ci = ((e.mem.ci ?? 0) + LORD_CYCLE.length - 1) % LORD_CYCLE.length;
+        delete e.mem.postpone;
+        delete e.mem.cyc;
+        return 'flip';
+      }
+      delete e.mem.cyc;
       if (hpPct(e) <= 0.5 && !e.mem.awoken) return 'awaken';
+      // 떨어지는 별 아래에서 몸을 피한다 (뒤에 숨을 자리가 있을 때)
+      const star = c.p.st[STARFALL] ?? 0;
+      if (star > 0 && e.row === 0 && c.row(1).length > 0 && last(e) !== 'flip') return 'flip';
       const larvae = countDef(c, 'star-larva');
       if (larvae === 0 && (e.mem.broods ?? 0) < 3 && last(e) !== 'spawn') return 'spawn';
-      const m = cycle(e, ['sweep', 'transmit', 'rise', 'sweep', 'flip']);
-      if (m === 'flip' && (c.row(0).length === 0 || c.row(1).length === 0)) return 'sweep';
-      return m;
+      const m = cycle(e, LORD_CYCLE);
+      e.mem.cyc = 1;
+      return m === 'starcall' && star > 0 ? 'sweep' : m;
     },
     visual: { tint: 0x1e3a40, glow: 0x60ffe0, scale: 1.55, fx: ['drip'] },
   },
@@ -1087,7 +1355,7 @@ reg.enemies([
     dread: 10,
     eldritch: true,
     tags: ['star'],
-    traits: ['a4-aligned', 'a4-event-horizon', 'a4-judge'],
+    traits: ['a4-aligned', 'a4-event-horizon', 'a4-judge', 'a4-lighteater'],
     desc: '빛을 먹는 별. 별들이 제자리를 찾을 때 운석 구덩이 위로 내려앉는다.',
     moves: {
       beam: mv.attack('검은 광선', 6, { hits: 2, melee: false, type: 'void' }),
@@ -1095,9 +1363,22 @@ reg.enemies([
         then: (c, e) => {
           c.apply(c.p, 'dread', 2, e);
           dimLight(c, 10);
+          addDark(c, e, 1);
         },
-        desc: '정신력 -15, 공포 2, 등불 -10',
+        desc: '정신력 -15, 공포 2, 등불 -10, 어둠 +1',
       }),
+      // 어둠이 가득 차면 (어둠 3): 화염·비전으로 어둠을 걷어 내면 흩어진다
+      eclipse: {
+        name: '일식',
+        intent: 'horror',
+        sanity: ECLIPSE_SAN,
+        ultimate: true,
+        cine: 'ink',
+        desc: `빛이 모두 먹힌다 — 정신 피해, 공포 2, 힘 +${ECLIPSE_STR}. 배를 채운 별이 어둠을 1까지 물린다 (그 전에 어둠을 걷어 내면 흩어진다)`,
+        run(c, e) {
+          eclipse(c, e);
+        },
+      },
       judgment: doomMove('별의 심판', 3, 36, 10),
       eyes: mv.summon(
         '공허의 눈을 뜬다',
@@ -1109,7 +1390,7 @@ reg.enemies([
         '공허의 눈 둘을 뜬다',
       ),
       rise: mv.charge('중력이 무너진다', 48),
-      collapse: release(mv.attack('중력 붕괴', 48, { melee: false, type: 'void' })),
+      collapse: release(mv.attack('중력 붕괴', 48, { melee: false, type: 'void', ultimate: true, cine: 'blackhole' })),
       nova: mv.buff(
         '초신성 전조',
         (c, e) => {
@@ -1126,6 +1407,7 @@ reg.enemies([
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'collapse';
+      if ((c.p.st[DARK] ?? 0) >= DARK_MAX) return 'eclipse';
       if (hpPct(e) <= 0.5 && !e.mem.nova) return 'nova';
       const o = opener(c, e, ['devour']);
       if (o) return o;
@@ -1151,14 +1433,28 @@ reg.enemies([
     traits: ['a4-relentless'],
     moves: {
       claw: mv.attack('얼어붙은 손톱', 12, { type: 'slash', then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
-      gale: mv.attack('별바람', 5, { hits: 3, melee: false }),
+      gale: mv.attack('별바람', 5, { hits: 3, melee: false, cine: 'beam' }),
       howl: mv.horror('바람의 울부짖음', 12, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      // 바람 타기: 한 차례 동안 받는 피해 절반 — 여러 번 때려 떨어뜨리면 붕괴한다
+      ride: {
+        name: '바람을 탄다',
+        intent: 'buff',
+        extra: ['attack'],
+        dmg: 5,
+        hits: 2,
+        melee: false,
+        desc: `별바람을 타고 떠오르며 할퀸다 — 바람 타기 ${RIDE_HITS}: 받는 공격 피해 -50%, 공격을 ${RIDE_HITS}번 맞으면 바람에서 떨어져 붕괴한다. 다음 차례가 오면 바람이 잦아든다`,
+        run(c, e) {
+          c.enemyAttack(e, { type: 'slash' });
+          if (!c.over && !e.dead) rideWind(c, e);
+        },
+      },
       rise: mv.charge('하늘로 솟구친다', 44),
-      pounce: release(mv.attack('하늘에서 덮친다', 44, { melee: false, type: 'slash' })),
+      pounce: release(mv.attack('하늘에서 덮친다', 44, { melee: false, type: 'slash', ultimate: true, cine: 'impact' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'pounce';
-      return cycle(e, ['claw', 'howl', 'gale', 'rise']);
+      return cycle(e, ['claw', 'howl', 'ride', 'gale', 'rise']);
     },
     visual: { tint: 0x9ab0c8, glow: 0xe0f4ff, scale: 1.35, fx: ['float', 'flicker'] },
   },
@@ -1179,21 +1475,32 @@ reg.enemies([
     moves: {
       coil: mv.attack('휘감기', 10, { then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
       swoop: mv.attack('급습', 6, { hits: 3, melee: false, type: 'slash' }),
-      wings: mv.debuff(
-        '빛을 가리는 날개',
-        (c, e) => {
-          dimLight(c, 15);
-          c.apply(c.p, 'weak', 1, e);
-          c.gainBlock(e, 10);
-        },
-        { desc: '등불 -15, 약화 1, 방어도 10', extra: ['block'] },
-      ),
+      wings: {
+        ...mv.debuff(
+          '빛을 가리는 날개',
+          (c, e) => {
+            dimLight(c, 15);
+            syncLampDark(c);
+            c.apply(c.p, 'weak', 1, e);
+            c.gainBlock(e, 10);
+          },
+          { desc: '등불 -15, 약화 1, 방어도 10', extra: ['block'] },
+        ),
+        cine: 'ink',
+      },
+      // 어둠이 짙을수록(등불이 낮을수록) 여러 번 문다 — 화염으로 등불을 밝히면 준비하던 횟수가 줄어든다
+      hunt: mv.attack('어둠 속 사냥', HUNT_DMG, {
+        hits: (c) => huntHits(c),
+        melee: false,
+        type: 'slash',
+        desc: '어둠 속에서 여러 번 문다 — 등불이 25 모자랄 때마다 한 번 더 (등불 100이면 1번, 0이면 5번)',
+      }),
       rise: mv.charge('아가리를 벌린다', 44),
-      devour: release(mv.attack('포식', 44, { then: (c, e) => void c.heal(e, 12), desc: '체력 12 회복' })),
+      devour: release(mv.attack('포식', 44, { ultimate: true, cine: 'corners', then: (c, e) => void c.heal(e, 12), desc: '체력 12 회복' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'devour';
-      return opener(c, e, ['wings']) ?? cycle(e, ['coil', 'swoop', 'rise', 'wings', 'swoop']);
+      return opener(c, e, ['wings']) ?? cycle(e, ['coil', 'swoop', 'rise', 'wings', 'hunt']);
     },
     visual: { tint: 0x1a1420, glow: 0xff4060, scale: 1.4, fx: ['float'] },
   },

@@ -69,6 +69,10 @@ export interface Intent {
   hidden?: boolean;
   /** 차지 중 — 다음 행동이 강력 */
   charging?: boolean;
+  /** 속임수 의도 (MoveDef.disguise) — 보이는 것은 shownIntent()로 */
+  disguise?: { kind: IntentKind; label: string; dmg?: number; hits?: number; reveal?: number; desc?: string };
+  /** 속임수 의도의 거짓 설명 (shownIntent가 채운다) */
+  desc?: string;
 }
 
 export interface EnemyUnit extends Unit {
@@ -117,8 +121,10 @@ export interface OwnedEssence {
   /** 색 = 액티브 종류 */
   color: number;
   guardian?: boolean;
-  /** 본질로 흡수: 기술을 배우지 않는 대신 능력치를 더 받는다 */
+  /** 본질로 흡수: 능력치·패시브에 최대 체력을 더 받는다 (보통 정수는 늘, 수호자 정수도 이제 늘) */
   core?: boolean;
+  /** 수호자 정수를 흡수하며 고른 기술 하나 (없으면 기술 없이) */
+  skill?: string;
 }
 
 export interface EssenceStats {
@@ -359,9 +365,62 @@ export interface StatusDef {
   hidden?: boolean;
 }
 
+/**
+ * 연출 이름 — 적의 행동이 화면 전체에 일으키는 일 (src/ui/cinema.tsx가 그린다). 게임 규칙에는 영향이 없다.
+ * text에는 {time} {hour} {deaths} {runs} {wins} {best} {origin} 을 쓸 수 있다 (진짜 시각·지금까지의 기록으로 바뀜)
+ */
+export type CineName =
+  /** 화면 유리에 금이 간다 (n: 1~3 세기). 몇 초 뒤 사라진다 — 계속 남기려면 vars['ui:cracks'] */
+  | 'crack'
+  /** 전장 화면이 산산조각 났다가 다시 맞춰진다 (가장 큰 일격·형태 변화) */
+  | 'shatter'
+  /** 화면이 데이터처럼 깨지고 글자가 뒤섞인다 (n: 1~3 세기) */
+  | 'glitch'
+  /** 화면 가득 글자가 한 자씩 새겨진다 — 화면 너머의 당신에게 말을 건다 (text) */
+  | 'whisper'
+  /** 가짜 시스템 창 (text). 게임이 멈춘 듯하다가 사라진다 */
+  | 'sysmsg'
+  /** 가짜 게임 오버 화면 → 깨지며 돌아온다 (최종 보스급에만) */
+  | 'fakeover'
+  /** 화면을 덮는 거대한 눈이 떠서 당신의 손끝을 따라보다 감긴다 */
+  | 'eye'
+  /** 먹물이 화면 가장자리에서 밀려들었다 빠진다 */
+  | 'ink'
+  /** 화면 유리에 붉은 손글씨 (text) */
+  | 'scrawl'
+  /** 화면 안쪽에서 손바닥이 유리를 친다 (n: 개수) */
+  | 'handprints'
+  /** 화면이 뒤집혔다 돌아온다 */
+  | 'flip'
+  /** 색이 빠지며 시간이 멎었다 다시 흐른다 */
+  | 'timestop'
+  /** 화면이 한 점(uid)으로 빨려 들어가듯 일그러진다 */
+  | 'blackhole'
+  /** 화면 네 모서리에서 이빨·발톱이 튀어나온다 */
+  | 'corners'
+  /** 물이 화면 아래에서 차올랐다 빠진다 */
+  | 'water'
+  /** 종소리 — 동심원 파동이 화면 전체를 흔든다 */
+  | 'bell'
+  /** 거대한 빛줄기가 화면을 가로질러 훑는다 */
+  | 'beam'
+  /** 벌레 떼가 화면 가장자리에서 기어 들어와 지나간다 */
+  | 'swarm'
+  /** 만화식 임팩트 프레임 (큰 일격 순간의 정지 + 집중선) */
+  | 'impact';
+
 export interface MoveDef {
   name: string;
   intent: IntentKind;
+  /** 필살기: 쓸 때 화면 가득 기술 이름이 지나간다 (컷인) */
+  ultimate?: boolean;
+  /** 이 행동을 할 때 함께 트는 연출 (세기·글자가 필요하면 { name, n, text }) */
+  cine?: CineName | { name: CineName; n?: number; text?: string };
+  /**
+   * 의도를 속인다: 통찰이 reveal(기본 5) 미만이면 의도가 이것으로 보인다 (실제로는 원래 행동을 한다).
+   * 들키면 진짜 의도가 보인다
+   */
+  disguise?: { kind: IntentKind; label: string; dmg?: number; hits?: number; reveal?: number; desc?: string };
   extra?: IntentKind[];
   /** 기본 피해. 함수면 의도를 정할 때 계산 */
   dmg?: number | ((c: Combat, e: EnemyUnit) => number);

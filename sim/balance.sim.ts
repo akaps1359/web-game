@@ -2,12 +2,14 @@ import { it } from 'vitest';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import '../src/content';
 import { CORE_HP } from '../src/engine/run';
+import { BOSS_HP_MULT } from '../src/engine/combat';
 import { botEssence, simulateRun, summarize } from '../src/sim/runbot';
 
 const N = Number(process.env.SIM_RUNS ?? 40);
 const ORIGINS = (process.env.SIM_ORIGINS ?? 'soldier,hunter,occultist').split(',');
 botEssence.mode = (process.env.SIM_ESSENCE as typeof botEssence.mode) ?? 'auto';
 if (process.env.SIM_CORE_HP) [CORE_HP.base, CORE_HP.step] = process.env.SIM_CORE_HP.split(',').map(Number);
+if (process.env.SIM_BOSS_HP) BOSS_HP_MULT.value = Number(process.env.SIM_BOSS_HP);
 
 it('밸런스 시뮬레이션', () => {
   const out: string[] = [];

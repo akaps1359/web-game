@@ -135,6 +135,12 @@ type Wave = BasicWave;
  * 목표 피크(마스터 전): UI -14, 공격 -9, 타격 -3~-5, 보상 -10~-12 dBFS
  */
 const TRIM: Partial<Record<Sfx, number>> = {
+  glass: 1.1,
+  tick: 2.6,
+  sting: 0.9,
+  glitch: 2.2,
+  thud: 1.2,
+  swoosh: 2.4,
   click: 1.8,
   select: 4.8,
   error: 4.9,
@@ -248,6 +254,36 @@ const RECIPES: Record<Sfx, (x: Kit) => void> = {
     x.fm({ f0: 330, f1: 220, glide: 0.45, h: 1.5, index: 5, release: 0.5, vel: 0.38, verb: 0.3 });
     x.fm({ f0: 311, f1: 196, glide: 0.5, h: 1.5, index: 4, release: 0.5, vel: 0.3, verb: 0.3 }, 0.02);
     x.noise({ filter: 'lowpass', f0: 400, release: 0.3, vel: 0.2 });
+  },
+  // ---------------- 화면 연출 ----------------
+  glass(x) {
+    // 유리: 높은 금속성 파편 여러 개가 흩어지며 떨어진다
+    x.noise({ filter: 'highpass', f0: 5200, attack: 0.001, release: 0.5, vel: 0.75, verb: 0.45 });
+    [2900, 4100, 3300, 5200, 3700].forEach((f, i) => x.fm({ f0: f, h: 6.3 + i * 0.7, index: 7, release: 0.35 + i * 0.08, shine: 0.2, vel: 0.22, verb: 0.5 }, i * 0.035));
+    x.noise({ filter: 'bandpass', f0: 6500, q: 2, attack: 0.02, release: 0.9, vel: 0.25, verb: 0.6 }, 0.12);
+    x.drum({ f: 90, pitchDecay: 0.04, octaves: 2, release: 0.2, vel: 0.5, cutoff: 1200 });
+  },
+  tick(x) {
+    x.noise({ filter: 'bandpass', f0: 3800, q: 6, attack: 0.001, release: 0.04, vel: 0.6, verb: 0.25 });
+    x.fm({ f0: 2100, h: 3.1, index: 2, release: 0.06, shine: 0.05, vel: 0.2, verb: 0.3 });
+  },
+  sting(x) {
+    // 수호자 등장: 낮은 충격 + 불협 금관
+    x.drum({ f: 42, pitchDecay: 0.3, octaves: 3, release: 1.6, vel: 1, cutoff: 500, verb: 0.5 });
+    x.fm({ f0: 110, h: 1.5, index: 6, attack: 0.02, release: 2.4, shine: 1.2, vel: 0.45, verb: 0.7 });
+    x.fm({ f0: 116.5, h: 1.5, index: 6, attack: 0.02, release: 2.4, shine: 1.2, vel: 0.35, verb: 0.7 }, 0.02);
+    x.noise({ filter: 'lowpass', f0: 6000, f1: 300, glide: 1.6, attack: 0.01, release: 1.6, vel: 0.45, verb: 0.6 });
+  },
+  glitch(x) {
+    for (let i = 0; i < 6; i++) x.tone('square', { f0: 180 + ((i * 397) % 1400), release: 0.03, cutoff: 4000, vel: 0.22, verb: 0 }, i * 0.045);
+    x.noise({ filter: 'bandpass', f0: 2500, q: 0.8, attack: 0.001, hold: 0.18, release: 0.05, vel: 0.35, verb: 0.1 });
+  },
+  thud(x) {
+    x.drum({ f: 55, pitchDecay: 0.08, octaves: 2.5, release: 0.45, vel: 1, cutoff: 600, verb: 0.35 });
+    x.noise({ filter: 'lowpass', f0: 1800, f1: 300, glide: 0.2, release: 0.25, vel: 0.5, verb: 0.3 });
+  },
+  swoosh(x) {
+    x.noise({ filter: 'bandpass', f0: 600, f1: 4500, glide: 0.25, q: 1.2, attack: 0.05, release: 0.25, vel: 0.55, verb: 0.3 });
   },
   break(x) {
     x.noise({ filter: 'highpass', f0: 3500, attack: 0.001, release: 0.35, vel: 0.7, verb: 0.3 });

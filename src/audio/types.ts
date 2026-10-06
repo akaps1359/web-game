@@ -15,6 +15,13 @@ export type Mood =
   | 'silence';
 
 export type Sfx =
+  /** 화면 연출용: 유리 깨짐, 시계 초침, 수호자 등장, 데이터 깨짐, 묵직한 손바닥, 컷인 바람 */
+  | 'glass'
+  | 'tick'
+  | 'sting'
+  | 'glitch'
+  | 'thud'
+  | 'swoosh'
   | 'click'
   | 'select'
   | 'error'

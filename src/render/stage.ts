@@ -1,4 +1,4 @@
-import { Application, Container, Graphics, type Filter } from 'pixi.js';
+import { Application, Container, Graphics, MeshSimple, Rectangle, type Filter } from 'pixi.js';
 import { RGBSplitFilter, ShockwaveFilter } from 'pixi-filters';
 import { Backdrop } from './backdrop';
 import { Battle, type Rect } from './battle';
@@ -126,6 +126,117 @@ class Stage {
     this.punchAmt = amount;
     this.punchDur = dur;
     this.punchT = dur;
+  }
+
+  /**
+   * 화면(배경 + 전투)이 유리처럼 산산조각 났다가 되감기듯 다시 맞춰진다.
+   * at: 충격점, scale: 시간 배율 (빠르게 보기면 0.5)
+   */
+  shatter(at: { x: number; y: number }, scale = 1): Promise<void> {
+    const app = this.app;
+    if (!app) return Promise.resolve();
+    const W = app.screen.width;
+    const H = app.screen.height;
+    let tex;
+    try {
+      tex = app.renderer.generateTexture({ target: this.root, frame: new Rectangle(0, 0, W, H) });
+    } catch {
+      return Promise.resolve();
+    }
+    const layer = new Container();
+    layer.addChild(new Graphics().rect(0, 0, W, H).fill({ color: 0x020206 }));
+    app.stage.addChildAt(layer, app.stage.children.indexOf(this.overlay));
+    this.root.visible = false;
+    // 충격점을 중심으로 고리·살을 흐트러뜨린 격자 → 삼각형 조각
+    const rays = 10;
+    const rings = 4;
+    const R = Math.hypot(W, H);
+    const pts: [number, number][][] = [];
+    for (let k = 0; k <= rings; k++) {
+      const row: [number, number][] = [];
+      for (let j = 0; j < rays; j++) {
+        if (k === 0) {
+          row.push([at.x, at.y]);
+          continue;
+        }
+        const a = (j / rays) * Math.PI * 2 + (Math.random() - 0.5) * 0.45;
+        const r = R * Math.pow(k / rings, 1.5) * (0.8 + Math.random() * 0.35) * (k === rings ? 1.6 : 1);
+        row.push([at.x + Math.cos(a) * r, at.y + Math.sin(a) * r]);
+      }
+      pts.push(row);
+    }
+    type Shard = { m: MeshSimple; x0: number; y0: number; vx: number; vy: number; vr: number; ex: number; ey: number; er: number };
+    const shards: Shard[] = [];
+    const addTri = (tri: [number, number][]) => {
+      const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3;
+      const cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+      const vertices = new Float32Array(tri.flatMap(([x, y]) => [x - cx, y - cy]));
+      const uvs = new Float32Array(tri.flatMap(([x, y]) => [x / W, y / H]));
+      const m = new MeshSimple({ texture: tex, vertices, uvs, indices: new Uint32Array([0, 1, 2]) });
+      m.position.set(cx, cy);
+      layer.addChild(m);
+      const dx = cx - at.x;
+      const dy = cy - at.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const sp = (260 + Math.random() * 420) * (1.2 - Math.min(1, d / R));
+      shards.push({ m, x0: cx, y0: cy, vx: (dx / d) * sp, vy: (dy / d) * sp - 120 * Math.random(), vr: (Math.random() - 0.5) * 7, ex: 0, ey: 0, er: 0 });
+    };
+    for (let k = 0; k < rings; k++) {
+      for (let j = 0; j < rays; j++) {
+        const j2 = (j + 1) % rays;
+        if (k === 0) addTri([pts[0][0], pts[1][j], pts[1][j2]]);
+        else {
+          addTri([pts[k][j], pts[k][j2], pts[k + 1][j2]]);
+          addTri([pts[k][j], pts[k + 1][j2], pts[k + 1][j]]);
+        }
+      }
+    }
+    const crackT = 0.12 * scale;
+    const flyT = 0.75 * scale;
+    const holdT = 0.15 * scale;
+    const backT = 0.45 * scale;
+    let t = 0;
+    return new Promise<void>((done) => {
+      const tick = (tk: { deltaMS: number }) => {
+        const dt = Math.min(0.05, tk.deltaMS / 1000);
+        t += dt;
+        for (const s of shards) {
+          if (t < crackT) {
+            // 금이 가며 살짝 벌어진다
+            const k = t / crackT;
+            const dx = s.x0 - at.x;
+            const dy = s.y0 - at.y;
+            const d = Math.hypot(dx, dy) || 1;
+            s.m.position.set(s.x0 + (dx / d) * 4 * k, s.y0 + (dy / d) * 4 * k);
+          } else if (t < crackT + flyT) {
+            const u = (t - crackT) / scale;
+            s.m.position.set(s.x0 + s.vx * u, s.y0 + s.vy * u + 700 * u * u);
+            s.m.rotation = s.vr * u;
+            s.m.alpha = 1 - 0.25 * (u / 0.75);
+            s.ex = s.m.position.x;
+            s.ey = s.m.position.y;
+            s.er = s.m.rotation;
+          } else if (t > crackT + flyT + holdT) {
+            // 되감기
+            const p = Math.min(1, (t - crackT - flyT - holdT) / backT);
+            const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+            s.m.position.set(s.ex + (s.x0 - s.ex) * e, s.ey + (s.y0 - s.ey) * e);
+            s.m.rotation = s.er * (1 - e);
+            s.m.alpha = 0.75 + 0.25 * e;
+          }
+        }
+        if (t >= crackT + flyT + holdT + backT) {
+          app.ticker.remove(tick);
+          this.root.visible = true;
+          app.stage.removeChild(layer);
+          layer.destroy({ children: true });
+          tex.destroy(true);
+          this.flash(0xffffff, 0.35);
+          done();
+        }
+      };
+      app.ticker.add(tick);
+    });
   }
 
   /** 짧은 색수차 */

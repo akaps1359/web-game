@@ -17,6 +17,7 @@ import {
 } from './registry';
 import type {
   BlockCtx,
+  CineName,
   DamageCtx,
   DmgType,
   EncounterDef,
@@ -33,6 +34,14 @@ import type {
   Unit,
 } from './types';
 import type { RunState } from './run';
+
+/** 보이는 의도: 속임수 의도(disguise)는 통찰이 reveal(기본 5) 미만이면 가짜 모습으로. 속은 의도는 move가 '_disguise' */
+export function shownIntentOf(it: Intent | null | undefined, insight: number): Intent | null {
+  if (!it) return null;
+  if (!it.disguise || insight >= (it.disguise.reveal ?? 5)) return it;
+  const d = it.disguise;
+  return { move: '_disguise', kind: d.kind, label: d.label, dmg: d.dmg, hits: d.hits, desc: d.desc };
+}
 
 // ───────────── 상태 ─────────────
 
@@ -76,12 +85,14 @@ export interface Snap {
     known: DmgType[];
   }[];
   cd: Record<string, number>;
+  /** 화면 상태 (vars의 'ui:' 값) — 연출이 재생되는 순서에 맞춰 화면이 바뀌게 */
+  ui?: Record<string, number>;
 }
 
 export type CombatEvent = (
   | { t: 'turn'; side: 'player' | 'enemy'; turn: number }
   | { t: 'skill'; skill: string; name: string; target?: string; school: string; dtype?: DmgType; echo?: boolean }
-  | { t: 'move'; uid: string; name: string; kind: IntentKind }
+  | { t: 'move'; uid: string; name: string; kind: IntentKind; move?: string; ult?: boolean; cine?: MoveDef['cine'] }
   | {
       t: 'dmg';
       src?: string;
@@ -110,6 +121,8 @@ export type CombatEvent = (
   | { t: 'breakdown'; madness: string; fatal: boolean }
   | { t: 'text'; uid?: string; text: string; tone?: 'good' | 'bad' | 'info' | 'eldritch' }
   | { t: 'fx'; name: string; src?: string; tgt?: string }
+  /** 화면 연출 (게임 규칙과 무관). content/lib.ts의 cine()으로 낸다 */
+  | { t: 'cine'; name: CineName; uid?: string; text?: string; n?: number }
   | { t: 'victory' }
   | { t: 'defeat'; reason: 'hp' | 'madness' }
 ) & { snap?: Snap };
@@ -144,6 +157,8 @@ export const MAX_ROW = 3;
 
 /** 층별 적 성장 배율 (밸런스 조절용) — 인덱스 = 층 */
 export const ACT_HP_MULT = [1, 1, 1.25, 1.65, 2.2, 2.0];
+/** 수호자(층 수호자·계층군주) 체력 배율 — 수호자 난이도 조절용 */
+export const BOSS_HP_MULT = { value: 1.1 };
 export const ACT_DMG_MULT = [1, 1, 1.1, 1.3, 1.5, 1.4];
 /** 층별 적 정신 공격 배율 */
 export const ACT_SAN_MULT = [1, 1, 1, 0.75, 0.7, 0.8];
@@ -220,7 +235,8 @@ export class Combat {
       c.emit({ t: 'text', text: '형언할 수 없는 존재를 목격했다', tone: 'eldritch' });
       c.loseSanity(dread);
     }
-    for (const e of c.alive) c.planIntent(e);
+    // 시작할 때 불려 나온 하수인(onSpawn 등)은 이미 의도를 정했다 — 두 번 정하면 순서가 한 칸 밀린다
+    for (const e of c.alive) if (!e.intent) c.planIntent(e);
     c.startPlayerTurn();
     return c;
   }
@@ -281,7 +297,15 @@ export class Combat {
         known: [...e.known],
       })),
       cd: { ...this.s.cd },
+      ui: this.uiVars(),
     };
+  }
+
+  /** 화면 상태 값만 (vars의 'ui:' 키) */
+  uiVars(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(this.s.vars)) if (k.startsWith('ui:')) out[k] = v;
+    return out;
   }
 
   // ── 훅 ──
@@ -790,7 +814,11 @@ export class Combat {
     if (this.row(r).length >= MAX_ROW) return null;
     const asc = this.run.asc;
     const tide = this.run.floor?.tide ?? 0;
-    const hpMul = (1 + (asc >= 7 ? 0.1 : 0) + (asc >= 15 && def.tier !== 'normal' ? 0.1 : 0)) * (1 + 0.08 * tide) * (ACT_HP_MULT[Math.min(5, def.act)] ?? 1);
+    const hpMul =
+      (1 + (asc >= 7 ? 0.1 : 0) + (asc >= 15 && def.tier !== 'normal' ? 0.1 : 0)) *
+      (1 + 0.08 * tide) *
+      (ACT_HP_MULT[Math.min(5, def.act)] ?? 1) *
+      (def.tier === 'boss' ? BOSS_HP_MULT.value : 1);
     const hp = Math.round(this.rng.int(def.hp[0], def.hp[1]) * hpMul);
     const e: EnemyUnit = {
       uid: `e${++this.s.uidN}`,
@@ -1138,7 +1166,7 @@ export class Combat {
       id = this.row(0).length < MAX_ROW ? '_advance' : '_wait';
       m = BUILTIN_MOVES[id];
     }
-    this.emit({ t: 'move', uid: e.uid, name: m.name, kind: m.intent });
+    this.emit({ t: 'move', uid: e.uid, name: m.name, kind: m.intent, move: id, ult: m.ultimate, cine: m.cine });
     m.run(this, e);
     e.hist.push(id);
     if (e.hist.length > 4) e.hist.shift();
@@ -1164,7 +1192,13 @@ export class Combat {
       label: m.name,
       hidden: m.hidden,
       charging: m.charging,
+      disguise: m.disguise,
     };
+  }
+
+  /** 플레이어에게 보이는 의도 (속임수 의도는 통찰이 모자라면 가짜로 보인다) */
+  shownIntent(e: EnemyUnit): Intent | null {
+    return shownIntentOf(e.intent, this.p.insight);
   }
 
   /** 적의 의도대로 공격 (의도에 표시된 피해·횟수 사용) */

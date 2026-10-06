@@ -1,5 +1,5 @@
 import { Combat } from '../engine/combat';
-import { CONSUMABLES } from '../engine/registry';
+import { CONSUMABLES, SKILLS } from '../engine/registry';
 import {
   chooseLoot,
   finishCombat,
@@ -278,12 +278,12 @@ export async function endTurn() {
 
 // ───────────── 보상 ─────────────
 
-/** core: 정수를 본질로 흡수 */
-export async function take(item: LootItem, core = false) {
+/** pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) */
+export async function take(item: LootItem, pick: string | null = null) {
   const r = run();
-  if (fail(takeLoot(r, item, core))) return;
+  if (fail(takeLoot(r, item, pick))) return;
   sound.sfx(item.kind === 'essence' ? 'essence' : item.kind === 'gold' ? 'coin' : 'select');
-  if (item.kind === 'essence') store.toast(core && item.guardian ? '정수를 본질로 흡수했다' : '정수를 흡수했다', 'eldritch');
+  if (item.kind === 'essence') store.toast(pick ? `정수를 흡수했다 — 기술: ${SKILLS.get(pick)?.name ?? ''}` : '정수를 흡수했다', 'eldritch');
   await refresh();
 }
 

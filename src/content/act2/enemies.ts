@@ -3,6 +3,37 @@ import { isEnemy, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import type { DmgType, EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
+import { cine, setUi } from '../lib';
+import {
+  ABSOLVE_SAN,
+  CONFESSION,
+  HANGED,
+  PENANCE,
+  PENANCE_HP,
+  RESONANCE,
+  RING_MULT,
+  SACRILEGE_BLOCK,
+  SACRILEGE_SAN,
+  SILENT_MULT,
+  TANGLED,
+  VOW,
+  VOW_STR,
+  VOW_WORDS,
+  once,
+  setIntent,
+  setSt,
+} from './patterns';
+
+/** 재에 묻힌 것: 재 속에서 맞을 때마다 반격이 세진다 */
+export const LASH_BASE = 8;
+export const LASH_STEP = 3;
+export const LASH_MAX = 5;
+/** 재 폭풍이 화면을 덮는 정도 (%) */
+export const ASH_DARK = 60;
+/** 촛불을 든 것이 한 번에 빼앗는 등불 */
+export const SNATCH = 20;
+/** 대사제가 제물을 태워 다시 일어설 때의 체력 비율 */
+export const RISE_PCT = 0.25;
 
 // ───────────── 공용 헬퍼 ─────────────
 
@@ -74,22 +105,41 @@ function conduct(step: number): MoveDef {
   );
 }
 
+/** 방금 울린 대종이 공명한다 — 다음 당신 턴이 끝날 때까지 (종의 다음 차례가 시작되면 잠잠해진다) */
+function resonate(c: Combat) {
+  const bell = c.alive.find((x) => x.def === 'great-bell');
+  if (!bell) return;
+  bell.mem.resT = c.s.turn + 1;
+  setSt(c, bell, RESONANCE, 1);
+  c.emit({ t: 'text', uid: bell.uid, text: '종이 떨고 있다 — 지금이다', tone: 'good' });
+}
+
 /** 종지기의 타종 */
 function toll(step: number): MoveDef {
   return {
-    ...mv.horror(`타종 (${step}/3)`, 6, { desc: '종지기 힘 +1. 세 번 울리면 마지막 종을 준비한다' }),
+    ...mv.horror(`타종 (${step}/3)`, 6, {
+      desc: `종지기 힘 +1. 울린 대종은 다음 턴 동안 공명한다 (받는 피해 +${Math.round((RING_MULT - 1) * 100)}%). 세 번 울리면 마지막 종을 준비한다`,
+    }),
     run(c, e) {
       if (countDef(c, 'great-bell') === 0) {
         c.emit({ t: 'text', uid: e.uid, text: '깨진 종은 울리지 않는다', tone: 'good' });
         return;
       }
+      cine(c, 'bell', { uid: e.uid });
+      if (once(c, 'a2-toll')) cine(c, 'sysmsg', { uid: e.uid, text: '음량: 최대. 이 소리는 끌 수 없습니다.' });
       c.horror(e, 6);
       if (c.over) return;
       e.mem.tolls = (e.mem.tolls ?? 0) + 1;
       c.apply(e, 'str', 1, e);
       c.emit({ t: 'text', uid: e.uid, text: `종이 ${e.mem.tolls}번 울렸다`, tone: 'eldritch' });
+      resonate(c);
     },
   };
+}
+
+/** 등불이 어두울수록 화면도 어둡다 (촛불을 든 것 — 화면에만) */
+function lureDark(c: Combat) {
+  setUi(c, 'ui:dark', Math.max(0, Math.min(54, Math.round((60 - c.run.light) * 0.9))));
 }
 
 // ───────────── 특성 ─────────────
@@ -164,7 +214,7 @@ reg.traits([
   {
     id: 'a2-crescendo',
     name: '크레셴도',
-    desc: '지휘할 때마다 크레셴도가 쌓이고, 3이 되면 대합창을 준비한다. 준비 중에 붕괴시키면 처음부터 다시 쌓아야 한다',
+    desc: '지휘하거나 뒤엉킨 성가를 부를 때마다 크레셴도가 쌓이고, 3이 되면 대합창을 준비한다. 준비 중에 붕괴시키면 처음부터 다시 쌓아야 한다',
     hooks: {},
   },
   {
@@ -201,10 +251,33 @@ reg.traits([
   {
     id: 'a2-offering-rite',
     name: '제물 의식',
-    desc: '결박된 제물을 바쳐 회복하고 강해진다. 대사제가 쓰러지면 제물들은 풀려나 달아난다',
+    desc:
+      `결박된 제물을 바쳐 회복하고 강해진다. 제물이 하나라도 살아 있으면, 쓰러지는 순간 제물 하나를 태워 체력 ${Math.round(RISE_PCT * 100)}%로 다시 일어선다 ` +
+      '(한 번, 제물의 비명에 정신력 -4). 살아 있는 제물을 먼저 모두 거두면 막을 수 있다. 대사제가 끝내 쓰러지면 남은 제물들은 풀려나 달아난다',
     hooks: {
       onDeath(c, s) {
-        if (!isEnemy(s.unit) || !s.unit.dead) return;
+        const e = s.unit;
+        if (!isEnemy(e) || !e.dead) return;
+        // 향로의 불처럼 꺼지지 않는 목숨: 남은 제물을 태워 다시 일어선다 (한 번)
+        const o = c.alive.find((x) => x.def === 'offering');
+        if (o && !e.mem.risen) {
+          e.mem.risen = 1;
+          c.emit({ t: 'text', uid: o.uid, text: '제물의 비명', tone: 'eldritch' });
+          consume(c, o);
+          e.dead = false;
+          e.hp = Math.ceil(e.maxHp * RISE_PCT);
+          e.block = 0;
+          e.broken = 0;
+          e.poise = e.maxPoise;
+          delete e.mem.charge;
+          for (const id of ['weak', 'vuln', 'frail', 'bleed', 'poison', 'burn', 'mark', 'corrode', 'doom']) c.clear(e, id);
+          c.emit({ t: 'spawn', uid: e.uid });
+          cine(c, 'shatter', { uid: e.uid });
+          c.emit({ t: 'text', uid: e.uid, text: '향로의 불은 꺼지지 않는다', tone: 'eldritch' });
+          c.loseSanity(4, true);
+          if (c.s.phase === 'player') c.planIntent(e);
+          return;
+        }
         for (const o of c.alive.filter((x) => x.def === 'offering')) {
           c.emit({ t: 'text', uid: o.uid, text: '사슬을 끊고 달아난다', tone: 'good' });
           c.flee(o);
@@ -239,13 +312,27 @@ reg.traits([
   {
     id: 'a2-buried',
     name: '재 속의 몸',
-    desc: '후열(재 속)에 파묻혀 있는 동안 받는 피해 30% 감소, 자기 턴이 끝날 때 체력 6 회복. 재를 덮어 주던 잿빛 유충이 모두 쓰러지면 재 밖으로 드러나 취약해진다',
+    desc:
+      '후열(재 속)에 파묻혀 있는 동안 받는 피해 30% 감소, 자기 턴이 끝날 때 체력 6 회복. 재에 가려 의도가 보이지 않는다 (통찰 5 이상이면 보인다). ' +
+      `재 속에서 공격받으면 의도가 '재 속의 반격'으로 바뀌고, 맞을 때마다 반격 피해 +${LASH_STEP} (최대 +${LASH_STEP * LASH_MAX}). ` +
+      '재를 덮어 주던 잿빛 유충이 모두 쓰러지면 재 밖으로 드러나 취약해진다',
     hooks: {
       modDamageIn(_c, s, d) {
         if (isEnemy(s.unit) && s.unit.row === 1) d.mult *= 0.7;
       },
       onUnitTurnEnd(c, s) {
-        if (isEnemy(s.unit) && s.unit.row === 1) c.heal(s.unit, 6);
+        if (!isEnemy(s.unit)) return;
+        s.unit.mem.prov = 0;
+        if (s.unit.row === 1) c.heal(s.unit, 6);
+      },
+      // 반응형 의도: 재 속에서 맞으면 재를 뚫고 반격한다 (맞을수록 세진다)
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || e.row !== 1 || !e.mem.sub || e.mem.stranded) return;
+        if (!d.attack || d.src !== c.p || c.s.phase !== 'player' || e.broken === 2) return;
+        e.mem.prov = Math.min(LASH_MAX, (e.mem.prov ?? 0) + 1);
+        setIntent(c, e, 'lash');
+        c.emit({ t: 'text', uid: e.uid, text: e.mem.prov === 1 ? '재 속의 것이 당신을 느꼈다' : `재가 들끓는다 (반격 +${LASH_STEP * e.mem.prov})`, tone: 'eldritch' });
       },
       onAnyDeath(c, s, victim) {
         const e = s.unit;
@@ -253,21 +340,39 @@ reg.traits([
         if (!e.mem.sub || e.row !== 1 || countDef(c, 'ash-larva') > 0) return;
         if (!c.moveRow(e, 0)) return;
         e.mem.sub = 0;
+        e.mem.prov = 0;
         e.mem.stranded = 1;
+        setUi(c, 'ui:dark', 0);
+        cine(c, 'shatter', { uid: e.uid });
         c.emit({ t: 'text', uid: e.uid, text: '재 밖으로 드러났다!', tone: 'good' });
         c.apply(e, 'vuln', 2, c.p);
         if (e.broken !== 2 && c.s.phase === 'player') c.planIntent(e);
+      },
+      onDeath(c) {
+        setUi(c, 'ui:dark', 0);
       },
     },
   },
   {
     id: 'a2-great-bell',
     name: '대종',
-    desc: '종지기는 이 종이 있어야 타종할 수 있다. 종이 깨지면 종지기가 비틀거리다(기절 1) 격노한다(힘 +3)',
+    desc:
+      `잠잠한 종은 받는 피해 ${Math.round((1 - SILENT_MULT) * 100)}% 감소. 종지기가 타종한 직후엔 공명해, 다음 당신 턴 동안 받는 피해 +${Math.round((RING_MULT - 1) * 100)}% — 종소리에 맞춰 쳐야 깨진다. ` +
+      '종지기는 이 종이 있어야 타종할 수 있다. 종이 깨지면 종지기가 비틀거리다(기절 1) 격노한다(힘 +3)',
     hooks: {
+      modDamageIn(_c, s, d) {
+        d.mult *= (s.unit.st[RESONANCE] ?? 0) > 0 ? RING_MULT : SILENT_MULT;
+      },
+      onUnitTurnStart(c, s) {
+        const b = s.unit;
+        if (!isEnemy(b) || !b.mem.resT || c.s.turn < b.mem.resT) return;
+        delete b.mem.resT;
+        setSt(c, b, RESONANCE, 0);
+      },
       onDeath(c, s) {
         const bk = c.alive.find((x) => x.def === 'bellkeeper');
         if (!bk) return;
+        cine(c, 'shatter', { uid: s.unit.uid });
         c.emit({ t: 'text', uid: bk.uid, text: '대종이 깨졌다 — 종지기가 비틀거린다', tone: 'good' });
         c.apply(bk, 'stun', 1, s.unit);
         c.apply(bk, 'str', 3, s.unit);
@@ -277,7 +382,7 @@ reg.traits([
   {
     id: 'a2-bell-bound',
     name: '종에 묶인 자',
-    desc: '대종을 울릴 때마다 강해진다. 종이 세 번 울리면 마지막 종을 친다 — 대종을 깨뜨리면 막을 수 있다',
+    desc: '대종을 울릴 때마다 강해진다. 종이 세 번 울리면 마지막 종을 친다 — 대종을 깨뜨리면 막을 수 있다. 종을 잃으면 제 심장을 종처럼 울린다',
     hooks: {
       onDeath(c, s) {
         if (!isEnemy(s.unit) || !s.unit.dead) return;
@@ -291,13 +396,29 @@ reg.traits([
   {
     id: 'a2-lure',
     name: '어둠의 사냥꾼',
-    desc: '등불이 25 미만이면 공격 피해 +25%. 손짓하는 촛불로 등불을 빼앗는다. 향 연기 속에 숨어 얻은 회피는 자기 턴이 오면 사라진다',
+    desc: '등불이 25 미만이면 공격 피해 +25%. 손짓하는 촛불로 등불을 흐리고, 등불을 강탈해 제 촛불에 옮긴다 — 강탈당한 등불은 쓰러뜨리면 되찾는다. 향 연기 속에 숨어 얻은 회피는 자기 턴이 오면 사라진다',
     hooks: {
       modDamageOut(c, _s, d) {
         if (d.attack && c.run.light < 25) d.mult *= 1.25;
       },
+      onCombatStart(c) {
+        lureDark(c);
+      },
       onUnitTurnStart(c, s) {
         c.clear(s.unit, 'evasive');
+        // 등유 등으로 등불이 바뀌었으면 화면 어둠도 따라간다
+        lureDark(c);
+      },
+      onDeath(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e) || !e.dead) return;
+        const n = e.mem.stolen ?? 0;
+        e.mem.stolen = 0;
+        if (n > 0) {
+          c.run.light = Math.min(100, c.run.light + n);
+          c.emit({ t: 'text', uid: 'p', text: `빼앗긴 불빛을 되찾았다 (등불 +${n})`, tone: 'good' });
+        }
+        setUi(c, 'ui:dark', 0);
       },
     },
   },
@@ -305,7 +426,49 @@ reg.traits([
     id: 'a2-miracle',
     name: '거꾸로 된 기적',
     desc: '기적을 준비하는 동안 붕괴시키지 못하면 크게 회복하고 해로운 효과를 털어낸다',
+    hooks: {
+      // 거꾸로 매달림이 이번 적 차례로 끝나면 화면도 바로 선다 (연출)
+      onUnitTurnEnd(c) {
+        if ((c.p.st[HANGED] ?? 0) <= 1) setUi(c, 'ui:swap', 0);
+      },
+      onDeath(c) {
+        setUi(c, 'ui:swap', 0);
+      },
+    },
+  },
+  {
+    id: 'a2-silence',
+    name: '침묵의 서약',
+    desc:
+      `당신에게 침묵의 서약을 지운다: 기술(기본기 포함)을 쓸 때마다 남은 말이 줄고, ${VOW_WORDS}번째 말에서 서약이 새로 시작된다. ` +
+      `그 순간 행동력이 남아 있으면 말을 끊긴다 — 남은 행동력을 잃고 이번 턴 기술을 쓸 수 없으며, 대사제 힘 +${VOW_STR}. 행동력을 다 쓰는 말로 끝맺으면 무사하다. 대사제가 쓰러지면 서약도 풀린다`,
+    hooks: {
+      onDeath(c, s) {
+        if (!isEnemy(s.unit) || !s.unit.dead) return;
+        setSt(c, c.p, VOW, 0);
+      },
+    },
+  },
+  {
+    id: 'a2-false-feast',
+    name: '거짓 만찬',
+    desc: '먹을 시체가 없는데 차리는 만찬은 거짓이다 — 당신에게 달려들어 입힌 피해만큼 회복한다 (속임수: 통찰 5 이상이면 진짜 의도가 보인다). 다만 체력이 절반 아래면 제 새끼를 삼키는 진짜 만찬일 수 있다. 불에 타 죽은 새끼는 먹지 못한다',
     hooks: {},
+  },
+  {
+    id: 'a2-king-prey',
+    name: '왕의 먹이',
+    desc: '구울 왕의 먹잇감. 불에 타 죽으면(화염·화상) 재만 남아 왕이 먹지 못한다',
+    hooks: {
+      onDeath(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || !e.dead || e.fled || !d) return;
+        if (d.type !== 'fire' && !d.tags.includes('burn')) return;
+        // 시체 수에서 빼 둔다 (먹힌 시체와 같은 셈)
+        c.s.vars.a2eaten = (c.s.vars.a2eaten ?? 0) + 1;
+        c.emit({ t: 'text', uid: e.uid, text: '재가 되어 흩어졌다 — 먹을 것이 남지 않았다', tone: 'good' });
+      },
+    },
   },
 ]);
 
@@ -724,12 +887,20 @@ reg.enemies([
       ),
       lash: mv.attack('가시 채찍', 3, { hits: 3, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e), desc: '출혈 1' }),
       sermon: mv.horror('참회하라', 7, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
+      // 고행을 강요한다: 채찍질을 막으려 기술을 쏟아부을수록 피를 흘린다
+      penance: mv.debuff(
+        '강요된 고행',
+        (c, e) => {
+          if (c.apply(c.p, PENANCE, 2, e) > 0) c.emit({ t: 'text', uid: 'p', text: '속죄하라 — 손을 쓸 때마다 피가 흐른다', tone: 'bad' });
+        },
+        { desc: `속죄 2 — 2턴 동안 기술(기본기 포함)을 쓸 때마다 체력 ${PENANCE_HP}를 잃는다 (방어 무시)` },
+      ),
       windup: mv.charge('백 번의 채찍질', 5, { hits: 4 }),
-      rain: release(mv.attack('백 번의 채찍질', 5, { hits: 4, type: 'slash' })),
+      rain: release(mv.attack('백 번의 채찍질', 5, { hits: 4, type: 'slash', ultimate: true, cine: 'impact' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'rain';
-      const m = opener(c, e, ['scourge']) ?? cycle(e, ['lash', 'sermon', 'windup', 'scourge']);
+      const m = opener(c, e, ['scourge']) ?? cycle(e, ['penance', 'windup', 'lash', 'scourge', 'sermon']);
       return m === 'scourge' && e.hp <= 16 ? 'lash' : m;
     },
     visual: { tint: 0x6a3a3a, glow: 0xff3a30, scale: 1.2 },
@@ -753,6 +924,21 @@ reg.enemies([
       conduct2: conduct(2),
       conduct3: conduct(3),
       solo: mv.horror('독창', 6),
+      // 귀를 파고드는 엇박의 성가 — 기술 이름이 뒤섞여 보이고, 같은 기술을 거듭 쓸 수 없다. 이것도 지휘의 한 마디다
+      tangle: {
+        ...mv.horror('뒤엉킨 성가', 5, {
+          desc: '정신 피해, 크레셴도 +1. 뒤엉킨 기억 1 — 다음 턴 기술 이름과 설명이 뒤섞여 보이고, 쓴 기술은 그 턴에 다시 쓸 수 없다',
+        }),
+        extra: ['debuff', 'buff'],
+        run(c, e) {
+          cine(c, 'glitch', { uid: e.uid, n: 1 });
+          c.horror(e, 5);
+          if (c.over || e.dead) return;
+          e.mem.cres = (e.mem.cres ?? 0) + 1;
+          c.emit({ t: 'text', uid: e.uid, text: `크레셴도 ${e.mem.cres}`, tone: 'eldritch' });
+          if (c.apply(c.p, TANGLED, 1, e) > 0) setUi(c, 'ui:scramble', 1);
+        },
+      },
       baton: mv.attack('지휘봉', 8, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
       gather: mv.summon(
         '성가대 소집',
@@ -769,6 +955,8 @@ reg.enemies([
       },
       grand: release({
         ...mv.horror('대합창', 6, { dmg: 5, desc: '성가대원 1명당 정신 피해 +2' }),
+        ultimate: true,
+        cine: 'shatter',
         hits: (c) => 1 + countDef(c, 'chorister'),
         run(c, e) {
           e.mem.cres = 0;
@@ -785,7 +973,7 @@ reg.enemies([
       const cres = e.mem.cres ?? 0;
       if (cres >= 3) return 'prelude';
       if (countDef(c, 'chorister') < 2 && (e.mem.gathers ?? 0) < 1 && last(e) !== 'gather' && c.alive.length < 6) return 'gather';
-      const m = cycle(e, ['conduct', 'solo', 'conduct', 'baton']);
+      const m = cycle(e, ['conduct', 'tangle', 'conduct', 'baton', 'solo']);
       return m === 'conduct' ? `conduct${Math.min(3, cres + 1)}` : m;
     },
     visual: { tint: 0x3a3634, glow: 0xffd890, scale: 1.2, fx: ['float'] },
@@ -816,10 +1004,23 @@ reg.enemies([
         },
         { extra: ['heal', 'block'], desc: '체력 12 회복, 방어도 12' },
       ),
-      open: mv.charge('봉인이 열린다', 26),
-      wrath: release(mv.horror('성인의 분노', 8, { dmg: 26 })),
+      // 고해의 딜레마: 봉인이 열리는 턴에 고해를 청한다 — 손을 대 분노를 끊을 것인가(신성모독), 손을 거두고 고해할 것인가
+      confess: {
+        ...mv.charge('고해성사', 26),
+        desc:
+          `봉인이 열린다 — 다음 턴 성인의 분노 (붕괴시키면 취소). 그리고 고해를 청한다: 다음 턴 공격하지 않으면 죄를 사하고 (정신력 +${ABSOLVE_SAN}, 해로운 효과 모두 제거), ` +
+          `공격하는 순간 신성모독 (성유물함 방어도 ${SACRILEGE_BLOCK}, 정신력 -${SACRILEGE_SAN})`,
+        run(c, e) {
+          e.mem.charge = 1;
+          c.emit({ t: 'text', uid: e.uid, text: '봉인이 열린다…', tone: 'bad' });
+          setSt(c, c.p, CONFESSION, 1);
+          setUi(c, 'ui:eye', 1);
+          c.emit({ t: 'text', uid: e.uid, text: '뚜껑 틈에서 눈이 당신의 고백을 기다린다', tone: 'eldritch' });
+        },
+      },
+      wrath: release({ ...mv.horror('성인의 분노', 8, { dmg: 26 }), ultimate: true, cine: 'beam' }),
     },
-    ai: (_c, e) => (e.mem.charge ? 'wrath' : cycle(e, ['lid', 'shards', 'gaze', 'open', 'bless', 'shards'])),
+    ai: (_c, e) => (e.mem.charge ? 'wrath' : cycle(e, ['lid', 'shards', 'confess', 'gaze', 'bless', 'shards'])),
     visual: { tint: 0x7a6040, glow: 0xffe0a0, scale: 1.25, fx: ['flicker'] },
   },
 
@@ -836,9 +1037,21 @@ reg.enemies([
     row: 0,
     dread: 5,
     tags: ['cult'],
-    traits: ['a2-offering-rite'],
+    traits: ['a2-offering-rite', 'a2-silence'],
     desc: '잿빛 수도원의 마지막 대사제. 수도원을 아래의 목소리에 바친 대가로, 그의 목숨은 향로의 불처럼 꺼지지 않게 되었다.',
     moves: {
+      // 시그니처: 말(기술)의 수를 세는 서약 — 말을 아끼거나, 행동력을 다 쓰는 말로 끝맺어야 한다
+      vow: {
+        name: '침묵의 서약',
+        intent: 'debuff',
+        desc: `침묵의 서약 — 남은 말 ${VOW_WORDS}. 기술(기본기 포함)을 쓸 때마다 1씩 준다. 0이 되는 순간 행동력이 남아 있으면 말을 끊긴다 (남은 행동력을 잃고 이번 턴 기술 봉인, 대사제 힘 +${VOW_STR})`,
+        run(c, e) {
+          e.mem.vowed = 1;
+          setSt(c, c.p, VOW, VOW_WORDS);
+          cine(c, 'scrawl', { uid: e.uid, text: '침묵하라' });
+          c.emit({ t: 'text', uid: 'p', text: `침묵의 서약 — 남은 말 ${VOW_WORDS}`, tone: 'eldritch' });
+        },
+      },
       blade: mv.attack('제례검', 11, { type: 'slash' }),
       sermon: mv.horror('심연의 설교', 7, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       offer: mv.buff(
@@ -866,9 +1079,16 @@ reg.enemies([
         },
         '결박된 제물 2명',
       ),
-      call: mv.summon('신도 소집', (c) => void c.spawn('censer-priest', 1), '향로 사제 소환'),
+      call: mv.summon(
+        '신도 소집',
+        (c, e) => {
+          c.spawn('censer-priest', 1);
+          if (once(c, 'a2-priest-call')) cine(c, 'whisper', { uid: e.uid, text: '{time}. 이 시각에 깨어 있는 자의 기도는 아래까지 잘 들린다.' });
+        },
+        '향로 사제 소환',
+      ),
       prepare: mv.charge('심연 강림', 28),
-      descend: release(mv.attack('심연 강림', 28, { melee: false, type: 'void' })),
+      descend: release(mv.attack('심연 강림', 28, { melee: false, type: 'void', ultimate: true, cine: 'blackhole' })),
     },
     onSpawn: (c) => {
       c.spawn('offering', 1);
@@ -876,6 +1096,7 @@ reg.enemies([
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'descend';
+      if (!e.mem.vowed) return 'vow';
       if (hpPct(e) <= 0.5 && !e.mem.p2) {
         e.mem.p2 = 1;
         return 'call';
@@ -927,7 +1148,7 @@ reg.enemies([
     row: 0,
     dread: 5,
     tags: ['undead', 'ghoul'],
-    traits: ['a2-corpse-eater', 'a2-pack-lord'],
+    traits: ['a2-corpse-eater', 'a2-pack-lord', 'a2-false-feast'],
     desc: '납골당 깊은 곳, 뼈로 쌓은 왕좌에 앉은 것. 수도원의 모든 죽음은 결국 그의 식탁에 오른다.',
     moves: {
       rend: mv.attack('왕의 손톱', 6, { hits: 2, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e), desc: '출혈 1' }),
@@ -956,10 +1177,33 @@ reg.enemies([
             return;
           }
           c.emit({ t: 'text', uid: e.uid, text: '제 새끼를 산 채로 삼킨다', tone: 'eldritch' });
+          if (once(c, 'a2-swallow')) {
+            cine(c, 'ink', { uid: e.uid });
+            cine(c, 'sysmsg', { uid: e.uid, text: '일부 장면이 가려졌습니다.' });
+          }
           consume(c, pup);
           c.heal(e, 24);
           c.apply(e, 'str', 1, e);
           c.loseSanity(4, true);
+        },
+      },
+      // 거짓 만찬: 식탁이 비면 '만찬'을 차리는 척하며 당신에게 달려든다 (통찰 5 이상이면 보인다)
+      lunge: {
+        name: '굶주린 도약',
+        intent: 'attack',
+        extra: ['heal'],
+        dmg: 13,
+        melee: true,
+        cine: 'corners',
+        disguise: { kind: 'heal', label: '왕의 만찬' },
+        desc: '먹을 시체가 없다 — 당신에게 달려들어 입힌 피해만큼 회복한다 (만찬으로 위장한다)',
+        run(c, e) {
+          e.mem.lunges = (e.mem.lunges ?? 0) + 1;
+          if (once(c, 'a2-lunge')) cine(c, 'whisper', { uid: e.uid, text: '{time}. 식탁이 비었다. 그러니 너다.' });
+          const ds = c.enemyAttack(e, { type: 'slash' });
+          if (c.over || e.dead) return;
+          const n = ds.reduce((s, d) => s + d.hpLoss, 0);
+          if (n > 0) c.heal(e, n);
         },
       },
       call: mv.summon(
@@ -972,7 +1216,7 @@ reg.enemies([
         '구울 새끼 2마리 소환',
       ),
       prep: mv.charge('뼈 왕좌의 일격', 26),
-      crush: release(mv.attack('뼈 왕좌의 일격', 26)),
+      crush: release(mv.attack('뼈 왕좌의 일격', 26, { ultimate: true, cine: 'crack' })),
     },
     onSpawn: (c) => {
       c.spawn('ghoul-pup', 0);
@@ -982,7 +1226,10 @@ reg.enemies([
       if (e.mem.charge) return 'crush';
       const pups = countDef(c, 'ghoul-pup');
       const food = corpses(c) > 0 || (pups > 0 && hpPct(e) < 0.5);
-      if (food && hpPct(e) < 0.85 && last(e) !== 'feast' && (e.mem.feasts ?? 0) < 6) return 'feast';
+      const hungry = hpPct(e) < 0.85 && last(e) !== 'feast' && last(e) !== 'lunge';
+      if (hungry && food && (e.mem.feasts ?? 0) < 6) return 'feast';
+      // 먹을 시체가 없다 — 만찬인 척 당신에게 달려든다 (사이에 두 번은 다른 행동)
+      if (hungry && !food && (e.mem.lunges ?? 0) < 3 && !e.hist.slice(-2).includes('lunge')) return 'lunge';
       if (pups === 0 && (e.mem.calls ?? 0) < 2) return 'call';
       return cycle(e, ['rend', 'howl', 'rend', 'prep']);
     },
@@ -999,6 +1246,7 @@ reg.enemies([
     weak: ['fire', 'slash'],
     row: 0,
     tags: ['undead', 'ghoul'],
+    traits: ['a2-king-prey'],
     moves: {
       bite: mv.attack('물기', 4, { type: 'slash' }),
       scratch: mv.attack('할퀴기', 3, { hits: 2, type: 'slash' }),
@@ -1025,26 +1273,43 @@ reg.enemies([
       rib: mv.attack('갈비뼈 찌르기', 10, { type: 'pierce' }),
       sweep: mv.attack('재 휩쓸기', 5, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
       prep: mv.charge('잿더미를 끌어올린다', 27),
-      collapse: release(mv.attack('무너지는 잿더미', 27, { melee: false })),
+      collapse: release(mv.attack('무너지는 잿더미', 27, { melee: false, ultimate: true, cine: 'impact' })),
       burrow: {
         name: '파묻히기',
         intent: 'retreat',
         extra: ['summon'],
-        desc: '잿빛 유충 2마리를 부르고 재 속(후열)으로 파고든다',
+        cine: 'ink',
+        desc: '잿빛 유충 2마리를 부르고 재 속(후열)으로 파고든다. 잿바람이 시야를 덮어 재 속의 의도는 보이지 않는다',
         run(c, e) {
           e.mem.dives = (e.mem.dives ?? 0) + 1;
           e.mem.upT = 0;
           e.mem.subT = 0;
+          e.mem.prov = 0;
           c.spawn('ash-larva', 0);
           c.spawn('ash-larva', 0);
           if (c.moveRow(e, 1)) {
             e.mem.sub = 1;
+            setUi(c, 'ui:dark', ASH_DARK);
             c.emit({ t: 'text', uid: e.uid, text: '잿더미 속으로 파고든다', tone: 'eldritch' });
+            if (once(c, 'a2-bury')) cine(c, 'whisper', { uid: e.uid, text: '재 밑에 묻힌 네 시체: {deaths}구. 곧 하나 더.' });
           }
         },
       },
-      spew: mv.attack('잿가루 분출', 8, { melee: false }),
-      song: mv.horror('재 밑의 노래', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      // 재 속의 행동은 재에 가려 보이지 않는다 (통찰 5 이상이면 보인다)
+      spew: { ...mv.attack('잿가루 분출', 8, { melee: false }), hidden: true },
+      song: { ...mv.horror('재 밑의 노래', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }), hidden: true },
+      // 반응형 의도: 재 속에서 공격받으면 이것으로 바뀐다 (특성 a2-buried)
+      lash: {
+        name: '재 속의 반격',
+        intent: 'attack',
+        melee: false,
+        dmg: (_c, e) => LASH_BASE + LASH_STEP * Math.min(LASH_MAX, e.mem.prov ?? 0),
+        desc: `재 속에서 공격받을 때마다 피해 +${LASH_STEP} (최대 +${LASH_STEP * LASH_MAX})`,
+        run(c, e) {
+          c.enemyAttack(e, { type: 'pierce' });
+          e.mem.prov = 0;
+        },
+      },
       rise: {
         name: '솟아오름',
         intent: 'advance',
@@ -1053,6 +1318,9 @@ reg.enemies([
           c.moveRow(e, 0);
           e.mem.sub = 0;
           e.mem.upT = 0;
+          e.mem.prov = 0;
+          setUi(c, 'ui:dark', 0);
+          if (once(c, 'a2-rise')) cine(c, 'scrawl', { uid: e.uid, text: '보고 있었다' });
         },
       },
       gasp: {
@@ -1072,7 +1340,9 @@ reg.enemies([
       if (e.mem.sub) {
         if (e.row === 0) {
           e.mem.sub = 0;
+          e.mem.prov = 0;
           e.mem.stranded = 1;
+          setUi(c, 'ui:dark', 0);
           return 'gasp';
         }
         e.mem.subT = (e.mem.subT ?? 0) + 1;
@@ -1134,17 +1404,37 @@ reg.enemies([
         },
         '타종 수련사 소환',
       ),
-      prepare: mv.charge('마지막 종을 당긴다', 30),
+      prepare: mv.charge('마지막 종을 당긴다', 30, {
+        then(c, e) {
+          if (once(c, 'a2-lastbell')) cine(c, 'whisper', { uid: e.uid, text: '{time}. 이 종은 당신 쪽에서도 울린다.' });
+        },
+      }),
       doom: release({
         ...mv.horror('종말의 종', 8, { dmg: 30, type: 'arcane' }),
+        ultimate: true,
+        cine: 'crack',
         run(c, e) {
           e.mem.tolls = 0;
+          cine(c, 'impact', { uid: e.uid });
+          // 마지막 종이 울릴 때마다 화면 유리에 금이 남는다
+          setUi(c, 'ui:cracks', Math.min(3, (c.s.vars['ui:cracks'] ?? 0) + 1));
           c.enemyAttack(e, { type: 'arcane' });
           if (!c.over) c.horror(e, 8);
         },
       }),
       flurry: mv.attack('광란의 종추', 5, { hits: 3 }),
       dirge: mv.horror('깨진 종의 장송곡', 8, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
+      // 종을 잃은 종지기는 종추처럼 뛰는 제 심장을 울린다
+      heart: {
+        ...mv.horror('심장의 종', 7, { desc: '깨진 종 대신 제 심장을 울린다 — 정신 피해, 종지기 힘 +1' }),
+        extra: ['buff'],
+        run(c, e) {
+          cine(c, 'bell', { uid: e.uid });
+          c.horror(e, 7);
+          if (c.over || e.dead) return;
+          c.apply(e, 'str', 1, e);
+        },
+      },
     },
     onSpawn: (c) => void c.spawn('great-bell', 1),
     ai: (c, e) => {
@@ -1153,7 +1443,7 @@ reg.enemies([
         if (bell) return 'doom';
         delete e.mem.charge;
       }
-      if (!bell) return cycle(e, ['flurry', 'hammer', 'dirge'], 'c2');
+      if (!bell) return cycle(e, ['flurry', 'heart', 'hammer', 'dirge'], 'c2');
       const tolls = e.mem.tolls ?? 0;
       if (tolls >= 3) return 'prepare';
       let m = cycle(e, ['toll', 'hammer', 'toll', 'summon', 'hammer']);
@@ -1168,7 +1458,7 @@ reg.enemies([
     icon: 'gi:bell-shield',
     act: 2,
     tier: 'minion',
-    hp: [60, 60],
+    hp: [80, 80],
     poise: 0,
     weak: ['blunt', 'arcane'],
     resist: { slash: 0.5 },
@@ -1208,16 +1498,40 @@ reg.enemies([
         then(c, e) {
           c.run.light = Math.max(0, c.run.light - 10);
           c.emit({ t: 'text', uid: 'p', text: '등불이 흐려진다', tone: 'bad' });
+          lureDark(c);
           c.apply(c.p, 'weak', 1, e);
         },
       }),
+      // 할퀴며 등불을 통째로 낚아채 제 촛불에 옮긴다 — 쓰러뜨리면 되찾는다 (특성 a2-lure)
+      snatch: {
+        name: '등불 강탈',
+        intent: 'attack',
+        extra: ['debuff'],
+        dmg: 11,
+        melee: true,
+        desc: `할퀴고 등불 ${SNATCH}을 빼앗아 제 촛불에 옮긴다 — 쓰러뜨리면 되찾는다 (등불이 25 미만이면 이것의 공격 피해 +25%)`,
+        run(c, e) {
+          c.enemyAttack(e, { type: 'slash' });
+          if (c.over || e.dead) return;
+          const n = Math.min(SNATCH, c.run.light);
+          if (n <= 0) {
+            c.emit({ t: 'text', uid: e.uid, text: '빼앗을 불빛이 남아 있지 않다', tone: 'info' });
+            return;
+          }
+          cine(c, 'handprints', { uid: e.uid, n: 3 });
+          c.run.light -= n;
+          e.mem.stolen = (e.mem.stolen ?? 0) + n;
+          c.emit({ t: 'text', uid: 'p', text: `등불을 빼앗겼다 (-${n})`, tone: 'bad' });
+          lureDark(c);
+        },
+      },
       bite: mv.attack('아가리', 13, { type: 'pierce' }),
       thrash: mv.attack('휘감기', 5, { hits: 3 }),
       smoke: mv.block('연기 속으로', 10, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '방어도 10, 회피 1' }),
       open: mv.charge('아가리가 열린다', 30),
-      swallow: release(mv.attack('삼키기', 30, { type: 'pierce' })),
+      swallow: release(mv.attack('삼키기', 30, { type: 'pierce', ultimate: true, cine: 'corners' })),
     },
-    ai: (_c, e) => (e.mem.charge ? 'swallow' : cycle(e, ['lure', 'bite', 'smoke', 'thrash', 'open'])),
+    ai: (_c, e) => (e.mem.charge ? 'swallow' : cycle(e, ['lure', 'snatch', 'open', 'smoke', 'bite', 'thrash'])),
     visual: { tint: 0x2a2624, glow: 0xffe080, scale: 1.35, fx: ['float', 'flicker'] },
   },
   {
@@ -1238,6 +1552,24 @@ reg.enemies([
     moves: {
       hymn: mv.horror('거꾸로 된 찬송', 8, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       nails: mv.attack('성흔의 못', 4, { hits: 3, melee: false, type: 'pierce', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
+      // 당신을 거꾸로 매단다 — 몸과 마음이 뒤바뀐 채 못이 박힌다
+      hang: {
+        name: '거꾸로 매달기',
+        intent: 'attack',
+        extra: ['debuff'],
+        dmg: 4,
+        hits: 2,
+        melee: false,
+        cine: 'flip',
+        desc: '먼저 거꾸로 매단 뒤 못을 박는다. 거꾸로 매달림 2 — 2턴 동안 체력 피해는 정신력을, 정신력 손실은 체력을 깎는다',
+        run(c, e) {
+          if (c.apply(c.p, HANGED, 2, e) > 0) {
+            setUi(c, 'ui:swap', 1);
+            c.emit({ t: 'text', uid: 'p', text: '세상이 뒤집혔다 — 피가 머리로 쏠린다', tone: 'eldritch' });
+          }
+          c.enemyAttack(e, { type: 'pierce' });
+        },
+      },
       invert: {
         name: '뒤집힌 축복',
         intent: 'debuff',
@@ -1267,6 +1599,8 @@ reg.enemies([
       miracle: release({
         name: '거꾸로 된 기적',
         intent: 'heal',
+        ultimate: true,
+        cine: 'timestop',
         desc: '체력 40 회복, 해로운 효과 제거. 당신은 정신력 -4',
         run(c, e) {
           for (const id of ['weak', 'vuln', 'frail', 'bleed', 'poison', 'burn', 'mark', 'madden', 'corrode', 'doom']) c.clear(e, id);
@@ -1275,7 +1609,7 @@ reg.enemies([
         },
       }),
     },
-    ai: (_c, e) => (e.mem.charge ? 'miracle' : cycle(e, ['nails', 'hymn', 'invert', 'nails', 'prepare'])),
+    ai: (_c, e) => (e.mem.charge ? 'miracle' : cycle(e, ['nails', 'hang', 'nails', 'prepare', 'hymn', 'invert'])),
     visual: { tint: 0x5a4a60, glow: 0xffe0f0, scale: 1.35, fx: ['float', 'flicker'] },
   },
 ]);

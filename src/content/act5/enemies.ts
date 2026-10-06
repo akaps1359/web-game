@@ -2,9 +2,11 @@ import { reg, SKILLS } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import { DMG_TYPES, type DmgType, type EnemyUnit, type MoveDef } from '../../engine/types';
+import { cine, setUi } from '../lib';
 import { countDef, mv, others, release } from '../moves';
 import { canDoom, dimLight, doomMove } from '../act4/common';
 import { hid, isAsleep, isIllusion, realAlive, shuffleGroup, spawnIllusion, stealLight, vanish, wake } from './dream';
+import { DROWSY_MAX, lull, SLUMBER_AP } from './fetus';
 
 /*
  * 5층 — 꿈꾸는 우주의 적들. (최종 수호자 '별의 태아'와 혜성 탯줄은 fetus.ts)
@@ -29,6 +31,34 @@ const SPIT_DMG = 40;
 const DREAM_CUT = 0.15;
 const MAX_DREAMS = 4;
 const DREAM_SAN = 6;
+
+// ── 2026-10 패턴 확장 ──
+/** 토성의 고양이: 버린 목숨(그림자)이 돌아가기까지 그림자의 차례 수 / 지닐 수 있는 목숨 / 그림자가 생기는 목숨 수 (처음 지닌 목숨만) */
+export const SHADE = 'saturn-shade';
+export const SHADE_TURNS = 2;
+const MAX_LIVES = 2;
+const MAX_SHADES = 2;
+/** 꿈을 먹는 자: 삼켜진 기억 (기술을 붙든 하수인) */
+export const MEMORY = 'eaten-memory';
+/** 한꺼번에 붙들 수 있는 기억 수 / 소화되기까지 기억의 차례 수 / 소화하면 회복하는 체력 */
+export const MAX_MEMORIES = 2;
+export const DIGEST_TURNS = 2;
+export const DIGEST_HEAL = 40;
+/** 이 이상의 재사용 대기는 이미 잠긴 기술 (표본 채집·쥐기 반사·전투당 1회 기술) */
+const LOCKED = 90;
+/** 요람의 수문장 '쉿': 다음 턴 이만큼까지만 기술을 쓸 수 있다 / 어기면 깨어나는 별 / 지키면 수문장에게 거는 취약 */
+export const HUSH_LIMIT = 2;
+export const HUSH_STARS = 2;
+const HUSH_SAN = 10;
+export const HUSH_VULN = 3;
+/** 꿈의 문지기 '거짓 문': 이 통찰 이상이면 진짜 의도가 보인다 */
+export const FALSE_DOOR_SIGHT = 8;
+/** 꿈의 대사제 '꿈의 성찬': 쌓는 졸음 */
+const COMMUNION_DROWSY = 2;
+/** 문턱의 존재: 내 한 턴에 최대 체력의 이만큼 피해를 받으면 즉시 반대편 세계로 넘어간다 */
+export const FLIP_AT = 0.25;
+/** 꿈을 먹는 자가 깨어난 악몽이 될 때 화면 너머로 건네는 말 ({time}은 화면이 지금 시각으로 바꾼다) */
+const EATER_LINE = '{time}. 졸리지? 눈 감아도 돼. 꿈은 내가 먹어 줄게.';
 
 // ───────────── 상태 ─────────────
 
@@ -71,6 +101,74 @@ reg.statuses([
       delete u.st['a5-snare'];
       c.emit({ t: 'status', uid: 'p', id: 'a5-snare', n: -n });
       c.emit({ t: 'text', uid: 'p', text: `그물에 발이 묶였다 (행동력 -${n})`, tone: 'bad' });
+    },
+  },
+  {
+    id: 'a5-homing',
+    name: '돌아가는 목숨',
+    icon: 'gi:return-arrow',
+    kind: 'buff',
+    desc: '{n}턴 뒤 토성의 고양이에게 돌아가 목숨 하나가 된다. 그 전에 쓰러뜨리면 그 목숨은 영영 사라진다',
+  },
+  {
+    id: 'a5-digest',
+    name: '소화 중',
+    icon: 'gi:brain-leak',
+    kind: 'debuff',
+    desc: `{n}턴 뒤 꿈을 먹는 자에게 소화된다 (꿈을 먹는 자 체력 ${DIGEST_HEAL} 회복, 힘 +1). 그 전에 쓰러뜨리면 붙들린 기술을 곧바로 되찾는다`,
+  },
+  {
+    id: 'a5-hush',
+    name: '쉿',
+    icon: 'gi:silenced',
+    kind: 'debuff',
+    desc: `요람의 별들이 잠들어 있다 — 이번 턴 기술을 {n}번까지만 쓸 수 있다 (기본 공격·방어 포함). 넘기는 순간 갓 태어난 별 ${HUSH_STARS}이 깨어나고, 지키고 턴을 마치면 수문장이 방심한다 (취약 ${HUSH_VULN})`,
+    hooks: {
+      afterSkill(c, s) {
+        // 이번 사용은 아직 c.s.used에 안 들어갔다 (메아리로 두 번 불려도 같은 값)
+        if (s.unit !== c.p || c.s.used + 1 <= s.n) return;
+        delete c.p.st['a5-hush'];
+        c.emit({ t: 'status', uid: 'p', id: 'a5-hush', n: -s.n });
+        wakeCradle(c);
+      },
+    },
+    tickEnd(c, u, n) {
+      if (isEnemy(u)) return;
+      delete u.st['a5-hush'];
+      c.emit({ t: 'status', uid: 'p', id: 'a5-hush', n: -n });
+      const wardens = c.alive.filter((x) => x.def === 'cradle-warden' && !isIllusion(x));
+      if (!wardens.length) return;
+      c.emit({ t: 'text', uid: wardens[0].uid, text: '요람이 고요하다 — 수문장이 방심했다', tone: 'good' });
+      for (const w of wardens) c.apply(w, 'vuln', HUSH_VULN);
+    },
+  },
+  {
+    id: 'a5-trap',
+    name: '꿈 덫',
+    icon: 'gi:wolf-trap',
+    kind: 'buff',
+    desc: '사냥꾼을 처음 공격한 일격이 덫에 걸린다 — 그 일격은 피해도 버팀도 깎지 못하고, 공격한 쪽은 그물에 걸린다 (다음 턴 행동력 -1). 사냥꾼의 차례가 오면 거둔다',
+    hooks: {
+      modDamageIn(c, s, d) {
+        if (d.tgt !== s.unit || !d.attack || d.src !== c.p) return;
+        d.mult = 0;
+        d.poiseBonus = -99;
+      },
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || d.tgt !== e || !d.attack || d.src !== c.p || !((e.st['a5-trap'] ?? 0) > 0)) return;
+        delete e.st['a5-trap'];
+        c.emit({ t: 'status', uid: e.uid, id: 'a5-trap', n: -1 });
+        cine(c, 'corners', { uid: e.uid });
+        c.emit({ t: 'text', uid: 'p', text: '덫이 물었다! — 꿈 그물에 걸렸다', tone: 'bad' });
+        c.apply(c.p, 'a5-snare', 1, e);
+      },
+    },
+    tickStart(c, u) {
+      if (!isEnemy(u) || !((u.st['a5-trap'] ?? 0) > 0)) return;
+      delete u.st['a5-trap'];
+      c.emit({ t: 'status', uid: u.uid, id: 'a5-trap', n: -1 });
+      c.emit({ t: 'text', uid: u.uid, text: '덫을 거두었다', tone: 'info' });
     },
   },
 ]);
@@ -119,13 +217,17 @@ reg.traits([
   {
     id: 'a5-nine-lives',
     name: '아홉 목숨',
-    desc: '쓰러져도 남은 목숨이 있으면 체력 40%로 되살아난다. 되살아날 때마다 힘 +2, 버팀이 회복되고 약점이 바뀐다',
+    desc: `쓰러져도 남은 목숨이 있으면 체력 40%로 되살아난다. 되살아날 때마다 힘 +2, 버팀이 회복되고 약점이 바뀐다. 처음 지닌 목숨은 버려도 그림자(버린 목숨)가 되어 맴돌다 ${SHADE_TURNS}턴 뒤 고양이에게 돌아온다 (남은 목숨 +1, 최대 ${MAX_LIVES}) — 그 전에 그림자를 쓰러뜨리면 그 목숨은 영영 사라진다`,
     hooks: {
       onDeath(c, s) {
         const e = s.unit;
         if (!isEnemy(e) || isIllusion(e)) return;
         const lives = e.mem.lives ?? 0;
-        if (lives <= 0) return;
+        if (lives <= 0) {
+          // 마지막 목숨까지 버렸다: 맴돌던 그림자도 돌아갈 몸을 잃는다
+          for (const x of c.alive) if (x.def === SHADE) vanish(c, x, '돌아갈 몸이 사라졌다');
+          return;
+        }
         e.mem.lives = lives - 1;
         // 'risen'과 같은 표식 (봇·균열 규칙이 참조). 다음 목숨을 위해 자기 턴이 끝나면 지운다
         e.mem.revived = 1;
@@ -141,6 +243,12 @@ reg.traits([
         if (e.st['a5-lives']) c.apply(e, 'a5-lives', -1);
         c.emit({ t: 'spawn', uid: e.uid });
         c.emit({ t: 'text', uid: e.uid, text: `목숨 하나를 버렸다 — 무늬가 바뀐다 (남은 목숨 ${lives - 1})`, tone: 'eldritch' });
+        // 처음 지닌 목숨은 그림자가 되어 맴돈다 (돌아온 목숨을 다시 버릴 때는 남지 않는다 — 끝없이 되살아나지 않게)
+        if ((e.mem.shades ?? 0) < MAX_SHADES) {
+          e.mem.shades = (e.mem.shades ?? 0) + 1;
+          const shade = c.spawn(SHADE, 0);
+          if (shade) c.emit({ t: 'text', uid: shade.uid, text: `버린 목숨이 그림자가 되어 맴돈다 — ${SHADE_TURNS}턴 뒤 돌아온다`, tone: 'eldritch' });
+        }
         if (c.s.phase === 'player') c.planIntent(e);
       },
       onUnitTurnEnd(_c, s) {
@@ -191,7 +299,7 @@ reg.traits([
   {
     id: 'a5-dream-glutton',
     name: '꿈의 포식자',
-    desc: '잠든 이를 삼켜 회복하고 강해진다. 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오른다. 일부 행동은 읽을 수 없다 (통찰 5 이상이면 보인다)',
+    desc: `잠든 이를 삼켜 회복하고 강해진다. 기억 포식 — 당신의 기술을 삼켜 '삼켜진 기억'으로 붙든다: 기억을 쓰러뜨리면 곧바로 되찾고, ${DIGEST_TURNS}턴 안에 되찾지 못하면 소화되어 꿈을 먹는 자가 회복하고 강해진다 (기술은 그때 돌아온다). 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오른다. 일부 행동은 읽을 수 없다 (통찰 5 이상이면 보인다)`,
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -200,30 +308,73 @@ reg.traits([
         e.form = 1;
         e.name = '깨어난 악몽';
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
+        // 악몽이 눈을 뜬다: 화면을 덮는 눈이 손끝을 따라보고, 그 뒤로도 배경에서 지켜본다
+        cine(c, 'eye', { uid: e.uid });
+        setUi(c, 'ui:eye', 1);
         c.emit({ t: 'text', uid: e.uid, text: '꿈이 찢어지고, 악몽이 눈을 뜬다', tone: 'eldritch' });
+        cine(c, 'whisper', { uid: e.uid, text: EATER_LINE });
         c.apply(e, 'ritual', 1, e);
         c.loseSanity(6, true);
         if (e.broken !== 2) c.planIntent(e);
       },
+      onDeath(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e)) return;
+        // 삼킨 기억이 모두 풀려난다
+        for (const m of c.alive) {
+          if (m.def !== MEMORY) continue;
+          freeMemory(c, m, '기억이 풀려났다');
+          vanish(c, m, '주인을 잃고 흩어졌다');
+        }
+        setUi(c, 'ui:scramble', 0);
+        setUi(c, 'ui:eye', 0);
+      },
     },
+  },
+  {
+    id: 'a5-memory',
+    name: '삼켜진 기억',
+    desc: `꿈을 먹는 자가 삼킨 당신의 기술이다 — 쓰러뜨리면 곧바로 되찾는다. ${DIGEST_TURNS}턴 안에 되찾지 못하면 소화되어 꿈을 먹는 자가 체력 ${DIGEST_HEAL}을 회복하고 힘 +1 (기술은 그때 돌아온다)`,
+    hooks: {
+      onDeath(c, s) {
+        const e = s.unit;
+        if (isEnemy(e)) freeMemory(c, e, '기억을 되찾았다');
+      },
+    },
+  },
+  {
+    id: 'a5-false-door',
+    name: '거짓 문',
+    desc: `문지기는 문을 걸어 잠그는 척할 때가 있다 — 그 뒤엔 언제나 문 너머에서 지팡이가 날아온다. 속임수다: 통찰 ${FALSE_DOOR_SIGHT} 이상이면 진짜 의도가 보인다`,
+    hooks: {},
   },
   {
     id: 'a5-liminal',
     name: '문턱',
-    desc: '자기 턴이 끝날 때마다 현실과 꿈 사이를 오간다. 현실에선 화염·비전·공허 피해를, 꿈에선 참격·관통·타격 피해를 60% 덜 받는다',
+    desc: `자기 턴이 끝날 때마다 현실과 꿈 사이를 오간다. 현실에선 화염·비전·공허 피해를, 꿈에선 참격·관통·타격 피해를 60% 덜 받는다. 내 한 턴에 최대 체력의 ${Math.round(FLIP_AT * 100)}% 넘게 몰아치면 세계가 뒤집혀 그 자리에서 반대편으로 달아난다 (턴마다 한 번) — 남은 공격은 속성을 바꿔라`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
         if (!isEnemy(e) || e.dead) return;
-        if (e.st['a5-phase-dream']) {
-          c.clear(e, 'a5-phase-dream');
-          c.apply(e, 'a5-phase-real', 1, e);
-          c.emit({ t: 'text', uid: e.uid, text: '현실로 넘어왔다', tone: 'info' });
-        } else {
-          c.clear(e, 'a5-phase-real');
-          c.apply(e, 'a5-phase-dream', 1, e);
-          c.emit({ t: 'text', uid: e.uid, text: '꿈속으로 가라앉았다', tone: 'eldritch' });
+        crossThreshold(c, e);
+      },
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || d.tgt !== e || d.src !== c.p || c.s.phase !== 'player') return;
+        if (e.mem.flipT === c.s.turn) return;
+        if (e.mem.hurtT !== c.s.turn) {
+          e.mem.hurtT = c.s.turn;
+          e.mem.hurt = 0;
         }
+        e.mem.hurt = (e.mem.hurt ?? 0) + d.hpLoss + d.blocked;
+        if (e.mem.hurt < Math.ceil(e.maxHp * FLIP_AT)) return;
+        e.mem.flipT = c.s.turn;
+        // 처음엔 화면째 뒤집히고, 그 뒤로는 짧게 일그러진다 (매번 화면을 돌리면 지친다)
+        if (!e.mem.flips) cine(c, 'flip', { uid: e.uid });
+        else cine(c, 'glitch', { n: 1 });
+        e.mem.flips = (e.mem.flips ?? 0) + 1;
+        c.emit({ t: 'text', uid: e.uid, text: '세계가 뒤집혔다 — 문턱 너머로 달아난다', tone: 'eldritch' });
+        crossThreshold(c, e);
       },
     },
   },
@@ -262,7 +413,13 @@ reg.traits([
   {
     id: 'a5-dream-catcher',
     name: '꿈 사냥',
-    desc: '붙잡은 꿈을 갑옷처럼 두른다 (꿈 하나마다 받는 피해 -15%). 붕괴시키면 꿈 하나가 풀려난다. 사냥이 길어질수록 꿈을 더 붙잡는다',
+    desc: '붙잡은 꿈을 갑옷처럼 두른다 (꿈 하나마다 받는 피해 -15%). 붕괴시키면 꿈 하나가 풀려난다. 사냥이 길어질수록 꿈을 더 붙잡는다. 발치에 꿈 덫을 깔면, 다음 턴 처음 날아오는 일격을 물어 그물에 건다 — 약한 일격으로 먼저 터뜨려라',
+    hooks: {},
+  },
+  {
+    id: 'a5-cradle-hush',
+    name: '요람의 정적',
+    desc: `요람에서 별들이 잠들어 있다. 수문장이 "쉿" 하면, 다음 턴 기술을 ${HUSH_LIMIT}번 넘게 쓰는 순간 갓 태어난 별 ${HUSH_STARS}이 깨어난다. 조용히 ${HUSH_LIMIT}번 이하로 마치면 수문장이 방심한다 (취약 ${HUSH_VULN})`,
     hooks: {},
   },
 ]);
@@ -305,20 +462,11 @@ function feedOnDreams(c: Combat, e: EnemyUnit) {
 function devour(c: Combat, e: EnemyUnit) {
   const s = c.alive.find((x) => x !== e && isAsleep(x) && !isIllusion(x));
   if (!s) return feedOnDreams(c, e);
+  // 잠든 이가 한 점으로 빨려 들어간다
+  cine(c, 'blackhole', { uid: e.uid });
   vanish(c, s, '꿈째로 삼켜졌다');
   c.heal(e, 30);
   c.apply(e, 'str', 1, e);
-}
-
-/** 기억 포식: 장착 스킬 n개를 잊게 한다 (재사용 대기 2) */
-function eatMemory(c: Combat, e: EnemyUnit, n: number) {
-  const cands = c.run.slots.filter((x): x is string => !!x && !((c.s.cd[x] ?? 0) > 0));
-  for (const uid of c.rng.sample(cands, n)) {
-    c.s.cd[uid] = 2;
-    const id = c.run.skills.find((s) => s.uid === uid)?.id;
-    c.emit({ t: 'text', uid: 'p', text: `잊혔다: ${(id && SKILLS.get(id)?.name) || '기술'}`, tone: 'eldritch' });
-  }
-  c.horror(e, 5);
 }
 
 function pilgrimStep(c: Combat, e: EnemyUnit) {
@@ -375,6 +523,126 @@ function catchDream(c: Combat, e: EnemyUnit) {
   if ((e.st['a5-dreams'] ?? 0) >= MAX_DREAMS) return;
   c.apply(e, 'a5-dreams', 1, e);
   c.emit({ t: 'text', uid: e.uid, text: '당신의 꿈 한 조각을 붙잡았다', tone: 'eldritch' });
+}
+
+function skillName(c: Combat, uid: string): string {
+  const id = c.run.skills.find((s) => s.uid === uid)?.id;
+  return (id && SKILLS.get(id)?.name) || '기술';
+}
+
+// ── 토성의 고양이: 버린 목숨 ──
+
+/** 그림자가 한 턴 더 제 몸 쪽으로 다가간다 */
+function homeStep(c: Combat, e: EnemyUnit) {
+  e.mem.back = Math.max(0, (e.mem.back ?? SHADE_TURNS) - 1);
+  if (e.st['a5-homing']) c.apply(e, 'a5-homing', -1);
+}
+
+/** 버린 목숨이 고양이에게 돌아간다 (남은 목숨 +1, 최대 MAX_LIVES) */
+function returnLife(c: Combat, e: EnemyUnit) {
+  const cat = c.alive.find((x) => x.def === 'saturn-cat' && !isIllusion(x));
+  if (!cat) {
+    vanish(c, e, '돌아갈 몸이 없어 흩어졌다');
+    return;
+  }
+  const lives = cat.mem.lives ?? 0;
+  if (lives < MAX_LIVES) {
+    cat.mem.lives = lives + 1;
+    c.apply(cat, 'a5-lives', 1, cat);
+    c.emit({ t: 'text', uid: cat.uid, text: `버린 목숨이 돌아왔다 (남은 목숨 ${lives + 1})`, tone: 'bad' });
+  }
+  vanish(c, e, '고양이에게 스며들었다');
+}
+
+// ── 꿈을 먹는 자: 삼켜진 기억 ──
+
+/**
+ * 기억 포식: 장착 기술 n개를 삼킨다. 삼킨 기술마다 '삼켜진 기억'(하수인, 이름이 그 기술)이 떠올라(전열, 자리가 없으면 후열) 그 기술을 붙든다
+ * (재사용 대기 99 + 표본 채집과 같은 표식 mem.specimen — 대기를 되돌리는 효과로는 풀리지 않는다).
+ * 기억을 쓰러뜨리면 곧바로 되찾고, 그대로 두면 DIGEST_TURNS 뒤 소화된다 (꿈을 먹는 자 회복·힘 +1, 기술은 그때 돌아온다).
+ * 붙든 기억이 있는 동안 화면의 기술 이름이 뒤섞여 보인다 (ui:scramble).
+ */
+function swallowMemories(c: Combat, e: EnemyUnit, n: number) {
+  if (isIllusion(e)) return;
+  const held = new Set(c.alive.filter((x) => (x.mem.specimen ?? 0) > 0).map((x) => x.mem.specimen - 1));
+  const slots = c.run.slots
+    .map((uid, i) => ({ uid, i }))
+    .filter((x): x is { uid: string; i: number } => !!x.uid && !held.has(x.i) && (c.s.cd[x.uid] ?? 0) < LOCKED);
+  // 재사용 대기 중이 아닌(지금 쓸 수 있는) 기술부터 노린다
+  const ready = c.rng.shuffle(slots.filter((x) => !((c.s.cd[x.uid] ?? 0) > 0)));
+  const cooling = c.rng.shuffle(slots.filter((x) => (c.s.cd[x.uid] ?? 0) > 0));
+  let ate = 0;
+  for (const slot of [...ready, ...cooling]) {
+    if (ate >= n || countDef(c, MEMORY) >= MAX_MEMORIES) break;
+    const m = c.spawn(MEMORY, 0);
+    if (!m) break;
+    const name = skillName(c, slot.uid);
+    m.name = `「${name}」`;
+    m.mem.specimen = slot.i + 1;
+    m.mem.specimenCd = c.s.cd[slot.uid] ?? 0;
+    m.mem.at = c.s.turn;
+    c.s.cd[slot.uid] = 99;
+    c.emit({ t: 'text', uid: 'p', text: `삼켜졌다: ${name}`, tone: 'eldritch' });
+    ate++;
+  }
+  if (ate > 0) setUi(c, 'ui:scramble', 1);
+  c.horror(e, 5);
+}
+
+/** 기억이 붙든 기술을 돌려준다 (붙들려 있던 동안 지난 턴만큼 원래 재사용 대기도 흘렀다) */
+function freeMemory(c: Combat, m: EnemyUnit, text: string) {
+  const slot = m.mem.specimen ?? 0;
+  if (slot > 0) {
+    m.mem.specimen = 0;
+    const uid = c.run.slots[slot - 1];
+    if (uid) {
+      const left = (m.mem.specimenCd ?? 0) - (c.s.turn - (m.mem.at ?? c.s.turn));
+      if (left > 0) c.s.cd[uid] = left;
+      else delete c.s.cd[uid];
+      c.emit({ t: 'text', uid: 'p', text: `${text}: ${skillName(c, uid)}`, tone: 'good' });
+    }
+  }
+  if (!c.alive.some((x) => x !== m && x.def === MEMORY && (x.mem.specimen ?? 0) > 0)) setUi(c, 'ui:scramble', 0);
+}
+
+/** 기억이 소화된다: 꿈을 먹는 자가 회복하고 힘 +1 (기술은 소화되고 남은 껍데기로 돌아온다) */
+function digestMemory(c: Combat, m: EnemyUnit) {
+  const eater = c.alive.find((x) => x.def === 'dream-eater' && !isIllusion(x));
+  freeMemory(c, m, '소화되고 남은 기억이 돌아왔다');
+  if (eater) {
+    c.heal(eater, DIGEST_HEAL);
+    c.apply(eater, 'str', 1, eater);
+    // 화면 유리에 붉은 손글씨 (전투에 한 번)
+    if (!c.s.vars.a5Ate) {
+      c.s.vars.a5Ate = 1;
+      cine(c, 'scrawl', { uid: eater.uid, text: '잘 먹었습니다' });
+    }
+  }
+  vanish(c, m, eater ? '소화되었다' : '흩어졌다');
+}
+
+// ── 요람의 수문장: 쉿 ──
+
+/** 소란에 요람의 별들이 깨어난다 */
+function wakeCradle(c: Combat) {
+  let n = 0;
+  for (let i = 0; i < HUSH_STARS; i++) if (c.spawn('newborn-star', 1)) n++;
+  c.emit({ t: 'text', uid: 'p', text: n ? '소란에 요람의 별들이 깨어났다!' : '요람이 흔들린다', tone: 'bad' });
+}
+
+// ── 문턱의 존재 ──
+
+/** 현실 ↔ 꿈결을 오간다 */
+function crossThreshold(c: Combat, e: EnemyUnit) {
+  if (e.st['a5-phase-dream']) {
+    c.clear(e, 'a5-phase-dream');
+    c.apply(e, 'a5-phase-real', 1, e);
+    c.emit({ t: 'text', uid: e.uid, text: '현실로 넘어왔다', tone: 'info' });
+  } else {
+    c.clear(e, 'a5-phase-real');
+    c.apply(e, 'a5-phase-dream', 1, e);
+    c.emit({ t: 'text', uid: e.uid, text: '꿈속으로 가라앉았다', tone: 'eldritch' });
+  }
 }
 
 // ───────────── 일반 적 ─────────────
@@ -724,6 +992,72 @@ reg.enemies([
     ai: (_c, e) => (e.mem.charge ? 'flare' : 'swell'),
     visual: { tint: 0x5a4020, glow: 0xffe6a0, scale: 0.55, fx: ['float', 'flicker'] },
   },
+  {
+    id: SHADE,
+    name: '버린 목숨',
+    icon: 'gi:hollow-cat',
+    act: 5,
+    tier: 'minion',
+    hp: [36, 40],
+    poise: 0,
+    weak: ['arcane', 'fire', 'slash'],
+    row: 0,
+    eldritch: true,
+    tags: ['dream', 'saturn'],
+    desc: '토성의 고양이가 버린 목숨. 그림자가 되어 맴돌다, 그대로 두면 제 몸으로 돌아가 다시 목숨이 된다.',
+    onSpawn: (_c, e) => {
+      e.mem.back = SHADE_TURNS;
+      e.st['a5-homing'] = SHADE_TURNS;
+    },
+    moves: {
+      claw: mv.attack('그림자 할퀴기', 9, { melee: false, type: 'slash', then: homeStep, desc: '고양이에게 돌아갈 때가 한 턴 가까워진다' }),
+      return: {
+        name: '목숨으로 돌아간다',
+        intent: 'special',
+        desc: `토성의 고양이에게 돌아가 목숨 하나가 된다 (남은 목숨 +1, 최대 ${MAX_LIVES})`,
+        run: returnLife,
+      },
+    },
+    ai: (_c, e) => ((e.mem.back ?? SHADE_TURNS) <= 1 ? 'return' : 'claw'),
+    visual: { tint: 0x120e24, glow: 0xffd040, scale: 0.7, fx: ['float', 'flicker'] },
+  },
+  {
+    id: MEMORY,
+    name: '삼켜진 기억',
+    icon: 'gi:brain-leak',
+    act: 5,
+    tier: 'minion',
+    hp: [30, 34],
+    poise: 0,
+    weak: ['fire', 'slash', 'arcane'],
+    row: 0,
+    tags: ['dream', 'memory'],
+    traits: ['a5-memory'],
+    desc: '꿈을 먹는 자가 삼킨 당신의 기억. 아직 다 소화되지 않아, 그 안에서 익숙한 이름이 비친다.',
+    onSpawn: (_c, e) => {
+      e.mem.left = DIGEST_TURNS;
+      e.st['a5-digest'] = DIGEST_TURNS;
+    },
+    moves: {
+      fade: {
+        name: '흐려진다',
+        intent: 'sleep',
+        desc: '소화되어 간다 — 소화까지 한 턴 가까워진다',
+        run(c, e) {
+          e.mem.left = Math.max(0, (e.mem.left ?? DIGEST_TURNS) - 1);
+          if (e.st['a5-digest']) c.apply(e, 'a5-digest', -1);
+        },
+      },
+      digest: {
+        name: '소화된다',
+        intent: 'heal',
+        desc: `꿈을 먹는 자에게 소화된다 — 꿈을 먹는 자 체력 ${DIGEST_HEAL} 회복, 힘 +1. 붙들린 기술은 그제야 돌아온다`,
+        run: digestMemory,
+      },
+    },
+    ai: (_c, e) => ((e.mem.left ?? DIGEST_TURNS) <= 1 ? 'digest' : 'fade'),
+    visual: { tint: 0x2a2440, glow: 0xd0b0ff, scale: 0.6, fx: ['float', 'flicker'] },
+  },
 
   // ───────────── 정예 ─────────────
   {
@@ -752,7 +1086,7 @@ reg.enemies([
       pounce: mv.attack('뒤틀린 도약', 20, { melee: false }),
       coil: mv.block('고리 속으로 몸을 말다', 16, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '방어도 16, 회피 1' }),
       stalk: mv.charge('사냥 자세', 46),
-      leap: release(mv.attack('목덜미 물기', 46)),
+      leap: release(mv.attack('목덜미 물기', 46, { ultimate: true, cine: 'corners' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'leap';
@@ -773,11 +1107,21 @@ reg.enemies([
     dread: 6,
     eldritch: true,
     tags: ['dream', 'gate'],
-    traits: ['a5-illusionist'],
+    traits: ['a5-illusionist', 'a5-false-door'],
     desc: '얕은 잠의 일흔 계단 끝, 깊은 잠의 문을 지키는 자. 문 앞에서는 무엇이 진짜인지 그가 정한다.',
     moves: {
       staff: mv.attack('문지기의 지팡이', 14, { hits: 2, melee: false, type: 'arcane' }),
-      mirror: mv.summon('거울의 문', mirrorSelf, '자신의 환영 2개를 만들고 자리를 뒤섞는다'),
+      // 거짓 문: 통찰이 모자라면 '문을 걸어 잠근다(방어)'로 보인다 — 실제로는 문 너머에서 지팡이가 두 번 날아온다
+      falsedoor: {
+        ...mv.attack('문 너머의 지팡이', 20, {
+          hits: 2,
+          melee: false,
+          type: 'arcane',
+          desc: '거짓 문 — 문을 걸어 잠그는 척하고, 문 너머에서 지팡이를 휘두른다',
+        }),
+        disguise: { kind: 'block', label: '문을 걸어 잠근다', reveal: FALSE_DOOR_SIGHT },
+      },
+      mirror: { ...mv.summon('거울의 문', mirrorSelf, '자신의 환영 2개를 만들고 자리를 뒤섞는다'), cine: 'glitch' },
       riddle: hid(mv.horror('문의 수수께끼', 11, { dmg: 12, then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '피해와 정신 피해, 공포 2' })),
       steps: mv.debuff(
         '얕은 잠의 일흔 계단',
@@ -788,17 +1132,17 @@ reg.enemies([
         { desc: '약화 1, 허약 2' },
       ),
       seal: mv.charge('문의 봉인', 50),
-      judgment: release(mv.attack('문지기의 심판', 50, { melee: false, type: 'void' })),
+      judgment: release(mv.attack('문지기의 심판', 50, { melee: false, type: 'void', ultimate: true, cine: 'beam' })),
       open: mv.summon('깊은 잠의 문', openGate, '잠든 몽유병자 하나를 불러들이고 힘 +2'),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'judgment';
-      if (e.mem.illu) return pick(c, e, { staff: 3, riddle: 2, steps: 1 });
+      if (e.mem.illu) return pick(c, e, { staff: 3, riddle: 2, steps: 1, falsedoor: 1 });
       if (hpPct(e) <= 0.5 && !e.mem.opened) return 'open';
       const first = opener(c, e, ['steps']);
       if (first) return first;
       if (c.alive.filter(isIllusion).length === 0 && !e.hist.includes('mirror')) return 'mirror';
-      return cycle(e, ['staff', 'riddle', 'staff', 'seal', 'steps']);
+      return cycle(e, ['falsedoor', 'staff', 'riddle', 'seal', 'steps']);
     },
     visual: { tint: 0x4a4060, glow: 0xffe0a0, scale: 1.45, fx: ['float'] },
   },
@@ -815,7 +1159,7 @@ reg.enemies([
     dread: 8,
     eldritch: true,
     tags: ['star', 'cradle'],
-    traits: ['a5-geometry'],
+    traits: ['a5-geometry', 'a5-cradle-hush'],
     desc: '별이 태어나는 성운의 요람을 지키는 운석의 거상. 그 몸의 각도는 어느 것도 맞지 않는다.',
     moves: {
       fist: mv.attack('운석 주먹', 26),
@@ -828,15 +1172,29 @@ reg.enemies([
         { desc: '침묵 1 (다음 턴 기본기만 쓸 수 있다), 허약 2' },
       ),
       hush: mv.horror('요람의 자장가', 15, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
+      // 쉿: 요람의 별들이 잠들어 있다 — 다음 턴엔 조용히 (어기면 별이 깨어나고, 지키면 수문장이 방심한다)
+      // (의도 말풍선에 이름이 보이도록 약화 의도로 둔다 — 정신 피해는 설명에)
+      quiet: {
+        name: '쉿 — 별이 잠들었다',
+        intent: 'debuff',
+        extra: ['horror'],
+        sanity: HUSH_SAN,
+        cine: 'timestop',
+        desc: `정신 피해. 다음 내 턴에 기술을 ${HUSH_LIMIT}번 넘게 쓰면(기본 공격·방어 포함) 그 순간 갓 태어난 별 ${HUSH_STARS}이 깨어난다. ${HUSH_LIMIT}번 이하로 턴을 마치면 수문장이 방심한다 (취약 ${HUSH_VULN})`,
+        run(c, e) {
+          c.horror(e, HUSH_SAN);
+          if (!c.over && !e.dead) c.apply(c.p, 'a5-hush', HUSH_LIMIT, e);
+        },
+      },
       wall: mv.block('기하학의 벽', 26, { desc: '방어도 26' }),
       open: mv.charge('요람의 문을 연다', 56),
-      starfall: release(mv.attack('쏟아지는 별무리', 56, { melee: false, type: 'void' })),
+      starfall: release(mv.attack('쏟아지는 별무리', 56, { melee: false, type: 'void', ultimate: true, cine: 'beam' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'starfall';
       const o = opener(c, e, ['fist']);
       if (o) return o;
-      return cycle(e, ['hush', 'fist', 'open', 'wall', 'fist', 'gaze']);
+      return cycle(e, ['quiet', 'hush', 'fist', 'open', 'wall', 'fist', 'gaze']);
     },
     visual: { tint: 0x2c2a3c, glow: 0xc8a8ff, scale: 1.5 },
   },
@@ -866,13 +1224,33 @@ reg.enemies([
         desc: '모든 적 방어도 14, 재생 3',
       }),
       spear: mv.attack('검은 별빛의 창', 14, { hits: 2, melee: false, type: 'void' }),
-      prayer: doomMove('끝나지 않는 꿈의 기도', 3, 40, 12),
+      prayer: { ...doomMove('끝나지 않는 꿈의 기도', 3, 40, 12), ultimate: true, cine: 'bell' },
+      // 꿈의 성찬: 태아의 자장가를 나눠 준다 (졸음 — 적을 붕괴시키면 깬다)
+      communion: mv.horror('꿈의 성찬', 12, {
+        then: (c, e) => {
+          lull(c, e, COMMUNION_DROWSY);
+          for (const a of c.alive) c.apply(a, 'str', 1, e);
+        },
+        desc: `정신 피해, 졸음 +${COMMUNION_DROWSY} (${DROWSY_MAX}이 되면 잠에 빠져 다음 턴 행동력 -${SLUMBER_AP}), 모든 적 힘 +1. 적을 붕괴시키면 번쩍 깨어난다 (대사제를 붕괴시키면 노래도 끊겨 힘이 흩어진다)`,
+      }),
     },
     ai: (c, e) => {
       const o = opener(c, e, ['sermon']);
       if (o) return o;
       if (canDoom(c, e, 6)) return 'prayer';
-      return pick(c, e, { spear: 3, sermon: 2, blessing: others(c, e).length && !e.hist.slice(-2).includes('blessing') ? 2 : 0 });
+      // 이미 잠들었거나 막 성찬을 나눴으면 쉰다
+      const fed = (c.p.st['a5-slumber'] ?? 0) > 0 || e.hist.slice(-2).includes('communion');
+      // 설교 → 기도(심판) → 성찬: 기도가 시작되면 곧바로 자장가를 나눠 준다 (심판이 떨어지기 전에 붕괴시켜 깨어나라)
+      if (!e.mem.communed && !fed) {
+        e.mem.communed = 1;
+        return 'communion';
+      }
+      return pick(c, e, {
+        spear: 3,
+        sermon: 2,
+        blessing: others(c, e).length && !e.hist.slice(-2).includes('blessing') ? 2 : 0,
+        communion: fed ? 0 : 1,
+      });
     },
     visual: { tint: 0x221a40, glow: 0xa890ff, scale: 1.2, fx: ['float'] },
   },
@@ -919,9 +1297,13 @@ reg.enemies([
         },
         '몽유병자를 불러 재운다. 공포 2',
       ),
-      feast: hid(mv.debuff('기억 포식', (c, e) => eatMemory(c, e, 2), { desc: '스킬 2개를 잊게 한다 (재사용 대기 2), 정신 피해 5' })),
+      feast: hid(
+        mv.debuff('기억 포식', (c, e) => swallowMemories(c, e, 2), {
+          desc: `기술 2개를 삼켜 '삼켜진 기억'으로 붙든다 — 기억을 쓰러뜨리면 곧바로 되찾고, ${DIGEST_TURNS}턴 안에 못 되찾으면 소화된다 (꿈을 먹는 자 체력 ${DIGEST_HEAL} 회복, 힘 +1). 정신 피해 5`,
+        }),
+      ),
       conceive: mv.charge('악몽 잉태', 48),
-      nightfall: release(mv.attack('악몽 강림', 48, { melee: false, type: 'void' })),
+      nightfall: release(mv.attack('악몽 강림', 48, { melee: false, type: 'void', ultimate: true, cine: 'ink' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'nightfall';
@@ -932,6 +1314,8 @@ reg.enemies([
         : cycle(e, ['maw', 'dreamfeed', 'feast', 'lull', 'maw', 'conceive']);
       if (m === 'dreamfeed' && sleeper) return 'devour';
       if (m === 'lull' && !canLull) return e.form ? 'ravage' : 'maw';
+      // 붙든 기억이 가득하면 기억 대신 꿈을 먹는다
+      if (m === 'feast' && countDef(c, MEMORY) >= MAX_MEMORIES) return sleeper ? 'devour' : 'dreamfeed';
       return m;
     },
     visual: { tint: 0x1a1030, glow: 0xb070ff, scale: 1.6, fx: ['float', 'flicker'] },
@@ -968,14 +1352,24 @@ reg.enemies([
       spear: mv.attack('사냥 창', 12, { hits: 2, type: 'pierce' }),
       horn: mv.horror('사냥 나팔', 12, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       catch: mv.horror('꿈 붙잡기', 8, { then: catchDream, desc: `정신 피해, 붙잡은 꿈 +1 (최대 ${MAX_DREAMS})` }),
+      // 꿈 덫: 다음 내 턴 처음 날아오는 일격을 문다 — 약한 일격으로 먼저 터뜨려라
+      trap: mv.attack('몰이 사냥', 14, {
+        type: 'pierce',
+        extra: ['special'],
+        then: (c, e) => {
+          c.apply(e, 'a5-trap', 1, e);
+          c.emit({ t: 'text', uid: e.uid, text: '창으로 몰아붙이고, 발치에 꿈 덫을 깔았다', tone: 'eldritch' });
+        },
+        desc: '창으로 몰아붙이고 꿈 덫을 깐다 — 다음 내 턴, 사냥꾼을 처음 공격한 일격은 덫에 걸려 피해를 주지 못하고 그물에 걸린다 (다음 턴 행동력 -1). 약한 일격으로 먼저 덫을 터뜨려라',
+      }),
       aim: mv.charge('사냥감을 겨눈다', 46),
-      skewer: release(mv.attack('꿈 꿰뚫기', 46, { type: 'pierce' })),
+      skewer: release(mv.attack('꿈 꿰뚫기', 46, { type: 'pierce', ultimate: true, cine: 'impact' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'skewer';
       const o = opener(c, e, ['net']);
       if (o) return o;
-      return cycle(e, ['spear', 'catch', 'aim', 'horn', 'spear', 'net']);
+      return cycle(e, ['trap', 'aim', 'spear', 'catch', 'horn', 'spear', 'net']);
     },
     visual: { tint: 0x1c1a2a, glow: 0x9ff0d0, scale: 1.35, fx: ['flicker'] },
   },
@@ -1003,7 +1397,7 @@ reg.enemies([
       whisper: mv.horror('문턱 너머의 속삭임', 12, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
       dreamclaw: mv.attack('꿈의 발톱', 16, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
       gather: mv.charge('두 세계를 끌어모은다', 44),
-      sunder: release(mv.attack('경계 붕괴', 44, { melee: false, type: 'void' })),
+      sunder: release(mv.attack('경계 붕괴', 44, { melee: false, type: 'void', ultimate: true, cine: { name: 'glitch', n: 2 } })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'sunder';

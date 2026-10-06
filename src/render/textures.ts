@@ -7,7 +7,7 @@ import ART from 'virtual:art';
 export const hasArt = (key: string) => ART.enemies.includes(key);
 export const hasBg = (key: string) => ART.bg.includes(key);
 
-function artUrl(kind: 'enemies' | 'bg', key: string): string {
+export function artUrl(kind: 'enemies' | 'bg', key: string): string {
   return `${import.meta.env.BASE_URL}art/${kind}/${encodeURIComponent(key)}.webp`;
 }
 

@@ -54,6 +54,18 @@ id는 게임 전체에서 유일해야 한다 (적·스킬·특성·이벤트). 
 
 `progress(run, f, signal)`가 진척도를 반환. signal: `{t:'move'} | {t:'combat', enc, kind} | {t:'tide', tide} | {t:'event', id}`. `warnings`는 단계별 로그 (마지막이 등장 메시지). 숨겨진 조건은 그 층 테마와 연결 (예: 2층 — 종이 3번 울린 뒤 교단 조우 2회 승리).
 
+## 5-1. 연출과 속임수 (정예·수호자 패턴)
+
+화면 연출은 규칙과 무관하다 (봇·시뮬레이션에선 아무 일도 없다). 그리는 쪽은 `src/ui/cinema.ts`.
+
+- `cine(c, name, { uid?, text?, n? })` (`src/content/lib.ts`) — 이름은 `CineName` (`src/engine/types.ts`): `crack`(유리 금) `shatter`(전장이 산산조각) `glitch` `whisper`(화면 너머의 플레이어에게 말 걸기) `sysmsg`(가짜 시스템 창) `fakeover`(가짜 게임 오버 — 최종 보스 전용) `eye` `ink` `scrawl`(붉은 손글씨) `handprints` `flip` `timestop` `blackhole` `corners` `water` `bell` `beam` `swarm` `impact`.
+  `text`에는 `{time}` `{hour}` `{deaths}` `{runs}` `{wins}` `{best}` `{origin}`을 쓸 수 있다 (진짜 시각·기록으로 바뀜). 줄바꿈은 `\n`.
+- `setUi(c, 'ui:…', n)` — 전투 내내 남는 화면 상태: `ui:water`(0~3) `ui:cracks`(0~3) `ui:tilt`(°) `ui:dark`(0~100) `ui:scramble` `ui:eye` `ui:swap`. 화면에만 영향, 규칙은 훅으로 따로.
+- `MoveDef.ultimate: true` — 필살기 컷인. `MoveDef.cine` — 그 행동과 함께 트는 연출 (`'crack'` 또는 `{ name, n, text }`).
+- `MoveDef.disguise: { kind, label, dmg?, hits?, reveal?, desc? }` — 거짓 의도. 통찰이 `reveal`(기본 5) 미만이면 이 모습으로 보인다 (봇도 속는다). 특성 설명 등으로 속임수가 있다는 걸 알려 줄 것.
+- 제4의 벽 연출(whisper·sysmsg·scrawl 등)은 수호자당 2~4번. 매 턴 쓰지 말 것. 모든 위협은 의도 문구·설명으로 미리 알리고 대응법이 있어야 한다.
+- 수호자 체력은 `BOSS_HP_MULT`(`src/engine/combat.ts`, 기본 1.1)가 더 곱해진다.
+
 ## 6. 이벤트
 
 `stages.start(run, ev) => { text, choices }`. 선택지 `go(run, ev)`에서 `finish(ev, '결과 문장', { fight?, loot? })` 또는 `ev.stage = '다음'`. 헬퍼: `healRun, hurtRun, gainSanityRun, loseSanityRun(→ 붕괴 처리), learnSkill, rollRelic, rollEquip, rollRune, rollConsumable, rollForbidden, upgradeSkill, rng(run,'event')`. 1층 `events.ts`의 `sanity()`, `relicLoot()` 패턴 참고. 선택에는 대가와 이득이 함께 있어야 한다.

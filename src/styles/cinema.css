@@ -1,0 +1,540 @@
+/* ───────── 화면 연출 (src/ui/cinema.ts) ───────── */
+#cine {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  overflow: hidden;
+}
+.cine-full {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 유리 금 */
+.cine-crack-line {
+  filter: drop-shadow(0 0 3px rgba(200, 230, 255, 0.8));
+}
+.cine-flash {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(200, 230, 255, 0.4) 35%, transparent 70%);
+}
+.cine-shard {
+  position: absolute;
+  background: linear-gradient(135deg, rgba(235, 245, 255, 0.85), rgba(160, 190, 220, 0.35));
+  clip-path: polygon(50% 0, 100% 70%, 20% 100%);
+  box-shadow: 0 0 6px rgba(200, 230, 255, 0.6);
+}
+
+/* 데이터가 깨진다 */
+body.cine-glitching #app {
+  animation: cine-jitter 0.11s steps(2) infinite;
+}
+@keyframes cine-jitter {
+  0% {
+    transform: translate(0, 0);
+    filter: none;
+  }
+  25% {
+    transform: translate(-4px, 1px) skewX(4deg);
+    filter: hue-rotate(60deg) saturate(2);
+  }
+  50% {
+    transform: translate(5px, -2px);
+    clip-path: inset(10% 0 30% 0);
+  }
+  75% {
+    transform: translate(-2px, 2px) skewX(-6deg);
+    filter: invert(0.15);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+.cine-slice {
+  position: absolute;
+  left: -10%;
+  width: 120%;
+  mix-blend-mode: difference;
+  opacity: 0;
+}
+
+/* 화면 너머로 말 걸기 */
+.cine-veil {
+  background: radial-gradient(ellipse at 50% 45%, rgba(10, 4, 18, 0.55), rgba(0, 0, 0, 0.88));
+  display: grid;
+  place-items: center;
+}
+.cine-whisper {
+  max-width: 86vw;
+  text-align: center;
+  font-family: 'Nanum Myeongjo', 'AppleMyungjo', serif;
+  font-weight: 800;
+  font-size: clamp(22px, 6.6vw, 32px);
+  line-height: 1.55;
+  color: #efe6ff;
+  text-shadow: 0 0 12px rgba(160, 90, 255, 0.75), 0 0 2px #000, 2px 0 rgba(255, 40, 80, 0.35), -2px 0 rgba(40, 255, 200, 0.3);
+  word-break: keep-all;
+}
+/* 낱말 묶음: 줄이 바뀌어도 낱말이 쪼개지지 않게 */
+.cine-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+.cine-whisper .cine-word span {
+  display: inline-block;
+  opacity: 0;
+}
+
+/* 가짜 시스템 창 */
+.cine-sysveil {
+  background: rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+}
+.cine-sys {
+  width: min(78vw, 300px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(240, 238, 242, 0.96);
+  color: #111;
+  font: 400 14px -apple-system, system-ui, 'Noto Sans KR', sans-serif;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.cine-sys-title {
+  padding: 18px 16px 4px;
+  font-weight: 700;
+  font-size: 16px;
+}
+.cine-sys-msg {
+  white-space: pre-line;
+  padding: 2px 18px 18px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: #333;
+  word-break: keep-all;
+}
+.cine-sys-btns {
+  display: flex;
+  border-top: 1px solid rgba(0, 0, 0, 0.15);
+}
+.cine-sys-btn {
+  flex: 1;
+  padding: 12px 0;
+  color: #0a60ff;
+  font-size: 16px;
+}
+.cine-sys-btn + .cine-sys-btn {
+  border-left: 1px solid rgba(0, 0, 0, 0.15);
+}
+.cine-sys-btn.strong {
+  font-weight: 700;
+}
+.cine-sys-btn.pressed {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+/* 가짜 게임 오버 */
+.cine-over {
+  background: #030203;
+  display: grid;
+  place-items: center;
+}
+.cine-over-in {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+.cine-over-title {
+  font-family: 'Nanum Myeongjo', serif;
+  font-weight: 800;
+  font-size: 30px;
+  color: #e9e1d4;
+  letter-spacing: 0.08em;
+}
+.cine-over-sub {
+  font-size: 13px;
+  color: #8a8478;
+}
+.cine-over-half {
+  position: absolute;
+  left: -5%;
+  width: 110%;
+  height: 52%;
+  background: #030203;
+}
+.cine-over-half.top {
+  top: 0;
+  box-shadow: 0 4px 0 rgba(200, 40, 40, 0.5);
+}
+.cine-over-half.bottom {
+  bottom: 0;
+  box-shadow: 0 -4px 0 rgba(200, 40, 40, 0.5);
+}
+
+/* 지켜보는 눈 */
+.cine-eyeveil {
+  background: radial-gradient(ellipse at 50% 45%, rgba(40, 0, 20, 0.35), rgba(0, 0, 0, 0.85));
+  display: grid;
+  place-items: center;
+}
+.cine-eye {
+  filter: drop-shadow(0 0 30px rgba(255, 60, 40, 0.35));
+}
+
+/* 피 묻은 손글씨 */
+.cine-scrawl {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  max-width: 88vw;
+  text-align: center;
+  font-family: 'Nanum Brush Script', 'Nanum Myeongjo', cursive;
+  font-size: clamp(40px, 13vw, 64px);
+  line-height: 1.1;
+  color: #9a0d0a;
+  text-shadow: 0 0 1px #300, 0 2px 6px rgba(80, 0, 0, 0.6);
+  word-break: keep-all;
+}
+.cine-scrawl .cine-word span {
+  display: inline-block;
+  position: relative;
+  opacity: 0;
+}
+.cine-scrawl span.drip::after {
+  content: '';
+  position: absolute;
+  left: 45%;
+  top: 80%;
+  width: 4px;
+  height: 0;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(#9a0d0a, rgba(120, 10, 8, 0.6));
+  animation: cine-drip 1.6s ease-in 0.3s forwards;
+}
+@keyframes cine-drip {
+  to {
+    height: 34px;
+  }
+}
+
+/* 손바닥 */
+.cine-hand {
+  position: absolute;
+  color: rgba(70, 6, 8, 0.82);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
+}
+.cine-hand svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* 멈춘 시간 */
+body.cine-gray #stage,
+body.cine-gray #app {
+  filter: grayscale(1) contrast(1.15) brightness(0.92);
+  transition: filter 0.25s;
+}
+#stage,
+#app {
+  transition: filter 0.6s;
+}
+.cine-clock {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: min(70vw, 300px);
+  height: min(70vw, 300px);
+  filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.8));
+}
+.cine-clock svg {
+  width: 100%;
+  height: 100%;
+}
+.cine-ring {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.5), inset 0 0 20px rgba(255, 255, 255, 0.4);
+}
+.cine-ring.gold {
+  border-color: rgba(240, 207, 122, 0.75);
+  box-shadow: 0 0 24px rgba(240, 207, 122, 0.5), inset 0 0 16px rgba(240, 207, 122, 0.35);
+}
+
+/* 블랙홀 */
+.cine-hole {
+  position: absolute;
+  width: 240px;
+  height: 240px;
+}
+.cine-hole-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(255, 140, 40, 0), rgba(255, 170, 60, 0.85), rgba(160, 60, 255, 0.7), rgba(255, 140, 40, 0), rgba(255, 200, 120, 0.8), rgba(255, 140, 40, 0));
+  animation: cine-spin 0.7s linear infinite;
+  filter: blur(4px);
+}
+.cine-hole-disk {
+  position: absolute;
+  inset: 28%;
+  border-radius: 50%;
+  background: #000;
+  box-shadow: 0 0 40px 18px #000;
+}
+@keyframes cine-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* 모서리의 아가리 */
+.cine-maw {
+  position: absolute;
+  width: 46vw;
+  height: 46vw;
+  max-width: 260px;
+  max-height: 260px;
+  filter: drop-shadow(0 0 10px rgba(255, 30, 60, 0.6));
+}
+
+/* 물 */
+.cine-water,
+.ui-water {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(60, 150, 160, 0.45), rgba(8, 40, 52, 0.82));
+  backdrop-filter: blur(1.5px) hue-rotate(-10deg);
+  -webkit-backdrop-filter: blur(1.5px);
+}
+.cine-water-wave,
+.ui-water::before {
+  content: '';
+  position: absolute;
+  left: -50%;
+  top: -12px;
+  width: 200%;
+  height: 24px;
+  background: radial-gradient(ellipse 22px 12px at 50% 100%, transparent 70%, rgba(120, 210, 220, 0.6) 72%, rgba(60, 150, 160, 0.45) 80%) 0 0 / 44px 24px repeat-x;
+  animation: cine-wave 2.4s linear infinite;
+}
+@keyframes cine-wave {
+  to {
+    transform: translateX(44px);
+  }
+}
+.cine-bubble {
+  position: absolute;
+  bottom: 6%;
+  border-radius: 50%;
+  border: 1.5px solid rgba(200, 245, 255, 0.7);
+}
+
+/* 빛줄기 */
+.cine-beam {
+  position: absolute;
+  width: 220vmax;
+  height: 30vh;
+  transform-origin: 0 50%;
+  background: linear-gradient(180deg, transparent, rgba(255, 240, 190, 0.25) 30%, rgba(255, 252, 235, 0.85) 50%, rgba(255, 240, 190, 0.25) 70%, transparent);
+  mix-blend-mode: screen;
+  filter: blur(6px);
+}
+.cine-white {
+  background: #fffbe8;
+}
+
+/* 벌레 떼 */
+.cine-bug {
+  position: absolute;
+  color: #1a120a;
+  filter: drop-shadow(0 0 2px rgba(120, 255, 160, 0.55));
+}
+.cine-bug svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* 임팩트 프레임 */
+.cine-invert {
+  background: #fff;
+  mix-blend-mode: difference;
+}
+
+/* 필살기 컷인 */
+.cine-cut {
+  position: absolute;
+  left: -10%;
+  width: 120%;
+  top: 34%;
+  height: 122px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14%;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--cc) 75%, #000) 10%, color-mix(in srgb, var(--cc) 35%, #000) 70%, transparent),
+    repeating-linear-gradient(100deg, rgba(255, 255, 255, 0.07) 0 2px, transparent 2px 26px);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cc) 60%, transparent), 0 0 40px color-mix(in srgb, var(--cc) 50%, transparent);
+  overflow: hidden;
+}
+.cine-cut.player {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+.cine-cut::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 40px, rgba(255, 255, 255, 0.12) 40px 42px);
+  animation: cine-speed 0.25s linear infinite;
+}
+@keyframes cine-speed {
+  to {
+    transform: translateX(-42px);
+  }
+}
+.cine-cut-face {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 3px solid var(--cc);
+  background: #0a0608 center 18% / 170% no-repeat;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 20px var(--cc);
+  position: relative;
+  z-index: 1;
+}
+.cine-cut-text {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.cine-cut-name {
+  font-family: 'Nanum Myeongjo', serif;
+  font-weight: 800;
+  font-size: clamp(26px, 8.4vw, 40px);
+  color: #fff;
+  text-shadow: 0 0 14px var(--cc), 0 3px 0 rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+}
+.cine-cut-sub {
+  font-size: 12px;
+  letter-spacing: 0.4em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* 수호자 등장 */
+.cine-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 13vh;
+  background: #000;
+  z-index: 2;
+}
+.cine-bar.top {
+  top: 0;
+}
+.cine-bar.bottom {
+  bottom: 0;
+}
+.cine-intro {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 22%;
+  padding: 22px 0 18px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  z-index: 3;
+  text-shadow: 0 2px 8px #000;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.62) 22%, rgba(0, 0, 0, 0.62) 78%, transparent);
+}
+.cine-intro-sub {
+  font-size: 13px;
+  font-weight: 700;
+  color: #d9b465;
+  letter-spacing: 0.5em;
+}
+.cine-intro-name {
+  font-family: 'Nanum Myeongjo', serif;
+  font-weight: 800;
+  font-size: clamp(30px, 10vw, 46px);
+  color: #f4ece0;
+  text-shadow: 0 0 18px rgba(255, 60, 60, 0.6), 0 3px 0 #000;
+}
+.cine-intro-name span {
+  display: inline-block;
+  opacity: 0;
+  white-space: pre;
+}
+.cine-intro-line {
+  width: min(70vw, 320px);
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #c0302a, transparent);
+}
+.cine-fall {
+  position: absolute;
+  left: 50%;
+  top: 36%;
+  font-family: 'Nanum Myeongjo', serif;
+  font-weight: 800;
+  font-size: 40px;
+  color: #ffe9a8;
+  text-shadow: 0 0 20px rgba(255, 210, 120, 0.9), 0 3px 0 #000;
+  white-space: nowrap;
+}
+
+/* ───────── 전투 내내 남는 화면 상태 (vars 'ui:*') ───────── */
+.ui-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.ui-water {
+  transition: height 0.9s cubic-bezier(0.3, 0.8, 0.4, 1);
+}
+.ui-dark {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 70% 60% at 50% 40%, transparent 20%, #000 100%);
+  transition: opacity 0.8s;
+}
+.ui-cracks {
+  position: absolute;
+  inset: 0;
+  opacity: 0.85;
+}
+.ui-eye {
+  position: absolute;
+  left: 50%;
+  top: 9%;
+  transform: translateX(-50%);
+  opacity: 0.32;
+  filter: blur(0.5px) drop-shadow(0 0 20px rgba(255, 40, 40, 0.4));
+}
+.screen.combat.tilted {
+  transition: transform 0.8s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.scrambled {
+  font-family: monospace;
+  letter-spacing: 0.04em;
+  color: #c8a0ff !important;
+  text-shadow: 1px 0 rgba(255, 40, 80, 0.6), -1px 0 rgba(40, 255, 200, 0.5);
+}

@@ -1,5 +1,6 @@
 import './styles/main.css';
 import './styles/screens.css';
+import './styles/cinema.css';
 import './content';
 import { render } from 'preact';
 import { App } from './ui/App';
@@ -55,8 +56,8 @@ async function boot() {
   setOnLook(() => store.emit());
   if (import.meta.env.DEV) {
     // 개발용 디버그 핸들 (브라우저 콘솔에서 상태 확인)
-    const [{ store }, actions, textures] = await Promise.all([import('./state/store'), import('./state/actions'), import('./render/textures')]);
-    (window as unknown as { __game: unknown }).__game = { store, actions, stage, textures };
+    const [{ store }, actions, textures, cinema, bot] = await Promise.all([import('./state/store'), import('./state/actions'), import('./render/textures'), import('./ui/cinema'), import('./sim/bot')]);
+    (window as unknown as { __game: unknown }).__game = { store, actions, stage, textures, cinema, bot };
   }
   try {
     await stage.init(document.getElementById('stage')!);

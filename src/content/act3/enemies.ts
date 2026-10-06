@@ -1,9 +1,46 @@
 import { reg } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
-import type { EnemyUnit } from '../../engine/types';
+import type { EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, release } from '../moves';
+import { cine, setUi } from '../lib';
 import { absorbBlobs, frost, hid, isIllusion, returnSkill, seizeSkill, stealInsight, swapRows, veiledHorror } from './common';
+import {
+  ALOFT,
+  ANGLE,
+  BLADE_DMG,
+  BLADE_N,
+  BLADES,
+  closeAngles,
+  closeIncisions,
+  CUT_DMG,
+  DIM_UNVEIL,
+  EGG_POISON,
+  EGG_TURNS,
+  EGGS,
+  ESCAPE_DMG,
+  FALL_DMG,
+  HATCH_N,
+  implantEggs,
+  incise,
+  INCISE_N,
+  LOOK_SAN,
+  liftUp,
+  MAX_ANGLES,
+  MIMIC_SCREAM,
+  openAngle,
+  PLASTER,
+  reveal,
+  REVEAL_TURNS,
+  REVEALED,
+  startListening,
+  STOP_TURNS,
+  stopTime,
+  syncTilt,
+  throwBack,
+  veilAgain,
+  vivisectDmg,
+} from './patterns';
 
 /*
  * 3층 적 — 얼어붙은 고대 도시.
@@ -20,6 +57,18 @@ function loyalThrall(c: Combat): EnemyUnit | undefined {
 /** 반란을 일으킨 쇼고스 노예 */
 function rebelThrall(c: Combat): EnemyUnit | undefined {
   return c.alive.find((x) => x.def === 'shoggoth-thrall' && x.mem.rebel);
+}
+
+/** 피리 소리가 끊겼다: 노예가 옛 반란을 기억해 낸다 (전투마다 한 번) */
+function incite(c: Combat, master: EnemyUnit) {
+  if (master.mem.revolt) return;
+  const t = loyalThrall(c);
+  if (!t) return;
+  master.mem.revolt = 1;
+  t.mem.rebel = 1;
+  cine(c, 'scrawl', { text: '테켈리-리!' });
+  c.emit({ t: 'text', uid: t.uid, text: '테켈리-리! 노예가 주인에게 등을 돌렸다', tone: 'eldritch' });
+  if (t.broken !== 2 && c.s.phase === 'player') c.planIntent(t);
 }
 
 /** 해부학자가 떼어 갈 수 있는 이로운 효과 */
@@ -82,6 +131,29 @@ reg.traits([
     },
   },
   {
+    id: 'a3-angle-lord',
+    name: '각도의 주인',
+    desc: `「유리를 긋는다」로 화면에 날카로운 각을 연다 (최대 ${MAX_ANGLES}) — 열린 각은 당신의 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메우고, 붕괴시키면 모두 닫힌다. 후열로 숨으면 각도가 비틀려 화면이 기운다`,
+    hooks: {
+      onCombatStart(c) {
+        cine(c, 'whisper', { text: '당신의 화면은 모서리가 둥글다.\n그래서 아직 들어오지 못했다.' });
+      },
+      onUnitTurnStart(c) {
+        syncTilt(c);
+      },
+      onUnitTurnEnd(c) {
+        syncTilt(c);
+      },
+      onDamageTaken(c) {
+        syncTilt(c);
+      },
+      onDeath(c) {
+        closeAngles(c, '열린 각이 모두 닫혔다');
+        setUi(c, 'ui:tilt', 0);
+      },
+    },
+  },
+  {
     id: 'a3-split',
     name: '분열',
     desc: '처음 쓰러지면 원형질 조각 둘로 갈라진다',
@@ -109,9 +181,22 @@ reg.traits([
         while ((e.mem.shed ?? 0) < lvl) {
           e.mem.shed = (e.mem.shed ?? 0) + 1;
           c.emit({ t: 'text', uid: e.uid, text: '원형질이 떨어져 나와 꿈틀거린다', tone: 'eldritch' });
+          // 절반이 무너지면 화면 안쪽에서 원형질이 유리를 짚고, 마지막엔 유리에 그 울음을 적는다
+          if (e.mem.shed === 2) cine(c, 'handprints', { n: 4 });
+          if (e.mem.shed === 3) cine(c, 'scrawl', { text: '테켈리-리' });
           c.spawn('shoggoth-blob', 0);
           c.spawn('shoggoth-blob', 0);
         }
+      },
+    },
+  },
+  {
+    id: 'a3-mimicry',
+    name: '흉내',
+    desc: '당신이 쓰는 기술을 듣고 있다 — 「흉내」는 이번 턴 당신이 마지막으로 쓴 기술을 따라 한다. 피해를 준 기술이면 그 피해의 절반을 같은 속성으로 되돌려 주고, 방어도만 얻은 기술이면 그만큼 방어도를 얻는다',
+    hooks: {
+      onCombatStart(c) {
+        startListening(c);
       },
     },
   },
@@ -138,7 +223,7 @@ reg.traits([
   {
     id: 'a3-burrower',
     name: '땅굴 벌레',
-    desc: '얼음 밑으로 파고들면 회피 2를 얻는다. 얼음 밑에서 일으키는 땅울림은 읽을 수 없다 (솟구치기 전의 준비는 보인다)',
+    desc: '얼음 밑으로 파고들면 회피 2를 얻는다. 얼음 밑에서는 의도를 속인다 — 땅울림은 읽을 수 없고, 웅크린 척(방어)하다가 아가리를 벌리기도 한다 (통찰 5 이상이면 보인다). 솟구치기 전의 준비는 보인다',
     hooks: {},
   },
   // ── 얼어붙은 고대 도시의 새 특성 ──
@@ -219,30 +304,49 @@ reg.traits([
   {
     id: 'a3-fear-eater',
     name: '공포를 먹는 것',
-    desc: '이것 때문에 잃은 정신력만큼 체력을 회복한다',
+    desc: '이것의 정신 공격으로 잃은 정신력만큼 체력을 회복한다',
     hooks: {},
+  },
+  {
+    id: 'a3-sight',
+    name: '보는 것과 보지 않는 것',
+    desc: `「봉우리 너머가 드러난다」를 붕괴로 끊지 못하면 그것을 보게 된다. 그 뒤 당신의 턴 ${REVEAL_TURNS}번 동안 형체가 드러나 받는 피해 +50% — 대신 그것을 공격하는 기술마다 정신 피해 ${LOOK_SAN}. 보지 않으려면 공격하지 않으면 된다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        // 증기가 걷히던 중에 붕괴하면 다시 가려진다 (어두워진 화면도 돌아온다)
+        if (isEnemy(e) && d.broke && !((e.st[REVEALED] ?? 0) > 0)) {
+          if (c.s.vars['ui:dark']) c.emit({ t: 'text', uid: e.uid, text: '다시 증기에 가려진다', tone: 'good' });
+          veilAgain(c, e);
+        }
+      },
+      onDeath(c) {
+        setUi(c, 'ui:eye', 0);
+        setUi(c, 'ui:dark', 0);
+      },
+    },
   },
   {
     id: 'a3-old-master',
     name: '옛 주인',
-    desc: '체력이 절반 아래로 떨어지면 쇼고스 노예가 옛 반란을 기억해 낸다 — 그 뒤로 노예는 주인을 공격한다',
+    desc: '체력이 절반 아래로 떨어지거나 붕괴하면(피리 소리가 끊긴다) 쇼고스 노예가 옛 반란을 기억해 낸다 — 그 뒤로 노예는 주인을 공격한다',
     hooks: {
-      onDamageTaken(c, s) {
+      onDamageTaken(c, s, d) {
         const e = s.unit;
-        if (!isEnemy(e) || e.hp <= 0 || e.mem.revolt || hpPct(e) > 0.5) return;
-        const t = loyalThrall(c);
-        if (!t) return;
-        e.mem.revolt = 1;
-        t.mem.rebel = 1;
-        c.emit({ t: 'text', uid: t.uid, text: '테켈리-리! 노예가 주인에게 등을 돌렸다', tone: 'eldritch' });
-        if (t.broken !== 2 && c.s.phase === 'player') c.planIntent(t);
+        if (!isEnemy(e) || e.hp <= 0 || (hpPct(e) > 0.5 && !d.broke)) return;
+        incite(c, e);
+      },
+      onUnitTurnStart(c, s) {
+        // 피해 없이 무너졌을 때도 (버팀 깎기)
+        const e = s.unit;
+        if (isEnemy(e) && e.broken === 2) incite(c, e);
       },
     },
   },
   {
     id: 'a3-rebellion',
     name: '반란의 기억',
-    desc: '주인의 체력이 절반 아래로 떨어지면 반란을 일으켜 주인을 공격한다. 주인이 쓰러지면 어둠 속으로 흘러가 버린다',
+    desc: '주인의 체력이 절반 아래로 떨어지거나 주인이 붕괴하면 반란을 일으켜 주인을 공격한다. 주인이 쓰러지면 어둠 속으로 흘러가 버린다',
     hooks: {
       onAnyDeath(c, s, victim) {
         const e = s.unit;
@@ -285,6 +389,22 @@ reg.traits([
 
 const corrode = (c: Combat, e: EnemyUnit, cap = 3) => {
   if ((c.p.st.corrode ?? 0) < cap) c.apply(c.p, 'corrode', 1, e);
+};
+
+/** 프나스의 돌의 분출: 얼음이 깨지듯 화면 유리에 금이 간다 */
+const eruptHit = mv.attack('분출', 34, {
+  melee: false,
+  then: (_c, e) => {
+    e.mem.under = 0;
+  },
+});
+const eruption: MoveDef = {
+  ...eruptHit,
+  ultimate: true,
+  run(c, e) {
+    cine(c, 'crack', { n: 3, uid: e.uid });
+    eruptHit.run(c, e);
+  },
 };
 
 // ───────────── 일반 적 ─────────────
@@ -799,13 +919,20 @@ reg.enemies([
         },
         '새끼 거미 2마리',
       ),
+      implant: mv.attack('알 심기', 8, {
+        type: 'pierce',
+        extra: ['debuff'],
+        then: (c, e) => implantEggs(c, e),
+        desc: `산란관을 꽂아 알을 심는다 — 내 턴이 ${EGG_TURNS}번 끝나면 부화해 새끼 거미 ${HATCH_N}마리가 살을 찢고 나온다. 회복하거나 불로 지지면 알이 죽는다 (이미 알이 있으면 대신 독 ${EGG_POISON})`,
+      }),
       crouch: mv.charge('도약 준비', 32),
-      leap: release(mv.attack('짓누르는 도약', 32)),
+      leap: release(mv.attack('짓누르는 도약', 32, { ultimate: true, cine: 'impact' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'leap';
-      const m = cycle(e, ['spray', 'fangs', 'cocoon', 'fangs', 'brood', 'crouch']);
+      const m = cycle(e, ['spray', 'implant', 'cocoon', 'fangs', 'brood', 'crouch']);
       if (m === 'brood' && (countDef(c, 'leng-spiderling') >= 3 || (e.mem.brood ?? 0) >= 6)) return 'fangs';
+      if (m === 'implant' && (c.p.st[EGGS] ?? 0) > 0) return 'fangs';
       return m;
     },
     visual: { tint: 0x40204a, glow: 0xd060ff, scale: 1.35 },
@@ -848,11 +975,19 @@ reg.enemies([
         }),
         desc: '회피 1, 방어도 10. 다음 턴 급강하',
       },
-      dive: release(mv.attack('급강하', 34, { melee: false })),
+      dive: release(mv.attack('급강하', 34, { melee: false, ultimate: true, cine: 'impact' })),
+      carry: mv.attack('하늘로 채어 간다', 10, {
+        type: 'slash',
+        extra: ['debuff'],
+        cine: 'flip',
+        then: (c, e) => liftUp(c, e),
+        desc: `움켜쥐고 하늘 높이 날아오른다 — 다음 턴 샨탁에게 피해를 ${ESCAPE_DMG} 주면 발톱에서 빠져나오고, 아니면 턴이 끝날 때 떨어진다 (피해 ${FALL_DMG}, 다음 턴 행동력 -1)`,
+      }),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'dive';
-      return cycle(e, ['peck', 'buffet', 'snatch', 'screech', 'soar']);
+      const m = cycle(e, ['peck', 'carry', 'buffet', 'screech', 'snatch', 'soar']);
+      return m === 'carry' && (c.p.st[ALOFT] ?? 0) > 0 ? 'peck' : m;
     },
     visual: { tint: 0x3a4038, glow: 0x90ffb0, scale: 1.35, fx: ['float'] },
   },
@@ -892,8 +1027,27 @@ reg.enemies([
         { desc: '약화 2, 허약 2' },
       ),
       suture: { ...mv.heal('스스로 꿰매기', 22), desc: '체력 22 회복' },
-      table: mv.charge('해부대를 펼친다', 34),
-      vivisect: release(mv.attack('생체 해부', 34, { then: (c, e) => void c.apply(c.p, 'bleed', 4, e), desc: '출혈 4' })),
+      incise: mv.attack('절개선 긋기', 6, {
+        melee: false,
+        type: 'slash',
+        extra: ['debuff'],
+        then: (c, e) => incise(c, e),
+        desc: `메스 끝으로 절개선 ${INCISE_N}개를 긋는다 — 「생체 해부」가 절개선마다 ${CUT_DMG} 피해를 더 준다. 체력을 회복하면 아문다`,
+      }),
+      // 피해 = 기본 + 절개선마다 CUT_DMG (의도에 그대로 보인다)
+      table: { ...mv.charge('해부대를 펼친다', 0), dmg: (c: Combat) => vivisectDmg(c), desc: `다음 턴 생체 해부 — 그어 둔 절개선마다 피해 +${CUT_DMG}` },
+      vivisect: release({
+        ...mv.attack('생체 해부', 0, {
+          ultimate: true,
+          cine: 'impact',
+          then: (c, e) => {
+            c.apply(c.p, 'bleed', 4, e);
+            closeIncisions(c, '절개선이 모두 벌어졌다');
+          },
+          desc: `출혈 4. 절개선마다 피해 +${CUT_DMG} (그은 절개선은 모두 벌어져 사라진다)`,
+        }),
+        dmg: (c: Combat) => vivisectDmg(c),
+      }),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'vivisect';
@@ -903,7 +1057,7 @@ reg.enemies([
         e.mem.sutured = 1;
         return 'suture';
       }
-      return cycle(e, ['scalpels', 'extract', 'scalpels', 'table']);
+      return cycle(e, ['scalpels', 'incise', 'extract', 'scalpels', 'table']);
     },
     visual: { tint: 0x4a5a48, glow: 0xc0ffb0, scale: 1.35, fx: ['float'] },
   },
@@ -923,7 +1077,7 @@ reg.enemies([
     dread: 7,
     eldritch: true,
     tags: ['shoggoth'],
-    traits: ['a3-protoplasm', 'a3-regrow'],
+    traits: ['a3-protoplasm', 'a3-regrow', 'a3-mimicry'],
     desc: '고대인들이 부리던 원형질의 노예. 주인들의 피리 소리를 흉내 내며, 무엇이든 될 수 있고 무엇이든 삼킨다. 아주 오래전, 주인들에게 반란을 일으켰다.',
     moves: {
       pseudopods: mv.attack('위족 난타', 5, { hits: 4 }),
@@ -942,14 +1096,20 @@ reg.enemies([
         desc: '원형질 조각을 모두 삼켜 조각마다 체력 12 회복, 힘 +1 (조각이 없으면 방어도 8)',
         run: (c, e) => absorbBlobs(c, e, 12, 6),
       },
+      copy: {
+        name: '흉내',
+        intent: 'special',
+        desc: `이번 턴 당신이 마지막으로 쓴 기술을 흉내 낸다 — 피해를 준 기술이면 그 피해의 절반을 같은 속성으로 되돌려 주고(방어도가 먼저 막는다), 방어도만 얻은 기술이면 그만큼 방어도를 얻는다. 둘 다 아니거나 기술을 쓰지 않았다면 테켈리-리 — 정신 피해 ${MIMIC_SCREAM}`,
+        run: (c, e) => throwBack(c, e),
+      },
       surge: mv.charge('원형질이 부풀어 오른다', 36),
-      tide: release(mv.attack('원형질 해일', 36)),
+      tide: release(mv.attack('원형질 해일', 36, { ultimate: true, cine: 'ink' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'tide';
       const blobs = countDef(c, 'shoggoth-blob');
       if (blobs >= 2 && last(e) !== 'absorb') return 'absorb';
-      return cycle(e, ['pseudopods', 'eyes', 'crush', 'mimic', 'surge']);
+      return cycle(e, ['copy', 'pseudopods', 'eyes', 'crush', 'copy', 'mimic', 'surge']);
     },
     visual: { tint: 0x10261a, glow: 0x50ff90, scale: 1.55, fx: ['drip'] },
   },
@@ -966,42 +1126,60 @@ reg.enemies([
     dread: 7,
     eldritch: true,
     tags: ['angle'],
-    traits: ['a3-angles'],
-    desc: '모든 각도의 주인. 시간이 굽어지기 전부터 굶주려 왔고, 오각형 탑의 모서리마다 새끼를 풀어 둔다.',
+    traits: ['a3-angles', 'a3-angle-lord'],
+    desc: '모든 각도의 주인. 시간이 굽어지기 전부터 굶주려 왔고, 오각형 탑의 모서리마다 새끼를 풀어 둔다. 둥근 것은 지나지 못한다 — 날카로운 각이 있어야 들어온다.',
     moves: {
       fang: mv.attack('시간의 송곳니', 16, { type: 'slash', then: (c, e) => corrode(c, e, 2), desc: '부식 1 (최대 2)' }),
-      whelp: mv.summon(
-        '모서리의 새끼들',
-        (c, e) => {
-          e.mem.whelps = (e.mem.whelps ?? 0) + 2;
-          c.spawn('angle-whelp', 0);
-          c.spawn('angle-whelp', 0);
-        },
-        '모서리의 새끼 2마리 소환',
-      ),
+      whelp: {
+        ...mv.summon(
+          '모서리의 새끼들',
+          (c, e) => {
+            e.mem.whelps = (e.mem.whelps ?? 0) + 2;
+            c.spawn('angle-whelp', 0);
+            c.spawn('angle-whelp', 0);
+          },
+          '모서리의 새끼 2마리 소환',
+        ),
+        cine: 'corners',
+      },
       twist: {
         name: '각도 비틀기',
         intent: 'special',
         desc: '적의 전열과 후열을 뒤바꾼다. 방어도 12, 상대에게 약화 1',
         run(c, e) {
           swapRows(c);
+          syncTilt(c);
           c.gainBlock(e, 12);
           c.apply(c.p, 'weak', 1, e);
         },
       },
+      carve: {
+        name: '유리를 긋는다',
+        intent: 'debuff',
+        desc: `화면에 날카로운 각 하나를 연다 (최대 ${MAX_ANGLES}) — 열린 각은 당신의 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메운다`,
+        run: (c, e) => void openAngle(c, e),
+      },
       gnaw: mv.attack('시간 갉아먹기', 8, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'a3-timeworn', 1, e), desc: '다음 턴 행동력 -1' }),
       howl: mv.horror('시간 너머의 울부짖음', 11),
       corners: mv.charge('무한한 모서리', 12, { hits: 3 }),
-      rend: release(mv.attack('모든 각도에서', 12, { hits: 3, melee: false, type: 'slash' })),
+      rend: release(mv.attack('모든 각도에서', 12, { hits: 3, melee: false, type: 'slash', ultimate: true, cine: 'shatter' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'rend';
       const canWhelp = countDef(c, 'angle-whelp') === 0 && (e.mem.whelps ?? 0) < 4 && last(e) !== 'whelp';
       const recentRend = e.hist.slice(-3).includes('rend');
-      if (e.row === 1) return pick(c, e, { gnaw: 3, howl: 2, whelp: canWhelp ? 3 : 0, twist: 2, corners: recentRend ? 0 : 1 });
+      const canCarve = (c.p.st[ANGLE] ?? 0) < MAX_ANGLES && !e.hist.slice(-2).includes('carve');
+      if (e.row === 1) return pick(c, e, { gnaw: 3, howl: 2, whelp: canWhelp ? 3 : 0, twist: 2, corners: recentRend ? 0 : 1, carve: canCarve ? 2 : 0 });
       return (
-        opener(c, e, ['howl']) ??
-        pick(c, e, { fang: 3, gnaw: last(e) === 'gnaw' ? 0 : 2, twist: c.row(1).length ? 2 : 0, whelp: canWhelp ? 2 : 0, corners: recentRend ? 0 : 1 })
+        opener(c, e, ['howl', 'carve']) ??
+        pick(c, e, {
+          fang: 3,
+          gnaw: last(e) === 'gnaw' ? 0 : 2,
+          twist: c.row(1).length ? 2 : 0,
+          whelp: canWhelp ? 2 : 0,
+          corners: recentRend ? 0 : 1,
+          carve: canCarve ? 2 : 0,
+        })
       );
     },
     visual: { tint: 0x182040, glow: 0x3090ff, scale: 1.45, fx: ['flicker'] },
@@ -1039,7 +1217,7 @@ reg.enemies([
     dread: 9,
     eldritch: true,
     tags: ['beyond'],
-    traits: ['a3-veil', 'a3-fear-eater'],
+    traits: ['a3-veil', 'a3-fear-eater', 'a3-sight'],
     desc: '이 도시를 굽어보는 산맥보다 더 높은 봉우리들 너머, 보랏빛 증기 속에서 모양을 바꾸는 것. 그것을 똑바로 본 탐사대원은 남은 평생 같은 말만 되뇌었다.',
     moves: {
       peaks: mv.attack('끝없는 봉우리', 7, { hits: 3, melee: false, type: 'arcane' }),
@@ -1072,22 +1250,33 @@ reg.enemies([
         intent: 'charge',
         charging: true,
         sanity: 34,
-        desc: '다음 턴 그것의 모습이 드러난다 — 정신 피해 34 (방어도가 먼저 막는다). 붕괴시키면 다시 증기에 가려진다',
+        desc: `다음 턴 그것의 모습이 드러난다 — 정신 피해 34 (방어도가 먼저 막는다). 그 뒤 당신의 턴 ${REVEAL_TURNS}번 동안 형체가 드러난다. 붕괴시키면 다시 증기에 가려진다`,
         run(c, e) {
           e.mem.charge = 1;
           c.emit({ t: 'text', uid: e.uid, text: '증기가 걷히기 시작한다…', tone: 'eldritch' });
+          // 처음 한 번은 화면 너머의 당신에게 경고한다
+          if (!e.mem.warned) {
+            e.mem.warned = 1;
+            cine(c, 'sysmsg', { text: '화면 밝기를 낮추십시오.' });
+          }
+          setUi(c, 'ui:dark', DIM_UNVEIL);
         },
       },
       truth: release({
         ...mv.horror('그것을 보았다', 34),
-        desc: '정신 피해 34 — 방어도가 먼저 막아 낸다',
+        ultimate: true,
+        cine: 'eye',
+        desc: `정신 피해 34 — 방어도가 먼저 막아 낸다. 그 뒤 당신의 턴 ${REVEAL_TURNS}번 동안 형체가 드러난다: 받는 피해 +50%, 대신 그것을 공격하는 기술마다 정신 피해 ${LOOK_SAN}`,
         run(c, e) {
           veiledHorror(c, e, 34, true);
+          if (!c.over && !e.dead) reveal(c, e);
         },
       }),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'truth';
+      // 드러나 있는 동안에는 증기 뒤로 숨지 않는다
+      if ((e.st[REVEALED] ?? 0) > 0) return pick(c, e, { peaks: 3, gaze: 2, thin: 1 });
       return opener(c, e, ['scream']) ?? cycle(e, ['peaks', 'gaze', 'mist', 'thin', 'peaks', 'unveil']);
     },
     visual: { tint: 0x3a3050, glow: 0xc090ff, scale: 1.55, fx: ['float', 'flicker'] },
@@ -1131,7 +1320,28 @@ reg.enemies([
         },
         '원형질 조각 둘을 빚어낸다',
       ),
-      memory: mv.horror('수억 년의 기억', 12, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      memory: mv.horror('수억 년의 기억', 12, {
+        then: (c, e) => {
+          c.apply(c.p, 'dread', 1, e);
+          // 처음 기억을 쏟아낼 때 한 번, 화면 너머의 당신에게
+          if (!e.mem.spoke) {
+            e.mem.spoke = 1;
+            cine(c, 'whisper', { text: '우리가 너희를 빚었다.\n실수로.' });
+          }
+        },
+        desc: '정신 피해, 공포 1',
+      }),
+      stillness: {
+        name: '멈춘 시간',
+        intent: 'special',
+        ultimate: true,
+        cine: 'timestop',
+        desc: `시간을 멈춘다 — 촉수 끝 칼날 ${BLADE_N}개가 당신을 겨눈 채 멈춘다. 원로를 때리는 기술을 쓸 때마다 하나씩 쳐낼 수 있고, 내 턴이 끝나면 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다)`,
+        run(c, e) {
+          if ((c.p.st[BLADES] ?? 0) > 0) return;
+          if (c.apply(c.p, BLADES, BLADE_N, e) > 0) c.emit({ t: 'text', uid: 'p', text: '칼날들이 허공에 멈췄다', tone: 'eldritch' });
+        },
+      },
       dissect: mv.attack('해부의 손길', 9, {
         type: 'slash',
         then: (c, e) => {
@@ -1152,14 +1362,14 @@ reg.enemies([
         },
       },
       spread: mv.charge('막날개를 펼친다', 38),
-      starfall: release(mv.attack('별을 건너온 날개', 38, { melee: false })),
+      starfall: release(mv.attack('별을 건너온 날개', 38, { melee: false, ultimate: true, cine: 'beam' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'starfall';
       const o = opener(c, e, ['memory']);
       if (o) return o;
       if (rebelThrall(c) && last(e) !== 'quell' && c.rng.chance(0.5)) return 'quell';
-      let m = cycle(e, ['tentacles', 'pipe', 'dissect', 'spread', 'tentacles', 'memory']);
+      let m = cycle(e, ['tentacles', 'pipe', 'stillness', 'dissect', 'spread', 'tentacles', 'memory']);
       if (m === 'pipe' && !loyalThrall(c)) m = (e.mem.molds ?? 0) < 2 && countDef(c, 'shoggoth-blob') === 0 ? 'mold' : 'dissect';
       return m;
     },
@@ -1197,19 +1407,27 @@ reg.enemies([
         },
       },
       tremor: hid(mv.attack('땅울림', 5, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' })),
-      rise: mv.charge('얼음이 부풀어 오른다', 34),
-      erupt: release(
-        mv.attack('분출', 34, {
+      // 속임수: 통찰 5 미만이면 「얼음 밑에서 웅크린다」(방어)로 보인다
+      maw: {
+        ...mv.attack('얼음 밑의 아가리', 15, {
           melee: false,
-          then: (_c, e) => {
-            e.mem.under = 0;
-          },
+          type: 'pierce',
+          then: (c, e) => void c.apply(c.p, 'weak', 1, e),
+          desc: '웅크린 척하다가 발밑의 얼음을 깨고 아가리를 벌린다. 약화 1 (통찰 5 미만이면 의도가 「얼음 밑에서 웅크린다」로 보인다)',
         }),
-      ),
+        disguise: { kind: 'block', label: '얼음 밑에서 웅크린다' },
+      },
+      rise: mv.charge('얼음이 부풀어 오른다', 34),
+      erupt: release(eruption),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'erupt';
-      if (e.mem.under) return last(e) === 'tremor' ? 'rise' : 'tremor';
+      if (e.mem.under) {
+        const l = last(e);
+        if (l === 'tremor' || l === 'maw') return 'rise';
+        // 얼음 밑에서 무엇을 할지는 보이지 않는다 — 땅울림(읽을 수 없음) 또는 웅크린 척하는 아가리
+        return c.rng.chance(0.5) ? 'maw' : 'tremor';
+      }
       return cycle(e, ['slime', 'engulf', 'grind', 'burrow']);
     },
     visual: { tint: 0x5a5040, glow: 0xa0ff60, scale: 1.4, fx: ['drip'] },
@@ -1243,14 +1461,26 @@ reg.enemies([
         },
         '얼어붙은 대원 둘을 부른다',
       ),
+      stop: {
+        name: '시계를 멈춘다',
+        intent: 'special',
+        cine: 'timestop',
+        desc: `시간을 멈춘다 — 적의 공격 피해가 들어오지 않고 쌓였다가, 내 턴이 ${STOP_TURNS}번 끝나면 한꺼번에 터진다 (방어도가 먼저 막는다). 그 전에 탐사대장을 붕괴시키면 멈춘 시계가 부서져 쌓인 상처가 사라진다`,
+        run(c, e) {
+          if (!stopTime(c, e) || e.mem.told) return;
+          // 처음 멈출 때 한 번: 그의 손목시계는 화면 너머 당신의 시각에 멈춰 있다
+          e.mem.told = 1;
+          cine(c, 'whisper', { text: '손목시계의 바늘은\n{time}에 멈춰 있다.' });
+        },
+      },
       wind: mv.charge('멈춘 시계가 움직인다', 36),
-      moment: release(mv.attack('되돌아온 순간', 36, { type: 'slash' })),
+      moment: release(mv.attack('되돌아온 순간', 36, { type: 'slash', ultimate: true, cine: 'impact' })),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'moment';
       const o = opener(c, e, ['muster']);
       if (o) return o;
-      let m = cycle(e, ['axe', 'journal', 'flare', 'axe', 'wind']);
+      let m = cycle(e, ['axe', 'stop', 'flare', 'axe', 'journal', 'wind']);
       if (m === 'flare' && countDef(c, 'frozen-crewman') === 0 && (e.mem.musters ?? 0) < 2) m = 'muster';
       return m;
     },

@@ -1,5 +1,5 @@
 import { Combat } from '../engine/combat';
-import { EQUIPS, ENCOUNTERS, MADNESS, RELICS, SKILLS } from '../engine/registry';
+import { EQUIPS, ENCOUNTERS, ESSENCES, MADNESS, RELICS, SKILLS } from '../engine/registry';
 import {
   absorbBlock,
   bottleEssence,
@@ -150,27 +150,35 @@ function inscribeAll(run: RunState) {
   for (let i = (run.flasks?.length ?? 0) - 1; i >= 0; i--) {
     const drop = run.flasks![i];
     if (run.player.gold < inscribeCost(drop) * 2) continue;
-    inscribeFlask(run, i, botEssence.mode !== 'skill');
+    inscribeFlask(run, i, pickFor(run, drop));
   }
 }
 
-/** 정수 흡수 방식: 'skill' 항상 기술 / 'core' 항상 본질 / 'auto' 빈 슬롯이 있으면 기술, 없으면 본질 */
+/**
+ * 수호자 정수와 함께 배울 기술: 'skill' 항상 고른다 / 'core' 고르지 않는다 / 'auto' 빈 슬롯이 있으면 고른다.
+ * 고를 땐 겹치지 않는 첫 기술 (보통 정수는 기술이 없다)
+ */
 export const botEssence: { mode: 'skill' | 'core' | 'auto' } = { mode: 'auto' };
+
+function pickFor(run: RunState, drop: { id: string; color: number; guardian?: boolean }): string | null {
+  if (!drop.guardian || botEssence.mode === 'core') return null;
+  if (botEssence.mode === 'auto' && !run.slots.includes(null)) return null;
+  const def = ESSENCES.get(drop.id);
+  return def?.actives.find((a) => !absorbBlock(run, drop, a)) ?? null;
+}
 
 function handleReward(run: RunState) {
   const rw = run.reward!;
   for (const it of rw.items) {
     if (it.kind === 'essence') {
       const drop = { id: it.id, color: it.color ?? 0, guardian: it.guardian };
-      const skillOk = !absorbBlock(run, drop);
-      const coreOk = !absorbBlock(run, drop, true);
-      const core = botEssence.mode === 'core' ? true : botEssence.mode === 'skill' ? false : !skillOk || !run.slots.includes(null);
+      const pick = pickFor(run, drop);
       // 흡수 한도가 차 있으면 병에 담아 두었다가 신전에서 새긴다
-      if (core ? !coreOk : !skillOk) {
+      if (absorbBlock(run, drop, pick)) {
         bottleEssence(run, it);
         continue;
       }
-      takeLoot(run, it, core);
+      takeLoot(run, it, pick);
       continue;
     }
     takeLoot(run, it);

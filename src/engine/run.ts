@@ -367,17 +367,32 @@ export function essenceStats(id: string, guardian = false, core = false): Essenc
 }
 
 /** 이 정수가 주는(줄) 기술. 본질로 흡수했으면 없다 */
-export function essenceActives(drop: { id: string; color: number; guardian?: boolean; core?: boolean }): string[] {
+export function essenceActives(drop: { id: string; color: number; guardian?: boolean; core?: boolean; skill?: string }): string[] {
   const def = ESSENCES.get(drop.id);
-  if (!def || drop.core) return [];
+  if (!def) return [];
+  if (drop.core) return drop.skill ? [drop.skill] : [];
   return drop.guardian ? def.actives : [def.actives[drop.color]];
 }
 
+/**
+ * 정수 흡수 방식. 보통 정수는 언제나 본질(능력치·패시브·최대 체력).
+ * 수호자 정수도 본질 전부에 더해 그 존재의 기술 하나를 고를 수 있다 (pick: 기술 id, null이면 기술 없이).
+ * pick을 아예 주지 않으면(undefined) 예전 방식 — 기술을 모두 배우고 체력 보너스는 없음 (테스트·내부용)
+ */
+export type EssencePick = string | null | undefined;
+
+function absorbShape(drop: EssenceDrop, pick: EssencePick): { core: boolean; skill?: string } {
+  if (!drop.guardian) return { core: true };
+  if (pick === undefined) return { core: false };
+  return pick ? { core: true, skill: pick } : { core: true };
+}
+
 /** 흡수 불가 사유 */
-export function absorbBlock(run: RunState, drop: EssenceDrop, core = false): string | null {
-  if (!drop.guardian) core = true;
+export function absorbBlock(run: RunState, drop: EssenceDrop, pick?: EssencePick): string | null {
   const def = ESSENCES.get(drop.id);
   if (!def) return '알 수 없는 정수';
+  if (pick && !def.actives.includes(pick)) return '이 정수에는 그런 기술이 없다';
+  const shape = absorbShape(drop, pick);
   const same = run.essences.find((e) => e.id === drop.id);
   if (same) {
     if (drop.guardian && !same.guardian) return null; // 수호자 정수로 승급
@@ -386,7 +401,7 @@ export function absorbBlock(run: RunState, drop: EssenceDrop, core = false): str
   // 계층정수는 판당 하나뿐 (지울 수도 없다)
   if (def.lord && run.essences.some((e) => ESSENCES.get(e.id)?.lord)) return '계층정수는 판당 하나뿐이다';
   // 기술이 겹치면 안 된다 (본질로 흡수한 정수는 기술이 없으니 상관없다)
-  const actives = essenceActives({ ...drop, core });
+  const actives = essenceActives({ ...drop, ...shape });
   for (const e of run.essences) {
     if (essenceActives(e).some((a) => actives.includes(a))) return '같은 능력을 주는 정수가 있다';
   }
@@ -414,10 +429,10 @@ function applyStats(run: RunState, st: EssenceStats, sign: 1 | -1) {
  * core=true: 본질로 흡수 — 기술을 배우지 않고 최대 체력을 더 받는다 (coreHp).
  * 보통 정수는 언제나 본질로 흡수한다. 기술을 배울지는 수호자 정수(그 존재의 기술 전부)만 고른다.
  */
-export function absorbEssence(run: RunState, drop: EssenceDrop, core = false): string | null {
-  if (!drop.guardian) core = true;
-  const why = absorbBlock(run, drop, core);
+export function absorbEssence(run: RunState, drop: EssenceDrop, pick?: EssencePick): string | null {
+  const why = absorbBlock(run, drop, pick);
   if (why) return why;
+  const { core, skill } = absorbShape(drop, pick);
   const def = need(ESSENCES, drop.id, '정수');
   const same = run.essences.find((e) => e.id === drop.id);
   // 수호자판으로 바꿔 흡수할 때 이미 강화해 둔 정수 스킬은 강화 단계를 이어받는다
@@ -425,6 +440,7 @@ export function absorbEssence(run: RunState, drop: EssenceDrop, core = false): s
   if (same) removeEssence(run, same.uid, true);
   const es: OwnedEssence = { uid: uid(run), id: drop.id, color: drop.color, guardian: drop.guardian };
   if (core) es.core = true;
+  if (skill) es.skill = skill;
   run.essences.push(es);
   applyStats(run, essenceStats(drop.id, drop.guardian, core), 1);
   // 같은 정수를 수호자판으로 바꿔 흡수할 때는 이계의 대가(최대 정신력 -5, 통찰 +1)를 다시 치르지 않는다
@@ -438,7 +454,7 @@ export function absorbEssence(run: RunState, drop: EssenceDrop, core = false): s
     if (s && keepLvl.has(a)) s.lvl = keepLvl.get(a)!;
   }
   run.stats.essences++;
-  log(run, `${def.name}을(를) ${core ? '본질로 ' : ''}흡수했다`);
+  log(run, `${def.name}을(를) 흡수했다${skill ? ` (기술: ${SKILLS.get(skill)?.name ?? skill})` : ''}`);
   return null;
 }
 
@@ -881,12 +897,12 @@ export function finishCombat(run: RunState): RewardState | null {
 }
 
 /** 보상 개별 수령 */
-/** core: 정수를 본질로 흡수 (기술 대신 능력치) */
-export function takeLoot(run: RunState, item: LootItem, core = false): string | null {
+/** pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) */
+export function takeLoot(run: RunState, item: LootItem, pick: string | null = null): string | null {
   if (item.taken) return '이미 가져갔다';
   switch (item.kind) {
     case 'essence': {
-      const why = absorbEssence(run, { id: item.id, color: item.color ?? 0, guardian: item.guardian }, core);
+      const why = absorbEssence(run, { id: item.id, color: item.color ?? 0, guardian: item.guardian }, pick);
       if (why) return why;
       break;
     }

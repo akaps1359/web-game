@@ -1,7 +1,78 @@
 import { reg } from '../../engine/registry';
-import { isEnemy } from '../../engine/combat';
-import { cycle, opener, pick, hpPct } from '../../engine/ai';
+import { isEnemy, type Combat } from '../../engine/combat';
+import { cycle, last, opener, pick, hpPct } from '../../engine/ai';
+import type { EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
+import { cine, dealt, setUi } from '../lib';
+import {
+  ACQUIT_POISE,
+  BAIL_DMG,
+  CATCH_STR,
+  CHARM_AP,
+  DISARMED,
+  GUILTY_SAN,
+  GUILTY_VULN,
+  HANDPRINT,
+  LINE,
+  LINE_HP,
+  TRIAL,
+  VERDICT_DMG,
+  WATER_MAX,
+  angler,
+  bailWater,
+  canHook,
+  charm,
+  clampWeapon,
+  cutLine,
+  dazzle,
+  handprints,
+  hookSkill,
+  leavePrint,
+  plead,
+  reelIn,
+  releaseSkill,
+  riseWater,
+  sentence,
+  setPlayerSt,
+} from './common';
+
+/*
+ * 2026-10 정예·수호자 패턴 확장 — 수호자마다 시그니처 메커니즘, 정예마다 새 행동 (자세한 규칙은 act1/common.ts).
+ * 등대지기: 도는 등명기와 섬광(눈부심) · 빛을 모은 백열광 / 밀수조직 두목: 휴전 제안과 배신 (거짓 의도, 조직원이 속셈을 드러낸다)
+ * 늙은 어부: 낚싯줄로 기술 낚기 / 익사한 선장: 차오르는 물 / 도살자: 고기 저울(처형)·상처에 소금
+ * 집행자: 판결 / 거대 게: 무기 물기 / 안개 속 사냥꾼: 숨는 척 기습 / 망령: 유리의 손자국과 끌어내림
+ */
+
+// ── 수치 (설명 문구도 이 값을 쓴다) ──
+/** 등명기가 비추는 방어도 / 섬광 화염 피해·정신 피해 / 등명기가 꺼졌을 때 화면 어둠(%) */
+export const LAMP_BLOCK = 10;
+export const FLASH_DMG = 6;
+export const FLASH_SAN = 4;
+const LAMP_DARK = 45;
+/** 등명기의 회전 (차례마다 하나씩 — 의도를 다시 정해도 밀리지 않게 행동한 횟수로 센다) */
+const LAMP_SPIN = ['turn2', 'turn1', 'flash'];
+/** 등대지기 2단계: 빛을 모아 쏘는 백열광 */
+export const SEAR_DMG = 26;
+/** 두목: 휴전 골드 / 결렬 시 힘 / 거짓말이 들키는 통찰 / 배신 사격 한 발 / 제안 간격(턴) / 진짜 거래 최대 횟수 */
+export const PARLEY_GOLD = 25;
+export const PARLEY_ANGER = 2;
+export const LIAR_REVEAL = 3;
+export const BETRAY_DMG = 5;
+const OFFER_GAP = 4;
+export const MAX_DEALS = 2;
+/** 두목의 커틀러스 (협상이 결렬되면 그 자리에서 되갚는다) */
+export const CUTLASS_DMG = 14;
+/** 도살자: 고기 저울 (체력 절반 이하인 상대에게 토막내기 피해 배율) / 상처에 소금 */
+export const SCALE_MULT = 1.5;
+export const SALT_BLEED = 3;
+/** 집행자: 판결과 함께 내리치는 피해 / 판결 간격 (턴) */
+export const VERDICT_HIT = 8;
+const VERDICT_GAP = 4;
+/** 안개 속 사냥꾼: 숨는 척 기습 / 안개가 짙어진 화면 어둠(%) */
+export const LUNGE_DMG = 15;
+const FOG_DARK = 40;
+/** 망령: 끌어내림 한 손의 피해 (손은 2 + 손자국) */
+export const DRAG_DMG = 5;
 
 // ───────────── 특성 ─────────────
 
@@ -70,7 +141,7 @@ reg.traits([
   {
     id: 'veiled',
     name: '안개 장막',
-    desc: '자기 턴이 끝날 때 회피 1 (중첩되지 않음)',
+    desc: `자기 턴이 끝날 때 회피 1 (중첩되지 않음). 안개 속 움직임은 흐릿하다 — '안개 속으로'가 거짓일 때가 있다 (통찰 ${LIAR_REVEAL}이면 보인다)`,
     hooks: {
       onUnitTurnEnd(c, s) {
         if (!(s.unit.st.evasive > 0)) c.apply(s.unit, 'evasive', 1, s.unit);
@@ -90,7 +161,7 @@ reg.traits([
   {
     id: 'deep-blood',
     name: '심해의 피',
-    desc: '체력이 절반 이하가 되면 본모습을 드러낸다',
+    desc: '체력이 절반 이하가 되면 본모습을 드러낸다 — 낚싯대를 놓쳐, 걸려 있던 기술을 돌려준다',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -103,8 +174,12 @@ reg.traits([
         if (c.p.insight >= 2) e.known = [...e.weak];
         e.maxPoise = 10;
         e.poise = e.broken ? 0 : 10;
+        releaseSkill(c, e, (n) => `낚싯대가 부러졌다 — 「${n}」을(를) 되찾았다`);
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
+        cine(c, 'shatter', { uid: e.uid });
+        cine(c, 'water', { n: 3 });
         c.emit({ t: 'text', uid: e.uid, text: '껍데기가 찢어지고 비늘이 드러난다', tone: 'eldritch' });
+        cine(c, 'whisper', { text: '{origin}. 너도 미끼였다. 아래의 것이 너를 기다린다.' });
         c.heal(e, 30);
         c.loseSanity(8, true);
         if (e.broken !== 2) c.planIntent(e);
@@ -114,10 +189,126 @@ reg.traits([
   {
     id: 'lamp-bound',
     name: '등명기',
-    desc: '등명기가 켜져 있는 동안 등대지기는 매 턴 방어도 10을 얻는다. 꺼진 등명기는 두 번까지 다시 밝힌다',
-    hooks: {},
+    desc: `등명기가 돌며 등대지기에게 방어도 ${LAMP_BLOCK}을 비추고, 세 번째 차례마다 섬광을 터뜨린다 (눈부심: 다음 내 턴 동안 적의 의도가 가려진다). 꺼진 등명기는 두 번까지 다시 밝힌다`,
+    hooks: {
+      onAnyDeath(c, s, victim) {
+        if (!isEnemy(victim) || victim.def !== 'lamp' || victim === s.unit) return;
+        setUi(c, 'ui:dark', LAMP_DARK);
+        c.emit({ t: 'text', uid: s.unit.uid, text: '등명기가 꺼졌다 — 어둠 속에서 숨소리만 들린다', tone: 'eldritch' });
+      },
+    },
+  },
+  {
+    id: 'a1-liar',
+    name: '거짓말쟁이',
+    desc: `때때로 '휴전 제안'을 내민다: 그 턴에 두목을 공격하지 않으면 골드 ${PARLEY_GOLD}를 건네고 조직원을 하나 부른다 (공격하면 결렬 — 커틀러스로 되갚고 힘 +${PARLEY_ANGER}). 하지만 거짓말일 때가 있다 — 조직원들이 방아쇠에 손가락을 걸면 배신의 일제 사격이다 (통찰 ${LIAR_REVEAL}이면 진짜 속셈이 보인다)`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e)) return;
+        if (c.s.phase === 'player' && d.src === c.p && e.intent?.move === 'parley') e.mem.parleyHit = 1;
+        if (!e.mem.taunted && e.hp > 0 && hpPct(e) <= 0.5) {
+          e.mem.taunted = 1;
+          cine(c, 'whisper', { text: '{origin}, 네 목에 걸린 현상금이 얼마인지 알아?' });
+        }
+      },
+    },
+  },
+  {
+    id: 'a1-line',
+    name: '낚싯줄',
+    desc: `낚싯줄로 장착한 기술 하나를 건다 — 전열에 팽팽한 낚싯줄이 나타나 두 번째 차례에 기술을 낚아 간다 (어부 힘 +${CATCH_STR}). 줄을 끊거나(쓰러뜨리거나) 어부를 붕괴시키면 되찾는다. 낚인 기술은 어부가 본모습을 드러내거나 쓰러지면 돌아온다`,
+    hooks: {
+      onDeath(c, s) {
+        if (isEnemy(s.unit)) releaseSkill(c, s.unit, (n) => `「${n}」을(를) 되찾았다`);
+      },
+    },
+  },
+  {
+    id: 'a1-taut',
+    name: '팽팽한 줄',
+    desc: '낚싯바늘에 걸린 기술이 매달려 있다 — 끊으면(쓰러뜨리면) 기술이 돌아온다. 두 번째 차례에 낚아 간다',
+    hooks: {
+      onDeath(c) {
+        const f = angler(c);
+        if (f) cutLine(c, f, '낚싯줄이 끊어졌다');
+      },
+    },
+  },
+  {
+    id: 'a1-sinking',
+    name: '가라앉는 배',
+    desc: `선장이 행동할 때마다 물이 1 차오른다 (최대 ${WATER_MAX}). 물이 ${WATER_MAX}이면 숨이 막혀 내 턴이 시작될 때 행동력 -1. 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 익사체를 쓰러뜨리면 물이 1 빠지고, 선장을 붕괴시키면 모두 빠진다`,
+    hooks: {
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e)) return;
+        e.mem.bail = 0;
+        e.mem.bailed = 0;
+        // 붕괴·기절로 쉰 차례엔 차오르지 않는다 (수호자는 쉬면 stunGuard가 남는다)
+        if (!e.mem.stunGuard) riseWater(c, e);
+      },
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.mem.bailed || c.s.phase !== 'player' || d.src !== c.p) return;
+        e.mem.bail = (e.mem.bail ?? 0) + d.amount;
+        if (e.mem.bail >= BAIL_DMG) {
+          e.mem.bailed = 1;
+          bailWater(c, e);
+        }
+      },
+    },
+  },
+  {
+    id: 'a1-scales',
+    name: '고기 저울',
+    desc: `체력이 절반 이하인 상대를 보면 곧장 도축을 준비한다. 토막내기는 체력이 절반 이하인 상대에게 피해 +${Math.round((SCALE_MULT - 1) * 100)}%`,
+    hooks: {
+      modDamageOut(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || !d.attack || d.tgt !== c.p) return;
+        const m = e.intent?.move;
+        if ((m === 'prep' || m === 'chop') && c.p.hp * 2 <= c.p.maxHp) d.mult *= SCALE_MULT;
+      },
+    },
+  },
+  {
+    id: 'a1-judge',
+    name: '재판관',
+    desc: `판결을 내린 다음 내 턴, 집행자에게 피해 ${VERDICT_DMG} 이상을 주면 무죄 (집행자 버팀 -${ACQUIT_POISE}), 못 주면 유죄 (정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}). 방어도에 막힌 피해도 센다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit) && d.src === c.p) plead(c, s.unit, d.amount);
+      },
+    },
   },
 ]);
+
+// ───────────── 행동 도우미 ─────────────
+
+/** 등명기의 회전: 등대지기에게 방어도, 보는 이에게 정신 피해 */
+function shine(c: Combat, e: EnemyUnit) {
+  e.mem.spins = (e.mem.spins ?? 0) + 1;
+  const lk = c.alive.find((x) => x.def === 'lightkeeper');
+  if (lk) c.gainBlock(lk, LAMP_BLOCK);
+  c.loseSanity(2, true);
+}
+
+/** 망령의 손길: 막아 내지 못하면 유리에 손자국이 남는다 */
+function touch(name: string, dmg: number, extra: (c: Combat, e: EnemyUnit) => void, desc: string): MoveDef {
+  return {
+    ...mv.attack(name, dmg, { type: 'void', desc }),
+    run(c, e) {
+      const ds = c.enemyAttack(e, { type: 'void' });
+      if (c.over || e.dead) return;
+      extra(c, e);
+      if (dealt(ds) > 0) leavePrint(c, e);
+    },
+  };
+}
+
+/** 두목의 휴전 제안은 진짜든 거짓이든 같은 얼굴이다 (통찰이 모자라면 설명도 없이 '휴전 제안'으로만 보인다) */
+const PARLEY_FACE = { kind: 'special' as const, label: '휴전 제안', reveal: LIAR_REVEAL };
 
 // ───────────── 일반 적 ─────────────
 
@@ -374,17 +565,32 @@ reg.enemies([
     poise: 6,
     weak: ['pierce', 'fire'],
     row: 0,
+    traits: ['a1-scales'],
     moves: {
       hack: mv.attack('난도질', 4, { hits: 3, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
       prep: mv.charge('도축 준비', 24),
-      chop: release(mv.attack('토막내기', 24, { type: 'slash' })),
+      chop: release(mv.attack('토막내기', 24, { type: 'slash', ultimate: true, cine: 'impact' })),
       scent: mv.buff('피 냄새', (c, e) => void c.apply(e, 'str', (c.p.st.bleed ?? 0) > 0 ? 3 : 2, e), {
         desc: '힘 +2 (출혈 중인 상대면 +3)',
       }),
+      salt: mv.debuff(
+        '상처에 소금',
+        (c, e) => {
+          const b = c.p.st.bleed ?? 0;
+          c.apply(c.p, 'bleed', SALT_BLEED + Math.min(SALT_BLEED, b), e);
+        },
+        { desc: `출혈 ${SALT_BLEED} (이미 피를 흘리고 있으면 그만큼 더, 최대 +${SALT_BLEED})` },
+      ),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'chop';
-      return opener(c, e, ['hack']) ?? pick(c, e, { hack: 2, prep: e.hist.includes('chop') && e.hist[e.hist.length - 1] === 'chop' ? 0 : 1, scent: 1 }, 1);
+      const first = opener(c, e, ['hack']);
+      if (first) return first;
+      // 고기 저울: 체력이 절반 이하인 상대는 곧장 도축한다 (막 토막낸 직후엔 한 번 쉰다)
+      const justChopped = last(e) === 'chop';
+      if (c.p.hp * 2 <= c.p.maxHp && !justChopped) return 'prep';
+      const bleeding = (c.p.st.bleed ?? 0) > 0;
+      return pick(c, e, { hack: 2, prep: justChopped ? 0 : 1, scent: 1, salt: bleeding && last(e) !== 'salt' ? 2 : 0 }, 1);
     },
     visual: { tint: 0x7a5048, glow: 0xd03020, scale: 1.2 },
   },
@@ -398,7 +604,7 @@ reg.enemies([
     poise: 5,
     weak: ['blunt', 'void'],
     row: 0,
-    traits: ['zealot'],
+    traits: ['zealot', 'a1-judge'],
     moves: {
       protect: mv.block('신앙의 방벽', 0, {
         then(c, e) {
@@ -409,8 +615,19 @@ reg.enemies([
       }),
       execute: mv.attack('처형', 13),
       zeal: mv.horror('광신의 설교', 6, { dmg: 5, melee: false }),
+      // 쇠사슬로 내리치며 판결을 내린다
+      verdict: mv.attack('판결', VERDICT_HIT, {
+        extra: ['debuff'],
+        desc: `다음 내 턴에 집행자에게 피해 ${VERDICT_DMG} 이상을 주지 못하면 유죄 (정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}). 채우면 무죄 (집행자 버팀 -${ACQUIT_POISE})`,
+        then: (c, e) => sentence(c, e),
+      }),
     },
-    ai: (c, e) => pick(c, e, { execute: 3, protect: others(c, e).length ? 2 : 0, zeal: 1 }),
+    ai: (c, e) => {
+      const first = opener(c, e, ['verdict']);
+      if (first) return first;
+      const again = c.s.turn - (e.mem.verdictAt ?? -99) >= VERDICT_GAP && !((c.p.st[TRIAL] ?? 0) > 0) && last(e) !== 'verdict';
+      return pick(c, e, { execute: 3, protect: others(c, e).length ? 2 : 0, zeal: 1, verdict: again ? 2 : 0 });
+    },
     visual: { tint: 0x3a2a40, glow: 0xc040a0, scale: 1.15 },
   },
   {
@@ -435,8 +652,17 @@ reg.enemies([
         },
         { desc: '약화 2, 허약 2' },
       ),
+      clamp: mv.attack('집게로 물기', 7, {
+        extra: ['debuff'],
+        desc: '무기를 문다 — 게를 붕괴시키거나 쓰러뜨릴 때까지 무기 기본 공격을 쓸 수 없다',
+        cine: 'crack',
+        then: (c, e) => void clampWeapon(c, e),
+      }),
     },
-    ai: (c, e) => cycle(e, ['claw', 'shell', 'claw', 'bubble']),
+    ai: (c, e) => {
+      const m = cycle(e, ['claw', 'clamp', 'shell', 'claw', 'bubble']);
+      return m === 'clamp' && (c.p.st[DISARMED] ?? 0) > 0 ? 'claw' : m;
+    },
     visual: { tint: 0x8a3f30, glow: 0xff8050, scale: 1.25 },
   },
 
@@ -456,19 +682,33 @@ reg.enemies([
     moves: {
       swing: mv.attack('랜턴 휘두르기', 14),
       beam: mv.horror('눈먼 광선', 8, { dmg: 8, type: 'fire' }),
-      relight: mv.summon('불 밝히기', (c) => void c.spawn('lamp', 1), '등명기 소환'),
+      relight: mv.summon(
+        '불 밝히기',
+        (c) => {
+          c.spawn('lamp', 1);
+          setUi(c, 'ui:dark', 0);
+        },
+        '등명기를 다시 밝힌다 (처음부터 돌기 시작한다)',
+      ),
       madness: mv.buff(
         '빛에 미친 자',
         (c, e) => {
           c.apply(e, 'str', 3, e);
           c.emit({ t: 'text', uid: e.uid, text: '빛이… 모든 것을 태운다…', tone: 'eldritch' });
+          cine(c, 'eye', { uid: e.uid });
+          cine(c, 'whisper', { uid: e.uid, text: '{time}. 아직도 화면을 켜 두었구나. 그 빛을 따라 여기까지 왔지.' });
+          // 꺼져 있던 등명기도 다시 타오른다 (다시 밝히는 횟수와 별개)
+          if (countDef(c, 'lamp') === 0 && c.spawn('lamp', 1)) setUi(c, 'ui:dark', 0);
         },
-        { desc: '힘 +3' },
+        { desc: `힘 +3, 꺼진 등명기를 다시 밝힌다. 이제부터 빛을 모아 백열광(${SEAR_DMG})을 쏜다` },
       ),
       shards: mv.attack('렌즈 파편', 5, { hits: 3, melee: false, type: 'pierce' }),
+      gather: mv.charge('빛을 모은다', SEAR_DMG),
+      sear: release(mv.attack('백열광', SEAR_DMG, { melee: false, type: 'fire', ultimate: true, cine: 'impact' })),
     },
     onSpawn: (c) => void c.spawn('lamp', 1),
     ai: (c, e) => {
+      if (e.mem.charge) return 'sear';
       if (hpPct(e) <= 0.5 && !e.mem.p2) {
         e.mem.p2 = 1;
         return 'madness';
@@ -477,7 +717,7 @@ reg.enemies([
         e.mem.relit = (e.mem.relit ?? 0) + 1;
         return 'relight';
       }
-      return e.mem.p2 ? cycle(e, ['shards', 'beam', 'swing'], 'c2') : cycle(e, ['swing', 'beam', 'swing']);
+      return e.mem.p2 ? cycle(e, ['gather', 'shards', 'beam', 'swing'], 'c2') : cycle(e, ['swing', 'beam', 'swing']);
     },
     visual: { tint: 0x504a40, glow: 0xffe080, scale: 1.4, fx: ['beam'] },
   },
@@ -492,13 +732,23 @@ reg.enemies([
     weak: ['blunt', 'pierce'],
     row: 1,
     moves: {
-      shine: mv.buff('비추기', (c) => {
-        const lk = c.alive.find((x) => x.def === 'lightkeeper');
-        if (lk) c.gainBlock(lk, 10);
-        c.loseSanity(2, true);
-      }, { desc: '등대지기 방어도 10, 정신력 -2' }),
+      // 등명기는 돈다: 두 번 비추고 세 번째에 섬광 (의도 이름이 남은 차례를 알려 준다)
+      turn2: mv.buff('섬광까지 2', shine, { desc: `등대지기 방어도 ${LAMP_BLOCK}, 정신력 -2. 두 턴 뒤 섬광` }),
+      turn1: mv.buff('섬광까지 1', shine, { desc: `등대지기 방어도 ${LAMP_BLOCK}, 정신력 -2. 다음 턴 섬광` }),
+      flash: {
+        ...mv.horror('섬광', FLASH_SAN, {
+          dmg: FLASH_DMG,
+          type: 'fire',
+          then: (c, e) => {
+            e.mem.spins = 0;
+            dazzle(c, e);
+          },
+          desc: '화염 피해와 정신 피해, 그리고 눈부심 — 다음 내 턴 동안 적의 의도가 보이지 않는다 (힘을 모은 큰 공격은 보인다). 등명기를 깨면 걷힌다',
+        }),
+        cine: 'beam',
+      },
     },
-    ai: () => 'shine',
+    ai: (_c, e) => LAMP_SPIN[(e.mem.spins ?? 0) % LAMP_SPIN.length],
     visual: { tint: 0x8a7a40, glow: 0xffd060, scale: 0.75, fx: ['flicker'] },
   },
   {
@@ -511,17 +761,70 @@ reg.enemies([
     poise: 9,
     weak: ['slash', 'arcane'],
     row: 0,
+    traits: ['a1-liar'],
     moves: {
       command: mv.summon('집결 명령', (c) => void c.spawn('crew', 1), '조직원 소환'),
       bounty: mv.debuff('현상금', (c, e) => void c.apply(c.p, 'vuln', 2, e), { desc: '취약 2' }),
       volley: mv.attack('일제 사격', 3, { melee: false, type: 'pierce', hits: (c) => 1 + countDef(c, 'crew') }),
-      cutlass: mv.attack('커틀러스', 14, { type: 'slash' }),
+      cutlass: mv.attack('커틀러스', CUTLASS_DMG, { type: 'slash' }),
+      // 진짜 휴전 — 거짓 휴전과 같은 얼굴로 보인다 (통찰이 모자라면 설명 없이 '휴전 제안'으로만)
+      parley: {
+        name: '휴전 제안',
+        intent: 'special',
+        disguise: PARLEY_FACE,
+        desc: `이번 턴 두목을 공격하지 않으면 골드 ${PARLEY_GOLD}를 건네고 조직원을 하나 부른다. 공격하면 협상 결렬 — 커틀러스(${CUTLASS_DMG})로 되갚고 힘 +${PARLEY_ANGER}`,
+        run(c, e) {
+          if (e.mem.parleyHit) {
+            c.emit({ t: 'text', uid: e.uid, text: '협상 결렬 — 피는 피로 갚는다', tone: 'bad' });
+            c.enemyAttack(e, { dmg: CUTLASS_DMG, hits: 1, type: 'slash', melee: true });
+            if (!c.over && !e.dead) c.apply(e, 'str', PARLEY_ANGER, e);
+            return;
+          }
+          e.mem.deals = (e.mem.deals ?? 0) + 1;
+          c.p.gold += PARLEY_GOLD;
+          c.emit({ t: 'text', uid: 'p', text: `골드 +${PARLEY_GOLD}`, tone: 'good' });
+          c.emit({ t: 'text', uid: e.uid, text: '거래 성립이야. …오늘은.', tone: 'info' });
+          c.spawn('crew', 1);
+        },
+      },
+      // 거짓 휴전 — 조직원마다 한 발씩 더 (조직원은 거짓말을 못 해서 미리 방아쇠에 손가락을 건다)
+      betray: {
+        name: '배신의 일제 사격',
+        intent: 'attack',
+        dmg: BETRAY_DMG,
+        hits: (c) => 2 + countDef(c, 'crew'),
+        melee: false,
+        ultimate: true,
+        disguise: PARLEY_FACE,
+        desc: '휴전은 거짓말이었다 — 조직원마다 한 발씩 더',
+        run(c, e) {
+          cine(c, 'sysmsg', { uid: e.uid, text: '거래가 취소되었습니다.' });
+          // 그 사이 쓰러진 조직원의 몫은 빠진다
+          c.enemyAttack(e, { type: 'pierce', hits: 2 + countDef(c, 'crew') });
+        },
+      },
     },
     onSpawn: (c) => {
       c.spawn('crew', 1);
       c.spawn('crew', 1);
     },
-    ai: (c, e) => opener(c, e, ['bounty']) ?? pick(c, e, { volley: 3, cutlass: 2, command: countDef(c, 'crew') < 2 && !e.hist.slice(-2).includes('command') ? 3 : 0 }),
+    ai: (c, e) => {
+      const first = opener(c, e, ['bounty']);
+      if (first) return first;
+      const crew = countDef(c, 'crew');
+      // 휴전 제안: 조직원이 곁에 있을 때 몇 턴에 한 번. 첫 제안은 진짜, 그다음부터는 반반 (진짜 거래는 두 번까지)
+      if (crew > 0 && c.s.turn - (e.mem.offerAt ?? -99) >= OFFER_GAP && last(e) !== 'command') {
+        e.mem.offerAt = c.s.turn;
+        const offers = e.mem.offers ?? 0;
+        e.mem.offers = offers + 1;
+        if ((e.mem.deals ?? 0) < MAX_DEALS && (offers === 0 || c.rng.chance(0.5))) {
+          e.mem.parleyHit = 0;
+          return 'parley';
+        }
+        return 'betray';
+      }
+      return pick(c, e, { volley: 3, cutlass: 2, command: crew < 2 && !e.hist.slice(-2).includes('command') ? 3 : 0 });
+    },
     visual: { tint: 0x6a4a5a, glow: 0xe0b060, scale: 1.3 },
   },
   {
@@ -534,7 +837,7 @@ reg.enemies([
     poise: 8,
     weak: ['fire', 'slash'],
     row: 0,
-    traits: ['deep-blood'],
+    traits: ['deep-blood', 'a1-line'],
     moves: {
       net: mv.debuff(
         '그물 던지기',
@@ -546,11 +849,25 @@ reg.enemies([
       ),
       gaff: mv.attack('갈고리 장대', 9, { type: 'pierce' }),
       mutter: mv.horror('중얼거림', 3, { desc: '알아들을 수 없는 기도' }),
-      maw: mv.attack('심해의 아가리', 16, { then: (c, e) => void c.heal(e, 6), desc: '체력 6 회복' }),
+      cast: {
+        ...mv.attack('낚싯줄 던지기', 5, { melee: false, type: 'pierce', extra: ['debuff'] }),
+        desc: '장착한 기술 하나를 낚싯바늘에 건다 (장착한 기술이 둘 이상일 때) — 전열에 팽팽한 낚싯줄이 나타나 두 번째 차례에 낚아 간다. 줄을 끊거나 어부를 붕괴시키면 되찾는다',
+        run(c, e) {
+          c.enemyAttack(e, { type: 'pierce' });
+          if (!c.over && !e.dead) hookSkill(c, e);
+        },
+      },
+      maw: mv.attack('심해의 아가리', 16, { then: (c, e) => void c.heal(e, 6), desc: '체력 6 회복', ultimate: true, cine: 'corners' }),
       tide: mv.attack('조수', 7, { hits: 2 }),
-      song: mv.horror('심연의 노래', 8, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
+      // 바다 밑의 노래에 홀린다 (세이렌처럼) — 다음 내 턴 행동력 -1
+      song: mv.horror('심연의 노래', 8, { then: (c) => charm(c), desc: `정신 피해, 그리고 매혹 — 다음 내 턴 행동력 -${CHARM_AP}` }),
     },
-    ai: (c, e) => (e.form ? cycle(e, ['maw', 'tide', 'song'], 'c2') : cycle(e, ['gaff', 'net', 'gaff', 'mutter'])),
+    ai: (c, e) => {
+      if (e.form) return cycle(e, ['maw', 'tide', 'song'], 'c2');
+      // 낚싯줄은 쥔 기술이 없을 때만 던진다 (못 던지면 장대로 찌른다)
+      const m = cycle(e, ['cast', 'gaff', 'net', 'gaff', 'mutter']);
+      return m === 'cast' && !canHook(c, e) ? 'gaff' : m;
+    },
     visual: { tint: 0x5a5a50, glow: 0x80c0b0, scale: 1.3 },
     forms: [{ name: '심해의 혼혈', icon: 'gi:fish-monster', visual: { tint: 0x2f5550, glow: 0x50ffd0, scale: 1.5, fx: ['drip'] } }],
   },
@@ -568,11 +885,24 @@ reg.enemies([
     row: 0,
     dread: 6,
     eldritch: true,
+    traits: ['a1-sinking'],
     moves: {
       sword: mv.attack('녹슨 커틀러스', 8, { hits: 2, type: 'slash' }),
-      muster: mv.summon('선원 소집', (c) => void c.spawn('drowned', 0), '익사체 소환'),
+      // 배의 종이 울리면 바다 밑의 선원들이 대답한다
+      muster: { ...mv.summon('선원 소집', (c) => void c.spawn('drowned', 0), '익사체 소환'), cine: 'bell' },
       ready: mv.charge('닻을 들어올린다', 26),
-      anchor: release(mv.attack('닻 내려치기', 26)),
+      anchor: release(
+        mv.attack('닻 내려치기', 26, {
+          ultimate: true,
+          cine: 'impact',
+          // 화면 유리에 금이 남는다 (닻을 내려칠 때마다 깊어진다)
+          then: (c) => {
+            const k = Math.min(3, (c.s.vars['ui:cracks'] ?? 0) + 1);
+            setUi(c, 'ui:cracks', k);
+            cine(c, 'crack', { n: k });
+          },
+        }),
+      ),
       shanty: mv.horror('익사자의 뱃노래', 10, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
     },
     ai: (c, e) => {
@@ -596,11 +926,28 @@ reg.enemies([
     dread: 3,
     traits: ['veiled'],
     moves: {
-      strike: mv.attack('그림자 일격', 13, { type: 'slash' }),
+      strike: {
+        ...mv.attack('그림자 일격', 13, { type: 'slash' }),
+        run(c, e) {
+          setUi(c, 'ui:dark', 0);
+          c.enemyAttack(e, { type: 'slash' });
+        },
+      },
       rend: mv.attack('찢기', 5, { hits: 3, type: 'slash' }),
-      vanish: mv.block('안개 속으로', 10, { desc: '방어도 10' }),
+      // 안개가 짙어진다 (화면이 어두워진다) — 이미 안개 속에 있는 것이 또 숨을 리 없다
+      vanish: mv.block('안개 속으로', 10, { desc: '방어도 10. 안개가 짙어진다', then: (c) => setUi(c, 'ui:dark', FOG_DARK) }),
+      // 숨는 척 덮쳐 온다 (통찰 3이면 보인다)
+      lunge: {
+        ...mv.attack('안개 속 기습', LUNGE_DMG, { type: 'slash', ultimate: true, cine: 'impact' }),
+        disguise: { kind: 'block', label: '안개 속으로…', reveal: LIAR_REVEAL },
+        desc: '숨는 척 안개 속에서 덮쳐 온다',
+        run(c, e) {
+          setUi(c, 'ui:dark', 0);
+          c.enemyAttack(e, { type: 'slash' });
+        },
+      },
     },
-    ai: (c, e) => cycle(e, ['strike', 'rend', 'vanish']),
+    ai: (_c, e) => cycle(e, ['strike', 'rend', 'vanish', 'lunge']),
     visual: { tint: 0x8a9aa0, glow: 0xd0f0ff, scale: 1.2, fx: ['flicker', 'float'] },
   },
   {
@@ -617,9 +964,9 @@ reg.enemies([
     eldritch: true,
     traits: ['incorporeal'],
     moves: {
-      chill: mv.attack('냉기의 손길', 10, { type: 'void', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
+      chill: touch('냉기의 손길', 10, (c, e) => void c.apply(c.p, 'weak', 1, e), '약화 1. 막아 내지 못하면 유리에 손자국 1'),
       wail: mv.horror('울부짖음', 7, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
-      drain: mv.attack('생명 흡수', 8, { type: 'void', then: (c, e) => void c.heal(e, 8), desc: '체력 8 회복' }),
+      drain: touch('생명 흡수', 8, (c, e) => void c.heal(e, 8), '체력 8 회복. 막아 내지 못하면 유리에 손자국 1'),
       curse: mv.debuff(
         '망자의 저주',
         (c, e) => {
@@ -628,8 +975,37 @@ reg.enemies([
         },
         { desc: '허약 2, 취약 1' },
       ),
+      // 유리 너머에서 손바닥들이 닿는다 → 다음 턴 끌어내린다 (손은 2 + 손자국)
+      reach: {
+        name: '유리에 닿는 손',
+        intent: 'charge',
+        charging: true,
+        dmg: DRAG_DMG,
+        hits: (c) => 2 + handprints(c),
+        melee: false,
+        desc: `다음 턴 바다 무덤으로 끌어내린다 — 공허 ${DRAG_DMG} × (2 + 손자국). 붕괴시키면 끊긴다`,
+        run(c, e) {
+          e.mem.charge = 1;
+          c.emit({ t: 'text', uid: e.uid, text: '손바닥들이 유리에 닿는다', tone: 'bad' });
+          cine(c, 'handprints', { uid: e.uid, n: 2 + handprints(c) });
+        },
+      },
+      drag: release({
+        name: '바다 무덤으로',
+        intent: 'attack',
+        dmg: DRAG_DMG,
+        hits: (c) => 2 + handprints(c),
+        melee: false,
+        ultimate: true,
+        cine: 'crack',
+        desc: '손자국이 모두 사라진다',
+        run(c, e) {
+          c.enemyAttack(e, { type: 'void' });
+          setPlayerSt(c, HANDPRINT, 0);
+        },
+      }),
     },
-    ai: (c, e) => cycle(e, ['chill', 'wail', 'drain', 'curse']),
+    ai: (_c, e) => (e.mem.charge ? 'drag' : cycle(e, ['chill', 'wail', 'drain', 'reach', 'curse'])),
     visual: { tint: 0x405a70, glow: 0x80e0ff, scale: 1.3, fx: ['float', 'flicker'] },
   },
 ]);
@@ -649,8 +1025,58 @@ reg.enemies([
     moves: {
       shot: mv.attack('엄호 사격', 4, { melee: false, type: 'pierce' }),
       cover: mv.block('엄폐', 5, { desc: '방어도 5' }),
+      // 조직원은 거짓말을 못 한다: 두목의 휴전 제안이 진짜면 총구를 내리고, 거짓이면 방아쇠에 손가락을 건다
+      aim: {
+        name: '방아쇠에 손가락을',
+        intent: 'special',
+        desc: '두목의 신호를 기다린다 — 배신의 일제 사격에 한 발을 보탠다',
+        run() {},
+      },
+      lower: {
+        name: '총구를 내린다',
+        intent: 'special',
+        desc: '두목의 협상을 지켜본다 (아무것도 하지 않는다)',
+        run() {},
+      },
     },
-    ai: (c, e) => pick(c, e, { shot: 2, cover: 1 }),
+    ai: (c, e) => {
+      const deal = c.alive.find((x) => x.def === 'queen')?.intent?.move;
+      if (deal === 'betray') return 'aim';
+      if (deal === 'parley') return 'lower';
+      return pick(c, e, { shot: 2, cover: 1 });
+    },
     visual: { tint: 0x4d5a66, glow: 0x8aa0b0, scale: 0.8 },
+  },
+  // 늙은 어부의 낚싯줄 — 걸린 기술이 매달려 있다. 끊으면(쓰러뜨리면) 돌아온다
+  {
+    id: LINE,
+    name: '팽팽한 낚싯줄',
+    icon: 'gi:fishing-lure',
+    act: 1,
+    tier: 'minion',
+    hp: [LINE_HP, LINE_HP],
+    poise: 0,
+    weak: ['slash', 'fire'],
+    row: 0,
+    traits: ['a1-taut'],
+    moves: {
+      reel: {
+        name: '줄을 감는다',
+        intent: 'special',
+        desc: '다음 차례에 걸린 기술을 낚아 간다 — 그 전에 줄을 끊어라 (쓰러뜨리면 기술이 돌아온다)',
+        run(c, e) {
+          e.mem.spins = 1;
+          c.emit({ t: 'text', uid: e.uid, text: '줄이 팽팽해진다', tone: 'bad' });
+        },
+      },
+      snatch: {
+        name: '낚아챈다',
+        intent: 'special',
+        desc: `걸린 기술을 낚아 간다 (어부 힘 +${CATCH_STR}) — 어부가 본모습을 드러내거나 쓰러지면 되찾는다`,
+        run: (c, e) => reelIn(c, e),
+      },
+    },
+    ai: (_c, e) => (e.mem.spins ? 'snatch' : 'reel'),
+    visual: { tint: 0x9aa4a8, glow: 0xd0f0ff, scale: 0.6, fx: ['flicker'] },
   },
 ]);

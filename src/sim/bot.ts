@@ -5,7 +5,8 @@ import type { RunState } from '../engine/run';
 export function incoming(c: Combat): number {
   let sum = 0;
   for (const e of c.alive) {
-    const it = e.intent;
+    // 봇도 사람처럼 보이는 의도만 안다 (속임수 의도에 속는다)
+    const it = c.shownIntent(e);
     if (!it || e.broken === 2 || (e.st.stun ?? 0) > 0) continue;
     if (it.dmg && (it.kind === 'attack' || it.extra?.includes('attack') || it.kind === 'horror')) {
       sum += c.preview(e, c.p, it.dmg, 'blunt') * (it.hits ?? 1);
