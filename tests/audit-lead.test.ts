@@ -91,14 +91,21 @@ describe('점검: 엔진 (아이템 감사에서 나온 것)', () => {
 });
 
 describe('점검: 판단 반영', () => {
-  it('돈을 내고 이계 정수를 지우면 통찰 +1도 사라진다', async () => {
+  it('돈을 내고 이계 정수를 지우면 그 흔적(최대 정신력 -5, 수호자의 것이면 통찰 +1)도 사라진다', async () => {
     const { absorbEssence, removeEssence } = await import('../src/engine/run');
     const run = newRun({ seed: 12, origin: 'soldier' });
     run.player.level = 10;
-    run.player.gold = 999;
+    run.player.gold = 9999;
     const ins = run.player.insight;
     const san = run.player.maxSanity;
-    absorbEssence(run, { id: 'lurker', color: 0 });
+    // 보통 이계 정수: 통찰은 주지 않는다
+    expect(absorbEssence(run, { id: 'lurker', color: 0 })).toBeNull();
+    expect(run.player.insight).toBe(ins);
+    expect(run.player.maxSanity).toBe(san - 5);
+    expect(removeEssence(run, run.essences[0].uid)).toBeNull();
+    expect(run.player.maxSanity).toBe(san);
+    // 수호자(늙은 어부)의 이계 정수: 통찰 +1 — 지우면 돌려놓는다
+    expect(absorbEssence(run, { id: 'fisherman', color: 0, guardian: true }, null)).toBeNull();
     expect(run.player.insight).toBe(ins + 1);
     expect(removeEssence(run, run.essences[0].uid)).toBeNull();
     expect(run.player.insight).toBe(ins);

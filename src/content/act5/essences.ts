@@ -883,7 +883,7 @@ reg.essences([
     icon: 'gi:door-watcher',
     grade: 2,
     eldritch: true,
-    stats: { maxHp: 14, will: 2, insight: 1 },
+    stats: { maxHp: 14, will: 2, maxSanity: 6 },
     passive: {
       name: '문지기의 눈',
       desc: '전투 시작 시 결계 1',

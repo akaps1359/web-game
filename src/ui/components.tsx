@@ -86,10 +86,10 @@ export function TipView() {
     <div class="veil" style={{ background: 'rgba(0,0,0,0.35)', alignItems: 'flex-end' }} onClick={close}>
       <div class="tip panel" onClick={close}>
         <div class="tip-head">
-          {t.icon && <Icon name={t.icon} size={34} color={t.color ?? 'var(--brass-2)'} />}
+          {t.icon && <Icon name={t.icon} size={34} color={t.color ?? 'var(--brass-2)'} class={t.nameClass === 'genesis-name' ? 'genesis-glow' : undefined} />}
           <div>
             <div class="t" style={{ color: t.color }}>
-              {t.title}
+              {t.nameClass ? <span class={t.nameClass}>{t.title}</span> : t.title}
             </div>
             {t.sub && <div class="s">{t.sub}</div>}
           </div>

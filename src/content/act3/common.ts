@@ -10,7 +10,7 @@ import type { EnemyUnit, Intent, MoveDef, Unit } from '../../engine/types';
  * 2026-10 개편: 꿈 관련 헬퍼·상태는 5층 `act5/dream.ts`로 옮겨 갔다. 함수는 등록이 없어 층마다 따로 두어도 된다.
  */
 
-/** 숨겨진 의도 (통찰 5 이상만 보임) */
+/** 숨겨진 의도 (통찰 HIDDEN_REVEAL = 3 이상만 보임) */
 export const hid = (m: MoveDef): MoveDef => ({ ...m, hidden: true });
 
 /** 환영(5층 적이 만드는 mem.illu 표식)인지 — 다른 층 적과 섞여도 안전하도록 남겨 둔다 */

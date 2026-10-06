@@ -1,6 +1,5 @@
 import { reg } from '../../engine/registry';
 import { isEnemy } from '../../engine/combat';
-import { loseSanityRun } from '../../engine/run';
 
 /** extra 소모품 */
 reg.consumables([
@@ -97,17 +96,19 @@ reg.consumables([
     name: '검은 양초',
     icon: 'gi:candle-flame',
     rarity: 'rare',
-    desc: '통찰 +1, 정신력 -10',
+    // 통찰은 언제나 영구 대가를 치르고 얻는다 (2026-10 개편 — 이벤트의 통찰 +1과 같은 값)
+    desc: '통찰 +1, 최대 정신력 -8',
     combat: false,
     target: 'self',
     use(run, c) {
-      if (c) {
-        c.gainInsight(1);
-        c.loseSanity(10);
-      } else {
-        run.player.insight += 1;
-        loseSanityRun(run, 10);
+      const p = run.player;
+      p.maxSanity = Math.max(10, p.maxSanity - 8);
+      if (p.sanity > p.maxSanity) {
+        c?.emit({ t: 'sanity', delta: p.maxSanity - p.sanity });
+        p.sanity = p.maxSanity;
       }
+      if (c) c.gainInsight(1);
+      else p.insight += 1;
     },
   },
 ]);

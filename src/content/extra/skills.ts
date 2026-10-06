@@ -635,10 +635,10 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'insight', 'sanity'],
-    vals: { dmg: [8, 10] },
-    desc: '방어도를 무시하고 {D:dmg} + 통찰 공허 피해. 준 체력 피해의 절반만큼 정신력 회복',
+    vals: { dmg: [8, 10], per: 2 },
+    desc: '방어도를 무시하고 {D:dmg} + 통찰×{per} 공허 피해. 준 체력 피해의 절반만큼 정신력 회복',
     run: (c, u, t) => {
-      const ds = hit(c, u, t, { dmg: u.v('dmg') + Math.floor(c.p.insight * u.power), ignoreBlock: true });
+      const ds = hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * c.p.insight * u.power), ignoreBlock: true });
       const n = Math.floor(dealt(ds) / 2);
       if (n > 0) c.gainSanity(n);
     },
@@ -654,7 +654,7 @@ reg.skills([
     range: 'ranged',
     target: 'all',
     tags: ['debuff', 'sanity', 'insight', 'aoe'],
-    vals: { doom: [6, 9], per: 2, san: 6 },
+    vals: { doom: [6, 9], per: 4, san: 6 },
     desc: '정신력 {san} 소모. 적 전체에 파멸 {doom} + 통찰×{per}',
     run: (c, u) => {
       c.loseSanity(u.v('san'));

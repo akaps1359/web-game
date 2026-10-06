@@ -896,7 +896,7 @@ reg.essences([
     name: '등대지기의 정수',
     icon: 'gi:lighthouse',
     grade: 5,
-    stats: { maxHp: 10, will: 2, insight: 1 },
+    stats: { maxHp: 10, will: 2, maxSanity: 5 },
     passive: {
       name: '등명기의 빛',
       desc: '전투 시작 시 모든 적의 약점 공개',

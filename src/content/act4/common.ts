@@ -210,12 +210,14 @@ export function reviveAlly(c: Combat, by: EnemyUnit, pct: number): EnemyUnit | n
   return t;
 }
 
-/** 약점 교체 (이미 알아낸 것·도감 지식은 유지, 통찰 2 이상이면 전부 공개) */
+/** 약점 교체 (이미 알아낸 것·도감 지식은 유지, 그 위에 통찰로 보이는 것 — 1이면 하나, 2 이상이면 전부) */
 export function setWeak(c: Combat, e: EnemyUnit, weak: DmgType[]) {
   const meta = c.run.knownWeak?.[e.def] ?? [];
   const prev = e.known;
   e.weak = [...weak];
-  e.known = c.p.insight >= 2 ? [...e.weak] : e.weak.filter((w) => prev.includes(w) || meta.includes(w));
+  e.known = e.weak.filter((w) => prev.includes(w) || meta.includes(w));
+  delete e.mem.sensed;
+  c.senseWeak(e);
 }
 
 /** 장착한 스킬 하나의 재사용 대기를 늘린다 (n=2 → 다음 내 턴 하나 동안 봉인) */

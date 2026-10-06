@@ -669,7 +669,7 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'insight'],
-    vals: { dmg: [8, 10], per: 2, cap: 8 },
+    vals: { dmg: [8, 10], per: 4, cap: 8 },
     desc: '{D:dmg} 공허 피해. 통찰 1당 피해 +{per} (통찰 {cap}까지)',
     run: (c, u, t) => void hit(c, u, t, { dmg: u.v('dmg') + Math.floor(u.v('per') * Math.min(u.v('cap'), c.p.insight) * u.power) }),
   }),
@@ -1168,7 +1168,7 @@ reg.essences([
     icon: 'gi:peaks',
     grade: 3,
     eldritch: true,
-    stats: { maxHp: 14, will: 2, insight: 1 },
+    stats: { maxHp: 14, will: 3 },
     passive: {
       name: '눈을 감은 자',
       desc: '정신력을 잃을 때마다 그만큼 방어도를 얻는다 (전투마다 최대 60)',
@@ -1196,7 +1196,7 @@ reg.essences([
     grade: 2,
     lord: true,
     eldritch: true,
-    stats: { maxHp: 18, str: 2, will: 2, insight: 1 },
+    stats: { maxHp: 18, str: 2, will: 2, maxSanity: 6 },
     passive: {
       name: '옛 주인의 피리',
       desc: '전투 시작 시 모든 적에게 광란 1. 광란에 걸린 적에게 주는 공격 피해 +25%',

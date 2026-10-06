@@ -16,6 +16,7 @@ import {
   upgradeSkill,
   type RunState,
 } from '../../engine/run';
+import { INSIGHT_PRICE, floorFoes, learnWeak, weakNote } from '../eventkit';
 
 /** 정신력 손실 + 붕괴 메시지 */
 function sanity(run: RunState, n: number): string {
@@ -65,11 +66,10 @@ reg.events([
         choices: [
           {
             label: '렌즈를 들여다본다',
-            hint: '이 층의 지도 전체 공개, 통찰 +1, 정신력 -14',
+            hint: '이 층의 지도 전체 공개, 정신력 -10',
             go: (r, e) => {
               if (r.floor) for (const room of r.floor.rooms) room.seen = room.scouted = true;
-              r.player.insight += 1;
-              finish(e, '심연의 지도가 눈에 새겨졌다. 지도 역시 당신을 보았다. (통찰 +1)' + sanity(r, 14));
+              finish(e, '심연의 지도가 눈에 새겨졌다. 지도 역시 당신을 보았다.' + sanity(r, 10));
             },
           },
           {
@@ -124,10 +124,15 @@ reg.events([
           },
           {
             label: '무늬와 눈을 맞춘다',
-            hint: '통찰 +2, 정신력 -20',
+            hint: '이 층 적들의 약점을 알게 된다, 정신력 -12',
             go: (r, e) => {
-              r.player.insight += 2;
-              finish(e, '눈꺼풀이 열렸다. 그 안에는 별이 태어나기 전의 어둠이 있었다. (통찰 +2)' + sanity(r, 20));
+              const names = learnWeak(r, floorFoes(r));
+              finish(
+                e,
+                '눈꺼풀이 열렸다. 그 안에는 별이 태어나기 전의 어둠이 있었고, 이 궁정의 것들이 그 어둠의 어느 틈에서 기어 나왔는지가 보였다.' +
+                  weakNote(names) +
+                  (names.length ? sanity(r, 12) : ''),
+              );
             },
           },
           { label: '지나친다', go: (_r, e) => finish(e, '등 뒤에서 무언가가 계속 깜빡였다.') },
@@ -193,11 +198,10 @@ reg.events([
           },
           {
             label: '곡조를 따라 흥얼거린다',
-            hint: '의지 +1 (영구), 통찰 +1, 정신력 -15',
+            hint: '의지 +1 (영구), 정신력 -12',
             go: (r, e) => {
               r.player.will += 1;
-              r.player.insight += 1;
-              finish(e, '곡조에는 끝도 시작도 없었다. 그 안에서 버티는 법을 배웠다. (의지 +1, 통찰 +1)' + sanity(r, 15));
+              finish(e, '곡조에는 끝도 시작도 없었다. 그 안에서 버티는 법을 배웠다. (의지 +1)' + sanity(r, 12));
             },
           },
           {
@@ -272,11 +276,14 @@ reg.events([
           },
           {
             label: '공연을 끝까지 본다',
-            hint: '통찰 +2, 최대 정신력 -5',
+            hint: `통찰 +1, 최대 체력 -${INSIGHT_PRICE.maxHp}`,
             go: (r, e) => {
-              r.player.insight += 2;
-              cutMaxSanity(r, 5);
-              finish(e, '마지막 기계가 켜졌을 때 당신은 별 너머의 텅 빈 왕좌를 보았다. 천막을 나설 때 그림자가 반 박자 늦게 따라왔다. (통찰 +2, 최대 정신력 -5)');
+              r.player.insight += 1;
+              cutMaxHp(r, INSIGHT_PRICE.maxHp);
+              finish(
+                e,
+                `마지막 기계가 켜졌을 때 당신은 별 너머의 텅 빈 왕좌를 보았다. 천막을 나설 때 그림자가 반 박자 늦게 따라왔다. 무대 위에 무언가를 한 조각 두고 왔다. (통찰 +1, 최대 체력 -${INSIGHT_PRICE.maxHp})`,
+              );
             },
           },
           {
@@ -406,8 +413,7 @@ reg.events([
                 r.player.hp += 6;
                 finish(e, `손끝에 따뜻한 무언가가 닿았다. 그것은 손을 꼭 쥐었다가 놓아주었다. (최대 체력 +6, 체력 +${healRun(r, 20)})`);
               } else {
-                r.player.insight += 1;
-                finish(e, '손이 닿은 곳에는 아무것도 없었다. 그 아무것도 없음이 팔을 타고 기어올랐다. (통찰 +1)' + sanity(r, 18));
+                finish(e, '손이 닿은 곳에는 아무것도 없었다. 그 아무것도 없음이 팔을 타고 기어올랐다.' + sanity(r, 14));
               }
             },
           },

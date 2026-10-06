@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { absorbBlock, essenceStats, FLASK_CAP, inscribeCost } from '../../engine/run';
+import { absorbBlock, eldritchInsight, essenceStats, FLASK_CAP, inscribeCost, isGenesisLoot } from '../../engine/run';
 import { bottle, choose, leaveReward, take } from '../../state/actions';
 import { store } from '../../state/store';
 import { EssenceCard, LootCard, lootInfo, lootName, STAT_NAME } from '../cards';
@@ -24,8 +24,11 @@ function askAbsorb(it: LootItem, pick: string | null) {
   const st = essenceStats(it.id, it.guardian, true);
   const lines = Object.entries(st).map(([k, v]) => ({ label: STAT_NAME[k as keyof EssenceStats], value: `${(v as number) >= 0 ? '+' : ''}${v}`, color: '#b0ffc4' }));
   if (pick) lines.push({ label: '기술', value: SKILLS.get(pick)?.name ?? pick, color: '#ffcf9a' });
-  // 이계의 정수는 처음 흡수할 때 대가를 치른다 (같은 정수를 수호자판으로 바꿀 때는 없음)
-  if (def?.eldritch && !store.run?.essences.some((e) => e.id === it.id)) lines.push({ label: '이계의 대가', value: '최대 정신력 -5, 통찰 +1', color: 'var(--eldritch)' });
+  // 이계의 정수는 처음 흡수할 때 대가를 치른다 (같은 정수를 수호자판으로 바꿀 때는 없음). 통찰은 수호자의 이계 정수만
+  const had = store.run?.essences.find((e) => e.id === it.id);
+  if (def?.eldritch && !had) lines.push({ label: '이계의 대가', value: '최대 정신력 -5', color: 'var(--eldritch)' });
+  const ins = eldritchInsight(it) - (had ? eldritchInsight(had) : 0);
+  if (ins > 0) lines.push({ label: '통찰', value: `+${ins}`, color: 'var(--eldritch)' });
   confirmThen(
     {
       title: `${name} 흡수`,
@@ -161,7 +164,9 @@ export function RewardScreen() {
 
         {rw.choice && rw.choice.length > 0 && (
           <>
-            <div class="section-label">{rw.chosen ? '선택 완료' : '하나를 고르세요'}</div>
+            <div class="section-label">
+              {rw.chosen ? '선택 완료' : rw.choice.some(isGenesisLoot) ? '창세의 것 — 하나를 고르세요 (판마다 하나뿐이다)' : '하나를 고르세요'}
+            </div>
             <div class="list">
               {rw.choice.map((it, i) => (
                 <LootCard

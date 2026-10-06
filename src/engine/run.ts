@@ -26,6 +26,8 @@ import type {
   OwnedSkill,
   PlayerState,
   Rarity,
+  School,
+  SkillDef,
 } from './types';
 import { generateFloor, floorSignal, type FloorState } from './dungeon';
 import type { EventState } from './events';
@@ -132,6 +134,8 @@ export interface RunState {
   essenceRemovals: number;
   /** 정수 병: 전투 뒤 바로 흡수하지 않고 담아 둔 정수 (신전·거점 신전에서 골드를 내고 새긴다). 예전 저장에는 없다 */
   flasks?: EssenceDrop[];
+  /** 이 판에서 얻은 창세 등급 전리품 id (판마다 하나뿐 — 얻은 뒤엔 다시 나오지 않는다). 예전 저장에는 없다 */
+  genesis?: string;
   /** 거점 여관 사용 여부 */
   innUsed: boolean;
   /** 이번 거점에서 훈련장 강화를 했는가 (거점마다 한 번) */
@@ -144,6 +148,8 @@ export interface RunState {
   learned: { weak: Record<string, string[]> };
   /** 도감에서 이어받은 약점 지식 */
   knownWeak: Record<string, string[]>;
+  /** 금기 「심연 응시」로 얻은 통찰 (판 전체 상한이 있다). 예전 저장에는 없다 */
+  gazed?: number;
 }
 
 export const MAX_SLOTS = 7;
@@ -425,6 +431,18 @@ function applyStats(run: RunState, st: EssenceStats, sign: 1 | -1) {
   if (st.insight) p.insight = Math.max(0, p.insight + sign * st.insight);
 }
 
+/** 이계 정수의 대가: 최대 정신력 -5 (흡수할 때 한 번, 돈을 내고 지우면 돌려받는다) */
+export const ELDRITCH_SANITY = 5;
+
+/**
+ * 이계 정수가 주는 통찰: 수호자(층 수호자·계층군주·최종 수호자)의 이계 정수만 +1.
+ * 보통 이계 정수는 흡수해도 통찰을 주지 않는다 — 통찰은 얻기 어렵게 (균열 수호자의 정수도 수호자 정수지만 정예라 주지 않는다)
+ */
+export function eldritchInsight(drop: { id: string; guardian?: boolean }): number {
+  const def = ESSENCES.get(drop.id);
+  return def?.eldritch && drop.guardian && ENEMIES.get(drop.id)?.tier === 'boss' ? 1 : 0;
+}
+
 /**
  * core=true: 본질로 흡수 — 기술을 배우지 않고 최대 체력을 더 받는다 (coreHp).
  * 보통 정수는 언제나 본질로 흡수한다. 기술을 배울지는 수호자 정수(그 존재의 기술 전부)만 고른다.
@@ -443,12 +461,13 @@ export function absorbEssence(run: RunState, drop: EssenceDrop, pick?: EssencePi
   if (skill) es.skill = skill;
   run.essences.push(es);
   applyStats(run, essenceStats(drop.id, drop.guardian, core), 1);
-  // 같은 정수를 수호자판으로 바꿔 흡수할 때는 이계의 대가(최대 정신력 -5, 통찰 +1)를 다시 치르지 않는다
+  // 이계의 대가(최대 정신력 -5)는 처음 흡수할 때만 — 같은 정수를 수호자판으로 바꿔 흡수할 때는 다시 치르지 않는다
   if (def.eldritch && !same) {
-    run.player.maxSanity = Math.max(10, run.player.maxSanity - 5);
+    run.player.maxSanity = Math.max(10, run.player.maxSanity - ELDRITCH_SANITY);
     run.player.sanity = Math.min(run.player.sanity, run.player.maxSanity);
-    run.player.insight += 1;
   }
+  // 통찰은 수호자의 이계 정수만 +1 (보통판을 수호자판으로 바꿔 흡수하면 그때 얻는다)
+  run.player.insight += eldritchInsight(drop) - (same ? eldritchInsight(same) : 0);
   for (const a of essenceActives(es)) {
     const s = learnSkill(run, a, es.uid);
     if (s && keepLvl.has(a)) s.lvl = keepLvl.get(a)!;
@@ -510,10 +529,10 @@ export function removeEssence(run: RunState, essenceUid: string, free = false): 
     run.essenceRemovals++;
   }
   applyStats(run, essenceStats(es.id, es.guardian, es.core), -1);
-  // 돈을 내고 지우면 이계의 흔적(최대 정신력 -5, 통찰 +1)도 함께 사라진다
+  // 돈을 내고 지우면 이계의 흔적(최대 정신력 -5, 수호자의 이계 정수라면 통찰 +1)도 함께 사라진다
   if (def.eldritch && !free) {
-    run.player.maxSanity += 5;
-    run.player.insight = Math.max(0, run.player.insight - 1);
+    run.player.maxSanity += ELDRITCH_SANITY;
+    run.player.insight = Math.max(0, run.player.insight - eldritchInsight(es));
   }
   for (const s of run.skills.filter((x) => x.from === es.uid)) {
     const slot = run.slots.indexOf(s.uid);
@@ -675,16 +694,50 @@ const RARITY_W: Record<string, Partial<Record<Rarity, number>>> = {
   shop: { common: 50, uncommon: 35, rare: 15 },
 };
 
+/**
+ * 합기(SkillDef.duo)의 보상 가중치: 그 보상에서 희귀 스킬 하나가 받는 가중치의 몇 배인가.
+ * 조건(두 계열의 스킬을 하나씩)을 채운 합기만 후보가 되고, 채우면 희귀 스킬보다 자주 보인다
+ */
+export const DUO_WEIGHT = { value: 2.5 };
+
+/**
+ * 합기 조건에 세는 계열: 가진 스킬의 계열. 기본 공격(무기·방어구 기본기)·정수 기술·공용 스킬·다른 합기는 세지 않는다.
+ * 금기 스킬은 보통 보상에 나오지 않지만 가지고 있으면 금기도 센다
+ */
+export function duoSchools(run: RunState): Set<School> {
+  const out = new Set<School>();
+  for (const s of run.skills) {
+    const d = SKILLS.get(s.id);
+    if (!d || d.duo || d.pool === false || d.rarity === 'basic' || d.tags.includes('basic')) continue;
+    if (d.school === 'essence' || d.school === 'neutral') continue;
+    out.add(d.school);
+  }
+  return out;
+}
+
+/** 이 합기의 조건을 채웠는가 (두 계열의 스킬을 하나씩 가지고 있다) */
+export function duoReady(run: RunState, def: SkillDef, schools = duoSchools(run)): boolean {
+  return !!def.duo && def.duo.every((sc) => schools.has(sc));
+}
+
 export function rollSkills(run: RunState, n: number, tier: keyof typeof RARITY_W = 'normal'): string[] {
   const r = rng(run, 'loot');
   const known = new Set(run.skills.map((s) => s.id));
   const origin = ORIGINS.get(run.origin);
-  const pool = [...SKILLS.values()].filter(
-    (s) => s.pool !== false && s.school !== 'essence' && s.school !== 'forbidden' && !known.has(s.id) && RARITY_W[tier][s.rarity],
-  );
+  const w = RARITY_W[tier];
+  const schools = duoSchools(run);
+  const pool = [...SKILLS.values()].filter((s) => {
+    if (s.pool === false || s.school === 'essence' || known.has(s.id)) return false;
+    // 합기는 조건을 채웠을 때만 (금기가 낀 합기도 금기 스킬을 가지고 있으면 나온다)
+    if (s.duo) return duoReady(run, s, schools) && !!w.rare;
+    return s.school !== 'forbidden' && !!w[s.rarity];
+  });
+  // 내 출신 계열이 끼면 2배 (합기는 두 계열 중 하나라도)
+  const mine = (s: SkillDef) => (s.duo ?? [s.school]).some((sc) => origin?.schools.includes(sc));
+  const weight = (s: SkillDef) => (s.duo ? (w.rare ?? 0) * DUO_WEIGHT.value : (w[s.rarity] ?? 0)) * (mine(s) ? 2 : 1);
   const out: string[] = [];
   for (let i = 0; i < n && pool.length; i++) {
-    const pick = r.weighted(pool, (s) => (RARITY_W[tier][s.rarity] ?? 0) * (origin?.schools.includes(s.school) ? 2 : 1));
+    const pick = r.weighted(pool, weight);
     out.push(pick.id);
     pool.splice(pool.indexOf(pick), 1);
   }
@@ -694,7 +747,8 @@ export function rollSkills(run: RunState, n: number, tier: keyof typeof RARITY_W
 export function rollForbidden(run: RunState, n: number): string[] {
   const r = rng(run, 'loot');
   const known = new Set(run.skills.map((s) => s.id));
-  const pool = [...SKILLS.values()].filter((s) => s.pool !== false && s.school === 'forbidden' && !known.has(s.id));
+  // 금기가 낀 합기는 금기의 길이 아니라 보통 보상·상점에서 (조건을 채웠을 때) 나온다
+  const pool = [...SKILLS.values()].filter((s) => s.pool !== false && s.school === 'forbidden' && !s.duo && !known.has(s.id));
   return r.sample(pool, n).map((s) => s.id);
 }
 
@@ -738,7 +792,8 @@ export function rollBossRelics(run: RunState, n: number): string[] {
 export function rollEquip(run: RunState, tier: 'normal' | 'elite' | 'shop' = 'normal'): string | null {
   const r = rng(run, 'loot');
   const have = new Set([...run.bag.map((x) => x.id), ...Object.values(run.equip).map((x) => x?.id)]);
-  const pool = [...EQUIPS.values()].filter((x) => !have.has(x.id) && x.rarity !== 'basic' && x.rarity !== 'special');
+  // 창세 장비는 계층군주·5층 강적에게서만 (rollGenesis)
+  const pool = [...EQUIPS.values()].filter((x) => !have.has(x.id) && x.rarity !== 'basic' && x.rarity !== 'special' && x.rarity !== 'genesis');
   if (!pool.length) return null;
   const w = RARITY_W[tier];
   return r.weighted(pool, (x) => w[x.rarity] ?? 2).id;
@@ -780,6 +835,40 @@ export function rollChoice(run: RunState, tier: 'normal' | 'elite' | 'boss'): Lo
     if (wild) items.push(wild);
   }
   return items;
+}
+
+// ───────────── 창세 (content/genesis.ts) ─────────────
+
+/**
+ * 창세 등급: 판마다 하나뿐. 계층군주를 쓰러뜨리면 셋 중 하나를 확정으로 고르고,
+ * 5층 정예·수호자(균열 수호자·추적자 포함)는 dropChance 확률로 하나를 떨군다. 상점·일반 전투·보통 정예 보상에는 없다.
+ * 시뮬레이터가 바꿔 볼 수 있게 객체로 둔다 (lord: 계층군주 보상, SIM_GENESIS=off 로 둘 다 끈다)
+ */
+export const GENESIS = { dropChance: 0.05, lord: true };
+
+/** 창세 등급 전리품인가 (스킬·장비) */
+export function isGenesisLoot(it: { kind: string; id: string }): boolean {
+  if (it.kind === 'skill') return SKILLS.get(it.id)?.rarity === 'genesis';
+  if (it.kind === 'equip') return EQUIPS.get(it.id)?.rarity === 'genesis';
+  return false;
+}
+
+/** 창세 후보 n개 (서로 다르게, 출신 계열의 스킬은 2배). 이 판에서 이미 창세를 얻었으면 빈 배열 */
+export function rollGenesis(run: RunState, n: number): LootItem[] {
+  if (run.genesis) return [];
+  const r = rng(run, 'loot');
+  const origin = ORIGINS.get(run.origin);
+  const known = new Set(run.skills.map((s) => s.id));
+  const pool: { it: LootItem; w: number }[] = [];
+  for (const s of SKILLS.values()) if (s.rarity === 'genesis' && !known.has(s.id)) pool.push({ it: { kind: 'skill', id: s.id }, w: origin?.schools.includes(s.school) ? 2 : 1 });
+  for (const e of EQUIPS.values()) if (e.rarity === 'genesis') pool.push({ it: { kind: 'equip', id: e.id }, w: 1.5 });
+  const out: LootItem[] = [];
+  for (let i = 0; i < n && pool.length; i++) {
+    const pick = r.weighted(pool, (x) => x.w);
+    out.push(pick.it);
+    pool.splice(pool.indexOf(pick), 1);
+  }
+  return out;
 }
 
 /** 처치한 적들에서 정수 드롭 */
@@ -875,6 +964,13 @@ export function finishCombat(run: RunState): RewardState | null {
     const relic = rollRelic(run, 'rare');
     if (relic) reward.items.push({ kind: 'relic', id: relic });
   }
+  // 창세 (판마다 하나): 계층군주는 셋 중 하나를 확정으로 — 고르는 보상이 창세로 바뀐다. 5층 정예·수호자는 아주 드물게 하나를 떨군다
+  if (lordFight) {
+    const gen = GENESIS.lord ? rollGenesis(run, 3) : [];
+    if (gen.length) reward.choice = gen;
+  } else if (!run.genesis && act >= FINAL_ACT && cs.kind !== 'normal' && r.chance(GENESIS.dropChance)) {
+    reward.items.push(...rollGenesis(run, 1));
+  }
   if (r.chance(cs.kind === 'normal' ? 0.3 : 0.5)) {
     const c = rollConsumable(run);
     if (c) reward.items.push({ kind: 'consumable', id: c });
@@ -900,6 +996,8 @@ export function finishCombat(run: RunState): RewardState | null {
 /** pick: 수호자 정수와 함께 배울 기술 (null이면 기술 없이) */
 export function takeLoot(run: RunState, item: LootItem, pick: string | null = null): string | null {
   if (item.taken) return '이미 가져갔다';
+  const genesis = isGenesisLoot(item);
+  if (genesis && run.genesis && run.genesis !== item.id) return '창세의 것은 판마다 하나뿐이다';
   switch (item.kind) {
     case 'essence': {
       const why = absorbEssence(run, { id: item.id, color: item.color ?? 0, guardian: item.guardian }, pick);
@@ -932,6 +1030,10 @@ export function takeLoot(run: RunState, item: LootItem, pick: string | null = nu
       break;
   }
   item.taken = true;
+  if (genesis) {
+    run.genesis = item.id;
+    log(run, `창세의 것을 얻었다 — ${(item.kind === 'skill' ? SKILLS.get(item.id)?.name : EQUIPS.get(item.id)?.name) ?? item.id}`);
+  }
   return null;
 }
 

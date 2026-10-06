@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { Combat, type CombatEvent } from '../src/engine/combat';
+import { Combat, DISGUISE_REVEAL, type CombatEvent } from '../src/engine/combat';
 import { ENCOUNTERS, ENEMIES } from '../src/engine/registry';
 import { newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
@@ -212,7 +212,7 @@ describe('구울 왕 — 거짓 만찬', () => {
     return { c, king };
   }
 
-  it('먹을 시체가 없으면 만찬으로 위장한 도약을 고른다 — 통찰 5 이상이면 진짜 의도가 보인다', () => {
+  it(`먹을 시체가 없으면 만찬으로 위장한 도약을 고른다 — 통찰 ${DISGUISE_REVEAL} 이상이면 진짜 의도가 보인다`, () => {
     const { c, king } = bareTable();
     c.planIntent(king);
     expect(king.intent?.move).toBe('lunge');
@@ -220,7 +220,9 @@ describe('구울 왕 — 거짓 만찬', () => {
     expect(fake.kind).toBe('heal');
     expect(fake.label).toBe('왕의 만찬');
     expect(fake.dmg).toBeUndefined();
-    c.p.insight = 5;
+    c.p.insight = DISGUISE_REVEAL - 1;
+    expect(c.shownIntent(king)!.kind).toBe('heal');
+    c.p.insight = DISGUISE_REVEAL;
     const real = c.shownIntent(king)!;
     expect(real.kind).toBe('attack');
     expect(real.dmg).toBe(13);

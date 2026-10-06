@@ -12,7 +12,7 @@ import type { EnemyUnit, MoveDef } from '../../engine/types';
 /** 통찰이 이 이상이면 환영의 정체가 이름에 드러난다 */
 export const ILLUSION_SIGHT = 4;
 
-/** 숨겨진 의도 (통찰 5 이상만 보임) */
+/** 숨겨진 의도 (통찰 HIDDEN_REVEAL = 3 이상만 보임) */
 export const hid = (m: MoveDef): MoveDef => ({ ...m, hidden: true });
 
 export const isIllusion = (e: EnemyUnit): boolean => !!e.mem.illu;

@@ -17,6 +17,12 @@ import {
   type LootItem,
   type RunState,
 } from '../../engine/run';
+import { floorFoes, learnWeak, weakNote } from '../eventkit';
+
+/** 체스 두는 자: 통찰 1당 이길 확률 (기본 45%, 최대 75% — 통찰 4면 최대) */
+const CHESS_BASE = 0.45;
+const CHESS_PER = 0.075;
+const CHESS_MAX = 0.75;
 
 /** 정신력 손실 + 붕괴 메시지 */
 function sanity(run: RunState, n: number): string {
@@ -173,7 +179,7 @@ reg.events([
             // 이겨도 얻을 것이 없으면 지는 위험만 남는다 (피의 제단·연회와 같은 규칙)
             disabled: !run.skills.some((s) => canUpgradeSkill(run, s)) && '강화할 스킬이 없다',
             go: (r, e) => {
-              const win = rng(r, 'event').chance(Math.min(0.75, 0.45 + 0.05 * r.player.insight));
+              const win = rng(r, 'event').chance(Math.min(CHESS_MAX, CHESS_BASE + CHESS_PER * r.player.insight));
               if (win) {
                 const n = upgradeRandom(r, 2);
                 finish(e, `외통수. 형체가 고개를 숙이자 손끝에 수읽기의 감각이 남았다. (스킬 ${n}개 강화)`);
@@ -192,10 +198,15 @@ reg.events([
           },
           {
             label: '상대의 수를 훔쳐본다',
-            hint: '통찰 +1, 정신력 -10',
+            hint: '이 층 적들의 약점을 알게 된다, 정신력 -10',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '보이지 않는 상대의 수가 보이기 시작했다. 그것은 체스가 아니었다. (통찰 +1)' + sanity(r, 10));
+              const names = learnWeak(r, floorFoes(r));
+              finish(
+                e,
+                '보이지 않는 상대의 수가 보이기 시작했다. 그것은 체스가 아니었다. 판 위의 말들은 이 층의 것들이었고, 어느 말이 어디로 무너지는지 다 보였다.' +
+                  weakNote(names) +
+                  (names.length ? sanity(r, 10) : ''),
+              );
             },
           },
           { label: '자리를 뜬다', go: (_r, e) => finish(e, '등 뒤에서 말이 놓이는 소리가 났다. "체크."') },
@@ -326,9 +337,8 @@ reg.events([
           },
           {
             label: '탐사 일지를 읽는다',
-            hint: '통찰 +1, 주변 지도와 포탈 비석 위치, 정신력 -10',
+            hint: '주변 지도와 포탈 비석 위치, 정신력 -6',
             go: (r, e) => {
-              r.player.insight += 1;
               const f = r.floor;
               if (f) {
                 const d = distances(f, f.pos);
@@ -336,7 +346,7 @@ reg.events([
                 const portal = f.rooms[f.portal];
                 if (portal) portal.seen = portal.scouted = true;
               }
-              finish(e, '마지막 장에는 지도와 함께 한 문장이 적혀 있었다. "그것은 우리가 오기를 기다렸다." (통찰 +1)' + sanity(r, 10));
+              finish(e, '마지막 장에는 지도와 함께 한 문장이 적혀 있었다. "그것은 우리가 오기를 기다렸다."' + sanity(r, 6));
             },
           },
           {

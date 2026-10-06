@@ -21,7 +21,7 @@ reg.anomalies([
     id: 'x-rule-darkness',
     name: '칠흑',
     icon: 'gi:night-sky',
-    desc: '적의 의도가 보이지 않는다 (통찰 5 이상 제외). 대신 내가 주는 공격 피해 +15%',
+    desc: '적의 의도가 보이지 않는다 (통찰 3 이상 제외). 대신 내가 주는 공격 피해 +15%',
     hooks: {
       onTurnStart(c) {
         if (c.run.madness.includes('x-foresight')) return;

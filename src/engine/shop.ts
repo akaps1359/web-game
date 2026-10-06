@@ -27,10 +27,11 @@ export interface ShopState {
   items: ShopItem[];
 }
 
+/** 창세(genesis)는 상점에 나오지 않는다 — 그 값은 팔 때만 쓴다 (판매가 = 장비 절반, 스킬 30%) */
 const PRICE: Record<ShopItem['kind'], Partial<Record<Rarity, number>>> = {
-  skill: { common: 45, uncommon: 70, rare: 110 },
+  skill: { common: 45, uncommon: 70, rare: 110, genesis: 240 },
   relic: { common: 120, uncommon: 160, rare: 220 },
-  equip: { common: 60, uncommon: 95, rare: 140 },
+  equip: { common: 60, uncommon: 95, rare: 140, genesis: 300 },
   rune: { common: 55, uncommon: 80, rare: 110 },
   consumable: { common: 25, uncommon: 40, rare: 60 },
   oil: { common: 20 },

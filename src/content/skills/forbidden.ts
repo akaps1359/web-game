@@ -1,7 +1,10 @@
 import { reg } from '../../engine/registry';
 import { hit, skill } from '../lib';
 
-/** 금기 — 정신력을 대가로, 통찰 비례 */
+/**
+ * 금기 — 정신력을 대가로, 통찰 비례.
+ * 2026-10 통찰 개편: 통찰이 귀해졌으므로(보통 판 2~4, 일부러 모으면 6~8) 통찰 1당 수치(per)를 대략 2배로.
+ */
 reg.skills([
   skill({
     id: 'whisper-void',
@@ -15,7 +18,7 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'sanity', 'insight'],
-    vals: { dmg: [8, 10], per: [2, 3], san: 2 },
+    vals: { dmg: [8, 10], per: [4, 6], san: 2 },
     desc: '정신력 {san} 소모. {D:dmg} + 통찰×{per} 공허 피해',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
@@ -72,7 +75,7 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['barrier', 'sanity', 'insight'],
-    vals: { barrier: [8, 12], per: 2, san: 3 },
+    vals: { barrier: [8, 12], per: 4, san: 3 },
     desc: '정신력 {san} 소모. 보호막 {barrier} + 통찰×{per}',
     run: (c, u) => {
       c.loseSanity(u.v('san'));
@@ -90,14 +93,22 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['insight', 'sanity'],
-    vals: { san: [6, 4], max: 6 },
-    desc: '정신력 {san} 소모. 통찰 +1 (영구, 통찰 {max}까지). 전투당 1회',
-    // 전투마다 공짜로 통찰을 쌓으면 판 끝에는 30을 넘고, 통찰 비례 금기 스킬이 끝없이 강해진다.
-    // 통찰의 대가(받는 정신 피해 +5%/통찰)도 6에서 멈추므로 응시로는 그 지점까지만 오른다.
-    canUse: (c, u) => (c.p.insight >= u.v('max') ? '더 들여다볼 심연이 없다' : null),
+    vals: { maxsan: [4, 3], max: 3 },
+    desc: '최대 정신력 -{maxsan}, 통찰 +1 (둘 다 영구). 전투당 1회 — 이 기술로 얻는 통찰은 판 전체에서 {max}까지',
+    // 통찰은 얻기 어려워야 한다 (2026-10 개편): 정신력을 조금 쓰고 전투마다 쌓던 것을, 영구 대가를 치르고 판 전체에서 몇 번만.
+    // 얼마나 응시했는지는 판에 남는다 (run.gazed) — 기술을 잃었다 다시 얻어도 이어진다
+    canUse: (c, u) =>
+      (c.run.gazed ?? 0) >= u.v('max') ? '더 들여다볼 심연이 없다' : c.p.maxSanity - u.v('maxsan') < 10 ? '더 내어 줄 정신이 없다' : null,
     run: (c, u) => {
-      c.loseSanity(u.v('san'));
-      if (c.p.insight < u.v('max')) c.gainInsight(1);
+      if (u.echo || (c.run.gazed ?? 0) >= u.v('max')) return;
+      const p = c.p;
+      p.maxSanity = Math.max(10, p.maxSanity - u.v('maxsan'));
+      if (p.sanity > p.maxSanity) {
+        c.emit({ t: 'sanity', delta: p.maxSanity - p.sanity });
+        p.sanity = p.maxSanity;
+      }
+      c.run.gazed = (c.run.gazed ?? 0) + 1;
+      c.gainInsight(1);
     },
   }),
   skill({
@@ -111,7 +122,7 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     tags: ['debuff', 'sanity', 'insight'],
-    vals: { doom: [8, 12], per: 2, san: 3 },
+    vals: { doom: [8, 12], per: 4, san: 3 },
     desc: '정신력 {san} 소모. 파멸 {doom} + 통찰×{per} (파멸이 체력 이상이면 그 적의 차례가 끝날 때 즉사)',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
@@ -149,7 +160,7 @@ reg.skills([
     target: 'all',
     type: 'void',
     tags: ['attack', 'aoe', 'sanity', 'insight'],
-    vals: { dmg: [14, 18], per: 2, san: 8 },
+    vals: { dmg: [14, 18], per: 4, san: 8 },
     desc: '정신력 {san} 소모. 적 전체에 {D:dmg} + 통찰×{per} 공허 피해 (방어도 무시)',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));

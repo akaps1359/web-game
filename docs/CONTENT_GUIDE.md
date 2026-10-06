@@ -41,6 +41,8 @@ id는 게임 전체에서 유일해야 한다 (적·스킬·특성·이벤트). 
 - 정수 스탯 합(일반 정수 기준): 2층 maxHp 5~8 + 보조 1~2, 3층 8~12, 4층 10~15. 패시브는 그 몬스터다운 효과.
 - 정수 액티브 2색(2개)씩. 수호자는 2~3색 가능(`colors` 길이 = `actives` 길이). 액티브는 그 몬스터의 행동을 플레이어용으로 약하게 옮긴 것.
 - 이계 존재(`eldritch: true`, 3~4층 대부분)는 정수에도 `eldritch: true`.
+- **계열을 잇는 설계**: 새 스킬은 자기 계열 안에서만 맞물리지 않게 한다. 다른 계열과 엮는 기술은 `src/content/skills/duo.ts`의 합기(`duo: [계열, 계열]`, 두 계열 스킬을 하나씩 가지면 보상에 나온다)로 넣는다.
+- **창세 등급**(`rarity: 'genesis'`, `src/content/genesis.ts`): 장비 칸·계열마다 하나뿐. 판당 하나, 계층군주 처치 보상(셋 중 하나)과 5층 정예·수호자 5%에서만. 상점·보통 보상에 넣지 말 것.
 
 ## 4. 층 테마와 고유 메커니즘
 
@@ -62,7 +64,7 @@ id는 게임 전체에서 유일해야 한다 (적·스킬·특성·이벤트). 
   `text`에는 `{time}` `{hour}` `{deaths}` `{runs}` `{wins}` `{best}` `{origin}`을 쓸 수 있다 (진짜 시각·기록으로 바뀜). 줄바꿈은 `\n`.
 - `setUi(c, 'ui:…', n)` — 전투 내내 남는 화면 상태: `ui:water`(0~3) `ui:cracks`(0~3) `ui:tilt`(°) `ui:dark`(0~100) `ui:scramble` `ui:eye` `ui:swap`. 화면에만 영향, 규칙은 훅으로 따로.
 - `MoveDef.ultimate: true` — 필살기 컷인. `MoveDef.cine` — 그 행동과 함께 트는 연출 (`'crack'` 또는 `{ name, n, text }`).
-- `MoveDef.disguise: { kind, label, dmg?, hits?, reveal?, desc? }` — 거짓 의도. 통찰이 `reveal`(기본 5) 미만이면 이 모습으로 보인다 (봇도 속는다). 특성 설명 등으로 속임수가 있다는 걸 알려 줄 것.
+- `MoveDef.disguise: { kind, label, dmg?, hits?, reveal?, desc? }` — 거짓 의도. 통찰이 `reveal`(기본 `DISGUISE_REVEAL` = 3) 미만이면 이 모습으로 보인다 (봇도 속는다). 숨겨진 의도(`hidden`)는 `HIDDEN_REVEAL`(3)부터 보인다. 통찰은 귀하다(보통 판 2~4) — 더 높은 문턱은 수호자급 속임수에만 (4: 4층 어둠·5층 환영, 5: 파라오의 자비·꿈의 문지기의 문). 특성 설명 등으로 속임수가 있다는 걸 알려 줄 것.
 - 제4의 벽 연출(whisper·sysmsg·scrawl 등)은 수호자당 2~4번. 매 턴 쓰지 말 것. 모든 위협은 의도 문구·설명으로 미리 알리고 대응법이 있어야 한다.
 - 수호자 체력은 `BOSS_HP_MULT`(`src/engine/combat.ts`, 기본 1.1)가 더 곱해진다.
 - **퍼즐형 위협**: `setObjective(c, { text, hit/break/block/types/quiet/kill, fail })` — 화면 위 호박색 띠에 막는 법을, 누르면 `fail`(못 막으면 일어나는 일)을 보여 준다. 봇도 이 목표를 보고 움직인다. 풀리는 순간 `setObjective(c, null)`로 지우고 대가를 취소한다.
@@ -78,6 +80,9 @@ id는 게임 전체에서 유일해야 한다 (적·스킬·특성·이벤트). 
 ## 6. 이벤트
 
 `stages.start(run, ev) => { text, choices }`. 선택지 `go(run, ev)`에서 `finish(ev, '결과 문장', { fight?, loot? })` 또는 `ev.stage = '다음'`. 헬퍼: `healRun, hurtRun, gainSanityRun, loseSanityRun(→ 붕괴 처리), learnSkill, rollRelic, rollEquip, rollRune, rollConsumable, rollForbidden, upgradeSkill, rng(run,'event')`. 1층 `events.ts`의 `sanity()`, `relicLoot()` 패턴 참고. 선택에는 대가와 이득이 함께 있어야 한다.
+
+- **통찰은 귀하다** (`src/content/eventkit.ts`): 통찰을 주는 선택지는 층마다(공용 이벤트 포함) 많아야 1~2개, 언제나 +1, 그리고 영구 대가 — `INSIGHT_PRICE`(최대 정신력 -8 또는 최대 체력 -10) 또는 광기 하나(`canTakeMadness`/`takeMadness`). hint와 결과 문장에 그대로 적는다 (`tests/insight.test.ts`가 모든 선택지를 골라 보며 검사).
+- '들여다보는' 선택지의 보상은 통찰 대신 앎: `learnWeak(run, floorFoes(run))`(이 층 적들의 약점 — 이번 판 전투에 바로 보이고 도감에도 남는다), `floorGuardian(run)`, 지도, 의지 등. 새로 안 것이 없으면 대가도 받지 않는다 (`weakNote`).
 
 ## 7. 아이콘
 

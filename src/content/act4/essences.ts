@@ -922,7 +922,7 @@ reg.essences([
     icon: 'gi:rainbow-star',
     grade: 4,
     eldritch: true,
-    stats: { maxHp: 6, maxSanity: 5, insight: 1 },
+    stats: { maxHp: 6, maxSanity: 5, will: 1 },
     passive: {
       name: '색채 흡수',
       desc: '공허 피해를 주면 그 피해의 15%만큼 체력 회복',
@@ -1038,7 +1038,7 @@ reg.essences([
     icon: 'gi:spiral-shell',
     grade: 2,
     eldritch: true,
-    stats: { maxHp: 12, will: 2, dex: 1, insight: 1 },
+    stats: { maxHp: 12, will: 3, dex: 1 },
     passive: {
       name: '시간 표류',
       desc: '내 턴 시작 시 재사용 대기 중인 스킬 하나의 대기 -1 (전투당 1회 스킬 제외)',
@@ -1063,7 +1063,7 @@ reg.essences([
     icon: 'gi:star-gate',
     grade: 2,
     eldritch: true,
-    stats: { maxHp: 14, will: 2, insight: 1 },
+    stats: { maxHp: 14, will: 2, maxSanity: 6 },
     passive: {
       name: '구체의 가호',
       desc: '전투 시작 시 보호막 16',
@@ -1124,7 +1124,7 @@ reg.essences([
     grade: 1,
     lord: true,
     eldritch: true,
-    stats: { maxHp: 20, str: 3, will: 2, insight: 1 },
+    stats: { maxHp: 20, str: 3, will: 3 },
     passive: {
       name: '검은 별의 인력',
       desc: '내 턴 시작 시 모든 적의 방어도가 절반이 된다. 전투 시작 시 의식 2 (턴이 끝날 때마다 힘 +2)',

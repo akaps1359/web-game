@@ -239,9 +239,12 @@ reg.relics([
     name: 'No.25 찢긴 금서 페이지',
     icon: 'gi:scroll-unfurled',
     rarity: 'uncommon',
-    desc: '획득 시 통찰 +1',
+    // 통찰은 언제나 영구 대가를 치르고 얻는다 (2026-10 개편 — 이벤트의 통찰 +1과 같은 값)
+    desc: '획득 시 통찰 +1, 최대 정신력 -8',
     onGain(run) {
       run.player.insight += 1;
+      run.player.maxSanity = Math.max(10, run.player.maxSanity - 8);
+      run.player.sanity = Math.min(run.player.sanity, run.player.maxSanity);
     },
   },
   {
@@ -378,13 +381,13 @@ reg.relics([
     name: 'No.4 공허의 심장',
     icon: 'gi:tentacle-heart',
     rarity: 'boss',
-    desc: '매 턴 시작 시 무작위 적에게 3 + 통찰×2 공허 피해. 받는 정신 피해 +25%',
+    desc: '매 턴 시작 시 무작위 적에게 3 + 통찰×4 공허 피해. 받는 정신 피해 +25%',
     hooks: {
       onTurnStart(c) {
         const e = c.alive.length ? c.rng.pick(c.alive) : null;
         if (e) {
           c.emit({ t: 'fx', name: 'tentacle', src: 'p', tgt: e.uid });
-          c.damage({ src: c.p, tgt: e, base: 3 + 2 * c.p.insight, type: 'void', tags: ['relic'] });
+          c.damage({ src: c.p, tgt: e, base: 3 + 4 * c.p.insight, type: 'void', tags: ['relic'] });
         }
       },
       modSanityLoss: (_c, _s, n) => n * 1.25,
@@ -411,13 +414,18 @@ reg.relics([
     name: 'No.2 공허의 왕관',
     icon: 'gi:crowned-skull',
     rarity: 'boss',
-    desc: '통찰 +2. 매 전투 시작 시 공포 2',
+    // 2026-10 통찰 개편: 통찰 +2 → +1. 대신 왕관이 약점을 짚어 준다
+    desc: '통찰 +1. 약점을 찌르는 공격 피해 +15%. 매 전투 시작 시 공포 2',
     onGain(run) {
-      run.player.insight += 2;
+      run.player.insight += 1;
     },
     hooks: {
       onCombatStart(c) {
         c.apply(c.p, 'dread', 2);
+      },
+      modDamageOut(c, _s, d) {
+        // 미리보기에는 알아낸 약점만 (엔진의 통찰 약점 보너스와 같은 규칙)
+        if (d.src === c.p && d.attack && isEnemy(d.tgt) && d.type !== 'true' && d.tgt.weak.includes(d.type) && (!c.previewing || d.tgt.known.includes(d.type))) d.mult *= 1.15;
       },
     },
   },

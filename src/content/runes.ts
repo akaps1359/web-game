@@ -117,7 +117,7 @@ reg.runes([
     name: '공허 각인',
     icon: 'gi:portal',
     rarity: 'rare',
-    desc: '피해 속성이 공허로 바뀌고 통찰만큼 피해 증가. 사용 시 정신력 -2',
+    desc: '피해 속성이 공허로 바뀌고 통찰×2만큼 피해 증가. 사용 시 정신력 -2',
     fits: isAttack,
     hooks: {
       beforeSkill(c, _s, u) {
@@ -125,7 +125,7 @@ reg.runes([
         c.loseSanity(2);
       },
       modDamageOut(c, _s, d) {
-        d.add += c.p.insight;
+        d.add += 2 * c.p.insight;
       },
     },
   },

@@ -7,6 +7,7 @@ import {
   canUpgradeSkill,
   chooseLoot,
   equipFromBag,
+  equipSkill,
   finishCombat,
   newRun,
   takeLoot,
@@ -17,6 +18,8 @@ import { chooseEvent, eventView, leaveEvent } from '../engine/events';
 import { camp, campRefuel, cureMadness, inn, inscribeFlask, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
 import { buy, priceOf } from '../engine/shop';
 import { endRun, winRun } from '../engine/run';
+import { isGenesisLoot, type LootItem } from '../engine/run';
+import { ORIGINS } from '../engine/registry';
 import { autoTurn } from './bot';
 import type { Rarity } from '../engine/types';
 
@@ -44,11 +47,112 @@ export interface SimResult {
   rooms: number;
   hours: number;
   combats: CombatLog[];
+  /** 합기: 보상 선택지에 나온 수 · 상점에 나온 수 · 이 판에서 얻은 합기 (얻은 순서) */
+  duoOffered: number;
+  duoShop: number;
+  duos: string[];
+  /** 이 판에서 얻은 창세 (없으면 undefined) */
+  genesis?: string;
   /** 막 시작 시점의 상태 */
   actStart: { act: number; hp: number; maxHp: number; level: number; sanity: number; str: number; dex: number; ap: number; relics: number; essences: number; skills: number; upgrades: number; insight: number; relicIds: string[] }[];
 }
 
-const RANK: Record<Rarity, number> = { basic: 0, common: 1, uncommon: 2, rare: 3, forbidden: 3, boss: 4, special: 4 };
+const RANK: Record<Rarity, number> = { basic: 0, common: 1, uncommon: 2, rare: 3, forbidden: 3, boss: 4, special: 4, genesis: 5 };
+
+/** 합기(두 계열을 엮은 스킬)인가 */
+const isDuo = (id: string) => !!SKILLS.get(id)?.duo;
+
+/** 봇의 합기 처리: take 보상에서 고른다 · shop 상점에서 산다 · swap 빈 칸이 없으면 가장 약한 스킬과 바꿔 낀다 */
+export const botDuo = { take: true, shop: true, swap: true };
+
+/** 탄약을 채우는 스킬 (재장전·엄폐 재장전) / 탄약을 쓰는 사격 스킬 */
+const refills = (id: string) => !!SKILLS.get(id)?.tags.includes('ammo') && !SKILLS.get(id)?.tags.includes('gun');
+const shoots = (id: string) => !!SKILLS.get(id)?.tags.includes('gun');
+
+/**
+ * 장착하지 못한 합기를 끼운다 — 빈 칸이 없으면 가장 약한 장착 스킬과 바꾼다.
+ * 약한 순서: 등급이 낮고, 강화하지 않았고, 장착한 합기들이 거둘 상태를 쌓는 계열(짝)이 아닌 것.
+ * 합기·정수 기술은 빼지 않고, 사격 스킬이 남아 있으면 하나뿐인 재장전도 빼지 않는다
+ */
+function equipDuos(run: RunState) {
+  for (const s of run.skills) {
+    const def = SKILLS.get(s.id);
+    if (!def?.duo || run.slots.includes(s.uid)) continue;
+    const empty = run.slots.indexOf(null);
+    if (empty >= 0) {
+      run.slots[empty] = s.uid;
+      continue;
+    }
+    if (!botDuo.swap) continue;
+    const partners = new Set<string>(def.duo);
+    for (const uid of run.slots) {
+      const d = SKILLS.get(run.skills.find((x) => x.uid === uid)?.id ?? '');
+      for (const sc of d?.duo ?? []) partners.add(sc);
+    }
+    const equipped = [...run.slots.map((uid) => run.skills.find((x) => x.uid === uid)?.id ?? ''), s.id];
+    const lastRefill = equipped.filter(refills).length <= 1 && equipped.some(shoots);
+    let worst = -1;
+    let worstScore = Infinity;
+    run.slots.forEach((uid, i) => {
+      const o = run.skills.find((x) => x.uid === uid);
+      const d = o && SKILLS.get(o.id);
+      if (!o || !d || d.duo || o.from || (lastRefill && refills(o.id))) return;
+      const score = RANK[d.rarity] * 10 + o.lvl * 4 + (partners.has(d.school) ? 5 : 0);
+      if (score < worstScore) {
+        worstScore = score;
+        worst = i;
+      }
+    });
+    if (worst >= 0) equipSkill(run, worst, s.uid);
+  }
+}
+
+/** 창세 선택지(계층군주 보상)에서 고를 것: 출신 계열의 스킬 → 무기·방어구 → 장신구 → 아무 스킬. 없으면 -1 */
+function genesisPick(run: RunState, choice: LootItem[]): number {
+  const schools = ORIGINS.get(run.origin)?.schools ?? [];
+  const rank = (it: LootItem) => {
+    if (!isGenesisLoot(it)) return -1;
+    if (it.kind === 'skill') return schools.includes(SKILLS.get(it.id)!.school) ? 3 : 0;
+    return EQUIPS.get(it.id)!.slot === 'trinket' ? 1 : 2;
+  };
+  let best = -1;
+  choice.forEach((it, i) => {
+    if (rank(it) >= 0 && (best < 0 || rank(it) > rank(choice[best]))) best = i;
+  });
+  return best;
+}
+
+/** 얻은 창세를 쓴다: 장착하지 못한 창세 스킬은 가장 약한 스킬과 바꿔 끼고, 창세 장신구는 칸이 차 있으면 낮은 등급의 것과 바꾼다 */
+function equipGenesis(run: RunState) {
+  for (const s of run.skills) {
+    if (SKILLS.get(s.id)?.rarity !== 'genesis' || run.slots.includes(s.uid)) continue;
+    const empty = run.slots.indexOf(null);
+    if (empty >= 0) {
+      run.slots[empty] = s.uid;
+      continue;
+    }
+    let worst = -1;
+    let worstScore = Infinity;
+    run.slots.forEach((uid, i) => {
+      const o = run.skills.find((x) => x.uid === uid);
+      const d = o && SKILLS.get(o.id);
+      if (!o || !d || d.duo || o.from) return;
+      const score = RANK[d.rarity] * 10 + o.lvl * 4;
+      if (score < worstScore) {
+        worstScore = score;
+        worst = i;
+      }
+    });
+    if (worst >= 0) equipSkill(run, worst, s.uid);
+  }
+  for (const it of [...run.bag]) {
+    const def = EQUIPS.get(it.id);
+    if (def?.rarity !== 'genesis' || def.slot !== 'trinket') continue;
+    const slots = (['trinket1', 'trinket2'] as const).filter((k) => run.equip[k]?.id !== it.id);
+    const target = slots.find((k) => !run.equip[k]) ?? slots.sort((a, b) => RANK[EQUIPS.get(run.equip[a]!.id)!.rarity] - RANK[EQUIPS.get(run.equip[b]!.id)!.rarity])[0];
+    if (target) equipFromBag(run, it.uid, target);
+  }
+}
 
 function bfsPath(run: RunState, to: number): number[] | null {
   const f = run.floor!;
@@ -167,8 +271,9 @@ function pickFor(run: RunState, drop: { id: string; color: number; guardian?: bo
   return def?.actives.find((a) => !absorbBlock(run, drop, a)) ?? null;
 }
 
-function handleReward(run: RunState) {
+function handleReward(run: RunState, res: SimResult) {
   const rw = run.reward!;
+  res.duoOffered += rw.choice?.filter((c) => c.kind === 'skill' && isDuo(c.id)).length ?? 0;
   for (const it of rw.items) {
     if (it.kind === 'essence') {
       const drop = { id: it.id, color: it.color ?? 0, guardian: it.guardian };
@@ -186,6 +291,10 @@ function handleReward(run: RunState) {
   if (rw.choice && !rw.chosen) {
     const emptySlot = run.slots.includes(null);
     let idx = rw.choice.findIndex((c) => c.kind === 'relic');
+    // 창세는 무엇보다 먼저 (빈 칸이 없으면 가장 약한 스킬과 바꿔 낀다 — equipGenesis)
+    if (idx < 0) idx = genesisPick(run, rw.choice);
+    // 합기는 빈 칸이 없어도 고른다 (가장 약한 스킬과 바꿔 낀다)
+    if (idx < 0 && botDuo.take) idx = rw.choice.findIndex((c) => c.kind === 'skill' && isDuo(c.id));
     if (idx < 0 && emptySlot) idx = rw.choice.findIndex((c) => c.kind === 'skill');
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'upgrade');
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'equip');
@@ -196,6 +305,7 @@ function handleReward(run: RunState) {
       if (s) chooseLoot(run, idx, s.uid);
     } else chooseLoot(run, idx);
   }
+  equipDuos(run);
   // 더 좋은 장비 장착
   for (const it of [...run.bag]) {
     const def = EQUIPS.get(it.id)!;
@@ -204,6 +314,7 @@ function handleReward(run: RunState) {
     const cur = run.equip[slot];
     if (!cur || RANK[def.rarity] > RANK[EQUIPS.get(cur.id)!.rarity]) equipFromBag(run, it.uid, slot);
   }
+  equipGenesis(run);
   const next = rw.next;
   run.reward = null;
   if (next === 'rift') continueRift(run);
@@ -217,7 +328,8 @@ function snapStart(run: RunState) {
   return { act: run.act, hp: p.hp, maxHp: p.maxHp, level: p.level, sanity: p.sanity, str: p.str, dex: p.dex, ap: p.maxAp, relics: run.relics.length, essences: run.essences.length, skills: run.skills.length, upgrades: run.skills.filter((s) => s.lvl > 0).length, insight: p.insight, relicIds: run.relics.map((x) => x.id) };
 }
 
-export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): SimResult {
+/** onStep: 매 걸음마다 불린다 (밸런스 실험용 — 예: 몇 층에서 창세를 쥐여 주고 비교) */
+export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, onStep?: (run: RunState) => void): SimResult {
   const run = newRun({ seed, origin });
   const res: SimResult = {
     seed,
@@ -232,6 +344,9 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
     rooms: 0,
     hours: 0,
     combats: [],
+    duoOffered: 0,
+    duoShop: 0,
+    duos: [],
     actStart: [snapStart(run)],
   };
   let lastAct = 1;
@@ -240,6 +355,7 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
       lastAct = run.act;
       res.actStart.push(snapStart(run));
     }
+    onStep?.(run);
     switch (run.screen) {
       case 'combat': {
         const c = new Combat(run);
@@ -264,7 +380,7 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
         break;
       }
       case 'reward':
-        handleReward(run);
+        handleReward(run, res);
         break;
       case 'event': {
         const view = eventView(run);
@@ -293,6 +409,12 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
       }
       case 'merchant': {
         const shop = run.shop!;
+        res.duoShop += shop.items.filter((it) => it.kind === 'skill' && isDuo(it.id)).length;
+        // 합기가 있으면 먼저 산다 (빈 칸이 없으면 가장 약한 스킬과 바꿔 낀다)
+        shop.items.forEach((it, i) => {
+          if (botDuo.shop && it.kind === 'skill' && isDuo(it.id) && !it.sold && run.player.gold >= priceOf(run, it)) buy(run, i);
+        });
+        equipDuos(run);
         shop.items.forEach((it, i) => {
           if (it.kind === 'relic' && !it.sold && run.player.gold >= priceOf(run, it)) buy(run, i);
         });
@@ -322,6 +444,8 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
         break;
       }
       case 'dungeon': {
+        // 이벤트 등에서 얻은 합기도 낀다
+        equipDuos(run);
         const f = run.floor!;
         const here = f.rooms[f.pos];
         // 들어갈 수 없는 균열이면(균열 수호자가 없는 층 등) 그냥 지나간다
@@ -363,6 +487,8 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
   res.relics = run.relics.length;
   res.rooms = run.stats.rooms;
   res.hours = run.stats.hours;
+  res.duos = run.skills.filter((s) => isDuo(s.id)).map((s) => s.id);
+  res.genesis = run.genesis;
   return res;
 }
 
@@ -402,6 +528,24 @@ export function summarize(results: SimResult[]): string {
   const avgRooms = results.reduce((s, r) => s + r.rooms, 0) / n;
   const avgCombats = results.reduce((s, r) => s + r.combats.length, 0) / n;
   lines.push(`  평균 레벨 ${avgLv.toFixed(1)} · 방 ${avgRooms.toFixed(0)} · 전투 ${avgCombats.toFixed(0)} · 정수 ${(results.reduce((s, r) => s + r.essences, 0) / n).toFixed(1)}`);
+  {
+    const per = (f: (r: SimResult) => number) => (results.reduce((s, r) => s + f(r), 0) / n).toFixed(1);
+    const anyDuo = results.filter((r) => r.duos.length).length;
+    lines.push(`  합기: 판당 보상 선택지에 ${per((r) => r.duoOffered)}번 · 상점에 ${per((r) => r.duoShop)}번 · 얻음 ${per((r) => r.duos.length)}개 · 하나라도 얻은 판 ${((anyDuo / n) * 100).toFixed(0)}% · 얻은 판 승률 ${anyDuo ? ((results.filter((r) => r.duos.length && r.won).length / anyDuo) * 100).toFixed(0) : '-'}%`);
+    const got = new Map<string, number>();
+    for (const r of results) for (const id of r.duos) got.set(id, (got.get(id) ?? 0) + 1);
+    if (got.size) lines.push('    ' + [...got.entries()].sort((a, b) => b[1] - a[1]).map(([id, k]) => `${SKILLS.get(id)?.name ?? id}×${k}`).join(', '));
+  }
+  {
+    // 창세 (판마다 하나): 얻은 판의 비율·승률과 무엇을 얻었는지
+    const got = results.filter((r) => r.genesis);
+    const names = new Map<string, number>();
+    for (const r of got) {
+      const name = SKILLS.get(r.genesis!)?.name ?? EQUIPS.get(r.genesis!)?.name ?? r.genesis!;
+      names.set(name, (names.get(name) ?? 0) + 1);
+    }
+    lines.push(`  창세: 얻은 판 ${((got.length / n) * 100).toFixed(0)}% · 얻은 판 승률 ${got.length ? ((got.filter((r) => r.won).length / got.length) * 100).toFixed(0) : '-'}%${names.size ? ` · ${[...names.entries()].map(([k, v]) => `${k}×${v}`).join(', ')}` : ''}`);
+  }
   for (const a of [2, 3, 4, 5]) {
     const st = results.flatMap((r) => r.actStart.filter((x) => x.act === a));
     const av = (k: 'level' | 'maxHp' | 'str' | 'dex' | 'ap' | 'relics' | 'essences' | 'skills' | 'upgrades' | 'insight') => (st.reduce((s, x) => s + x[k], 0) / Math.max(1, st.length)).toFixed(1);

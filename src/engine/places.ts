@@ -20,9 +20,18 @@ import type { EquipSlot } from './types';
 
 export type CampAction = 'sleep' | 'meditate' | 'train' | 'tinker';
 
+/**
+ * 쉬는 곳에서 회복하는 정신력: 야영 명상, 신전 기도, 거점 여관(최대치의 이 비율까지 — 이미 그보다 높으면 그대로).
+ * 2026-10 통찰 개편 때 줄였다 (명상 30 → 20, 기도 15 → 10, 여관 전부 → 85%): 통찰이 귀해지면서 받는 정신 피해(+5%/통찰)도
+ * 줄어 5층 평균 정신력이 최대치의 75%까지 올랐다 — 층마다 정신력을 가득 채우고 시작하지 않게 해 70% 안쪽으로
+ */
+export const MEDITATE_SANITY = 20;
+export const PRAY_SANITY = 10;
+export const INN_SANITY = 0.85;
+
 export const CAMP_INFO: Record<CampAction, { name: string; desc: string; hours: number }> = {
   sleep: { name: '수면', desc: '체력 30% 회복', hours: 6 },
-  meditate: { name: '명상', desc: '정신력 30 회복', hours: 4 },
+  meditate: { name: '명상', desc: `정신력 ${MEDITATE_SANITY} 회복`, hours: 4 },
   train: { name: '수련', desc: '스킬 하나 강화', hours: 4 },
   tinker: { name: '정비', desc: '장비 하나 강화', hours: 4 },
 };
@@ -66,7 +75,7 @@ export function camp(run: RunState, act: CampAction, target?: string): string | 
       break;
     }
     case 'meditate': {
-      const n = gainSanityRun(run, 30);
+      const n = gainSanityRun(run, MEDITATE_SANITY);
       log(run, `마음을 가다듬었다 (정신력 +${n})`);
       break;
     }
@@ -112,7 +121,7 @@ export function shrinePray(run: RunState): string | null {
   const key = `pray${f.pos}`;
   if (f.vars[key]) return '이미 기도했다';
   f.vars[key] = 1;
-  const n = gainSanityRun(run, 15);
+  const n = gainSanityRun(run, PRAY_SANITY);
   log(run, `기도를 올렸다 (정신력 +${n})`);
   return null;
 }
@@ -180,8 +189,10 @@ export function acceptForbidden(run: RunState, skillId: string): string | null {
 export function inn(run: RunState): string | null {
   if (run.innUsed) return '이미 쉬었다';
   run.innUsed = true;
-  run.player.hp = run.player.maxHp;
-  run.player.sanity = run.player.maxSanity;
+  const p = run.player;
+  p.hp = p.maxHp;
+  // 몸은 다 낫지만, 심연에서 본 것이 다 잊히지는 않는다
+  p.sanity = Math.max(p.sanity, Math.min(p.maxSanity, Math.round(p.maxSanity * INN_SANITY)));
   log(run, '여관에서 푹 쉬었다');
   return null;
 }

@@ -52,7 +52,7 @@ export const HUSH_STARS = 2;
 const HUSH_SAN = 10;
 export const HUSH_VULN = 3;
 /** 꿈의 문지기 '거짓 문': 이 통찰 이상이면 진짜 의도가 보인다 */
-export const FALSE_DOOR_SIGHT = 8;
+export const FALSE_DOOR_SIGHT = 5;
 /** 꿈의 대사제 '꿈의 성찬': 쌓는 졸음 */
 const COMMUNION_DROWSY = 2;
 /** 문턱의 존재: 내 한 턴에 최대 체력의 이만큼 피해를 받으면 즉시 반대편 세계로 넘어간다 */
@@ -244,7 +244,10 @@ reg.traits([
         e.poise = e.maxPoise;
         delete e.mem.charge;
         e.weak = [...SATURN_WEAK[(3 - lives) % SATURN_WEAK.length]];
-        e.known = c.p.insight >= 2 ? [...e.weak] : [];
+        // 무늬가 바뀌면 아는 약점도 처음부터 — 통찰로 보이는 것만 (1이면 하나, 2 이상이면 전부)
+        e.known = [];
+        delete e.mem.sensed;
+        c.senseWeak(e);
         c.apply(e, 'str', 2, e);
         if (e.st['a5-lives']) c.apply(e, 'a5-lives', -1);
         c.emit({ t: 'spawn', uid: e.uid });
@@ -305,7 +308,7 @@ reg.traits([
   {
     id: 'a5-dream-glutton',
     name: '꿈의 포식자',
-    desc: `잠든 이를 삼켜 회복하고 강해진다. 기억 포식 — 당신의 기술을 삼켜 '삼켜진 기억'으로 붙든다: 기억을 쓰러뜨리면 곧바로 되찾고, ${DIGEST_TURNS}턴 안에 되찾지 못하면 소화되어 꿈을 먹는 자가 회복하고 강해진다 (기술은 그때 돌아온다). 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오른다. 일부 행동은 읽을 수 없다 (통찰 5 이상이면 보인다)`,
+    desc: `잠든 이를 삼켜 회복하고 강해진다. 기억 포식 — 당신의 기술을 삼켜 '삼켜진 기억'으로 붙든다: 기억을 쓰러뜨리면 곧바로 되찾고, ${DIGEST_TURNS}턴 안에 되찾지 못하면 소화되어 꿈을 먹는 자가 회복하고 강해진다 (기술은 그때 돌아온다). 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오른다. 일부 행동은 읽을 수 없다 (통찰 3 이상이면 보인다)`,
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;

@@ -110,7 +110,7 @@ export function unfold(c: Combat, e: EnemyUnit) {
 
 export const PHARAOH = 'black-pharaoh';
 /** 가면을 쓴 파라오의 거짓 의도가 드러나는 통찰 */
-export const LIAR_REVEAL = 7;
+export const LIAR_REVEAL = 5;
 /** 왕의 명령 (n = 지목한 기술의 칸 번호) */
 export const COMMAND = 'a4-command';
 export const DEFY_SAN = 15;
@@ -362,7 +362,7 @@ export const VOID_EYE = 'void-eye';
 export const DARK = 'a4-dark';
 export const DARK_MAX = 3;
 /** 어둠에 묻힌 의도가 보이는 통찰 */
-export const DARK_REVEAL = 7;
+export const DARK_REVEAL = 4;
 export const ECLIPSE_SAN = 16;
 export const ECLIPSE_STR = 2;
 /** 어둠 단계별 화면의 어두움 (%) */

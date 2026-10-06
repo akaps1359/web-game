@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { Combat, type CombatEvent } from '../src/engine/combat';
+import { Combat, DISGUISE_REVEAL, type CombatEvent } from '../src/engine/combat';
 import { ENCOUNTERS, ENEMIES, SKILLS, TRAITS } from '../src/engine/registry';
 import { finishCombat, gainXp, newRun, startCombat, type RunState } from '../src/engine/run';
 import type { EnemyUnit } from '../src/engine/types';
@@ -962,7 +962,7 @@ describe('1층 — 전체', () => {
       if (def.act !== 1) continue;
       for (const [id, m] of Object.entries(def.moves)) {
         if (!m.disguise) continue;
-        const reveal = m.disguise.reveal ?? 5;
+        const reveal = m.disguise.reveal ?? DISGUISE_REVEAL;
         const told = (def.traits ?? []).some((t) => TRAITS.get(t)?.desc.includes(`통찰 ${reveal}`));
         expect(told, `${def.id}.${id}`).toBe(true);
       }

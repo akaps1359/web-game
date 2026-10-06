@@ -1,4 +1,5 @@
 import { STATUSES } from '../engine/registry';
+import { INSIGHT_SOURCES, insightBrief } from './text';
 
 /** 설명 속 용어 풀이 (슬레이 더 스파이어의 키워드 설명처럼) */
 export interface Keyword {
@@ -18,11 +19,12 @@ const TERMS: Keyword[] = [
   { name: '재사용 대기', icon: 'gi:hourglass', color: '#cfc8b8', desc: '스킬을 쓴 뒤 다시 쓰기까지 기다려야 하는 턴 수.' },
   { name: '정신력', icon: 'gi:brain', color: '#b99bff', desc: '공포와 광기를 버티는 힘. 0이 되면 정신이 무너져 광기를 얻는다.' },
   { name: '광기', icon: 'gi:brain', color: '#b99bff', desc: '정신이 무너질 때 얻는 오래가는 효과. 나쁜 광기가 4개가 되면 여정이 끝난다.' },
-  { name: '통찰', icon: 'gi:third-eye', color: '#4fffc4', desc: '5 이상이면 숨겨진 적의 의도가 보인다. 대신 잃는 정신력이 1당 5% 늘어난다.' },
+  { name: '통찰', icon: 'gi:third-eye', color: '#4fffc4', desc: `이계의 지식. ${insightBrief()} ${INSIGHT_SOURCES}` },
   { name: '전열', icon: 'gi:crossed-swords', color: '#cfc8b8', desc: '앞줄. 근접 스킬은 전열에 적이 있으면 전열만 노릴 수 있다.' },
   { name: '후열', icon: 'gi:crossed-swords', color: '#cfc8b8', desc: '뒷줄. 근접 스킬은 전열이 모두 쓰러져야 닿는다. 원거리 스킬은 어디든 닿는다.' },
   { name: '탄약', icon: 'gi:bullets', color: '#ffe08a', desc: '총기 스킬이 쓰는 탄. 다 쓰면 재장전해야 한다.' },
-  { name: '정수', icon: 'gi:heart-beats', color: '#ff9ab0', desc: '쓰러뜨린 존재가 남긴 힘. 흡수하면 스탯·패시브와 최대 체력을 얻는다 (수호자 정수는 여기에 그 존재의 기술 하나를 골라 함께 배운다). 바로 흡수하지 않고 병에 담아 두었다가 신전에서 골드를 내고 새길 수도 있다. 레벨만큼만 흡수할 수 있다.' },
+  { name: '창세', icon: 'gi:sparkles', color: '#ffe3fa', desc: '희귀보다 귀한 가장 높은 등급 — 세계가 처음 지어질 때 남은 것. 계층군주를 쓰러뜨리면 셋 중 하나를 고를 수 있고, 5층의 강적이 아주 드물게 떨군다. 한 판에 하나만 가질 수 있다.' },
+  { name: '정수', icon: 'gi:heart-beats', color: '#ff9ab0', desc: '쓰러뜨린 존재가 남긴 힘. 흡수하면 스탯·패시브와 최대 체력을 얻는다 (수호자 정수는 여기에 그 존재의 기술 하나를 골라 함께 배운다). 바로 흡수하지 않고 병에 담아 두었다가 신전에서 골드를 내고 새길 수도 있다. 레벨만큼만 흡수할 수 있다. 이계의 정수는 흡수할 때 최대 정신력 -5를 치르고, 수호자의 이계 정수라면 통찰 +1도 얻는다.' },
 ];
 
 /** 한 글자 이름은 뒤에 숫자·기호·공백이 올 때만 용어로 본다 (「힘껏」 같은 낱말과 헷갈리지 않게) */

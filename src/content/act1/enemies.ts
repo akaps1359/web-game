@@ -181,7 +181,9 @@ reg.traits([
         e.name = '심해의 혼혈';
         e.weak = ['fire', 'arcane'];
         e.known = e.known.filter((w) => e.weak.includes(w));
-        if (c.p.insight >= 2) e.known = [...e.weak];
+        // 바뀐 약점도 통찰로 본다 (1이면 하나, 2 이상이면 전부)
+        delete e.mem.sensed;
+        c.senseWeak(e);
         e.maxPoise = 10;
         e.poise = e.broken ? 0 : 10;
         releaseSkill(c, e, (n) => `낚싯대가 부러졌다 — 「${n}」을(를) 되찾았다`);

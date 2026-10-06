@@ -76,7 +76,7 @@ describe('스킬 감사 — 각인의 위력 배율', () => {
     const c = arena('eldritch-ward', { runes: THRIFT });
     c.p.insight = 2;
     expect(c.useSkill('sk')).toBeNull();
-    expect(c.p.st.barrier).toBe(p75(8 + 2 * 2));
+    expect(c.p.st.barrier).toBe(p75(8 + 4 * 2));
   });
 
   it('인장 폭발: 기본 피해와 인장당 피해가 위력을 따른다', () => {
@@ -161,14 +161,14 @@ describe('스킬 감사 — 각인의 위력 배율', () => {
     const a = arena('whisper-void', { runes: THRIFT });
     a.p.insight = 3;
     expect(a.useSkill('sk', front(a).uid)).toBeNull();
-    expect(total(a)).toBe(p75(8) + p75(2 * 3));
+    expect(total(a)).toBe(p75(8) + p75(4 * 3));
 
     const b = arena('void-rift', { runes: THRIFT });
     b.p.insight = 3;
     expect(b.useSkill('sk')).toBeNull();
     const hs = hits(b);
     expect(hs.length).toBe(3);
-    for (const h of hs) expect(h.amount).toBe(p75(14) + p75(2 * 3));
+    for (const h of hs) expect(h.amount).toBe(p75(14) + p75(4 * 3));
   });
 
   it('촉매: 늘어나는 독의 양이 위력을 따른다', () => {

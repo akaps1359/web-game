@@ -187,12 +187,12 @@ async function maybeBossIntro() {
   await bossIntro({ name: boss.name, sub, at: cineCenter(boss.uid) });
 }
 
-/** 기술의 무게: 0 = 기본 공격, 1 = 보통, 2 = 희귀·행동력 2 이상, 3 = 금기 (메아리는 가볍게) */
+/** 기술의 무게: 0 = 기본 공격, 1 = 보통, 2 = 희귀·행동력 2 이상, 3 = 금기·창세 (메아리는 가볍게) */
 function skillWeight(skillId: string, echo?: boolean): number {
   const def = SKILLS.get(skillId);
   if (!def || def.tags.includes('basic')) return 0;
   if (echo) return 1;
-  if (def.rarity === 'forbidden') return 3;
+  if (def.rarity === 'forbidden' || def.rarity === 'genesis') return 3;
   const owned = store.run?.skills.find((x) => x.id === skillId);
   return def.rarity === 'rare' || lvlVal(def.cost, owned?.lvl ?? 0) >= 2 ? 2 : 1;
 }

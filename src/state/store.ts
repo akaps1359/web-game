@@ -13,6 +13,8 @@ export type Sheet =
 
 export interface Tip {
   title: string;
+  /** 제목 글자에 붙일 클래스 (창세 등급의 무지갯빛 이름 등 — text.ts rarityClass) */
+  nameClass?: string;
   sub?: string;
   body: string;
   icon?: string;

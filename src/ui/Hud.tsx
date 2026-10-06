@@ -1,6 +1,7 @@
 import { store } from '../state/store';
 import { essenceCap, essenceUsed, xpToNext } from '../engine/run';
 import { Icon, showTip, Stat } from './components';
+import { INSIGHT_SOURCES, insightText } from './text';
 
 /** 판 진행 중 상단 표시줄 */
 export function RunHud({ compact }: { compact?: boolean }) {
@@ -45,7 +46,7 @@ export function RunHud({ compact }: { compact?: boolean }) {
             title: '통찰',
             icon: 'gi:third-eye',
             color: 'var(--ins)',
-            body: '이계의 지식. 2 이상이면 적의 약점이 모두 보이고, 5 이상이면 숨겨진 의도가 보인다. 금기 스킬이 강해진다.\n대신 통찰 1당 받는 정신 피해가 5% 늘어난다.',
+            body: `이계의 지식. ${INSIGHT_SOURCES}\n${insightText(snap ? snap.p.insight : p.insight)}`,
           })
         }
       />

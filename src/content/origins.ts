@@ -33,7 +33,7 @@ reg.origins([
     name: '오컬트 학자',
     icon: 'gi:spell-book',
     desc: '금지된 책을 너무 많이 읽었다. 인장과 금기의 지식을 쓴다.',
-    hp: 72,
+    hp: 76,
     sanity: 110,
     gold: 70,
     skills: ['sigil', 'detonate', 'circle', 'whisper-void'],

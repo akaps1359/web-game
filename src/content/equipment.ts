@@ -184,10 +184,14 @@ reg.equips([
     icon: 'gi:stone-block',
     slot: 'trinket',
     rarity: 'common',
-    desc: '참격 공격 피해 +1 (강화마다 +1)',
+    desc: '참격 공격 피해 +1 (강화마다 +1). 전투에서 이기면 칼을 갈며 마음을 가다듬는다 — 정신력 +2',
     hooks: {
       modDamageOut(_c, s, d) {
         if (d.attack && d.type === 'slash') d.add += 1 + s.n;
+      },
+      // 정신력을 되찾을 길이 없던 사냥꾼의 버팀목 (군인은 결의, 학자는 로브·아편팅크가 있다)
+      onCombatEnd(c, _s, won) {
+        if (won) c.gainSanity(2);
       },
     },
   },

@@ -7,7 +7,8 @@ export const DMG_TYPES: readonly DmgType[] = ['slash', 'pierce', 'blunt', 'fire'
 
 export type School = 'blade' | 'firearm' | 'occult' | 'alchemy' | 'resolve' | 'forbidden' | 'essence' | 'neutral';
 
-export type Rarity = 'basic' | 'common' | 'uncommon' | 'rare' | 'forbidden' | 'boss' | 'special';
+/** genesis(창세): 희귀 위의 최상위 — 계층군주·5층 강적에게서만, 판마다 하나 (content/genesis.ts) */
+export type Rarity = 'basic' | 'common' | 'uncommon' | 'rare' | 'forbidden' | 'boss' | 'special' | 'genesis';
 
 export type Range = 'melee' | 'ranged' | 'self';
 
@@ -67,7 +68,7 @@ export interface Intent {
   hits?: number;
   sanity?: number;
   label: string;
-  /** 통찰 5 미만이면 ??? 로 표시 */
+  /** 통찰이 HIDDEN_REVEAL(3) 미만이면 ??? 로 표시 */
   hidden?: boolean;
   /** 차지 중 — 다음 행동이 강력 */
   charging?: boolean;
@@ -149,7 +150,7 @@ export interface EssenceDef {
   /** 색별 액티브 스킬 id */
   actives: string[];
   colors: string[];
-  /** 이계 정수: 흡수 시 최대 정신력 -5, 통찰 +1 */
+  /** 이계 정수: 흡수 시 최대 정신력 -5 (수호자의 이계 정수라면 통찰 +1 — run.ts의 eldritchInsight) */
   eldritch?: boolean;
   /** 계층정수: 제거 불가 */
   lord?: boolean;
@@ -295,6 +296,11 @@ export interface SkillDef {
   maxLvl?: number;
   /** 특정 출신/조건에서만 등장 */
   pool?: false;
+  /**
+   * 합기(合技): 두 계열을 엮은 스킬. 두 계열의 스킬을 하나씩 가지고 있을 때만 스킬 보상·상점에 나온다
+   * (기본 공격·정수 기술·다른 합기는 세지 않는다). school은 둘 중 하나 — 시전 연출이 그 계열을 따른다
+   */
+  duo?: [School, School];
 }
 
 export interface SkillUse {
@@ -471,7 +477,7 @@ export interface MoveDef {
   /** 이 행동을 할 때 함께 트는 연출 (세기·글자가 필요하면 { name, n, text }) */
   cine?: CineName | { name: CineName; n?: number; text?: string };
   /**
-   * 의도를 속인다: 통찰이 reveal(기본 5) 미만이면 의도가 이것으로 보인다 (실제로는 원래 행동을 한다).
+   * 의도를 속인다: 통찰이 reveal(기본 DISGUISE_REVEAL = 3) 미만이면 의도가 이것으로 보인다 (실제로는 원래 행동을 한다).
    * 들키면 진짜 의도가 보인다
    */
   disguise?: { kind: IntentKind; label: string; dmg?: number; hits?: number; reveal?: number; desc?: string };

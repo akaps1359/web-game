@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { Combat, type CombatEvent } from '../src/engine/combat';
+import { Combat, DISGUISE_REVEAL, type CombatEvent } from '../src/engine/combat';
 import { ENEMIES, SKILLS } from '../src/engine/registry';
 import { finishCombat, newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
@@ -798,7 +798,7 @@ describe('고대인 해부학자 — 완전 해부 (즉사 퍼즐)', () => {
 });
 
 describe('프나스의 돌 — 얼음 밑의 속임수', () => {
-  it('아가리는 통찰이 모자라면 방어로 보인다 (봇도 속는다). 통찰 5면 진짜가 보인다', () => {
+  it(`아가리는 통찰이 모자라면 방어로 보인다 (봇도 속는다). 통찰 ${DISGUISE_REVEAL}이면 진짜가 보인다`, () => {
     const { c, e } = fight('stalker-a3');
     const d = e('dhole');
     force(c, d, 'maw');
@@ -807,7 +807,9 @@ describe('프나스의 돌 — 얼음 밑의 속임수', () => {
     expect(fake.kind).toBe('block');
     expect(fake.label).toBe('얼음 밑에서 웅크린다');
     expect(incoming(c)).toBe(0);
-    c.p.insight = 5;
+    c.p.insight = DISGUISE_REVEAL - 1;
+    expect(c.shownIntent(d)!.kind).toBe('block');
+    c.p.insight = DISGUISE_REVEAL;
     expect(c.shownIntent(d)!.kind).toBe('attack');
     expect(incoming(c)).toBeGreaterThan(0);
   });

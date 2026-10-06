@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { ESSENCES, EQUIPS, FLOORS, MADNESS } from '../../engine/registry';
-import { CURE_COST, cureMadness, inn, leaveHaven, purgeEssence, removalCost, smith, smithCost, TRAIN_COST } from '../../engine/places';
+import { CURE_COST, cureMadness, inn, INN_SANITY, leaveHaven, purgeEssence, removalCost, smith, smithCost, TRAIN_COST } from '../../engine/places';
 import { openShop } from '../../engine/shop';
 import { refresh } from '../../state/actions';
 import { applyAsk } from '../ask';
@@ -57,7 +57,7 @@ export function HavenScreen() {
               </div>
               <div class="body">
                 <div class="name">하룻밤 묵는다</div>
-                <div class="desc">체력과 정신력 전부 회복 {run.innUsed ? '(이미 쉬었다)' : ''}</div>
+                <div class="desc">체력 전부, 정신력은 최대치의 {Math.round(INN_SANITY * 100)}%까지 회복 {run.innUsed ? '(이미 쉬었다)' : ''}</div>
               </div>
             </button>
             <button

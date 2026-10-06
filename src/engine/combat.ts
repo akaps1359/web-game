@@ -37,10 +37,29 @@ import type {
 } from './types';
 import type { RunState } from './run';
 
-/** 보이는 의도: 속임수 의도(disguise)는 통찰이 reveal(기본 5) 미만이면 가짜 모습으로. 속은 의도는 move가 '_disguise' */
+// ───────────── 통찰 ─────────────
+// 얻기 어렵고(수호자의 이계 정수·영구 대가를 치르는 선택), 1점마다 보이는 것이 늘어난다.
+//   1: 전투를 시작할 때 적마다 아직 모르는 약점 하나 / 2: 약점 전부 / 3: 숨겨진·거짓 의도 / 4: 4층의 어둠·5층의 환영
+//   5: 가장 깊은 속임수(검은 파라오의 자비·꿈의 문지기의 문). 문턱은 콘텐츠 상수 — 설명은 ui/text.ts의 INSIGHT_STEPS
+//   그리고 1점마다 약점 공격 피해 +6% (8까지). 대가는 받는 정신 피해 +5%/통찰 (6에서 멈춘다)
+
+/** 거짓 의도(disguise)를 간파하는 통찰 — 의도마다 reveal로 따로 정할 수 있다 */
+export const DISGUISE_REVEAL = 3;
+/** 숨겨진 의도(???)가 보이는 통찰 */
+export const HIDDEN_REVEAL = 3;
+/** 통찰 1당 약점 공격 피해 배율 / 그 상한 통찰 */
+export const INSIGHT_WEAK = 0.06;
+export const INSIGHT_WEAK_CAP = 8;
+
+/** 통찰이 주는 약점 공격 피해 배율 */
+export function insightWeakMult(insight: number): number {
+  return 1 + INSIGHT_WEAK * Math.max(0, Math.min(INSIGHT_WEAK_CAP, insight));
+}
+
+/** 보이는 의도: 속임수 의도(disguise)는 통찰이 reveal(기본 DISGUISE_REVEAL) 미만이면 가짜 모습으로. 속은 의도는 move가 '_disguise' */
 export function shownIntentOf(it: Intent | null | undefined, insight: number): Intent | null {
   if (!it) return null;
-  if (!it.disguise || insight >= (it.disguise.reveal ?? 5)) return it;
+  if (!it.disguise || insight >= (it.disguise.reveal ?? DISGUISE_REVEAL)) return it;
   const d = it.disguise;
   return { move: '_disguise', kind: d.kind, label: d.label, dmg: d.dmg, hits: d.hits, desc: d.desc };
 }
@@ -443,6 +462,10 @@ export class Combat {
           if (d.tgt.broken > 0) d.mult *= 1.5;
           const r = d.tgt.resist[d.type];
           if (r !== undefined) d.mult *= r;
+          // 통찰: 약점을 찌르는 내 공격 피해 +6%/통찰 — 미리보기에는 알아낸 약점만 (모르는 약점을 숫자로 흘리지 않게)
+          if (d.src === this.p && d.attack && d.tgt.weak.includes(d.type) && (!this.previewing || d.tgt.known.includes(d.type))) {
+            d.mult *= insightWeakMult(this.p.insight);
+          }
         }
       }
     }
@@ -787,7 +810,23 @@ export class Combat {
     if (n <= 0) return;
     this.p.insight += n;
     this.emit({ t: 'insight', delta: n });
-    if (this.p.insight >= 2) for (const e of this.alive) e.known = [...e.weak];
+    for (const e of this.alive) this.senseWeak(e);
+  }
+
+  /**
+   * 통찰로 꿰뚫어 보는 약점: 2 이상이면 전부, 1이면 아직 모르는 약점 하나 (적마다 한 번 — e.mem.sensed).
+   * 약점이 바뀌는 적(변신·가면·목숨)은 known을 다시 정하고 sensed를 지운 뒤 다시 부른다
+   */
+  senseWeak(e: EnemyUnit) {
+    const n = this.p.insight;
+    if (n >= 2) {
+      e.known = [...e.weak];
+      return;
+    }
+    if (n < 1 || e.mem.sensed) return;
+    e.mem.sensed = 1;
+    const w = e.weak.find((x) => !e.known.includes(x));
+    if (w) e.known = [...e.known, w];
   }
 
   private breakdown() {
@@ -844,7 +883,7 @@ export class Combat {
       maxPoise: def.poise,
       broken: 0,
       weak: [...def.weak],
-      known: this.p.insight >= 2 ? [...def.weak] : def.weak.filter((w) => this.run.knownWeak?.[def.id]?.includes(w)),
+      known: def.weak.filter((w) => this.run.knownWeak?.[def.id]?.includes(w)),
       resist: { ...(def.resist ?? {}) },
       intent: null,
       mem: {},
@@ -855,6 +894,8 @@ export class Combat {
     };
     this.s.enemies.push(e);
     def.onSpawn?.(this, e);
+    // 도감 지식 위에 통찰로 보이는 약점 (onSpawn이 약점을 바꿨을 수 있으니 그 뒤에)
+    this.senseWeak(e);
     if (!initial) {
       this.emit({ t: 'spawn', uid: e.uid });
       if (this.s.phase === 'player') this.planIntent(e);

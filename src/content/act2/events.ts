@@ -17,6 +17,7 @@ import {
   type RunState,
 } from '../../engine/run';
 import { tollCheck } from './floor';
+import { INSIGHT_PRICE, cutMaxSanity, floorFoes, learnWeak, weakNote } from '../eventkit';
 
 /** 정신력 손실 + 붕괴 메시지 */
 function sanity(run: RunState, n: number): string {
@@ -96,10 +97,15 @@ reg.events([
           },
           {
             label: '칸막이 너머를 엿본다',
-            hint: '통찰 +1, 정신력 -10',
+            hint: '이 층 적들의 약점을 알게 된다, 정신력 -10',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '격자 틈으로 보인 것은 사람의 얼굴이 아니었다. 그것은 당신의 고백을 받아 적고 있었다. (통찰 +1)' + sanity(r, 10));
+              const names = learnWeak(r, floorFoes(r));
+              finish(
+                e,
+                '격자 틈으로 보인 것은 사람의 얼굴이 아니었다. 그것은 고백을 받아 적고 있었다. 펼쳐진 장부에는 이 수도원 식구들의 죄가 — 그들이 무엇에 무너지는지가 — 빼곡했다.' +
+                  weakNote(names) +
+                  (names.length ? sanity(r, 10) : ''),
+              );
             },
           },
           {
@@ -246,15 +252,14 @@ reg.events([
         choices: [
           {
             label: '머리를 담근다',
-            hint: '통찰 +1, 최대 체력 +5, 최대 정신력 -8',
+            hint: `통찰 +1, 최대 체력 +5, 최대 정신력 -${INSIGHT_PRICE.maxSanity}`,
             go: (r, e) => {
               const p = r.player;
               p.insight += 1;
               p.maxHp += 5;
               p.hp += 5;
-              p.maxSanity = Math.max(10, p.maxSanity - 8);
-              p.sanity = Math.min(p.sanity, p.maxSanity);
-              finish(e, '미지근하고 끈적한 것이 귓속으로, 콧속으로, 생각 속으로 스며들었다. 다시 고개를 들었을 때 숨 쉬는 법이 조금 달라져 있었다. (통찰 +1, 최대 체력 +5, 최대 정신력 -8)');
+              cutMaxSanity(r, INSIGHT_PRICE.maxSanity);
+              finish(e, `미지근하고 끈적한 것이 귓속으로, 콧속으로, 생각 속으로 스며들었다. 다시 고개를 들었을 때 숨 쉬는 법이 조금 달라져 있었다. (통찰 +1, 최대 체력 +5, 최대 정신력 -${INSIGHT_PRICE.maxSanity})`);
             },
           },
           {

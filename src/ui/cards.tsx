@@ -1,12 +1,40 @@
 import type { ComponentChildren } from 'preact';
 import { CONSUMABLES, EQUIPS, ESSENCES, RELICS, RUNES, SKILLS } from '../engine/registry';
-import { essenceActives, essenceStats, type LootItem } from '../engine/run';
+import { eldritchInsight, essenceActives, essenceStats, isGenesisLoot, type LootItem } from '../engine/run';
 import { lvlVal } from '../engine/combat';
-import type { EssenceStats } from '../engine/types';
+import type { EssenceStats, SkillDef } from '../engine/types';
 import { Icon, Segs, press, showTip } from './components';
-import { DMG_NAME, RARITY_COLOR, RARITY_NAME, SCHOOL_COLOR, SCHOOL_NAME, skillDesc } from './text';
+import { DMG_NAME, RARITY_COLOR, RARITY_NAME, SCHOOL_COLOR, SCHOOL_NAME, rarityClass, skillDesc } from './text';
 
 const RANGE = { melee: '근접', ranged: '원거리', self: '자신' } as const;
+
+/** 스킬의 계열 표시 — 합기는 '합기 · 검술×연금' */
+export function schoolLabel(def: SkillDef): string {
+  return def.duo ? `합기 · ${SCHOOL_NAME[def.duo[0]]}×${SCHOOL_NAME[def.duo[1]]}` : SCHOOL_NAME[def.school];
+}
+
+/** 합기 표식: 두 계열의 색이 이어진 작은 띠 */
+export function DuoTag({ def }: { def: SkillDef }) {
+  if (!def.duo) return null;
+  const [a, b] = def.duo;
+  return (
+    <span
+      style={{
+        marginLeft: 6,
+        padding: '0 6px',
+        borderRadius: 999,
+        fontSize: 10.5,
+        fontWeight: 800,
+        letterSpacing: '0.04em',
+        color: '#15120c',
+        background: `linear-gradient(90deg, ${SCHOOL_COLOR[a]}, ${SCHOOL_COLOR[b]})`,
+        verticalAlign: 1,
+      }}
+    >
+      합기
+    </span>
+  );
+}
 
 export function SkillCard({ id, lvl = 0, runes = [], sel, off, onClick, right }: { id: string; lvl?: number; runes?: string[]; sel?: boolean; off?: boolean; onClick?: () => void; right?: ComponentChildren }) {
   const def = SKILLS.get(id);
@@ -15,15 +43,20 @@ export function SkillCard({ id, lvl = 0, runes = [], sel, off, onClick, right }:
   const base = lvlVal(def.cd, lvl);
   const cost = Math.max(0, lvlVal(def.cost, lvl) + runes.reduce((n, r) => n + (RUNES.get(r)?.costMod ?? 0), 0));
   const cd = Math.max(base > 0 ? 1 : 0, base + runes.reduce((n, r) => n + (RUNES.get(r)?.cdMod ?? 0), 0));
+  // 합기는 두 계열의 색으로 테를 두른다
+  const badge = def.duo
+    ? { borderColor: SCHOOL_COLOR[def.duo[0]] + '99', background: `linear-gradient(135deg, ${SCHOOL_COLOR[def.duo[0]]}33, rgba(0, 0, 0, 0.3) 55%, ${SCHOOL_COLOR[def.duo[1]]}40)` }
+    : { borderColor: SCHOOL_COLOR[def.school] + '55' };
   return (
     <button
-      class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''}`}
+      class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''} ${def.rarity === 'genesis' ? 'genesis' : ''}`}
       {...press(onClick, () =>
         showTip({
           title: def.name + (lvl > 0 ? '+' : ''),
+          nameClass: rarityClass(def.rarity),
           icon: def.icon,
           color: SCHOOL_COLOR[def.school],
-          sub: `${SCHOOL_NAME[def.school]} · ${RARITY_NAME[def.rarity]}`,
+          sub: `${schoolLabel(def)} · ${RARITY_NAME[def.rarity]}`,
           body: skillDesc(def, lvl).map((x) => x.t).join(''),
           lines: [
             { label: '행동력', value: String(cost) },
@@ -32,16 +65,19 @@ export function SkillCard({ id, lvl = 0, runes = [], sel, off, onClick, right }:
         }),
       )}
     >
-      <div class="badge" style={{ borderColor: SCHOOL_COLOR[def.school] + '55' }}>
-        <Icon name={def.icon} size={28} color={SCHOOL_COLOR[def.school]} />
+      <div class="badge" style={badge}>
+        <Icon name={def.icon} size={28} color={SCHOOL_COLOR[def.school]} class={def.rarity === 'genesis' ? 'genesis-glow' : undefined} />
       </div>
       <div class="body">
         <div class="name" style={{ color: RARITY_COLOR[def.rarity] === '#cfc8b8' ? undefined : RARITY_COLOR[def.rarity] }}>
-          {def.name}
-          {lvl > 0 ? '+' : ''}
+          <span class={rarityClass(def.rarity)}>
+            {def.name}
+            {lvl > 0 ? '+' : ''}
+          </span>
+          <DuoTag def={def} />
         </div>
         <div class="meta">
-          {SCHOOL_NAME[def.school]} · {RARITY_NAME[def.rarity]} · 행동력 {cost} · {cd >= 99 ? '전투당 1회' : cd > 0 ? `대기 ${cd}턴` : '대기 없음'} · {RANGE[def.range]}
+          {schoolLabel(def)} · {RARITY_NAME[def.rarity]} · 행동력 {cost} · {cd >= 99 ? '전투당 1회' : cd > 0 ? `대기 ${cd}턴` : '대기 없음'} · {RANGE[def.range]}
           {def.type ? ` · ${DMG_NAME[def.type]}` : ''}
         </div>
         <div class="desc">
@@ -129,7 +165,9 @@ export function EssenceCard({
       <StatChips st={essenceStats(id, guardian, core)} />
       {def.eldritch && (
         <div style={{ fontSize: 12, color: 'var(--eldritch)' }}>
-          이계의 정수 — 흡수하면 최대 정신력 -5, 통찰 +1
+          {eldritchInsight({ id, guardian })
+            ? '이계의 정수 — 흡수하면 최대 정신력 -5. 수호자의 것이라 통찰 +1'
+            : '이계의 정수 — 흡수하면 최대 정신력 -5 (통찰은 수호자의 이계 정수만 준다)'}
         </div>
       )}
       <div style={{ fontSize: 13 }}>
@@ -184,7 +222,7 @@ export function lootInfo(it: LootItem): { icon: string; color: string; meta: str
   let desc = '';
   if (it.kind === 'skill') {
     const d = SKILLS.get(it.id);
-    if (d) return { icon: d.icon, color: SCHOOL_COLOR[d.school], meta: `스킬 · ${SCHOOL_NAME[d.school]}`, desc: skillDesc(d, 0).map((x) => x.t).join('') };
+    if (d) return { icon: d.icon, color: SCHOOL_COLOR[d.school], meta: `스킬 · ${schoolLabel(d)}`, desc: skillDesc(d, 0).map((x) => x.t).join('') };
   }
   switch (it.kind) {
     case 'relic': {
@@ -252,14 +290,17 @@ export function lootInfo(it: LootItem): { icon: string; color: string; meta: str
 export function LootCard({ it, sel, off, onClick, right }: { it: LootItem; sel?: boolean; off?: boolean; onClick?: () => void; right?: ComponentChildren }) {
   if (it.kind === 'skill') return <SkillCard id={it.id} sel={sel} off={off} onClick={onClick} right={right} />;
   const { icon, color, meta, desc } = lootInfo(it);
+  // 창세 장비는 이름이 무지갯빛으로 흐르고 카드에 은은한 테가 둘린다
+  const gen = isGenesisLoot(it);
+  const nameClass = gen ? rarityClass('genesis') : '';
   return (
-    <button class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''}`} {...press(onClick, () => showTip({ title: lootName(it), icon, color, sub: meta, body: desc || meta }))}>
+    <button class={`card ${sel ? 'sel' : ''} ${off ? 'off' : ''} ${gen ? 'genesis' : ''}`} {...press(onClick, () => showTip({ title: lootName(it), nameClass, icon, color, sub: meta, body: desc || meta }))}>
       <div class="badge">
-        <Icon name={icon} size={28} color={color} />
+        <Icon name={icon} size={28} color={color} class={gen ? 'genesis-glow' : undefined} />
       </div>
       <div class="body">
         <div class="name" style={{ color }}>
-          {lootName(it)}
+          <span class={nameClass}>{lootName(it)}</span>
         </div>
         <div class="meta">{meta}</div>
         {desc && (

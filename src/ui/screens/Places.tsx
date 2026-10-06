@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { ESSENCES, MADNESS, EQUIPS } from '../../engine/registry';
-import { CAMP_INFO, camp, campRefuel, cureMadness, CURE_COST, forbiddenOffer, acceptForbidden, leavePlace, purgeEssence, removalCost, shrinePray, type CampAction } from '../../engine/places';
+import { CAMP_INFO, camp, campRefuel, cureMadness, CURE_COST, forbiddenOffer, acceptForbidden, leavePlace, PRAY_SANITY, purgeEssence, removalCost, shrinePray, type CampAction } from '../../engine/places';
 import { applyAsk } from '../ask';
 import { store } from '../../state/store';
 import { EssenceCard, SkillCard } from '../cards';
@@ -123,13 +123,13 @@ export function ShrineScreen() {
         </h2>
         {mode === 'main' && (
           <div class="list">
-            <button class={`card ${prayed ? 'off' : ''}`} onClick={() => !prayed && applyAsk({ title: '기도할까요?', icon: 'gi:prayer-beads', body: '정신력 +15 (한 번)', ok: '기도한다' }, (r) => shrinePray(r))}>
+            <button class={`card ${prayed ? 'off' : ''}`} onClick={() => !prayed && applyAsk({ title: '기도할까요?', icon: 'gi:prayer-beads', body: `정신력 +${PRAY_SANITY} (한 번)`, ok: '기도한다' }, (r) => shrinePray(r))}>
               <div class="badge">
                 <Icon name="gi:prayer-beads" size={26} color="#8fc4ea" />
               </div>
               <div class="body">
                 <div class="name">기도</div>
-                <div class="desc">정신력 +15 (한 번)</div>
+                <div class="desc">정신력 +{PRAY_SANITY} (한 번)</div>
               </div>
             </button>
             <button class={`card ${flasks ? '' : 'off'}`} onClick={() => flasks && setMode('inscribe')}>

@@ -8,7 +8,7 @@ import { store } from '../../state/store';
 import { EssenceCard, LootCard, SkillCard } from '../cards';
 import { FlaskList } from '../flasks';
 import { Icon, Sheet, showTip } from '../components';
-import { SCHOOL_NAME } from '../text';
+import { INSIGHT_SOURCES, SCHOOL_NAME, insightText } from '../text';
 
 type Tab = 'skills' | 'essences' | 'equip' | 'relics' | 'status';
 
@@ -288,6 +288,13 @@ function StatusTab() {
       </div>
       <div class="muted" style={{ fontSize: 12, margin: '6px 2px' }}>
         힘: 공격 피해 +1 / 민첩: 스킬 방어도 +1 / 의지: 받는 정신 피해 -5%
+      </div>
+      <div class="section-label">통찰 {p.insight}</div>
+      <div class="panel" style={{ padding: 12, fontSize: 13, whiteSpace: 'pre-line', color: 'var(--ink-2)' }}>
+        {insightText(p.insight)}
+        <div class="muted" style={{ fontSize: 12, marginTop: 6 }}>
+          {INSIGHT_SOURCES}
+        </div>
       </div>
       <div class="section-label">광기와 각성</div>
       <div class="list">

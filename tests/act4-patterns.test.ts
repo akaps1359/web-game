@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { Combat, type CombatEvent } from '../src/engine/combat';
+import { Combat, DISGUISE_REVEAL, type CombatEvent } from '../src/engine/combat';
 import { ENCOUNTERS, ENEMIES, SKILLS } from '../src/engine/registry';
 import { finishCombat, newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
@@ -10,6 +10,8 @@ import { DOOM } from '../src/content/act4/common';
 import {
   COMMAND,
   DARK,
+  DARK_REVEAL,
+  LIAR_REVEAL,
   DEFY_STR,
   ECLIPSE_STR,
   ENTANGLE,
@@ -176,7 +178,7 @@ describe('4층 수호자 — 문 너머의 존재', () => {
 });
 
 describe('4층 수호자 — 검은 파라오', () => {
-  it('가면을 쓴 동안 「자비」는 거짓 의도 — 통찰 7이면 진짜가 보이고, 그 전엔 봇도 속는다', () => {
+  it(`가면을 쓴 동안 「자비」는 거짓 의도 — 통찰 ${LIAR_REVEAL}이면 진짜가 보이고, 그 전엔 봇도 속는다`, () => {
     const run = floor4();
     run.player.insight = 0;
     const c = startCombat(run, 'a4-boss-pharaoh', { anomaly: null });
@@ -192,7 +194,9 @@ describe('4층 수호자 — 검은 파라오', () => {
     expect(shown.label).toBe('자비를 베푼다');
     expect(shown.dmg).toBeUndefined();
     const fooled = incoming(c);
-    c.p.insight = 7;
+    c.p.insight = LIAR_REVEAL - 1;
+    expect(c.shownIntent(ph)!.kind).toBe('buff');
+    c.p.insight = LIAR_REVEAL;
     expect(c.shownIntent(ph)!.kind).toBe('attack');
     expect(incoming(c)).toBeGreaterThan(fooled);
 
@@ -471,7 +475,7 @@ describe('4층 수호자 — 별의 자손 군주', () => {
 });
 
 describe('4층 계층군주 — 검은 별', () => {
-  it('어둠: 빛을 삼키고 공허의 눈이 빛을 먹을수록 쌓인다 — 2부터 의도가 어둠에 묻히고(통찰 7이면 보인다), 화염·비전 공격이 내 턴마다 한 번 걷어 낸다', () => {
+  it('어둠: 빛을 삼키고 공허의 눈이 빛을 먹을수록 쌓인다 — 2부터 의도가 어둠에 묻히고(통찰 ${DARK_REVEAL}이면 보인다), 화염·비전 공격이 내 턴마다 한 번 걷어 낸다', () => {
     const run = floor4();
     run.player.insight = 0;
     const c = startCombat(run, 'lord-a4', { anomaly: null });
@@ -492,7 +496,9 @@ describe('4층 계층군주 — 검은 별', () => {
     c.fire(c.p, 'onTurnStart');
     expect(c.shownIntent(star)!.label).toBe('어둠 속');
     expect(c.shownIntent(star)!.dmg).toBeUndefined();
-    c.p.insight = 7;
+    c.p.insight = DARK_REVEAL - 1;
+    expect(c.shownIntent(star)!.label).toBe('어둠 속');
+    c.p.insight = DARK_REVEAL;
     expect(c.shownIntent(star)!.move).toBe('beam');
     c.p.insight = 0;
     // 힘을 모으는 것은 보인다
@@ -546,7 +552,7 @@ describe('4층 계층군주 — 검은 별', () => {
 });
 
 describe('4층 정예', () => {
-  it('기어오는 혼돈의 화신: 「천 개의 가면」을 쓰는 척 덮친다 (통찰 5면 보인다)', () => {
+  it(`기어오는 혼돈의 화신: 「천 개의 가면」을 쓰는 척 덮친다 (통찰 ${DISGUISE_REVEAL}이면 보인다)`, () => {
     const run = floor4();
     run.player.insight = 0;
     const c = startCombat(run, 'a4-avatar', { anomaly: null });
@@ -556,7 +562,7 @@ describe('4층 정예', () => {
     force(c, av, 'grin');
     expect(c.shownIntent(av)!.label).toBe(c.moveDef(av, 'masks').name);
     expect(c.shownIntent(av)!.kind).toBe('buff');
-    c.p.insight = 5;
+    c.p.insight = DISGUISE_REVEAL;
     expect(c.shownIntent(av)!.kind).toBe('attack');
     c.drain();
     act(c, av, 'grin');

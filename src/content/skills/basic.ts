@@ -248,11 +248,11 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'basic', 'insight'],
-    vals: { dmg: [4, 5, 6] },
-    desc: '정신력 1 소모, {D:dmg}+통찰 공허 피해',
+    vals: { dmg: [4, 5, 6], per: 2 },
+    desc: '정신력 1 소모, {D:dmg}+통찰×{per} 공허 피해',
     run: (c, u, t) => {
       c.loseSanity(1);
-      hit(c, u, t, { dmg: u.v('dmg') + c.p.insight });
+      hit(c, u, t, { dmg: u.v('dmg') + u.v('per') * c.p.insight });
     },
   }),
 

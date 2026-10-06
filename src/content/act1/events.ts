@@ -17,6 +17,7 @@ import {
   type RunState,
 } from '../../engine/run';
 import { MADNESS } from '../../engine/registry';
+import { INSIGHT_PRICE, cutMaxSanity, floorFoes, floorGuardian, learnWeak, weakNote } from '../eventkit';
 
 /** 정신력 손실 + 붕괴 메시지 */
 function sanity(run: RunState, n: number): string {
@@ -52,10 +53,11 @@ reg.events([
           },
           {
             label: '성상의 눈을 들여다본다',
-            hint: '통찰 +1, 정신력 -12',
+            hint: `통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity}`,
             go: (r, e) => {
               r.player.insight += 1;
-              finish(e, '진주 속에서 별들이 소용돌이친다. 무언가를 알아버렸다. (통찰 +1)' + sanity(r, 12));
+              cutMaxSanity(r, INSIGHT_PRICE.maxSanity);
+              finish(e, `진주 속에서 별들이 소용돌이친다. 무언가를 알아버렸다. 알아버린 만큼, 마음 한 자리가 영영 비었다. (통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity})`);
             },
           },
         ],
@@ -189,10 +191,10 @@ reg.events([
           },
           {
             label: '귀를 기울인다',
-            hint: '통찰 +1, 정신력 -12',
+            hint: '이 층 적들의 약점을 알게 된다, 정신력 -12',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '목소리는 당신이 아직 모르는 것들을 알려주었다. (통찰 +1)' + sanity(r, 12));
+              const names = learnWeak(r, floorFoes(r));
+              finish(e, '목소리는 이 물길에 사는 것들이 무엇을 견디지 못하는지 하나하나 일러 주었다.' + weakNote(names) + (names.length ? sanity(r, 12) : ''));
             },
           },
         ],
@@ -296,10 +298,15 @@ reg.events([
         choices: [
           {
             label: '끝까지 읽는다',
-            hint: '통찰 +1, 정신력 -5',
+            hint: '이 층 수호자의 약점을 알게 된다, 정신력 -5',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '마지막 장을 넘기자 종이에 바다 냄새가 배어 나왔다. (통찰 +1)' + sanity(r, 5));
+              const names = learnWeak(r, floorGuardian(r));
+              finish(
+                e,
+                '등대지기는 이 수로의 주인을 오래 지켜보았다. 마지막 장을 넘기자 종이에 바다 냄새가 배어 나왔고, 그 앞 장에 그것이 무엇을 견디지 못하는지 적혀 있었다.' +
+                  weakNote(names) +
+                  (names.length ? sanity(r, 5) : ''),
+              );
             },
           },
           { label: '불태운다', hint: '정신력 +6', go: (r, e) => finish(e, `불꽃이 문장들을 삼켰다. (정신력 +${gainSanityRun(r, 6)})`) },
@@ -386,8 +393,7 @@ reg.events([
                 r.player.hp += 6;
                 finish(e, '몸속으로 차가운 힘이 퍼졌다. (최대 체력 +6)');
               } else {
-                r.player.insight += 1;
-                finish(e, '검은 물이 목을 타고 내려가며 노래를 불렀다. (통찰 +1)' + sanity(r, 15));
+                finish(e, '검은 물이 목을 타고 내려가며 노래를 불렀다. 노래는 한참 동안 그치지 않았다.' + sanity(r, 12));
               }
             },
           },

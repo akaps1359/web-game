@@ -142,14 +142,14 @@ reg.statuses([
     name: '촉수',
     icon: 'gi:tentacle-strike',
     kind: 'buff',
-    desc: '내 턴 종료 시 촉수 {n}개가 무작위 적을 공격 (공허 3 + 통찰)',
+    desc: '내 턴 종료 시 촉수 {n}개가 무작위 적을 공격 (공허 3 + 통찰×2)',
     tickEnd(c, u, n) {
       for (let i = 0; i < n; i++) {
         const pool = c.alive;
         if (!pool.length || c.over) return;
         const t = c.rng.pick(pool);
         c.emit({ t: 'fx', name: 'tentacle', src: u.uid, tgt: t.uid });
-        c.damage({ src: u, tgt: t, base: 3 + c.p.insight, type: 'void', attack: true, tags: ['tentacle'] });
+        c.damage({ src: u, tgt: t, base: 3 + 2 * c.p.insight, type: 'void', attack: true, tags: ['tentacle'] });
       }
     },
   },

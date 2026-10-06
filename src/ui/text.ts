@@ -1,7 +1,7 @@
 import type { Combat } from '../engine/combat';
 import type { DmgType, IntentKind, Rarity, School, SkillDef, SkillUse, Unit } from '../engine/types';
 import type { RoomType } from '../engine/dungeon';
-import { lvlVal } from '../engine/combat';
+import { DISGUISE_REVEAL, HIDDEN_REVEAL, INSIGHT_WEAK, INSIGHT_WEAK_CAP, lvlVal } from '../engine/combat';
 
 export const DMG_NAME: Record<DmgType | 'true', string> = {
   slash: '참격',
@@ -62,6 +62,7 @@ export const RARITY_NAME: Record<Rarity, string> = {
   forbidden: '금기',
   boss: '보스',
   special: '특수',
+  genesis: '창세',
 };
 
 export const RARITY_COLOR: Record<Rarity, string> = {
@@ -72,7 +73,14 @@ export const RARITY_COLOR: Record<Rarity, string> = {
   forbidden: '#4fffc4',
   boss: '#ff5a6e',
   special: '#d78cff',
+  // 창세: 오팔빛 흰색 — 이름은 무지갯빛으로 흐른다 (rarityClass → main.css .genesis-name)
+  genesis: '#ffe3fa',
 };
+
+/** 이름에 붙이는 등급 연출 클래스 (창세는 무지갯빛 글자) */
+export function rarityClass(r: Rarity | undefined): string {
+  return r === 'genesis' ? 'genesis-name' : '';
+}
 
 export const INTENT_ICON: Record<IntentKind, string> = {
   attack: 'gi:crossed-swords',
@@ -153,6 +161,47 @@ export const ROOM_COLOR: Record<RoomType, string> = {
   empty: '#5a5f66',
   lord: '#ff2a6a',
 };
+
+// ───────────── 통찰 ─────────────
+
+/** 받는 정신 피해가 통찰 1당 늘어나는 비율과, 그 상한 통찰 (엔진: Combat.loseSanity) */
+const INSIGHT_SAN = 0.05;
+const INSIGHT_SAN_CAP = 6;
+
+/**
+ * 통찰 단계 — 4는 4층 어둠(act4 DARK_REVEAL)·5층 환영(act5 ILLUSION_SIGHT),
+ * 5는 검은 파라오의 자비(act4 LIAR_REVEAL)·꿈의 문지기의 문(act5 FALSE_DOOR_SIGHT). 값이 바뀌면 여기도
+ */
+export const INSIGHT_STEPS: { at: number; text: string }[] = [
+  { at: 1, text: '전투를 시작할 때 적마다 약점 하나가 보인다' },
+  { at: 2, text: '적의 약점이 모두 보인다' },
+  { at: Math.max(HIDDEN_REVEAL, DISGUISE_REVEAL), text: '숨겨진 의도와 거짓 의도가 보인다' },
+  { at: 4, text: '4층의 어둠 속 의도와 5층의 환영이 보인다' },
+  { at: 5, text: '가장 깊은 속임수(검은 파라오의 자비, 꿈의 문지기의 문)가 보인다' },
+];
+
+/** 통찰 설명. n을 주면 지금 켜진 단계와 수치를 함께 */
+export function insightText(n?: number): string {
+  const has = n !== undefined;
+  const k = n ?? 0;
+  const pct = (x: number) => Math.round(x * 100);
+  const lines = INSIGHT_STEPS.map((s) => `${has ? (k >= s.at ? '● ' : '○ ') : ''}${s.at}: ${s.text}`);
+  lines.push(
+    `1당 약점 공격 피해 +${pct(INSIGHT_WEAK)}% (${INSIGHT_WEAK_CAP}까지)${has ? ` — 지금 +${pct(INSIGHT_WEAK * Math.min(INSIGHT_WEAK_CAP, k))}%` : ''}`,
+    '금기 스킬과 공허의 유물·각인이 통찰에 비례해 강해진다',
+    `대가: 받는 정신 피해 +${pct(INSIGHT_SAN)}%/통찰 (${INSIGHT_SAN_CAP}까지)${has ? ` — 지금 +${pct(INSIGHT_SAN * Math.min(INSIGHT_SAN_CAP, k))}%` : ''}`,
+  );
+  return lines.join('\n');
+}
+
+/** 한 줄짜리 통찰 풀이 (용어 풀이 목록용 — 줄바꿈이 보이지 않는 곳) */
+export function insightBrief(): string {
+  const steps = INSIGHT_STEPS.map((s) => `[${s.at}] ${s.text}`).join(' ');
+  return `${steps}. 1당 약점 공격 피해 +${Math.round(INSIGHT_WEAK * 100)}% (${INSIGHT_WEAK_CAP}까지), 금기 스킬이 강해진다. 대신 받는 정신 피해가 1당 ${Math.round(INSIGHT_SAN * 100)}% 늘어난다 (${INSIGHT_SAN_CAP}까지).`;
+}
+
+/** 통찰을 얻는 길 */
+export const INSIGHT_SOURCES = '얻기 어렵다 — 수호자의 이계 정수, 그리고 영구한 대가(최대 정신력·최대 체력·광기)를 치르는 선택으로만.';
 
 // ───────────── 스킬 설명 ─────────────
 

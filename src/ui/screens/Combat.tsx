@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { garbleStable, mountWatcher, realWorld, staticCracks } from '../cinema';
 import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
-import { lvlVal, shownIntentOf } from '../../engine/combat';
+import { HIDDEN_REVEAL, lvlVal, shownIntentOf } from '../../engine/combat';
 import type { CombatChoice, EnemyUnit, Intent, SkillDef } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
@@ -12,7 +12,8 @@ import { store } from '../../state/store';
 import { saveMeta } from '../../state/meta';
 import { sound } from '../../sound';
 import { Bar, Icon, press, Segs, showTip } from '../components';
-import { DMG_COLOR, DMG_ICON, DMG_NAME, INTENT_COLOR, INTENT_ICON, RARITY_COLOR, SCHOOL_COLOR, SCHOOL_NAME, skillDesc, statusText } from '../text';
+import { schoolLabel } from '../cards';
+import { DMG_COLOR, DMG_ICON, DMG_NAME, INTENT_COLOR, INTENT_ICON, RARITY_COLOR, SCHOOL_COLOR, skillDesc, statusText } from '../text';
 
 const RANGE_NAME = { melee: '근접', ranged: '원거리', self: '자신' } as const;
 const TARGET_NAME = { single: '단일', front: '전열', back: '후열', all: '전체', random: '무작위', self: '자신' } as const;
@@ -403,7 +404,7 @@ function intentView(e: EnemyUnit, real: Intent | null): { icon: string; color: s
   // 속임수 의도는 통찰이 모자라면 가짜로 보인다
   const it = shownIntentOf(real, c.p.insight);
   if (!it) return null;
-  if (it.hidden && c.p.insight < 5) return { icon: 'gi:help', color: '#8a8f96', text: '???' };
+  if (it.hidden && c.p.insight < HIDDEN_REVEAL) return { icon: 'gi:help', color: '#8a8f96', text: '???' };
   const color = INTENT_COLOR[it.kind];
   // 즉사기: 해골과 함께 크게
   if (it.kind === 'death') return { icon: INTENT_ICON.death, color, text: '즉사', sub: it.label, charging: true };
@@ -508,7 +509,7 @@ function enemyTip(e: EnemyUnit) {
     icon: def.icon,
     color: def.eldritch ? '#4fffc4' : '#e9e3d6',
     body:
-      (it ? `의도: ${it.hidden && store.combat!.p.insight < 5 ? '???' : `${it.label}${(it.desc ?? move?.desc) ? ` — ${it.desc ?? move?.desc}` : ''}`}` : '') +
+      (it ? `의도: ${it.hidden && store.combat!.p.insight < HIDDEN_REVEAL ? '???' : `${it.label}${(it.desc ?? move?.desc) ? ` — ${it.desc ?? move?.desc}` : ''}`}` : '') +
       (traits.length ? `\n\n${traits.map((t) => `【${t!.name}】 ${t!.desc}`).join('\n')}` : ''),
     lines: [
       { label: '체력', value: def.tier === 'boss' ? woundWord(e.hp / Math.max(1, e.maxHp)) : `${e.hp}/${e.maxHp}` },
@@ -530,7 +531,8 @@ function skillTip(def: SkillDef, lvl: number, runes: string[], use?: ReturnType<
   const segs = skillDesc(def, lvl, { c, target: c?.enemy(store.focus) ?? null, use: use ?? null });
   showTip({
     title: def.name + (lvl > 0 ? '+' : ''),
-    sub: `${SCHOOL_NAME[def.school]} · ${RANGE_NAME[def.range]} · ${TARGET_NAME[def.target]}${def.type ? ` · ${DMG_NAME[def.type]}` : ''}`,
+    nameClass: def.rarity === 'genesis' ? 'genesis-name' : undefined,
+    sub: `${schoolLabel(def)} · ${RANGE_NAME[def.range]} · ${TARGET_NAME[def.target]}${def.type ? ` · ${DMG_NAME[def.type]}` : ''}`,
     icon: def.icon,
     color: SCHOOL_COLOR[def.school],
     body: segs.map((x) => x.t).join('') + (runes.length ? `\n\n각인: ${runes.map((r) => RUNES.get(r)?.name).join(', ')}` : ''),
@@ -582,7 +584,7 @@ function SkillButton({ r }: { r: string }) {
       )}
       {info.basic && <span class="basic-tag">{info.basic === 'weapon' ? '무기' : '방어'}</span>}
       <Icon name={def.icon} size={24} color={color} />
-      <span class={`sn ${scrambled ? 'scrambled' : ''}`} style={{ color: def.rarity === 'basic' ? '#e9e3d6' : RARITY_COLOR[def.rarity] === '#cfc8b8' ? '#e9e3d6' : RARITY_COLOR[def.rarity] }}>
+      <span class={`sn ${scrambled ? 'scrambled' : ''} ${!scrambled && def.rarity === 'genesis' ? 'genesis-name' : ''}`} style={{ color: def.rarity === 'basic' ? '#e9e3d6' : RARITY_COLOR[def.rarity] === '#cfc8b8' ? '#e9e3d6' : RARITY_COLOR[def.rarity] }}>
         {scrambled ? garbleStable(def.name) : def.name}
         {owned.lvl > 0 ? '+' : ''}
       </span>
@@ -668,7 +670,7 @@ function InfoBox() {
         <Icon name={ENEMIES.get(e.def)?.icon ?? 'gi:help'} size={30} />
         <div class="txt">
           <div class="nm">{e.name}</div>
-          {it ? (it.hidden && c.p.insight < 5 ? '의도를 알 수 없다' : `${it.label}${(it.desc ?? move?.desc) ? ` — ${it.desc ?? move?.desc}` : ''}`) : ''}
+          {it ? (it.hidden && c.p.insight < HIDDEN_REVEAL ? '의도를 알 수 없다' : `${it.label}${(it.desc ?? move?.desc) ? ` — ${it.desc ?? move?.desc}` : ''}`) : ''}
           <div class="muted" style={{ fontSize: 11 }}>
             길게 눌러 자세히
           </div>

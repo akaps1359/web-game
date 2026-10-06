@@ -1,4 +1,4 @@
-import { reg, EQUIPS, MADNESS, SKILLS } from '../../engine/registry';
+import { reg, ENEMIES, EQUIPS, MADNESS, SKILLS } from '../../engine/registry';
 import { finish } from '../../engine/events';
 import { advanceTime, connectSeen, distances, floorSignal, reveal, revealPath, shiftCorridors } from '../../engine/dungeon';
 import {
@@ -16,6 +16,7 @@ import {
   type LootItem,
   type RunState,
 } from '../../engine/run';
+import { INSIGHT_PRICE, canTakeMadness, cutMaxSanity, floorFoes, learnWeak, takeMadness, weakNote } from '../eventkit';
 
 // 꿈의 땅 이벤트(낯선 침대, 울타르의 고양이, 달의 갤리선, 일흔 계단, 잿빛 행렬, 꿈의 거울, 주그들의 숲)는 5층(act5/events.ts)으로 옮겨 갔다.
 
@@ -26,6 +27,11 @@ function sanity(run: RunState, n: number): string {
   if (r.madness) return ` 정신이 무너졌다 — ${MADNESS.get(r.madness)?.name ?? '광기'}.`;
   return '';
 }
+
+/** 쇼고스 계열 (벽화가 그린 원형질) */
+const SHOGGOTHS = () => [...ENEMIES.values()].filter((d) => d.act === 3 && d.tags?.includes('shoggoth')).map((d) => d.id);
+/** 각도 속에 사는 것들 */
+const ANGLES = ['tindalos', 'angle-king', 'angle-whelp'];
 
 function relicLoot(run: RunState): LootItem[] {
   const id = rollRelic(run);
@@ -49,10 +55,14 @@ reg.events([
         choices: [
           {
             label: '장치에 귀를 댄다',
-            hint: '통찰 +2, 정신력 -18',
+            hint: `통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity}`,
             go: (r, e) => {
-              r.player.insight += 2;
-              finish(e, '원통 속의 당신은 별 너머에서 본 것들을 전부 들려주었다. 그중 몇 가지는 듣지 말았어야 했다. (통찰 +2)' + sanity(r, 18));
+              r.player.insight += 1;
+              cutMaxSanity(r, INSIGHT_PRICE.maxSanity);
+              finish(
+                e,
+                `원통 속의 당신은 별 너머에서 본 것들을 전부 들려주었다. 그중 몇 가지는 듣지 말았어야 했다. 들은 자리만큼 마음이 깎여 나갔다. (통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity})`,
+              );
             },
           },
           {
@@ -97,11 +107,11 @@ reg.events([
           },
           {
             label: '모서리 안을 들여다본다',
-            hint: '통찰 +1, 위험',
+            hint: '각도의 사냥개·각도의 왕의 약점을 알게 된다, 위험',
             go: (r, e) => {
-              r.player.insight += 1;
-              if (rng(r, 'event').chance(0.5)) finish(e, '모서리 너머로 굽은 시간이 보였다. 다행히 그것들은 아직 당신을 보지 못했다. (통찰 +1)' + sanity(r, 6));
-              else finish(e, '눈이 마주쳤다. 푸른 고름을 흘리며 그것들이 모서리를 비집고 나온다! (통찰 +1)', { fight: 'a3-hounds' });
+              const note = weakNote(learnWeak(r, ANGLES));
+              if (rng(r, 'event').chance(0.5)) finish(e, '모서리 너머로 굽은 시간이 보였다. 그 속을 헤매는 것들이 어디가 무른지도. 다행히 그것들은 아직 당신을 보지 못했다.' + note + sanity(r, 6));
+              else finish(e, '눈이 마주쳤다. 푸른 고름을 흘리며 그것들이 모서리를 비집고 나온다!' + note, { fight: 'a3-hounds' });
             },
           },
           {
@@ -189,10 +199,15 @@ reg.events([
           },
           {
             label: '원형질을 빚는 장면을 들여다본다',
-            hint: '통찰 +1, 정신력 -8',
+            hint: '쇼고스들의 약점을 알게 된다, 정신력 -8',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '그들은 원형질에 피리 소리로 명령했다. 원형질은 눈과 입과 손을 만들어 내며 시키는 대로 했다. 아주 오랫동안은. (통찰 +1)' + sanity(r, 8));
+              const names = learnWeak(r, SHOGGOTHS());
+              finish(
+                e,
+                '그들은 원형질에 피리 소리로 명령했다. 원형질은 눈과 입과 손을 만들어 내며 시키는 대로 했다. 벽화는 말을 듣지 않는 원형질을 다스리는 법도 새겨 두었다. 아주 오랫동안은 그것으로 충분했다.' +
+                  weakNote(names) +
+                  (names.length ? sanity(r, 8) : ''),
+              );
             },
           },
           {
@@ -247,10 +262,10 @@ reg.events([
           },
           {
             label: '다섯 눈을 마주 본다',
-            hint: '통찰 +1, 정신력 -10',
+            hint: '의지 +1 (영구), 정신력 -12',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '얼음 너머의 눈동자가 아주 천천히 당신을 따라 움직였다. 그것은 오래전부터 깨어 있었다. (통찰 +1)' + sanity(r, 10));
+              r.player.will += 1;
+              finish(e, '얼음 너머의 눈동자가 아주 천천히 당신을 따라 움직였다. 그것은 오래전부터 깨어 있었다. 끝까지 눈을 피하지 않았다. 이제 웬만한 것은 견딜 수 있다. (의지 +1)' + sanity(r, 12));
             },
           },
           { label: '건드리지 않는다', go: (_r, e) => finish(e, '지나가는 내내, 다섯 개의 눈이 등 뒤를 따라왔다.') },
@@ -270,16 +285,15 @@ reg.events([
         choices: [
           {
             label: '피리 소리를 흉내 내어 대답한다',
-            hint: '통찰 +1, 위험',
+            hint: '소모품… 대답이 틀리면 전투',
             go: (r, e) => {
-              r.player.insight += 1;
               lordSignal(r, 'a3-tekeli-li', 'answer');
               if (rng(r, 'event').chance(0.5)) {
                 const c = rollConsumable(r);
-                finish(e, '소리가 뚝 멎었다. 그것은 당신을 옛 주인으로 여긴 듯 물러갔다. 그것이 지나간 자리에 삼키다 만 것이 남아 있었다. (통찰 +1)', {
+                finish(e, '소리가 뚝 멎었다. 그것은 당신을 옛 주인으로 여긴 듯 물러갔다. 그것이 지나간 자리에 삼키다 만 것이 남아 있었다.', {
                   loot: c ? [{ kind: 'consumable', id: c }] : [{ kind: 'gold', id: 'gold', n: 40 }],
                 });
-              } else finish(e, '대답이 틀렸다. 피리 소리가 비명처럼 높아지며 원형질이 터널을 메우고 쏟아진다! (통찰 +1)', { fight: 'a3-spawn-pair' });
+              } else finish(e, '대답이 틀렸다. 피리 소리가 비명처럼 높아지며 원형질이 터널을 메우고 쏟아진다!', { fight: 'a3-spawn-pair' });
             },
           },
           {
@@ -361,10 +375,15 @@ reg.events([
           },
           {
             label: '해부 기록을 읽는다',
-            hint: '통찰 +1, 정신력 -10',
+            hint: '이 층 적들의 약점을 알게 된다, 정신력 -10',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '기록은 꼼꼼했다. 마지막 몇 장은 다른 손이 썼다. 사람의 손이 아니었다. 그것들도 우리를 해부하며 기록을 남겼다. (통찰 +1)' + sanity(r, 10));
+              const names = learnWeak(r, floorFoes(r));
+              finish(
+                e,
+                '기록은 꼼꼼했다. 이 얼음 도시의 것들을 어디부터 가르면 되는지까지. 마지막 몇 장은 다른 손이 썼다. 사람의 손이 아니었다. 그것들도 우리를 해부하며 기록을 남겼다.' +
+                  weakNote(names) +
+                  (names.length ? sanity(r, 10) : ''),
+              );
             },
           },
           {
@@ -390,15 +409,17 @@ reg.events([
     acts: [3],
     weight: 1.4,
     stages: {
-      start: () => ({
+      start: (run) => ({
         text: '탑 꼭대기, 오각형 창 너머로 산맥이 보인다. 이 도시를 굽어보는 봉우리들보다 더 높은 봉우리들이 그 너머에 있다. 그 위로 보랏빛 증기가 천천히 모양을 바꾼다. 무언가가 눈을 돌리라고 속삭인다.',
         choices: [
           {
             label: '끝까지 바라본다',
-            hint: '통찰 +2, 정신력 -20',
+            hint: '통찰 +1, 광기 하나',
+            disabled: !canTakeMadness(run) && '더 보았다간 돌아오지 못한다',
             go: (r, e) => {
-              r.player.insight += 2;
-              finish(e, '그것이 무엇이었는지는 말할 수 없다. 다만 앞으로 다시는 고개를 돌려 뒤를 돌아보지 않기로 했다. (통찰 +2)' + sanity(r, 20));
+              r.player.insight += 1;
+              const m = takeMadness(r);
+              finish(e, `그것이 무엇이었는지는 말할 수 없다. 다만 앞으로 다시는 고개를 돌려 뒤를 돌아보지 않기로 했다. (통찰 +1${m ? `, 광기: ${m}` : ''})`);
             },
           },
           {

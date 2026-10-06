@@ -19,6 +19,7 @@ import {
   type RunState,
 } from '../../engine/run';
 import { FETUS } from './fetus';
+import { INSIGHT_PRICE, cutMaxSanity, floorFoes, learnWeak, weakNote } from '../eventkit';
 
 function sanity(run: RunState, n: number): string {
   const r = loseSanityRun(run, n);
@@ -54,10 +55,14 @@ reg.events([
           },
           {
             label: '잠꼬대에 귀 기울인다',
-            hint: '통찰 +2, 정신력 -15',
+            hint: `통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity}`,
             go: (r, e) => {
-              r.player.insight += 2;
-              finish(e, '그것은 별보다 오래된 꿈을 꾸고 있었다. 그 꿈의 한 자락에 당신의 이름이 적혀 있다. (통찰 +2)' + sanity(r, 15));
+              r.player.insight += 1;
+              cutMaxSanity(r, INSIGHT_PRICE.maxSanity);
+              finish(
+                e,
+                `그것은 별보다 오래된 꿈을 꾸고 있었다. 그 꿈의 한 자락에 당신의 이름이 적혀 있다. 그 이름을 읽은 자리가 다시는 메워지지 않는다. (통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity})`,
+              );
             },
           },
         ],
@@ -85,16 +90,15 @@ reg.events([
           },
           {
             label: '그들의 수기를 읽는다',
-            hint: '스킬 1개 강화, 통찰 +1, 정신력 -12',
+            hint: '스킬 1개 강화, 정신력 -10',
             disabled: !upgradable(run).length && '더 갈고닦을 기술이 없다',
             go: (r, e) => {
               const s = rng(r, 'event').pick(upgradable(r));
               upgradeSkill(r, s.uid);
-              r.player.insight += 1;
               finish(
                 e,
-                '마지막 장에 밑줄이 그어져 있다. "목소리는 부르는 게 아니었다. 그것은 잠꼬대였다." 그 아래, 그들이 실패한 지점이 적혀 있다. (스킬 강화, 통찰 +1)' +
-                  sanity(r, 12),
+                '마지막 장에 밑줄이 그어져 있다. "목소리는 부르는 게 아니었다. 그것은 잠꼬대였다." 그 아래, 그들이 실패한 지점이 적혀 있다. (스킬 강화)' +
+                  sanity(r, 10),
               );
             },
           },
@@ -212,10 +216,15 @@ reg.events([
           },
           {
             label: '베개를 뜯어 본다',
-            hint: '통찰 +1, 정신력 -10',
+            hint: '이 층 적들의 약점을 알게 된다, 정신력 -10',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '베개 속에는 깃털 대신 누군가의 꿈이 가득 차 있었다. 그 꿈의 끝을 보고 말았다. (통찰 +1)' + sanity(r, 10));
+              const names = learnWeak(r, floorFoes(r));
+              finish(
+                e,
+                '베개 속에는 깃털 대신 누군가의 꿈이 가득 차 있었다. 이 꿈속을 떠도는 것들에게 쫓기는 꿈이었다. 꿈꾼 이는 그것들이 무엇에 약한지 알고 있었다.' +
+                  weakNote(names) +
+                  (names.length ? sanity(r, 10) : ''),
+              );
             },
           },
           {
@@ -334,10 +343,15 @@ reg.events([
           },
           {
             label: '계단을 하나하나 센다',
-            hint: '통찰 +1, 정신력 -10',
+            hint: '포탈 비석까지 가는 길이 드러난다, 정신력 -6',
             go: (r, e) => {
-              r.player.insight += 1;
-              finish(e, '일흔 개가 아니었다. 일흔한 번째 계단이 있었고, 그것은 위로 나 있었다. (통찰 +1)' + sanity(r, 10));
+              const f = r.floor;
+              const portal = f ? f.rooms[f.portal] : null;
+              if (f && portal) {
+                portal.seen = portal.scouted = true;
+                revealPath(f, f.pos, f.portal);
+              }
+              finish(e, '일흔 개가 아니었다. 일흔한 번째 계단이 있었고, 그것은 위로 나 있었다. 그 끝에서 포탈 비석의 빛이 깜빡였다.' + sanity(r, 6));
             },
           },
           {
@@ -479,11 +493,11 @@ reg.events([
           },
           {
             label: '그들의 수다를 엿듣는다',
-            hint: '통찰 +1, 등불 -20',
+            hint: '이 층의 지도 전체 공개, 등불 -20',
             go: (r, e) => {
-              r.player.insight += 1;
+              if (r.floor) for (const room of r.floor.rooms) room.seen = room.scouted = true;
               r.light = Math.max(0, r.light - 20);
-              finish(e, '주그들의 속삭임에 숲 너머의 비밀이 섞여 있었다. 정신을 차려 보니 등불 심지가 갉아먹혀 있다. (통찰 +1, 등불 -20)');
+              finish(e, '주그들의 속삭임에 숲 너머의 비밀이 섞여 있었다 — 어느 섬이 어디로 떠가는지. 정신을 차려 보니 등불 심지가 갉아먹혀 있다. (지도 공개, 등불 -20)');
             },
           },
           { label: '쫓아낸다', hint: '전투', go: (_r, e) => finish(e, '등불을 휘두르자 주그들이 작은 이빨을 드러냈다!', { fight: 'a5-e-zoogs' }) },

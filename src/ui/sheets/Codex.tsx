@@ -2,12 +2,12 @@ import { useState } from 'preact/hooks';
 import { ENEMIES, EQUIPS, ESSENCES, RELICS, SKILLS } from '../../engine/registry';
 import { lvlVal } from '../../engine/combat';
 import { essenceStats } from '../../engine/run';
-import type { EnemyDef, EssenceStats, Rarity } from '../../engine/types';
+import type { EnemyDef, EssenceStats, Rarity, SkillDef } from '../../engine/types';
 import { codexSkills } from '../../state/meta';
 import { store } from '../../state/store';
-import { STAT_NAME, lootInfo } from '../cards';
+import { STAT_NAME, lootInfo, schoolLabel } from '../cards';
 import { Icon, Sheet, showTip } from '../components';
-import { DMG_COLOR, DMG_NAME, RARITY_COLOR, RARITY_NAME, SCHOOL_COLOR, SCHOOL_NAME, skillDesc } from '../text';
+import { DMG_COLOR, DMG_NAME, RARITY_COLOR, RARITY_NAME, SCHOOL_COLOR, SCHOOL_NAME, rarityClass, skillDesc } from '../text';
 
 type Tab = 'enemies' | 'equips' | 'essences' | 'skills' | 'relics';
 
@@ -19,7 +19,10 @@ const TABS: [Tab, string][] = [
   ['relics', '유물'],
 ];
 
-const RARITY_ORDER: Rarity[] = ['basic', 'common', 'uncommon', 'rare', 'special', 'boss', 'forbidden'];
+const RARITY_ORDER: Rarity[] = ['basic', 'common', 'uncommon', 'rare', 'special', 'boss', 'forbidden', 'genesis'];
+
+/** 아직 얻지 못한 창세의 것: 어디서 나오는지 알려 준다 */
+const GENESIS_HINT = '아직 손에 넣지 못한 창세의 것. 계층군주를 쓰러뜨리면 창세의 것 셋 중 하나를 고를 수 있고, 5층의 강적이 아주 드물게 떨군다. 판마다 하나뿐이다.';
 const byRarity = <T extends { rarity: Rarity; name: string }>(a: T, b: T) => RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity) || a.name.localeCompare(b.name, 'ko');
 
 /** 도감 한 칸: 알아낸 것은 아이콘과 이름, 아직이면 ??? */
@@ -31,6 +34,8 @@ interface Cell {
   known: boolean;
   /** 이름 아래 작은 점들 (적의 약점) */
   dots?: string[];
+  /** 창세 등급: 이름이 무지갯빛으로 흐르고 아이콘이 은은하게 빛난다 */
+  glow?: boolean;
   open: () => void;
 }
 
@@ -71,9 +76,11 @@ export function CodexSheet() {
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
               {g.cells.map((c) => (
-                <button class="card" style={{ flexDirection: 'column', alignItems: 'center', padding: 8, gap: 4, opacity: c.known ? 1 : 0.35 }} onClick={c.open}>
-                  <Icon name={c.known ? c.icon : 'gi:help'} size={32} color={c.known ? c.color : '#555'} />
-                  <span style={{ fontSize: 10.5, textAlign: 'center', lineHeight: 1.2, wordBreak: 'keep-all' }}>{c.known ? c.name : '???'}</span>
+                <button class={`card ${c.known && c.glow ? 'genesis' : ''}`} style={{ flexDirection: 'column', alignItems: 'center', padding: 8, gap: 4, opacity: c.known ? 1 : 0.35 }} onClick={c.open}>
+                  <Icon name={c.known ? c.icon : 'gi:help'} size={32} color={c.known ? c.color : '#555'} class={c.known && c.glow ? 'genesis-glow' : undefined} />
+                  <span class={c.known && c.glow ? 'genesis-name' : ''} style={{ fontSize: 10.5, textAlign: 'center', lineHeight: 1.2, wordBreak: 'keep-all' }}>
+                    {c.known ? c.name : '???'}
+                  </span>
                   {c.known && c.dots && c.dots.length > 0 && (
                     <span style={{ display: 'flex', gap: 2 }}>
                       {c.dots.map((col) => (
@@ -95,11 +102,17 @@ const HINT: Record<Tab, string> = {
   enemies: '한 번 알아낸 약점은 다음 여정에서도 처음부터 보인다.',
   equips: '한 번이라도 손에 넣은 장비가 기록된다.',
   essences: '한 번이라도 흡수한 정수가 기록된다. 그 존재의 기술도 함께 볼 수 있다.',
-  skills: '한 번이라도 배운 스킬이 기록된다. 정수의 기술은 정수 도감에서 본다.',
+  skills: '한 번이라도 배운 스킬이 기록된다. 합기는 두 계열의 스킬을 하나씩 가지고 있을 때 보상에 나온다. 정수의 기술은 정수 도감에서 본다.',
   relics: '한 번이라도 얻은 유물이 기록된다.',
 };
 
 const unknown = (what: string) => () => showTip({ title: '???', icon: 'gi:help', body: what });
+
+/** '검술과' / '결의와' (받침에 따라) */
+function withGwa(word: string): string {
+  const code = word.charCodeAt(word.length - 1) - 0xac00;
+  return word + (code >= 0 && code < 11172 && code % 28 !== 0 ? '과' : '와');
+}
 
 // ───────── 탭마다 ─────────
 
@@ -131,9 +144,10 @@ const GROUPS: Record<Tab, () => Group[]> = {
             icon: d.icon,
             color: RARITY_COLOR[d.rarity],
             known,
+            glow: d.rarity === 'genesis',
             open: known
-              ? () => showTip({ title: d.name, icon: d.icon, color: RARITY_COLOR[d.rarity], sub: info.meta, body: info.desc, lines: d.maxHp ? [{ label: '최대 체력', value: `+${d.maxHp}` }] : undefined })
-              : unknown('아직 손에 넣지 못한 장비.'),
+              ? () => showTip({ title: d.name, nameClass: rarityClass(d.rarity), icon: d.icon, color: RARITY_COLOR[d.rarity], sub: info.meta, body: info.desc, lines: d.maxHp ? [{ label: '최대 체력', value: `+${d.maxHp}` }] : undefined })
+              : unknown(d.rarity === 'genesis' ? GENESIS_HINT : '아직 손에 넣지 못한 장비.'),
           };
         }),
     }));
@@ -183,42 +197,45 @@ const GROUPS: Record<Tab, () => Group[]> = {
     const got = new Set(store.meta.skills ?? []);
     const schools = ['blade', 'firearm', 'occult', 'alchemy', 'resolve', 'forbidden', 'neutral'] as const;
     const list = codexSkills();
-    return schools
-      .map((sc) => ({
-        label: SCHOOL_NAME[sc],
-        cells: list
-          .filter((d) => d.school === sc)
-          .sort(byRarity)
-          .map((d) => {
-            const known = got.has(d.id);
-            const cost = lvlVal(d.cost, 0);
-            const cd = lvlVal(d.cd, 0);
-            return {
-              id: d.id,
-              name: d.name,
-              icon: d.icon,
-              color: SCHOOL_COLOR[d.school],
-              known,
-              open: known
-                ? () =>
-                    showTip({
-                      title: d.name,
-                      icon: d.icon,
-                      color: SCHOOL_COLOR[d.school],
-                      sub: `${SCHOOL_NAME[d.school]} · ${RARITY_NAME[d.rarity]}${d.type ? ` · ${DMG_NAME[d.type]}` : ''}`,
-                      body: skillDesc(d, 0)
-                        .map((x) => x.t)
-                        .join(''),
-                      lines: [
-                        { label: '행동력', value: String(cost) },
-                        { label: '재사용 대기', value: cd >= 99 ? '전투당 1회' : cd > 0 ? `${cd}턴` : '없음' },
-                      ],
-                    })
-                : unknown('아직 배우지 못한 스킬.'),
-            };
-          }),
-      }))
-      .filter((g) => g.cells.length);
+    const cell = (d: SkillDef): Cell => {
+      const known = got.has(d.id);
+      const cost = lvlVal(d.cost, 0);
+      const cd = lvlVal(d.cd, 0);
+      return {
+        id: d.id,
+        name: d.name,
+        icon: d.icon,
+        color: SCHOOL_COLOR[d.school],
+        known,
+        glow: d.rarity === 'genesis',
+        open: known
+          ? () =>
+              showTip({
+                title: d.name,
+                nameClass: rarityClass(d.rarity),
+                icon: d.icon,
+                color: SCHOOL_COLOR[d.school],
+                sub: `${schoolLabel(d)} · ${RARITY_NAME[d.rarity]}${d.type ? ` · ${DMG_NAME[d.type]}` : ''}`,
+                body: skillDesc(d, 0)
+                  .map((x) => x.t)
+                  .join(''),
+                lines: [
+                  { label: '행동력', value: String(cost) },
+                  { label: '재사용 대기', value: cd >= 99 ? '전투당 1회' : cd > 0 ? `${cd}턴` : '없음' },
+                ],
+              })
+          : d.duo
+            ? unknown(`아직 배우지 못한 합기. ${withGwa(SCHOOL_NAME[d.duo[0]])} ${SCHOOL_NAME[d.duo[1]]}의 스킬을 하나씩 가지고 있으면 보상에 나온다.`)
+            : unknown(d.rarity === 'genesis' ? GENESIS_HINT : '아직 배우지 못한 스킬.'),
+      };
+    };
+    // 합기는 계열 칸이 아니라 따로 (짝의 계열 순서대로)
+    const order = (sc: string) => schools.indexOf(sc as (typeof schools)[number]);
+    const duos = list.filter((d) => d.duo).sort((a, b) => order(a.duo![0]) - order(b.duo![0]) || order(a.duo![1]) - order(b.duo![1]));
+    return [
+      ...schools.map((sc) => ({ label: SCHOOL_NAME[sc], cells: list.filter((d) => d.school === sc && !d.duo).sort(byRarity).map(cell) })),
+      { label: '합기', cells: duos.map(cell) },
+    ].filter((g) => g.cells.length);
   },
 
   relics: () => {
