@@ -110,7 +110,9 @@ describe('런', () => {
   it('정수 흡수와 한도', () => {
     const run = newRun({ seed: 11, origin: 'hunter' });
     expect(absorbEssence(run, { id: 'thug', color: 0 })).toBeNull();
-    expect(run.skills.some((s) => s.id === 'ess-thug-pipe')).toBe(true);
+    // 보통 정수는 본질로만 (기술은 수호자 정수에서)
+    expect(run.skills.some((s) => s.id === 'ess-thug-pipe')).toBe(false);
+    expect(run.essences[0].core).toBe(true);
     // 레벨 1 → 한도 1
     expect(absorbEssence(run, { id: 'dog', color: 0 })).not.toBeNull();
   });

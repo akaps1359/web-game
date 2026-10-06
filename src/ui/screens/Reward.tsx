@@ -1,5 +1,5 @@
-import { absorbBlock, coreHp, essenceActives, essenceStats } from '../../engine/run';
-import { choose, leaveReward, take } from '../../state/actions';
+import { absorbBlock, coreHp, essenceActives, essenceStats, FLASK_CAP, inscribeCost } from '../../engine/run';
+import { bottle, choose, leaveReward, take } from '../../state/actions';
 import { store } from '../../state/store';
 import { EssenceCard, LootCard, lootInfo, lootName, STAT_NAME } from '../cards';
 import { ask, confirmThen } from '../ask';
@@ -16,7 +16,7 @@ function askLoot(it: LootItem, verb: string) {
   return ask({ title: `${lootName(it)} — ${verb}`, icon: info.icon, color: info.color, body: [info.meta, info.desc].filter(Boolean).join('\n'), ok: verb });
 }
 
-/** 정수를 기술로(core=false) 또는 본질로(core=true) 흡수할지 확인하고 흡수한다 */
+/** 보통 정수는 그냥 흡수(본질), 수호자 정수는 기술로(core=false) 또는 본질로(core=true) */
 function askAbsorb(it: LootItem, core: boolean) {
   const def = ESSENCES.get(it.id);
   const name = def?.name ?? '정수';
@@ -27,16 +27,36 @@ function askAbsorb(it: LootItem, core: boolean) {
   if (def?.eldritch && !store.run?.essences.some((e) => e.id === it.id)) lines.push({ label: '이계의 대가', value: '최대 정신력 -5, 통찰 +1', color: 'var(--eldritch)' });
   confirmThen(
     {
-      title: `${name} — ${core ? '본질로' : '기술로'} 흡수`,
+      title: it.guardian ? `${name} — ${core ? '본질로' : '기술로'} 흡수` : `${name} 흡수`,
       icon: core ? 'gi:heart-beats' : 'gi:spell-book',
       color: 'var(--eldritch)',
-      body: core
-        ? `기술은 배우지 않고, 대신 최대 체력을 ${coreHp(def?.grade ?? 9, it.guardian)} 더 받는다. 능력치와 패시브는 그대로. 흡수한 정수는 정수 한도를 차지한다.`
-        : '능력치와 패시브, 그리고 이 정수의 기술을 얻는다. 흡수한 정수는 정수 한도를 차지한다.',
+      body: !it.guardian
+        ? '능력치와 패시브를 얻는다. 흡수한 정수는 정수 한도를 차지하고, 지우려면 신전에서 값을 치러야 한다.'
+        : core
+          ? `기술은 배우지 않고, 대신 최대 체력을 ${coreHp(def?.grade ?? 9, it.guardian)} 더 받는다. 능력치와 패시브는 그대로. 흡수한 정수는 정수 한도를 차지한다.`
+          : '능력치와 패시브, 그리고 이 존재의 기술을 모두 얻는다. 흡수한 정수는 정수 한도를 차지한다.',
       lines,
       ok: '흡수한다',
     },
     () => take(it, core),
+  );
+}
+
+/** 흡수하지 않고 병에 담는다 */
+function askBottle(it: LootItem) {
+  const run = store.run!;
+  const name = ESSENCES.get(it.id)?.name ?? '정수';
+  const cost = inscribeCost({ id: it.id, color: it.color ?? 0, guardian: it.guardian });
+  confirmThen(
+    {
+      title: `${name} — 병에 담기`,
+      icon: 'gi:round-bottom-flask',
+      color: 'var(--eldritch)',
+      body: `지금 흡수하지 않고 병에 담아 둔다. 신전이나 거점의 신전에서 ${cost}골드를 내고 새길 수 있다.`,
+      lines: [{ label: '정수 병', value: `${(run.flasks?.length ?? 0) + 1}/${FLASK_CAP}` }],
+      ok: '담는다',
+    },
+    () => bottle(it),
   );
 }
 
@@ -82,40 +102,56 @@ export function RewardScreen() {
 
         {essences.map((it) => {
           const drop = { id: it.id, color: it.color ?? 0, guardian: it.guardian };
-          const why = it.taken ? null : absorbBlock(run, drop);
+          // 보통 정수는 본질로만, 수호자 정수는 기술로/본질로 고른다
           const whyCore = it.taken ? null : absorbBlock(run, drop, true);
+          const whySkill = it.taken || !it.guardian ? null : absorbBlock(run, drop, false);
+          const flasks = run.flasks?.length ?? 0;
+          const owned = run.essences.find((e) => e.id === it.id);
           return (
             <div style={{ marginBottom: 12 }}>
-              <div class="section-label">정수가 떨어졌다 — 그 자리에서 흡수하지 않으면 사라진다</div>
+              <div class="section-label">정수가 떨어졌다 — 흡수하거나 병에 담지 않으면 사라진다</div>
               <EssenceCard
                 id={it.id}
                 color={it.color ?? 0}
                 guardian={it.guardian}
-                // 흡수한 뒤에는 실제로 흡수한 모습 (본질이면 기술 없이 체력 추가)
-                core={it.taken ? run.essences.find((e) => e.id === it.id)?.core : undefined}
+                // 흡수한 뒤에는 실제로 흡수한 모습, 고르기 전 보통 정수는 본질 모습 (기술 없이 체력 추가)
+                core={it.taken && !it.bottled ? owned?.core : it.guardian ? undefined : true}
                 footer={
                   it.taken ? (
                     <div class="chip" style={{ justifySelf: 'center', color: 'var(--eldritch)' }}>
-                      흡수함
+                      {it.bottled ? '병에 담음' : '흡수함'}
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 6 }}>
-                      {why && whyCore && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{whyCore}</div>}
-                      {why && !whyCore && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{why} — 본질로는 흡수할 수 있다</div>}
-                      <div class="absorb-btns">
-                        <button class="btn eldritch" disabled={!!why} onClick={() => askAbsorb(it, false)}>
-                          <span>
-                            <Icon name="gi:spell-book" size={16} /> 기술로 흡수
-                          </span>
-                          <small>능력치 + {it.guardian ? '기술 전부' : '기술'}</small>
+                      {whyCore && (!it.guardian || whySkill) && (
+                        <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{whyCore} — 병에 담아 두면 신전에서 새길 수 있다</div>
+                      )}
+                      {whySkill && !whyCore && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{whySkill} — 본질로는 흡수할 수 있다</div>}
+                      {it.guardian ? (
+                        <div class="absorb-btns">
+                          <button class="btn eldritch" disabled={!!whySkill} onClick={() => askAbsorb(it, false)}>
+                            <span>
+                              <Icon name="gi:spell-book" size={16} /> 기술로 흡수
+                            </span>
+                            <small>능력치 + 기술 전부</small>
+                          </button>
+                          <button class="btn eldritch" disabled={!!whyCore} onClick={() => askAbsorb(it, true)}>
+                            <span>
+                              <Icon name="gi:heart-beats" size={16} /> 본질로 흡수
+                            </span>
+                            <small>기술 대신 최대 체력 +{coreHp(ESSENCES.get(it.id)?.grade ?? 9, true)}</small>
+                          </button>
+                        </div>
+                      ) : (
+                        <button class="btn eldritch wide" disabled={!!whyCore} onClick={() => askAbsorb(it, true)}>
+                          <Icon name="gi:heart-beats" size={18} />
+                          흡수한다
                         </button>
-                        <button class="btn eldritch" disabled={!!whyCore} onClick={() => askAbsorb(it, true)}>
-                          <span>
-                            <Icon name="gi:heart-beats" size={16} /> 본질로 흡수
-                          </span>
-                          <small>기술 대신 최대 체력 +{coreHp(ESSENCES.get(it.id)?.grade ?? 9, it.guardian)}</small>
-                        </button>
-                      </div>
+                      )}
+                      <button class="btn ghost wide" disabled={flasks >= FLASK_CAP} onClick={() => askBottle(it)}>
+                        <Icon name="gi:round-bottom-flask" size={16} />
+                        {flasks >= FLASK_CAP ? `정수 병이 가득 찼다 (${flasks}/${FLASK_CAP})` : `병에 담기 (${flasks}/${FLASK_CAP})`}
+                      </button>
                     </div>
                   )
                 }

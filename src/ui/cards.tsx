@@ -105,7 +105,7 @@ export function EssenceCard({ id, color, guardian, core, footer }: { id: string;
             {def.lord ? ' · 계층정수 (제거 불가)' : ''}
           </div>
         </div>
-        {core && (
+        {core && guardian && (
           <span class="chip" style={{ color: 'var(--eldritch)', alignSelf: 'flex-start' }}>
             본질
           </span>

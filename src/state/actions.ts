@@ -5,6 +5,7 @@ import {
   finishCombat,
   newRun,
   takeLoot,
+  bottleEssence,
   type RunState,
   type LootItem,
 } from '../engine/run';
@@ -282,7 +283,16 @@ export async function take(item: LootItem, core = false) {
   const r = run();
   if (fail(takeLoot(r, item, core))) return;
   sound.sfx(item.kind === 'essence' ? 'essence' : item.kind === 'gold' ? 'coin' : 'select');
-  if (item.kind === 'essence') store.toast(core ? '정수를 본질로 흡수했다' : '정수를 흡수했다', 'eldritch');
+  if (item.kind === 'essence') store.toast(core && item.guardian ? '정수를 본질로 흡수했다' : '정수를 흡수했다', 'eldritch');
+  await refresh();
+}
+
+/** 떨어진 정수를 병에 담는다 (나중에 신전에서 골드를 내고 새긴다) */
+export async function bottle(item: LootItem) {
+  const r = run();
+  if (fail(bottleEssence(r, item))) return;
+  sound.sfx('select');
+  store.toast('정수를 병에 담았다', 'eldritch');
   await refresh();
 }
 

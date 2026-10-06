@@ -81,7 +81,7 @@ describe('정수 감사 — 코드 버그', () => {
   it('되감기는 대기 중인 보통 기술은 초기화한다', () => {
     const run = hero([
       { id: 'time-warden', guardian: true },
-      { id: 'thug', color: 0 },
+      { id: 'thug', guardian: true },
     ]);
     const c = fight(run);
     expect(use(c, run, 'ess-thug-pipe', c.row(0)[0].uid, 0)).toBeNull();
@@ -310,12 +310,14 @@ const STAT_KEYS = ['maxHp', 'str', 'dex', 'will', 'maxSanity', 'insight'] as con
 const statsOf = (run: RunState) => Object.fromEntries(STAT_KEYS.map((k) => [k, run.player[k]])) as Record<(typeof STAT_KEYS)[number], number>;
 
 describe('정수 감사 — 모든 정수 흡수·사용·제거', () => {
-  it('색마다 흡수할 수 있고 그 색의 액티브를 배운다', () => {
+  it('보통 정수는 기술 없이(본질로) 흡수되고, 수호자 정수는 그 존재의 액티브를 모두 배울 수 있다', () => {
     for (const es of ESSENCES.values()) {
-      es.actives.forEach((a, color) => {
+      es.actives.forEach((_, color) => {
         const run = hero([{ id: es.id, color }]);
-        expect(run.skills.some((s) => s.id === a), `${es.id} ${color}`).toBe(true);
+        expect(run.skills.some((s) => es.actives.includes(s.id)), `${es.id} ${color}`).toBe(false);
       });
+      const g = hero([{ id: es.id, guardian: true }]);
+      for (const a of es.actives) expect(g.skills.some((s) => s.id === a), `${es.id} ${a}`).toBe(true);
     }
   });
 

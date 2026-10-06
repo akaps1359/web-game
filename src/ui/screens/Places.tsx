@@ -4,6 +4,7 @@ import { CAMP_INFO, camp, campRefuel, cureMadness, CURE_COST, forbiddenOffer, ac
 import { applyAsk } from '../ask';
 import { store } from '../../state/store';
 import { EssenceCard, SkillCard } from '../cards';
+import { FlaskList } from '../flasks';
 import { Icon, showTip } from '../components';
 import { RunHud } from '../Hud';
 
@@ -106,7 +107,8 @@ export function ShrineScreen() {
   const f = run.floor!;
   const prayed = !!f.vars[`pray${f.pos}`];
   const offered = !!f.vars[`offer${f.pos}`];
-  const [mode, setMode] = useState<'main' | 'purge' | 'cure' | 'offer'>('main');
+  const [mode, setMode] = useState<'main' | 'purge' | 'cure' | 'offer' | 'inscribe'>('main');
+  const flasks = run.flasks?.length ?? 0;
   const [offers, setOffers] = useState<string[]>([]);
   const mad = run.madness.filter((m) => !MADNESS.get(m)?.virtue);
   return (
@@ -128,6 +130,15 @@ export function ShrineScreen() {
               <div class="body">
                 <div class="name">기도</div>
                 <div class="desc">정신력 +15 (한 번)</div>
+              </div>
+            </button>
+            <button class={`card ${flasks ? '' : 'off'}`} onClick={() => flasks && setMode('inscribe')}>
+              <div class="badge">
+                <Icon name="gi:round-bottom-flask" size={26} color="#4fffc4" />
+              </div>
+              <div class="body">
+                <div class="name">정수 새기기</div>
+                <div class="desc">{flasks ? `병에 담아 둔 정수를 골드를 내고 몸에 새긴다 (병 ${flasks}개)` : '병에 담아 둔 정수가 없다. 전투 뒤 떨어진 정수를 병에 담아 둘 수 있다.'}</div>
               </div>
             </button>
             <button class={`card ${run.essences.length ? '' : 'off'}`} onClick={() => run.essences.length && setMode('purge')}>
@@ -169,6 +180,14 @@ export function ShrineScreen() {
                 </div>
                 <div class="desc">최대 정신력 -8을 바치고 금기 스킬 하나를 얻는다 (통찰 +1)</div>
               </div>
+            </button>
+          </div>
+        )}
+        {mode === 'inscribe' && (
+          <div class="list">
+            <FlaskList where="shrine" />
+            <button class="btn ghost" onClick={() => setMode('main')}>
+              돌아가기
             </button>
           </div>
         )}

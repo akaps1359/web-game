@@ -6,6 +6,7 @@ import { refresh } from '../../state/actions';
 import { applyAsk } from '../ask';
 import { store } from '../../state/store';
 import { EssenceCard } from '../cards';
+import { FlaskList } from '../flasks';
 import { Icon } from '../components';
 import { RunHud } from '../Hud';
 import { SellList, SellSkillList, ShopList } from './Merchant';
@@ -126,6 +127,7 @@ export function HavenScreen() {
                 </button>
               );
             })}
+            <FlaskList where="shrine" />
             <div class="section-label">정수 제거 ({removalCost(run)} 골드)</div>
             {run.essences.map((es) => (
               <EssenceCard

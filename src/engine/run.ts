@@ -58,6 +58,8 @@ export interface LootItem {
   color?: number;
   guardian?: boolean;
   taken?: boolean;
+  /** 정수를 흡수하지 않고 병에 담았다 */
+  bottled?: boolean;
 }
 
 export interface RewardState {
@@ -128,6 +130,8 @@ export interface RunState {
   /** 종별 처치 수 (도감식 경험치) */
   killed: Record<string, number>;
   essenceRemovals: number;
+  /** 정수 병: 전투 뒤 바로 흡수하지 않고 담아 둔 정수 (신전·거점 신전에서 골드를 내고 새긴다). 예전 저장에는 없다 */
+  flasks?: EssenceDrop[];
   /** 거점 여관 사용 여부 */
   innUsed: boolean;
   /** 이번 거점에서 훈련장 강화를 했는가 (거점마다 한 번) */
@@ -198,6 +202,7 @@ export function newRun(opts: { seed?: number; origin: string; asc?: number; know
     seen: [],
     killed: {},
     essenceRemovals: 0,
+    flasks: [],
     innUsed: false,
     stats: {
       kills: 0,
@@ -369,7 +374,8 @@ export function essenceActives(drop: { id: string; color: number; guardian?: boo
 }
 
 /** 흡수 불가 사유 */
-export function absorbBlock(run: RunState, drop: { id: string; color: number; guardian?: boolean }, core = false): string | null {
+export function absorbBlock(run: RunState, drop: EssenceDrop, core = false): string | null {
+  if (!drop.guardian) core = true;
   const def = ESSENCES.get(drop.id);
   if (!def) return '알 수 없는 정수';
   const same = run.essences.find((e) => e.id === drop.id);
@@ -404,8 +410,12 @@ function applyStats(run: RunState, st: EssenceStats, sign: 1 | -1) {
   if (st.insight) p.insight = Math.max(0, p.insight + sign * st.insight);
 }
 
-/** core=true: 본질로 흡수 — 기술을 배우지 않고 최대 체력을 더 받는다 (coreHp) */
-export function absorbEssence(run: RunState, drop: { id: string; color: number; guardian?: boolean }, core = false): string | null {
+/**
+ * core=true: 본질로 흡수 — 기술을 배우지 않고 최대 체력을 더 받는다 (coreHp).
+ * 보통 정수는 언제나 본질로 흡수한다. 기술을 배울지는 수호자 정수(그 존재의 기술 전부)만 고른다.
+ */
+export function absorbEssence(run: RunState, drop: EssenceDrop, core = false): string | null {
+  if (!drop.guardian) core = true;
   const why = absorbBlock(run, drop, core);
   if (why) return why;
   const def = need(ESSENCES, drop.id, '정수');
@@ -429,6 +439,40 @@ export function absorbEssence(run: RunState, drop: { id: string; color: number; 
   }
   run.stats.essences++;
   log(run, `${def.name}을(를) ${core ? '본질로 ' : ''}흡수했다`);
+  return null;
+}
+
+/** 전투 뒤 떨어진 정수 (흡수하거나 병에 담는다) */
+export type EssenceDrop = { id: string; color: number; guardian?: boolean };
+
+/** 정수 병 수 */
+export const FLASK_CAP = 2;
+
+/** 병에 담아 둔 정수를 신전에서 새기는 값 (그 자리에서 흡수하면 공짜) — 등급이 높을수록, 수호자 정수는 1.5배 */
+export function inscribeCost(drop: EssenceDrop): number {
+  const grade = ESSENCES.get(drop.id)?.grade ?? 9;
+  return Math.round((30 + 9 * Math.max(0, 9 - grade)) * (drop.guardian ? 1.5 : 1));
+}
+
+/** 떨어진 정수를 흡수하지 않고 병에 담는다 (흡수 한도가 차 있어도 된다) */
+export function bottleEssence(run: RunState, item: LootItem): string | null {
+  if (item.kind !== 'essence') return '정수가 아니다';
+  if (item.taken) return '이미 가져갔다';
+  const flasks = (run.flasks ??= []);
+  if (flasks.length >= FLASK_CAP) return '정수 병이 가득 찼다';
+  flasks.push({ id: item.id, color: item.color ?? 0, guardian: item.guardian });
+  item.taken = true;
+  item.bottled = true;
+  log(run, `${ESSENCES.get(item.id)?.name ?? '정수'}을(를) 병에 담았다`);
+  return null;
+}
+
+/** 병을 비운다 (담아 둔 정수는 사라진다) */
+export function pourFlask(run: RunState, idx: number): string | null {
+  const drop = run.flasks?.[idx];
+  if (!drop) return '병이 비어 있다';
+  run.flasks!.splice(idx, 1);
+  log(run, `${ESSENCES.get(drop.id)?.name ?? '정수'}을(를) 담은 병을 비웠다`);
   return null;
 }
 

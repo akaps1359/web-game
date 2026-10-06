@@ -2,6 +2,8 @@ import { Combat } from '../engine/combat';
 import { EQUIPS, ENCOUNTERS, MADNESS, RELICS, SKILLS } from '../engine/registry';
 import {
   absorbBlock,
+  bottleEssence,
+  inscribeCost,
   canUpgradeSkill,
   chooseLoot,
   equipFromBag,
@@ -12,7 +14,7 @@ import {
 } from '../engine/run';
 import { continueRift, distances, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
 import { chooseEvent, eventView, leaveEvent } from '../engine/events';
-import { camp, campRefuel, cureMadness, inn, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
+import { camp, campRefuel, cureMadness, inn, inscribeFlask, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
 import { buy, priceOf } from '../engine/shop';
 import { endRun, winRun } from '../engine/run';
 import { autoTurn } from './bot';
@@ -143,6 +145,15 @@ function pickTarget(run: RunState): number {
   return commit(best);
 }
 
+/** 병에 담아 둔 정수를 새길 수 있는 만큼 새긴다 (골드는 절반 넘게 남긴다) */
+function inscribeAll(run: RunState) {
+  for (let i = (run.flasks?.length ?? 0) - 1; i >= 0; i--) {
+    const drop = run.flasks![i];
+    if (run.player.gold < inscribeCost(drop) * 2) continue;
+    inscribeFlask(run, i, botEssence.mode !== 'skill');
+  }
+}
+
 /** 정수 흡수 방식: 'skill' 항상 기술 / 'core' 항상 본질 / 'auto' 빈 슬롯이 있으면 기술, 없으면 본질 */
 export const botEssence: { mode: 'skill' | 'core' | 'auto' } = { mode: 'auto' };
 
@@ -154,7 +165,11 @@ function handleReward(run: RunState) {
       const skillOk = !absorbBlock(run, drop);
       const coreOk = !absorbBlock(run, drop, true);
       const core = botEssence.mode === 'core' ? true : botEssence.mode === 'skill' ? false : !skillOk || !run.slots.includes(null);
-      if (core ? !coreOk : !skillOk) continue;
+      // 흡수 한도가 차 있으면 병에 담아 두었다가 신전에서 새긴다
+      if (core ? !coreOk : !skillOk) {
+        bottleEssence(run, it);
+        continue;
+      }
       takeLoot(run, it, core);
       continue;
     }
@@ -285,6 +300,7 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
       }
       case 'shrine': {
         shrinePray(run);
+        inscribeAll(run);
         const bad = run.madness.find((m) => !MADNESS.get(m)?.virtue);
         if (bad && run.player.gold >= 120) cureMadness(run, bad);
         leavePlace(run);
@@ -292,6 +308,7 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000): 
       }
       case 'haven': {
         inn(run);
+        inscribeAll(run);
         for (const slot of ['weapon', 'armor'] as const) smith(run, slot);
         leaveHaven(run);
         break;

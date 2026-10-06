@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { newRun, startCombat } from '../src/engine/run';
+import { newRun, startCombat, type LootItem } from '../src/engine/run';
 
 describe('점검: 공용 도우미·엔진', () => {
   it('공허 각인을 단 인장 폭발은 공허 피해', () => {
@@ -176,12 +176,14 @@ describe('점검: 정수 규칙', () => {
     expect(absorbEssence(run, { id: lords[1].id, color: 0, guardian: true })).toBe('계층정수는 판당 하나뿐이다');
   });
 
-  it('수호자판으로 바꿔 흡수해도 강화해 둔 정수 스킬은 그대로', async () => {
-    const { absorbEssence } = await import('../src/engine/run');
+  it('수호자판으로 바꿔 흡수해도 강화해 둔 정수 스킬은 그대로 (예전 저장: 보통 정수를 기술로 흡수한 경우)', async () => {
+    const { absorbEssence, learnSkill } = await import('../src/engine/run');
+    const { ESSENCES } = await import('../src/engine/registry');
     const run = newRun({ seed: 42, origin: 'soldier' });
     run.player.level = 10;
-    absorbEssence(run, { id: 'lurker', color: 0 });
-    const s = run.skills.find((x) => x.from === run.essences[0].uid)!;
+    // 예전 방식으로 흡수해 둔 정수 (기술 있음)
+    run.essences.push({ uid: 'old-es', id: 'lurker', color: 0 });
+    const s = learnSkill(run, ESSENCES.get('lurker')!.actives[0], 'old-es')!;
     s.lvl = 1;
     absorbEssence(run, { id: 'lurker', color: 0, guardian: true });
     expect(run.skills.find((x) => x.id === s.id)!.lvl).toBe(1);
@@ -211,15 +213,27 @@ describe('정수: 기술로 / 본질로 흡수', () => {
     expect(run.player.maxHp).toBe(before.maxHp);
   });
 
-  it('기술로 흡수하면 기술을 배운다 (능력치는 한 배)', async () => {
+  it('수호자 정수를 기술로 흡수하면 기술을 모두 배운다 (체력 보너스 없음)', async () => {
     const { absorbEssence, essenceStats } = await import('../src/engine/run');
     const run = newRun({ seed: 52, origin: 'soldier' });
     run.player.level = 10;
     const str = run.player.str;
-    absorbEssence(run, { id: 'thug', color: 0 });
+    const hp = run.player.maxHp;
+    absorbEssence(run, { id: 'thug', color: 0, guardian: true });
     expect(run.essences[0].core).toBeUndefined();
-    expect(run.skills.some((s) => s.from === run.essences[0].uid)).toBe(true);
-    expect(run.player.str).toBe(str + (essenceStats('thug').str ?? 0));
+    expect(run.skills.filter((s) => s.from === run.essences[0].uid).length).toBeGreaterThan(1);
+    expect(run.player.str).toBe(str + (essenceStats('thug', true).str ?? 0));
+    expect(run.player.maxHp).toBe(hp + (essenceStats('thug', true).maxHp ?? 0));
+  });
+
+  it('보통 정수는 기술로 흡수하려 해도 본질로 흡수된다', async () => {
+    const { absorbEssence } = await import('../src/engine/run');
+    const run = newRun({ seed: 55, origin: 'soldier' });
+    run.player.level = 10;
+    const n = run.skills.length;
+    expect(absorbEssence(run, { id: 'thug', color: 0 }, false)).toBeNull();
+    expect(run.essences[0].core).toBe(true);
+    expect(run.skills.length).toBe(n);
   });
 
   it('본질 정수를 수호자판 기술로 바꿔 흡수할 수 있고, 능력치가 이중으로 남지 않는다', async () => {
@@ -287,5 +301,67 @@ describe('지도: 지나온 길', () => {
     const b = f.rooms[f.pos].links.find((x) => x !== f.start) ?? f.start;
     expect(moveTo(run, b)).toBeNull();
     expect(f.trail).toEqual([a, b]);
+  });
+});
+
+describe('정수 병', () => {
+  const drop = (id = 'thug', guardian = false): LootItem => ({ kind: 'essence', id, color: 0, guardian });
+
+  it('흡수 한도가 차 있어도 병에 담을 수 있고, 병은 둘까지', async () => {
+    const { absorbEssence, bottleEssence, FLASK_CAP } = await import('../src/engine/run');
+    const run = newRun({ seed: 81, origin: 'soldier' });
+    expect(absorbEssence(run, { id: 'dog', color: 0 })).toBeNull(); // 레벨 1 → 한도 1 꽉 참
+    expect(absorbEssence(run, { id: 'thug', color: 0 })).not.toBeNull();
+    const a = drop('thug');
+    expect(bottleEssence(run, a)).toBeNull();
+    expect(a.taken && a.bottled).toBe(true);
+    expect(bottleEssence(run, drop('smuggler'))).toBeNull();
+    expect(run.flasks!.length).toBe(FLASK_CAP);
+    expect(bottleEssence(run, drop('sailor'))).toBe('정수 병이 가득 찼다');
+  });
+
+  it('신전에서만, 골드를 내고 새긴다 (한도는 그대로 지킨다)', async () => {
+    const { bottleEssence, inscribeCost } = await import('../src/engine/run');
+    const { inscribeFlask } = await import('../src/engine/places');
+    const run = newRun({ seed: 82, origin: 'soldier' });
+    run.player.level = 3;
+    run.player.gold = 500;
+    bottleEssence(run, drop('thug'));
+    run.screen = 'dungeon';
+    expect(inscribeFlask(run, 0)).toBe('신전에서만 새길 수 있다');
+    run.screen = 'shrine';
+    const cost = inscribeCost({ id: 'thug', color: 0 });
+    expect(cost).toBeGreaterThan(0);
+    expect(inscribeFlask(run, 0)).toBeNull();
+    expect(run.player.gold).toBe(500 - cost);
+    expect(run.flasks!.length).toBe(0);
+    expect(run.essences.some((e) => e.id === 'thug' && e.core)).toBe(true);
+    // 골드가 모자라면 새기지 못하고 병도 그대로
+    bottleEssence(run, drop('dog'));
+    run.player.gold = 0;
+    expect(inscribeFlask(run, 0)).toBe('골드가 부족하다');
+    expect(run.flasks!.length).toBe(1);
+  });
+
+  it('수호자 정수는 병에서 꺼낼 때 기술로/본질로 고르고, 값은 1.5배', async () => {
+    const { bottleEssence, inscribeCost } = await import('../src/engine/run');
+    const { inscribeFlask } = await import('../src/engine/places');
+    const run = newRun({ seed: 83, origin: 'soldier' });
+    run.player.level = 5;
+    run.player.gold = 999;
+    bottleEssence(run, drop('thug', true));
+    expect(inscribeCost({ id: 'thug', color: 0, guardian: true })).toBe(Math.round(inscribeCost({ id: 'thug', color: 0 }) * 1.5));
+    run.screen = 'haven';
+    expect(inscribeFlask(run, 0, false)).toBeNull();
+    expect(run.skills.some((s) => s.id === 'ess-thug-pipe')).toBe(true);
+  });
+
+  it('병을 비우면 사라진다', async () => {
+    const { bottleEssence, pourFlask } = await import('../src/engine/run');
+    const run = newRun({ seed: 84, origin: 'soldier' });
+    bottleEssence(run, drop('thug'));
+    expect(pourFlask(run, 0)).toBeNull();
+    expect(run.flasks!.length).toBe(0);
+    expect(pourFlask(run, 0)).toBe('병이 비어 있다');
   });
 });

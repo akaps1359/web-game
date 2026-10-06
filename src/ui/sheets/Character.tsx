@@ -6,6 +6,7 @@ import { applyAsk } from '../ask';
 import { discardSkill, skillLockReason } from '../../engine/shop';
 import { store } from '../../state/store';
 import { EssenceCard, LootCard, SkillCard } from '../cards';
+import { FlaskList } from '../flasks';
 import { Icon, Sheet, showTip } from '../components';
 import { SCHOOL_NAME } from '../text';
 
@@ -190,6 +191,9 @@ function EssencesTab() {
         {run.essences.map((es) => (
           <EssenceCard id={es.id} color={es.color} guardian={es.guardian} core={es.core} />
         ))}
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <FlaskList where="bag" />
       </div>
     </div>
   );

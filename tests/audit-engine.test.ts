@@ -296,7 +296,7 @@ describe('점검: 위력 배율(메아리 50%·절약 75%)', () => {
   it('크레센도: 메아리 각인을 새겨도 한 번 쓸 때 한 번만 커진다', () => {
     const run = sturdy(3);
     run.player.level = 20;
-    absorbEssence(run, { id: 'choirmaster', color: 0 });
+    absorbEssence(run, { id: 'choirmaster', color: 0, guardian: true });
     const s = run.skills.find((x) => x.id === 'ess-choirmaster-crescendo')!;
     s.runes = ['echo'];
     if (!run.slots.includes(s.uid)) run.slots[0] = s.uid;
