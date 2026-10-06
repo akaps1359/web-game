@@ -469,3 +469,51 @@ describe('전투 중 선택지', () => {
     expect(c.s.choice ?? null).toBeNull();
   });
 });
+
+describe('도감: 장비·스킬 기록과 테스트용 되돌리기', () => {
+  it('판의 장비(장착·가방)와 스킬이 도감에 기록된다', async () => {
+    const { absorbRun, defaultMeta } = await import('../src/state/meta');
+    const run = newRun({ seed: 96, origin: 'hunter' });
+    const m = defaultMeta();
+    absorbRun(m, run, false);
+    for (const it of Object.values(run.equip)) if (it) expect(m.equips).toContain(it.id);
+    for (const sk of run.skills) expect(m.skills).toContain(sk.id);
+    // 같은 것은 한 번만
+    absorbRun(m, run, false);
+    expect(new Set(m.equips).size).toBe(m.equips.length);
+  });
+
+  it('전체 해금은 장비·정수·스킬·유물 도감을 모두 연다 (스킬은 기본 공격·정수 기술 제외)', async () => {
+    const { codexSkills, defaultMeta, unlockAllInfo } = await import('../src/state/meta');
+    const { EQUIPS, ESSENCES, RELICS } = await import('../src/engine/registry');
+    const m = defaultMeta();
+    unlockAllInfo(m);
+    expect(m.equips.length).toBe(EQUIPS.size);
+    expect(m.essences.length).toBe(ESSENCES.size);
+    expect(m.relics.length).toBe(RELICS.size);
+    const pool = codexSkills();
+    expect(pool.length).toBeGreaterThan(50);
+    expect(pool.some((d) => d.tags.includes('basic') || d.school === 'essence')).toBe(false);
+    for (const d of pool) expect(m.skills).toContain(d.id);
+  });
+
+  it('기억한 기록으로 되돌리면 진행은 그때로, 설정은 지금 것으로', async () => {
+    const { blankMeta, defaultMeta, restoredMeta, unlockAllInfo } = await import('../src/state/meta');
+    const real = defaultMeta();
+    real.runs = 7;
+    real.equips = ['x-real'];
+    const saved = JSON.parse(JSON.stringify(real));
+    unlockAllInfo(real);
+    real.speed = 2;
+    real.confirm = false;
+    const back = restoredMeta(real, saved);
+    expect(back.runs).toBe(7);
+    expect(back.equips).toEqual(['x-real']);
+    expect(back.speed).toBe(2);
+    expect(back.confirm).toBe(false);
+    const blank = blankMeta(real);
+    expect(blank.runs).toBe(0);
+    expect(blank.equips).toEqual([]);
+    expect(blank.speed).toBe(2);
+  });
+});

@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { abandonRun, toTitle } from '../../state/actions';
-import { defaultMeta, saveMeta } from '../../state/meta';
-import { ENEMIES, ESSENCES, ORIGINS, RELICS } from '../../engine/registry';
+import { blankMeta, clearRestorePoint, loadRestorePoint, restoredMeta, saveMeta, saveRestorePoint, unlockAllInfo } from '../../state/meta';
+import { ORIGINS } from '../../engine/registry';
 import { confirmThen } from '../ask';
 import { store } from '../../state/store';
 import { audioSettings, setAudioSettings } from '../../audioBridge';
@@ -15,6 +15,7 @@ export function SettingsSheet() {
     store.emit();
   };
   const a = audioSettings();
+  const restore = loadRestorePoint();
   const inRun = !!store.run && !store.run.over;
   return (
     <Sheet title="설정" icon="gi:settings-knobs" onClose={close}>
@@ -70,21 +71,66 @@ export function SettingsSheet() {
         )}
         <div class="section-label" style={{ marginBottom: 0 }}>테스트용</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <button class="btn ghost" onClick={() => confirmThen({ title: '모든 정보를 해금할까요?', icon: 'gi:book-cover', body: '도감의 모든 존재와 약점, 정수·유물 기록, 최고 층, 심연 단계를 전부 연다.', ok: '해금' }, () => (unlockInfo(), force((x) => x + 1)))}>
+          <button
+            class="btn ghost"
+            onClick={() =>
+              confirmThen(
+                { title: '모든 정보를 해금할까요?', icon: 'gi:book-cover', body: '도감(적·장비·정수·스킬·유물)과 약점, 최고 층, 심연 단계를 전부 연다. 지금 기록은 따로 기억해 두어 되돌릴 수 있다.', ok: '해금' },
+                () => (unlockInfo(), force((x) => x + 1)),
+              )
+            }
+          >
             모든 정보 해금
           </button>
-          <button class="btn ghost" onClick={() => confirmThen({ title: '모든 캐릭터를 해금할까요?', icon: 'gi:padlock-open', ok: '해금' }, () => (unlockOrigins(), force((x) => x + 1)))}>
+          <button class="btn ghost" onClick={() => confirmThen({ title: '모든 캐릭터를 해금할까요?', icon: 'gi:padlock-open', body: '지금 기록은 따로 기억해 두어 되돌릴 수 있다.', ok: '해금' }, () => (unlockOrigins(), force((x) => x + 1)))}>
             캐릭터 해금
+          </button>
+          <button
+            class="btn ghost"
+            onClick={() =>
+              confirmThen(
+                { title: '지금 기록을 기억할까요?', icon: 'gi:save', body: restore ? '이미 기억해 둔 기록을 지금 기록으로 바꾼다.' : '해금·초기화로 시험해 본 뒤 이 상태로 돌아올 수 있다.', ok: '기억한다' },
+                () => (remember(), force((x) => x + 1)),
+              )
+            }
+          >
+            지금 기록 기억하기
+          </button>
+          <button
+            class="btn ghost"
+            disabled={!restore}
+            onClick={() =>
+              restore &&
+              confirmThen(
+                { title: '기억한 기록으로 되돌릴까요?', icon: 'gi:backward-time', body: `${when(restore.at)}에 기억한 상태로 돌아간다. 그 뒤에 쌓인 기록(해금·도감·여정 횟수)은 사라진다. 진행 중인 여정과 설정은 그대로.`, ok: '되돌린다', always: true },
+                () => (restoreMeta(), force((x) => x + 1)),
+              )
+            }
+          >
+            기억한 기록으로 되돌리기
           </button>
           <button
             class="btn danger"
             style={{ gridColumn: '1 / -1' }}
             onClick={() =>
-              confirmThen({ title: '모든 기록을 초기화할까요?', icon: 'gi:trash-can', body: '도감, 해금한 캐릭터, 여정 횟수, 본 도움말이 처음 상태로 돌아간다. 설정(속도·확인 창)은 남는다.', ok: '초기화', danger: true, always: true }, () => (resetMeta(), force((x) => x + 1)))
+              confirmThen(
+                {
+                  title: '모든 기록을 초기화할까요?',
+                  icon: 'gi:trash-can',
+                  body: '도감, 해금한 캐릭터, 여정 횟수, 본 도움말이 처음 상태로 돌아간다. 설정(속도·확인 창)은 남는다.' + (restore ? '' : ' 지금 기록은 자동으로 기억해 두어 되돌릴 수 있다.'),
+                  ok: '초기화',
+                  danger: true,
+                  always: true,
+                },
+                () => (resetMeta(), force((x) => x + 1)),
+              )
             }
           >
-            기록 초기화
+            전체 초기화
           </button>
+        </div>
+        <div class="muted" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+          {restore ? `기억해 둔 기록: ${when(restore.at)} · 여정 ${restore.meta.runs}번 · 도감 ${Object.keys(restore.meta.codex).length}종` : '기억해 둔 기록 없음 — 해금이나 초기화를 하면 그 전 기록을 자동으로 기억한다.'}
         </div>
         <div class="muted" style={{ fontSize: 11, lineHeight: 1.6 }}>
           아이콘: game-icons.net (Lorc, Delapouite 외 기여자, CC BY 3.0)
@@ -100,31 +146,47 @@ export function SettingsSheet() {
 
 // ───────── 테스트용 ─────────
 
+/** 해금·초기화 전에, 아직 기억해 둔 게 없으면 지금 기록을 기억한다 (나중에 되돌릴 수 있게) */
+function keepOriginal() {
+  if (!loadRestorePoint()) saveRestorePoint(store.meta);
+}
+
+function when(at: number): string {
+  const d = new Date(at);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 function unlockInfo() {
-  const m = store.meta;
-  for (const [id, d] of ENEMIES) {
-    const rec = (m.codex[id] ??= { seen: 0, kills: 0, weak: [] });
-    rec.seen = Math.max(1, rec.seen);
-    rec.kills = Math.max(1, rec.kills);
-    rec.weak = [...new Set([...rec.weak, ...d.weak])];
-  }
-  m.essences = [...ESSENCES.keys()];
-  m.relics = [...RELICS.keys()];
-  m.bestAct = Math.max(m.bestAct, 5);
-  m.abyss = Math.max(m.abyss, 15);
-  saveMeta(m);
+  keepOriginal();
+  unlockAllInfo(store.meta);
+  saveMeta(store.meta);
   store.toast('모든 정보를 해금했다', 'good');
 }
 
 function unlockOrigins() {
+  keepOriginal();
   store.meta.unlocked = [...ORIGINS.keys()];
   saveMeta(store.meta);
   store.toast('모든 캐릭터를 해금했다', 'good');
 }
 
+function remember() {
+  saveRestorePoint(store.meta);
+  store.toast('지금 기록을 기억했다', 'good');
+}
+
+function restoreMeta() {
+  const r = loadRestorePoint();
+  if (!r) return;
+  store.meta = restoredMeta(store.meta, r.meta);
+  saveMeta(store.meta);
+  clearRestorePoint();
+  store.toast('기억한 기록으로 되돌렸다', 'good');
+}
+
 function resetMeta() {
-  const { speed, confirm } = store.meta;
-  store.meta = { ...defaultMeta(), speed, confirm };
+  keepOriginal();
+  store.meta = blankMeta(store.meta);
   saveMeta(store.meta);
   store.toast('기록을 초기화했다', 'info');
 }
