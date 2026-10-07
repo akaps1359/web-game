@@ -1,3 +1,4 @@
+import { josa } from './josa';
 import { Rng, deriveSeed } from './rng';
 import { Combat, BREAKDOWN_RESET, rollMadness, type CombatEvent, type CombatState } from './combat';
 import {
@@ -32,6 +33,8 @@ import type {
 import { generateFloor, floorSignal, type FloorState } from './dungeon';
 import type { EventState } from './events';
 import type { ShopState } from './shop';
+import { abyssAmbushStrike, abyssEssenceDrop, abyssGold, abyssFloor, abyssSlotCut, abyssStart, abyssWhisper, type AbyssState } from './abyss';
+import { CLUE, clueLinks, clueMult, clueSources, crossesSchools } from './keywords';
 
 /** 저장 형식 버전. 층 구성이 바뀌면 올린다 (이전 판은 이어하기 불가) — 2: 3층/5층 개편, 5층이 정식 탐험 층으로 */
 export const SAVE_VERSION = 2;
@@ -150,6 +153,8 @@ export interface RunState {
   knownWeak: Record<string, string[]>;
   /** 금기 「심연 응시」로 얻은 통찰 (판 전체 상한이 있다). 예전 저장에는 없다 */
   gazed?: number;
+  /** 심연 단계의 특별한 규칙이 남기는 상태 (engine/abyss.ts). 예전 저장에는 없다 */
+  abyss?: AbyssState;
 }
 
 export const MAX_SLOTS = 7;
@@ -243,7 +248,11 @@ export function newRun(opts: { seed?: number; origin: string; asc?: number; know
   }
   for (const id of origin.relics ?? []) gainRelic(run, id);
   for (const id of origin.consumables ?? []) addConsumable(run, id);
+  // 심연 단계: 시작 자원 (「빈손」)
+  abyssStart(run);
   run.floor = generateFloor(run, 1);
+  // 심연 단계: 층마다 바뀌는 규칙 (「아래의 목소리」 등)
+  abyssFloor(run, run.floor, null);
   return run;
 }
 
@@ -350,7 +359,7 @@ export function socketRune(run: RunState, skillUid: string, runeIdx: number): bo
 export const ESSENCE_SLOTS = { base: 4 };
 
 export function essenceCap(run: RunState): number {
-  return Math.max(1, ESSENCE_SLOTS.base + (run.stats?.bosses ?? 0) - (run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0));
+  return Math.max(1, ESSENCE_SLOTS.base + (run.stats?.bosses ?? 0) - (run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0) - abyssSlotCut(run));
 }
 
 /** 정수 자리를 차지하는 정수인가 (계층정수는 판당 하나·제거 불가라 자리를 차지하지 않는다) */
@@ -461,17 +470,11 @@ function applyStats(run: RunState, st: EssenceStats, sign: 1 | -1) {
   if (st.insight) p.insight = Math.max(0, p.insight + sign * st.insight);
 }
 
-/** 이계 정수의 대가: 최대 정신력 -5 (흡수할 때 한 번, 돈을 내고 지우면 돌려받는다) */
-export const ELDRITCH_SANITY = 5;
-
 /**
- * 이계 정수가 주는 통찰: 수호자(층 수호자·계층군주·최종 수호자)의 이계 정수만 +1.
- * 보통 이계 정수는 흡수해도 통찰을 주지 않는다 — 통찰은 얻기 어렵게 (균열 수호자의 정수도 수호자 정수지만 정예라 주지 않는다)
+ * 이계 정수의 대가: 최대 정신력 -5 (흡수할 때 한 번, 돈을 내고 지우면 돌려받는다).
+ * 통찰은 주지 않는다 — 수호자의 정수라도 (2026-10 2차: 대가 없이 들어오는 통찰을 없앴다)
  */
-export function eldritchInsight(drop: { id: string; guardian?: boolean }): number {
-  const def = ESSENCES.get(drop.id);
-  return def?.eldritch && drop.guardian && ENEMIES.get(drop.id)?.tier === 'boss' ? 1 : 0;
-}
+export const ELDRITCH_SANITY = 5;
 
 /**
  * core=true: 본질로 흡수 — 기술을 배우지 않고 최대 체력을 더 받는다 (coreHp).
@@ -498,14 +501,12 @@ export function absorbEssence(run: RunState, drop: EssenceDrop, pick?: EssencePi
     run.player.maxSanity = Math.max(10, run.player.maxSanity - ELDRITCH_SANITY);
     run.player.sanity = Math.min(run.player.sanity, run.player.maxSanity);
   }
-  // 통찰은 수호자의 이계 정수만 +1 (보통판을 수호자판으로 바꿔 흡수하면 그때 얻는다)
-  run.player.insight += eldritchInsight(drop) - (same ? eldritchInsight(same) : 0);
   for (const a of essenceActives(es)) {
     const s = learnSkill(run, a, es.uid);
     if (s && keepLvl.has(a)) s.lvl = keepLvl.get(a)!;
   }
   run.stats.essences++;
-  log(run, `${def.name}을(를) 흡수했다${skill ? ` (기술: ${SKILLS.get(skill)?.name ?? skill})` : ''}`);
+  log(run, `${def.name}${josa(def.name, '을')} 흡수했다${skill ? ` (기술: ${SKILLS.get(skill)?.name ?? skill})` : ''}`);
   return null;
 }
 
@@ -530,7 +531,7 @@ export function bottleEssence(run: RunState, item: LootItem): string | null {
   flasks.push({ id: item.id, color: item.color ?? 0, guardian: item.guardian });
   item.taken = true;
   item.bottled = true;
-  log(run, `${ESSENCES.get(item.id)?.name ?? '정수'}을(를) 병에 담았다`);
+  log(run, `${ESSENCES.get(item.id)?.name ?? '정수'}${josa(ESSENCES.get(item.id)?.name ?? '정수', '을')} 병에 담았다`);
   return null;
 }
 
@@ -539,7 +540,7 @@ export function pourFlask(run: RunState, idx: number): string | null {
   const drop = run.flasks?.[idx];
   if (!drop) return '병이 비어 있다';
   run.flasks!.splice(idx, 1);
-  log(run, `${ESSENCES.get(drop.id)?.name ?? '정수'}을(를) 담은 병을 비웠다`);
+  log(run, `${ESSENCES.get(drop.id)?.name ?? '정수'}${josa(ESSENCES.get(drop.id)?.name ?? '정수', '을')} 담은 병을 비웠다`);
   return null;
 }
 
@@ -561,11 +562,8 @@ export function removeEssence(run: RunState, essenceUid: string, free = false): 
     run.essenceRemovals++;
   }
   applyStats(run, essenceStats(es.id, es.guardian, es.core), -1);
-  // 돈을 내고 지우면 이계의 흔적(최대 정신력 -5, 수호자의 이계 정수라면 통찰 +1)도 함께 사라진다
-  if (def.eldritch && !free) {
-    run.player.maxSanity += ELDRITCH_SANITY;
-    run.player.insight = Math.max(0, run.player.insight - eldritchInsight(es));
-  }
+  // 돈을 내고 지우면 이계의 흔적(최대 정신력 -5)도 함께 사라진다
+  if (def.eldritch && !free) run.player.maxSanity += ELDRITCH_SANITY;
   for (const s of run.skills.filter((x) => x.from === es.uid)) {
     const slot = run.slots.indexOf(s.uid);
     if (slot >= 0) run.slots[slot] = null;
@@ -586,7 +584,7 @@ export function breakEssence(run: RunState, essenceUid: string): string | null {
   if (!takesSlot(es.id)) return '계층정수는 깨뜨릴 수 없다';
   const name = ESSENCES.get(es.id)?.name ?? '정수';
   const why = removeEssence(run, essenceUid, true);
-  if (!why) log(run, `${name}을(를) 깨뜨렸다`);
+  if (!why) log(run, `${name}${josa(name, '을')} 깨뜨렸다`);
   return why;
 }
 
@@ -709,6 +707,8 @@ function* runHooks(run: RunState): Generator<[Hooks, HookSelf]> {
     const d = ESSENCES.get(es.id);
     if (d?.passive.hooks) yield [d.passive.hooks, { kind: 'essence', id: es.id, unit: p, n: es.guardian ? 2 : 1 }];
   }
+  // 심연 「아래의 목소리」: 이 층에서 들리는 목소리 (광기)
+  yield* abyssWhisper(run);
 }
 
 /** 전투 밖 정신력 손실. 붕괴 시 광기 id 반환 */
@@ -741,60 +741,77 @@ const RARITY_W: Record<string, Partial<Record<Rarity, number>>> = {
 };
 
 /**
- * 합기(SkillDef.duo)의 보상 가중치: 그 보상에서 희귀 스킬 하나가 받는 가중치의 몇 배인가.
- * 조건(두 계열의 스킬을 하나씩)을 채운 합기만 후보가 되고, 채우면 희귀 스킬보다 자주 보인다
+ * 출신 계열의 보상 가중치: 1층에서는 ×early, 2층부터는 ×late.
+ * 처음엔 출신 계열로 판의 뼈대를 세우고, 층이 깊어질수록 실마리 보상(engine/keywords.ts)이 다른 계열을 끌어들인다.
+ * 시뮬레이터가 바꿔 볼 수 있게 객체로 둔다 (SIM_ORIGIN_LATE)
  */
-export const DUO_WEIGHT = { value: 2.5 };
+export const ORIGIN_WEIGHT = { early: 2, late: 1.5 };
+
+/** 지금 층에서 출신 계열이 받는 가중치 */
+export function originWeight(run: RunState): number {
+  return run.act <= 1 ? ORIGIN_WEIGHT.early : ORIGIN_WEIGHT.late;
+}
 
 /**
- * 합기 조건에 세는 계열: 가진 스킬의 계열. 기본 공격(무기·방어구 기본기)·정수 기술·공용 스킬·다른 합기는 세지 않는다.
+ * 가진 스킬의 계열. 기본 공격(무기·방어구 기본기)·정수 기술·공용 스킬은 세지 않는다.
  * 금기 스킬은 보통 보상에 나오지 않지만 가지고 있으면 금기도 센다
  */
-export function duoSchools(run: RunState): Set<School> {
+export function ownedSchools(run: RunState): Set<School> {
   const out = new Set<School>();
   for (const s of run.skills) {
     const d = SKILLS.get(s.id);
-    if (!d || d.duo || d.pool === false || d.rarity === 'basic' || d.tags.includes('basic')) continue;
+    if (!d || d.pool === false || d.rarity === 'basic' || d.tags.includes('basic')) continue;
     if (d.school === 'essence' || d.school === 'neutral') continue;
     out.add(d.school);
   }
   return out;
 }
 
-/** 이 합기의 조건을 채웠는가 (두 계열의 스킬을 하나씩 가지고 있다) */
-export function duoReady(run: RunState, def: SkillDef, schools = duoSchools(run)): boolean {
-  return !!def.duo && def.duo.every((sc) => schools.has(sc));
-}
+/** @deprecated 옛 이름 (합기 조건). 화면(Character.tsx)이 아직 쓴다 — ownedSchools */
+export const duoSchools = ownedSchools;
 
-export function rollSkills(run: RunState, n: number, tier: keyof typeof RARITY_W = 'normal'): string[] {
+/**
+ * 스킬 보상 후보 n개 (서로 다르게).
+ * 가중치 = 등급 가중치 × 출신 계열(originWeight) × 실마리(clueMult — 가진 스킬·무기·각인과 계열을 넘어 맞물리면 최대 ×2).
+ * clue: 첫 하나는 실마리 후보에서 뽑는다 (후보가 있을 때 — 정예·수호자 보상, CLUE.everyChoice면 모든 고르는 보상).
+ * 금기 계열은 금기의 길(rollForbidden)에서 나온다. 다만 계열을 잇는 금기 스킬(남의 키워드를 읽거나 두 계열로 치는 것)은 금기 스킬을 이미 가진 판의
+ * 보통 보상에서 나온다 (고급 가중치 — 예전 '금기가 낀 합기'가 그랬듯이). 금기의 길로는 나오지 않는다
+ */
+export function rollSkills(run: RunState, n: number, tier: keyof typeof RARITY_W = 'normal', opts: { clue?: boolean } = {}): string[] {
   const r = rng(run, 'loot');
   const known = new Set(run.skills.map((s) => s.id));
   const origin = ORIGINS.get(run.origin);
   const w = RARITY_W[tier];
-  const schools = duoSchools(run);
+  const sources = clueSources(run);
+  const forbidden = run.skills.some((s) => SKILLS.get(s.id)?.school === 'forbidden');
+  const rw = (s: SkillDef) => (s.rarity === 'forbidden' ? w.uncommon : w[s.rarity]) ?? 0;
   const pool = [...SKILLS.values()].filter((s) => {
-    if (s.pool === false || s.school === 'essence' || known.has(s.id)) return false;
-    // 합기는 조건을 채웠을 때만 (금기가 낀 합기도 금기 스킬을 가지고 있으면 나온다)
-    if (s.duo) return duoReady(run, s, schools) && !!w.rare;
-    return s.school !== 'forbidden' && !!w[s.rarity];
+    if (s.pool === false || s.school === 'essence' || known.has(s.id) || !rw(s)) return false;
+    return s.school !== 'forbidden' || (forbidden && crossesSchools(s));
   });
-  // 내 출신 계열이 끼면 2배 (합기는 두 계열 중 하나라도)
-  const mine = (s: SkillDef) => (s.duo ?? [s.school]).some((sc) => origin?.schools.includes(sc));
-  const weight = (s: SkillDef) => (s.duo ? (w.rare ?? 0) * DUO_WEIGHT.value : (w[s.rarity] ?? 0)) * (mine(s) ? 2 : 1);
+  const clue = new Map(pool.map((s) => [s, clueMult(clueLinks(run, s, sources), s)]));
+  const mine = originWeight(run);
+  const weight = (s: SkillDef) => rw(s) * (origin?.schools.includes(s.school) ? mine : 1) * (clue.get(s) ?? 1);
   const out: string[] = [];
-  for (let i = 0; i < n && pool.length; i++) {
-    const pick = r.weighted(pool, weight);
+  const take = (from: SkillDef[]) => {
+    const pick = r.weighted(from, weight);
     out.push(pick.id);
     pool.splice(pool.indexOf(pick), 1);
+  };
+  if (opts.clue && CLUE.guaranteed && n > 0) {
+    const clues = pool.filter((s) => (clue.get(s) ?? 1) > 1);
+    if (clues.length) take(clues);
   }
+  while (out.length < n && pool.length) take(pool);
   return out;
 }
 
 export function rollForbidden(run: RunState, n: number): string[] {
   const r = rng(run, 'loot');
   const known = new Set(run.skills.map((s) => s.id));
-  // 금기가 낀 합기는 금기의 길이 아니라 보통 보상·상점에서 (조건을 채웠을 때) 나온다
-  const pool = [...SKILLS.values()].filter((s) => s.pool !== false && s.school === 'forbidden' && !s.duo && !known.has(s.id));
+  // 계열을 잇는 금기 스킬(예전 합기 피의 제물·심연의 낙인·역병 촉수, 글루)은 금기의 길이 아니라
+  // 금기 스킬을 가진 판의 보통 보상에서 나온다 (rollSkills — 예전 '금기가 낀 합기'처럼)
+  const pool = [...SKILLS.values()].filter((s) => s.pool !== false && s.school === 'forbidden' && !crossesSchools(s) && !known.has(s.id));
   return r.sample(pool, n).map((s) => s.id);
 }
 
@@ -859,10 +876,10 @@ export function rollConsumable(run: RunState): string | null {
   return r.weighted(pool, (x) => ({ common: 55, uncommon: 33, rare: 12 })[x.rarity as 'common'] ?? 10).id;
 }
 
-/** 선택형 전리품 (스킬 2 + 와일드카드 1) */
+/** 선택형 전리품 (스킬 2 + 와일드카드 1). 정예·수호자 보상은 스킬 하나를 실마리 후보에서 뽑는다 (engine/keywords.ts) */
 export function rollChoice(run: RunState, tier: 'normal' | 'elite' | 'boss'): LootItem[] {
   const r = rng(run, 'loot');
-  const items: LootItem[] = rollSkills(run, tier === 'boss' ? 3 : 2, tier).map((id) => ({ kind: 'skill', id }));
+  const items: LootItem[] = rollSkills(run, tier === 'boss' ? 3 : 2, tier, { clue: tier !== 'normal' || CLUE.everyChoice }).map((id) => ({ kind: 'skill', id }));
   if (tier !== 'boss') {
     const roll = r.next();
     let wild: LootItem | null = null;
@@ -924,7 +941,7 @@ export function rollEssenceDrops(run: RunState, killed: { def: string; tier: str
   for (const k of killed) {
     const es = ESSENCES.get(k.def);
     if (!es) continue;
-    const chance = k.tier === 'boss' ? 1 : k.tier === 'elite' ? 0.5 : k.tier === 'normal' ? 0.07 : 0;
+    const chance = (k.tier === 'boss' ? 1 : k.tier === 'elite' ? 0.5 : k.tier === 'normal' ? 0.07 : 0) * abyssEssenceDrop(run, k.tier);
     // 균열 수호자(정예 등급)는 쓰러뜨리면 반드시 수호자 정수를 남긴다 — 하수인·보통 적은 평소 확률
     if (!r.chance(chance * (es.dropMul ?? 1)) && !(forceGuardian && (k.tier === 'boss' || k.tier === 'elite'))) continue;
     if (out.some((o) => o.id === es.id)) continue;
@@ -950,8 +967,10 @@ export function startCombat(run: RunState, encId: string, opts: { anomaly?: stri
   const anomaly = opts.anomaly !== undefined ? opts.anomaly : (enc.anomaly ?? null);
   run.screen = 'combat';
   run.stats.combats++;
-  const c = Combat.begin(run, { ...enc, anomaly: anomaly ?? undefined });
-  if (opts.ambush && !c.over) {
+  // 심연 「어둠 속의 것들」: 어둠 속 기습이면 행동력 -1 대신 적이 먼저 움직인다
+  const strike = !!opts.ambush && abyssAmbushStrike(run);
+  const c = Combat.begin(run, { ...enc, anomaly: anomaly ?? undefined }, { firstStrike: strike ? '어둠 속에서 기습당했다! 적이 먼저 움직인다' : undefined });
+  if (opts.ambush && !strike && !c.over) {
     c.s.ap = Math.max(0, c.s.ap - 1);
     c.emit({ t: 'text', text: '어둠 속에서 기습당했다! (행동력 -1)', tone: 'bad' });
   }
@@ -986,7 +1005,8 @@ export function finishCombat(run: RunState): RewardState | null {
   const lordFight = cs.enc.startsWith('lord');
   const stalker = cs.enc.startsWith('stalker');
   const goldBase = cs.kind === 'boss' ? r.int(60, 80) : cs.kind === 'elite' ? r.int(25, 35) : r.int(10, 18);
-  const gold = Math.round(goldBase * ACT_MULT[act] * (run.light < 25 ? 1.25 : 1)) + cs.bonusGold;
+  // 심연 「인색한 심연」: 전투 골드가 준다
+  const gold = Math.round(goldBase * ACT_MULT[act] * (run.light < 25 ? 1.25 : 1) * abyssGold(run)) + cs.bonusGold;
 
   const reward: RewardState = {
     source: lordFight ? 'lord' : stalker ? 'stalker' : run.rift ? 'rift' : cs.kind,
@@ -1085,7 +1105,7 @@ export function takeLoot(run: RunState, item: LootItem, pick: string | null = nu
   item.taken = true;
   if (genesis) {
     run.genesis = item.id;
-    log(run, `창세의 것을 얻었다 — ${(item.kind === 'skill' ? SKILLS.get(item.id)?.name : EQUIPS.get(item.id)?.name) ?? item.id}`);
+    log(run, `창세의 것을 얻었다: ${(item.kind === 'skill' ? SKILLS.get(item.id)?.name : EQUIPS.get(item.id)?.name) ?? item.id}`);
   }
   return null;
 }
@@ -1096,7 +1116,7 @@ export function chooseLoot(run: RunState, idx: number, upgradeTarget?: string): 
   const item = rw.choice[idx];
   if (!item) return '잘못된 선택';
   if (item.kind === 'upgrade') {
-    if (!upgradeTarget || !upgradeSkill(run, upgradeTarget)) return '강화할 스킬을 고르세요';
+    if (!upgradeTarget || !upgradeSkill(run, upgradeTarget)) return '강화할 스킬을 골라야 한다';
     item.taken = true;
   } else {
     const why = takeLoot(run, item);

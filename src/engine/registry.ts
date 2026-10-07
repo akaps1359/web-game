@@ -142,6 +142,15 @@ export interface AnomalyDef {
   hooks: Hooks;
 }
 
+/**
+ * 공용 규칙: 상태·장비 같은 주인 없이 모든 전투에 늘 걸리는 규칙 (예: 틈, content/gap.ts).
+ * 층의 법칙처럼 나와 모든 적에게 걸리고(s.unit이 그 주인, kind 'anomaly'), 다른 훅들보다 뒤에 불린다
+ */
+export interface RuleDef {
+  id: string;
+  hooks: Hooks;
+}
+
 export const SKILLS = new Map<string, SkillDef>();
 export const ENEMIES = new Map<string, EnemyDef>();
 export const ENCOUNTERS: EncounterDef[] = [];
@@ -158,6 +167,7 @@ export const ESSENCES = new Map<string, EssenceDef>();
 export const EVENTS = new Map<string, EventDef>();
 export const ORIGINS = new Map<string, OriginDef>();
 export const FLOORS = new Map<number, FloorDef>();
+export const RULES = new Map<string, RuleDef>();
 
 export interface StatusTicks {
   /** 소유자 턴 시작 시 */
@@ -189,6 +199,7 @@ export const reg = {
   essences: (d: EssenceDef[]) => addAll(ESSENCES, d),
   events: (d: EventDef[]) => addAll(EVENTS, d),
   origins: (d: OriginDef[]) => addAll(ORIGINS, d),
+  rules: (d: RuleDef[]) => addAll(RULES, d),
   floors: (d: FloorDef[]) => {
     for (const f of d) FLOORS.set(f.act, f);
   },

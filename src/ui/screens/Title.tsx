@@ -5,30 +5,38 @@ import { hasSave } from '../../state/save';
 import { store } from '../../state/store';
 import { sound } from '../../sound';
 import { Icon } from '../components';
-import { SCHOOL_COLOR, SCHOOL_NAME } from '../text';
+import { SCHOOL_COLOR, SCHOOL_NAME, josa } from '../text';
 import { confirmThen } from '../ask';
+import { AbyssPicker } from '../abyss';
+import { MAX_ASC } from '../../engine/abyss';
 
 export function Title() {
   const [mode, setMode] = useState<'main' | 'origin'>('main');
-  const [asc, setAsc] = useState(0);
   const meta = store.meta;
+  // 처음엔 열린 가장 깊은 단계를 고른다
+  const [pick, setAsc] = useState(() => Math.max(0, Math.min(MAX_ASC, meta.abyss)));
+  const asc = Math.min(pick, meta.abyss);
   const unlock = () => void sound.unlock();
 
   if (mode === 'origin') {
+    const picker = <AbyssPicker value={asc} max={Math.min(MAX_ASC, meta.abyss)} onChange={setAsc} />;
+    const startBody = (save: boolean) => [asc > 0 ? `심연 ${asc}단계예요. 규칙 ${asc}개가 켜져요.` : '', save ? '저장된 여정은 사라져요.' : ''].filter(Boolean).join('\n') || undefined;
     return (
       <div class="screen" onPointerDown={unlock}>
         <div class="sheet-head" style={{ padding: '14px 14px 4px' }}>
           <button class="iconbtn" onClick={() => setMode('main')} aria-label="뒤로">
             <Icon name="gi:return-arrow" size={18} />
           </button>
-          <h2 class="title grow">출신을 고르세요</h2>
+          <h2 class="title grow">출신 선택</h2>
         </div>
         <div class="scroll" style={{ flex: 1, padding: '6px 14px' }}>
+          {/* 심연 단계가 하나라도 열렸으면 먼저 고른다 (출신을 누르면 바로 시작 확인 창이 뜨므로) */}
+          {meta.abyss > 0 && <div style={{ marginBottom: 12 }}>{picker}</div>}
           <div class="list">
             {[...ORIGINS.values()].map((o) => {
               const locked = !meta.unlocked.includes(o.id);
               return (
-                <button class={`card ${locked ? 'off' : ''}`} style={{ padding: 14 }} onClick={() => !locked && confirmThen({ title: `${o.name}(으)로 여정을 시작할까요?`, icon: o.icon, body: hasSave() ? '저장된 여정은 사라진다.' : undefined, ok: '시작한다', danger: hasSave() }, () => newGame(o.id, asc))}>
+                <button class={`card ${locked ? 'off' : ''}`} style={{ padding: 14 }} onClick={() => !locked && confirmThen({ title: `${o.name}${josa(o.name, '으로')} 여정을 시작할까요?`, icon: o.icon, body: startBody(hasSave()), ok: '시작한다', danger: hasSave() }, () => newGame(o.id, asc))}>
                   <div class="badge" style={{ width: 56, height: 56 }}>
                     <Icon name={locked ? 'gi:padlock' : o.icon} size={34} color={locked ? 'var(--ink-3)' : 'var(--brass-2)'} />
                   </div>
@@ -64,27 +72,8 @@ export function Title() {
               );
             })}
           </div>
-          {meta.abyss > 0 && (
-            <div class="panel" style={{ marginTop: 14, padding: 12 }}>
-              <div class="section-label" style={{ margin: '0 0 8px' }}>
-                심연 단계
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <button class="btn sm ghost" onClick={() => setAsc(Math.max(0, asc - 1))}>
-                  −
-                </button>
-                <div class="num" style={{ fontSize: 22, color: 'var(--eldritch)', minWidth: 30, textAlign: 'center' }}>
-                  {asc}
-                </div>
-                <button class="btn sm ghost" onClick={() => setAsc(Math.min(meta.abyss, asc + 1))}>
-                  +
-                </button>
-                <div class="muted" style={{ fontSize: 12, flex: 1 }}>
-                  {ascText(asc)}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* 아직 아무 단계도 열리지 않았으면 아래에 둔다 (판을 깨면 열린다는 것만 알린다) */}
+          {meta.abyss <= 0 && <div style={{ margin: '14px 0 8px' }}>{picker}</div>}
         </div>
       </div>
     );
@@ -131,12 +120,4 @@ export function Title() {
       </div>
     </div>
   );
-}
-
-function ascText(n: number): string {
-  if (n === 0) return '기본 난이도';
-  const parts = ['적 피해 +10%'];
-  if (n >= 7) parts.push('적 체력 +10%');
-  if (n >= 15) parts.push('정예·수호자 체력 추가 +10%');
-  return parts.join(', ');
 }

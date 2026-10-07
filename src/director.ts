@@ -7,7 +7,9 @@ import { stage } from './render/stage';
 import type { VignetteKind } from './render/vfxTextures';
 import { sound } from './sound';
 import { store } from './state/store';
-import { DMG_COLOR, DMG_NAME } from './ui/text';
+import { DMG_COLOR, DMG_NAME, SCHOOL_COLOR } from './ui/text';
+import { gapBonusText } from './content/gap';
+import { noteGap } from './ui/gap';
 
 // ───────────── 떠오르는 글자 ─────────────
 
@@ -224,7 +226,7 @@ async function step(ev: CombatEvent) {
       syncBattle(store.snap);
       if (ev.side === 'player' && ev.turn === 1) await maybeBossIntro();
       if (ev.side === 'player') {
-        banner(`${ev.turn}턴 — 당신의 차례`, 'player', 900);
+        banner(`${ev.turn}턴 · 당신의 차례`, 'player', 900);
         sound.sfx('turnStart');
         store.emit();
         await wait(380);
@@ -429,6 +431,27 @@ async function step(ev: CombatEvent) {
       await wait(520);
       return;
     }
+    case 'gap-open': {
+      // 틈: 몸에 계열 색 균열이 짧게 번쩍. 표시는 체력 막대 끝에 생긴다
+      noteGap(ev);
+      store.emit();
+      stage.battle.gapOpen(ev.uid, hexNum(SCHOOL_COLOR[ev.school]), ev.big);
+      sound.sfx(ev.big ? 'glass' : 'reveal', { volume: ev.big ? 0.45 : 0.35, pitch: ev.big ? 0.85 : 1.25 });
+      await wait(ev.big ? 300 : 200);
+      return;
+    }
+    case 'gap-harvest': {
+      // 거두기: 균열이 깨져 흩어지고 받은 보너스가 떠오른다 (그다음에 타격이 들어간다)
+      noteGap(ev);
+      store.emit();
+      const to = SCHOOL_COLOR[ev.school];
+      stage.battle.gapHarvest(ev.uid, hexNum(SCHOOL_COLOR[ev.from]), hexNum(to), ev.big);
+      const p = unitPoint(ev.uid, 0.85);
+      floater(p.x, p.y, `${ev.big ? '큰 틈' : '틈'} 거두기 · ${gapBonusText(ev.school, ev.big)}`, to, 'word', ev.big ? 18 : 15);
+      sound.sfx('glass', { volume: 0.5, pitch: ev.big ? 1.05 : 1.3 });
+      await wait(ev.big ? 300 : 240);
+      return;
+    }
     case 'recover': {
       store.emit();
       const p = unitPoint(ev.uid, 1);
@@ -506,7 +529,7 @@ async function step(ev: CombatEvent) {
     case 'breakdown': {
       store.emit();
       const name = MADNESS.get(ev.madness)?.name;
-      banner(ev.fatal ? '정신이 완전히 무너졌다' : `정신 붕괴 — ${name ?? '광기'}`, 'eldritch', 1800);
+      banner(ev.fatal ? '정신이 완전히 무너졌다' : `정신이 무너졌다. (${name ?? '광기'})`, 'eldritch', 1800);
       stage.flash(0x30ffc0, 0.3);
       stage.shake(14, 0.6);
       stage.battle.breakdown();

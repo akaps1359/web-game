@@ -767,7 +767,7 @@ reg.essences([
     stats: { maxHp: 6 },
     passive: {
       name: '익사자의 끈기',
-      desc: '체력이 50% 이하일 때 받는 공격 피해 -2',
+      desc: '체력이 50% 이하면 받는 공격 피해 -2',
       hooks: {
         modDamageIn(c, s, d) {
           if (d.attack && c.p.hp <= c.p.maxHp / 2) d.add -= 2 * s.n;
@@ -828,7 +828,7 @@ reg.essences([
     stats: { dex: 1 },
     passive: {
       name: '어둠 시야',
-      desc: '등불이 50 미만일 때 주는 피해 +20%',
+      desc: '등불이 50 미만이면 주는 피해 +20%',
       hooks: {
         modDamageOut(c, s, d) {
           if (d.src === c.p && c.run.light < 50) d.mult *= 1 + 0.2 * s.n;

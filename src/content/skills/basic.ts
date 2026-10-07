@@ -36,6 +36,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: 4 },
     desc: '방어도 {B:blk}',
     run: (c, u) => void guard(c, u),
@@ -72,6 +74,8 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'basic', 'bleed'],
+    makes: ['bleed'],
+    reads: [],
     vals: { dmg: [4, 5, 6], bleed: [1, 2, 2] },
     desc: '{D:dmg} 참격 피해. 체력 피해를 주면 출혈 {bleed}',
     run: (c, u, t) => {
@@ -92,6 +96,8 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'basic'],
+    makes: [],
+    reads: ['bleed'],
     vals: { dmg: [5, 7, 9], bonus: [3, 4, 5] },
     desc: '{D:dmg} 참격 피해. 대상이 출혈 중이면 피해 +{bonus}',
     run: (c, u, t) => {
@@ -112,7 +118,10 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'basic', 'ammo', 'gun'],
-    vals: { dmg: [7, 9, 11] },
+    makes: ['ammo'],
+    reads: ['ammo'],
+    // 2026-10 최종 밸런스: 7/9/11 → 6/8/10 (원거리라 전열·후열을 가리지 않고 쏘는 값. 군인이 혼자 높던 것을 내렸다)
+    vals: { dmg: [6, 8, 10] },
     desc: '탄약 1 소모, {D:dmg} 관통 피해. 탄약이 없으면 쏘지 않고 재장전',
     run: (c, u, t) => {
       if (c.s.ammo <= 0) return reload(c);
@@ -133,6 +142,8 @@ reg.skills([
     target: 'front',
     type: 'pierce',
     tags: ['attack', 'basic', 'ammo', 'gun', 'multi'],
+    makes: ['ammo'],
+    reads: ['ammo'],
     vals: { dmg: [3, 4, 5], hits: 2 },
     desc: '탄약 1 소모, 전열의 모든 적에게 {D:dmg} 관통 피해 {hits}회. 탄약이 없으면 쏘지 않고 재장전',
     run: (c, u, t) => {
@@ -208,6 +219,8 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'basic', 'mark'],
+    makes: ['mark'],
+    reads: [],
     vals: { dmg: [5, 6, 7], mark: [1, 1, 2] },
     desc: '{D:dmg} 비전 피해, 인장 {mark}',
     run: (c, u, t) => {
@@ -228,6 +241,8 @@ reg.skills([
     target: 'single',
     type: 'fire',
     tags: ['attack', 'basic', 'burn'],
+    makes: ['burn'],
+    reads: [],
     vals: { dmg: [4, 5, 6], burn: [2, 2, 3] },
     desc: '{D:dmg} 화염 피해, 화상 {burn}',
     run: (c, u, t) => {
@@ -248,6 +263,8 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'basic', 'insight'],
+    makes: ['sanity'],
+    reads: [],
     vals: { dmg: [4, 5, 6], per: 2 },
     desc: '정신력 1 소모, {D:dmg}+통찰×{per} 공허 피해',
     run: (c, u, t) => {
@@ -269,6 +286,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [5, 7, 9] },
     desc: '방어도 {B:blk}',
     run: (c, u) => void guard(c, u),
@@ -285,6 +304,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [6, 8, 10] },
     desc: '방어도 {B:blk}',
     run: (c, u) => void guard(c, u),
@@ -301,6 +322,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic', 'sanity'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [4, 6, 8], san: [1, 2, 2] },
     desc: '방어도 {B:blk}, 정신력 +{san}',
     run: (c, u) => {
@@ -320,6 +343,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic'],
+    makes: ['block', 'counter'],
+    reads: [],
     vals: { blk: [5, 6, 8], thorns: [2, 3, 3] },
     desc: '방어도 {B:blk}, 반격 {thorns} (다음 내 턴까지)',
     run: (c, u) => {
@@ -339,8 +364,10 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [3, 4, 6] },
-    desc: '방어도 {B:blk}, 회피 1 (재사용 2턴)',
+    desc: '방어도 {B:blk}, 회피 1 (재사용 대기 2턴)',
     run: (c, u) => {
       guard(c, u);
       c.apply(c.p, 'evasive', 1, c.p);
@@ -358,6 +385,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [8, 10, 12] },
     desc: '방어도 {B:blk}',
     run: (c, u) => void guard(c, u),

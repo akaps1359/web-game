@@ -52,7 +52,7 @@ reg.statuses([
       delete c.s.vars[SUN_AMMO];
       if (c.s.ammo > 0) {
         c.s.ammo = 0;
-        c.emit({ t: 'text', uid: 'p', text: '해가 졌다 — 탄약이 모두 떨어졌다', tone: 'info' });
+        c.emit({ t: 'text', uid: 'p', text: '해가 졌다. 탄약이 모두 떨어졌다', tone: 'info' });
       }
     },
   },
@@ -134,14 +134,14 @@ reg.skills([
     type: 'arcane',
     tags: ['attack', 'basic', 'reveal'],
     vals: { dmg: [8, 10, 12] },
-    desc: '대상의 참된 이름을 부른다: 그 약점 속성으로 {D:dmg} 피해 (모르는 약점이면 밝혀내고, 상형문자가 속성을 요구하면 그 속성으로). 이 공격으로 붕괴시키면 행동력 +1',
+    desc: '대상의 참된 이름을 부른다: 약점 속성으로 {D:dmg} 피해 (상형문자가 속성을 요구하면 그 속성으로). 모르는 약점이면 밝혀낸다. 이 공격으로 붕괴시키면 행동력 +1',
     run: (c, u, t) => {
       if (!t) return;
       const before = t.broken;
       hit(c, u, t, { type: trueName(c, t) });
       if (before === 0 && t.broken === 2 && !t.dead && !c.over) {
         c.s.ap += 1;
-        c.emit({ t: 'text', uid: 'p', text: '이름을 불렀다 — 행동력 +1', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '이름을 불렀다 (행동력 +1)', tone: 'good' });
       }
     },
   }),
@@ -157,8 +157,10 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic', 'retain'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [8, 10, 12] },
-    desc: '방어도 {B:blk}. 다음 턴이 시작돼도 방어도가 사라지지 않는다 (껍질이 겹겹이 쌓인다)',
+    desc: '방어도 {B:blk}. 다음 턴이 시작돼도 방어도가 사라지지 않고 껍질처럼 겹겹이 쌓인다',
     run: (c, u) => {
       guard(c, u);
       if (!c.over && (c.p.st.retain ?? 0) < 1) c.apply(c.p, 'retain', 1, c.p);
@@ -179,6 +181,8 @@ reg.skills([
     target: 'all',
     type: 'slash',
     tags: ['attack', 'combo', 'aoe', 'multi', 'bleed'],
+    makes: ['bleed'],
+    reads: ['combo'],
     vals: { dmg: [6, 8], max: [3, 4], bleed: [2, 3] },
     desc: '하늘과 땅을 가른다: 전열과 후열의 모든 적에게 {D:dmg} 참격 피해. 이번 턴 앞서 쓴 스킬 1개당 한 번 더 벤다 (최대 {max}번 더). 체력 피해를 줄 때마다 출혈 {bleed}',
     run: (c, u) => {
@@ -202,6 +206,8 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'aim'],
+    makes: ['ammo'],
+    reads: [],
     vals: { dmg: [12, 15] },
     desc: '하늘에 둘씩 뜬 해를 쏘아 떨군다: 탄약을 가득 채우고 {D:dmg} 관통 피해. 그 뒤 이번 턴이 끝날 때까지 탄약이 줄지 않고 모든 관통 공격이 치명타(피해 2배). 턴이 끝나면 탄약이 모두 떨어진다',
     run: (c, u, t) => {
@@ -223,8 +229,10 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'mark', 'detonate'],
+    makes: ['mark'],
+    reads: ['mark'],
     vals: { base: [8, 10], per: [6, 8], grow: [1, 2] },
-    desc: '대상의 인장을 터뜨려 {base} + 인장당 {per} 비전 피해. 태초에 새겨진 표식은 지워지지 않는다 — 터뜨린 인장은 그대로 남고 {grow} 더 새겨진다',
+    desc: '대상의 인장을 터뜨려 {base} + 인장당 {per} 비전 피해. 태초에 새겨진 표식은 지워지지 않는다. 터뜨린 인장은 그대로 남고 {grow} 더 새겨진다',
     run: (c, u, t) => {
       if (!t) return;
       const marks = t.st.mark ?? 0;
@@ -253,8 +261,10 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['summon', 'poison', 'burn'],
+    makes: ['poison', 'burn'],
+    reads: [],
     vals: { n: [4, 5] },
-    desc: '플라스크에서 작은 생명을 빚는다. 빚자마자, 그리고 이번 전투 동안 내 턴이 끝날 때마다 호문쿨루스가 체력이 가장 많은 적에게 독과 화상을 {n}씩 던진다. 전투당 1회',
+    desc: '플라스크에서 작은 생명을 빚는다. 호문쿨루스는 태어나자마자 체력이 가장 많은 적에게 독과 화상을 {n}씩 던진다. 이번 전투 동안 내 턴이 끝날 때마다 다시 던진다. 전투당 1회',
     run: (c, u) => {
       const n = u.v('n');
       if (!c.p.st['g-flask']) c.apply(c.p, 'g-flask', n, c.p);
@@ -273,6 +283,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'counter'],
+    makes: ['block', 'counter'],
+    reads: [],
     vals: { blk: [12, 15] },
     desc: '갈라진 하늘이 다시 내려앉지 못하게 어깨로 받친다: 방어도 {B:blk}. 다음 내 턴까지 적의 공격을 막아 낼 때마다 막아 낸 만큼 공격자에게 타격 피해를 되돌려준다',
     run: (c, u) => {
@@ -293,6 +305,8 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'sanity', 'insight'],
+    makes: ['sanity'],
+    reads: [],
     vals: { dmg: [16, 20], pct: [20, 25], per: 5, max: 4, san: 3 },
     desc: '정신력 {san} 소모. 대상을 빛이 있기 전의 무(無)로 되돌린다: 방어도를 무시하고 {D:dmg} 공허 피해. 그 뒤 체력이 최대 체력의 {pct}% + 통찰×{per}%(통찰 {max}까지) 이하로 남으면 소멸한다. 수호자는 소멸하지 않는 대신 피해가 2배',
     run: (c, u, t) => {
@@ -304,7 +318,7 @@ reg.skills([
       if (boss || c.over || t.dead || t.hp <= 0) return;
       const pct = u.v('pct') + u.v('per') * Math.min(Math.max(0, c.p.insight), u.v('max'));
       if (t.hp * 100 <= t.maxHp * pct) {
-        c.emit({ t: 'text', uid: t.uid, text: '창세 이전으로 — 소멸', tone: 'eldritch' });
+        c.emit({ t: 'text', uid: t.uid, text: '창세 이전으로 소멸했다', tone: 'eldritch' });
         c.kill(t);
       }
     },
@@ -321,7 +335,7 @@ reg.equips([
     slot: 'weapon',
     rarity: 'genesis',
     skill: 'w-g-tablet',
-    desc: '기본 공격: 원거리, 대상의 약점 속성으로 친다 (모르는 약점은 밝혀낸다). 붕괴시키면 행동력 +1. 하늘이 아직 이름을 얻기 전에 구운 판 — 이것으로 부른 이름이 곧 그것이 된다',
+    desc: '기본 공격: 원거리, 대상의 약점 속성으로 친다 (모르는 약점은 밝혀낸다). 붕괴시키면 행동력 +1. 하늘이 아직 이름을 얻기 전에 구운 판. 이것으로 부른 이름이 곧 그것이 된다',
   },
   {
     id: 'g-egg',
@@ -331,7 +345,7 @@ reg.equips([
     rarity: 'genesis',
     skill: 'a-g-egg',
     maxHp: 10,
-    desc: `기본 방어: 방어도 8, 다음 턴이 시작돼도 방어도가 남는다. 방어도가 뚫려 몸이 다칠 때마다 힘 +1 (전투당 ${HATCH_MAX}번). 최대 체력 +10. 세계가 깨고 나온 알의 조각 — 안에서 아직 무언가 자란다`,
+    desc: `기본 방어: 방어도 8, 다음 턴이 시작돼도 방어도가 남는다. 방어도가 뚫려 몸이 다칠 때마다 힘 +1 (전투당 ${HATCH_MAX}번). 최대 체력 +10. 세계가 깨고 나온 알의 조각. 안에서 아직 무언가 자란다`,
     hooks: {
       onDamageTaken(c, s, d) {
         // 껍질(방어도)이 이 공격에 다 깨지고 몸까지 다쳤다
@@ -340,7 +354,7 @@ reg.equips([
         if (n >= HATCH_MAX) return;
         c.s.vars[HATCH] = n + 1;
         c.apply(c.p, 'str', 1, c.p);
-        c.emit({ t: 'text', uid: 'p', text: '껍질이 깨졌다 — 안에서 무언가 자란다 (힘 +1)', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '껍질이 깨지며 안에서 무언가 자란다 (힘 +1)', tone: 'good' });
       },
     },
   },
@@ -357,7 +371,7 @@ reg.equips([
         const lv = s.n;
         // 지금이 며칠째인지 내 상태 칸에 (숫자만 바꾼다 — 매 턴 '+1'이 떠오르지 않게)
         c.p.st['g-day'] = day;
-        c.emit({ t: 'text', uid: 'p', text: `창세 ${day}일째 — ${DAYS[day - 1]}`, tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: `창세 ${day}일째: ${DAYS[day - 1]}`, tone: 'good' });
         switch (day) {
           case 1:
             for (const e of c.alive) {

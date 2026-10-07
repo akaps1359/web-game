@@ -1,5 +1,32 @@
 import { Combat } from '../engine/combat';
 import type { RunState } from '../engine/run';
+import { gapStats } from '../content/gap';
+
+/**
+ * 틈 (content/gap.ts): 틈이 열린 적에게 다른 계열 기술을 우선한다 — 거두면 harvest(큰 틈이면 big을 더).
+ * 거둔 보너스(치명·출혈·인장·방어도·버팀)는 아래 점수에 이미 들어가므로 이것은 이종 연계를 고르게 하는 덤이다.
+ * 여는 것에는 점수를 주지 않는다 (약점을 치면 저절로 열리고, 덤을 주면 퍼즐 목표보다 앞서는 일이 생겼다)
+ */
+export const BOT_GAP = { harvest: 3, big: 1 };
+
+/**
+ * 지속 피해(출혈·독·화상)의 값: 앞으로 turns턴 동안 들어갈 피해의 합 (대상의 남은 체력까지).
+ * 예전엔 한 겹에 1.2~1.5점으로 쳐서, 길게 싸우는 정예·수호자에게 독·출혈을 쌓는 값을 크게 낮춰 봤다
+ * (독 10에 3을 더하면 4턴 동안 12가 더 들어가는데 4.5점). 사람은 수호자에게 독을 쌓는다 — 사냥꾼 승률 +7%p (2026-10 최종 밸런스)
+ */
+export const BOT_DOT: { turns: Record<'normal' | 'elite' | 'boss', number> } = { turns: { normal: 2, elite: 3, boss: 4 } };
+
+/**
+ * 이 행동으로 적의 공격 의도가 세지면 그만큼(피해 1당 k점) 손해로 친다. 사람은 '맞을수록 세지는' 의도(재에 묻힌 것의 재 속의 반격 등)를 보고 손을 멈춘다.
+ * 예전 봇은 후열의 재 속을 원거리로 계속 쏴 반격을 키웠다 (2026-10 최종 밸런스: 시작 덱 군인이 재에 묻힌 것에게 30번 중 2번 지던 것이 0번)
+ */
+export const BOT_INC = { k: 1 };
+
+/** n에서 시작해 턴마다 1씩 줄어드는 지속 피해가 t턴 동안 주는 피해 */
+const dotSum = (n: number, t: number) => {
+  const k = Math.min(n, t);
+  return k * n - (k * (k - 1)) / 2;
+};
 
 /** 적 의도 기준으로 이번 턴 받을 피해 예상 */
 export function incoming(c: Combat): number {
@@ -31,7 +58,10 @@ function score(before: RunState, after: RunState, need: number, cost = 0): numbe
     if (ea.mem.transformed && !eb.mem.transformed) s += 25;
     if (ea.broken === 2 && eb.broken !== 2) s += 10 + (eb.intent?.dmg ?? 0) * (eb.intent?.hits ?? 1) * 0.8;
     s += Math.max(0, eb.poise - ea.poise) * 2;
-    const dot = (st: Record<string, number>) => (st.bleed ?? 0) * 1.2 + (st.poison ?? 0) * 1.5 + (st.burn ?? 0) * 1.2 + (st.doom ?? 0) * 0.4;
+    // 지속 피해: 둘 다 이 행동 뒤의 체력까지만 센다 (때려서 줄인 체력을 지속 피해 손해로 치지 않게)
+    const T = BOT_DOT.turns[b.kind as 'normal'] ?? BOT_DOT.turns.normal;
+    const hpLeft = Math.max(0, ea.hp);
+    const dot = (st: Record<string, number>) => Math.min(hpLeft, dotSum(st.bleed ?? 0, T) + dotSum(st.poison ?? 0, T) + dotSum(st.burn ?? 0, T)) + (st.doom ?? 0) * 0.4;
     s += Math.max(0, dot(ea.st) - dot(eb.st));
     const deb = (st: Record<string, number>) => (st.weak ?? 0) * 2 + (st.vuln ?? 0) * 2.5 + (st.mark ?? 0) * 1.5 + (st.madden ?? 0) * 2 + (st.stun ?? 0) * 8;
     s += Math.max(0, deb(ea.st) - deb(eb.st));
@@ -71,6 +101,10 @@ function score(before: RunState, after: RunState, need: number, cost = 0): numbe
   s += (pa.insight - pb.insight) * 6;
   s += (a.ap - b.ap + cost) * 4;
   if (b.ammo !== a.ammo && a.ammo > b.ammo) s += (a.ammo - b.ammo) * 0.8;
+  // 틈: 다른 계열로 거두기 · 열기
+  const gb = gapStats(b);
+  const ga = gapStats(a);
+  s += (ga.harvest - gb.harvest) * BOT_GAP.harvest + (ga.bigHarvest - gb.bigHarvest) * BOT_GAP.big;
   return s;
 }
 
@@ -97,7 +131,7 @@ export function autoTurn(c: Combat) {
         sim.snapshots = false;
         if (sim.useSkill(ref, t)) continue;
         const cost = c.costOf(info);
-        const s = score(run, clone, need, cost) - cost * 0.3;
+        const s = score(run, clone, need, cost) - cost * 0.3 - Math.max(0, incoming(sim) - need) * BOT_INC.k;
         if (!best || s > best.s) best = { ref, t, s };
       }
     }

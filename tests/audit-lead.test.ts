@@ -91,7 +91,7 @@ describe('점검: 엔진 (아이템 감사에서 나온 것)', () => {
 });
 
 describe('점검: 판단 반영', () => {
-  it('돈을 내고 이계 정수를 지우면 그 흔적(최대 정신력 -5, 수호자의 것이면 통찰 +1)도 사라진다', async () => {
+  it('돈을 내고 이계 정수를 지우면 그 흔적(최대 정신력 -5)도 사라진다 — 통찰은 수호자의 것이라도 주지 않는다', async () => {
     const { absorbEssence, removeEssence } = await import('../src/engine/run');
     const run = newRun({ seed: 12, origin: 'soldier' });
     run.player.level = 10;
@@ -104,9 +104,10 @@ describe('점검: 판단 반영', () => {
     expect(run.player.maxSanity).toBe(san - 5);
     expect(removeEssence(run, run.essences[0].uid)).toBeNull();
     expect(run.player.maxSanity).toBe(san);
-    // 수호자(늙은 어부)의 이계 정수: 통찰 +1 — 지우면 돌려놓는다
+    // 수호자(늙은 어부)의 이계 정수도 통찰은 주지 않는다
     expect(absorbEssence(run, { id: 'fisherman', color: 0, guardian: true }, null)).toBeNull();
-    expect(run.player.insight).toBe(ins + 1);
+    expect(run.player.insight).toBe(ins);
+    expect(run.player.maxSanity).toBe(san - 5);
     expect(removeEssence(run, run.essences[0].uid)).toBeNull();
     expect(run.player.insight).toBe(ins);
     expect(run.player.maxSanity).toBe(san);
@@ -465,9 +466,9 @@ describe('전투 중 선택지', () => {
     const c = startCombat(run, 'a1-cult', { anomaly: null });
     c.p.st['zz-choice-probe'] = 1;
     c.offerChoice({ id: 'zz', title: '시험', options: [{ id: 'a', label: '가', desc: '가' }, { id: 'b', label: '나', desc: '나', bot: 5 }] });
-    expect(c.blockReason('weapon')).toBe('먼저 선택지를 고르세요');
-    expect(c.useConsumable(0)).toBe('먼저 선택지를 고르세요');
-    expect(c.endTurn()).toBe('먼저 선택지를 고르세요');
+    expect(c.blockReason('weapon')).toBe('선택지부터 골라야 한다');
+    expect(c.useConsumable(0)).toBe('선택지부터 골라야 한다');
+    expect(c.endTurn()).toBe('선택지부터 골라야 한다');
     const back = JSON.parse(JSON.stringify(run));
     expect(back.combat.choice.options.length).toBe(2);
     expect(c.choose('없음')).toBe('없는 선택지');

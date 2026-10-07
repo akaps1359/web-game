@@ -1,6 +1,7 @@
 import type { DmgType, SkillDef } from '../engine/types';
 import type { RunState } from '../engine/run';
 import { ENEMIES, EQUIPS, ESSENCES, RELICS, SKILLS } from '../engine/registry';
+import { MAX_ASC } from '../engine/abyss';
 
 /** 판을 넘어 유지되는 기록 */
 export interface Meta {
@@ -80,7 +81,8 @@ export function absorbRun(m: Meta, run: RunState, ended: boolean) {
     m.runs++;
     if (run.over?.won) {
       m.wins++;
-      m.abyss = Math.max(m.abyss, Math.min(15, run.asc + 1));
+      // 심연 단계: N단계를 깨면 N+1단계가 열린다
+      m.abyss = Math.max(m.abyss, Math.min(MAX_ASC, (run.asc ?? 0) + 1));
     }
     for (const id of Object.keys(m.codex)) if (run.seen.includes(id)) m.codex[id].seen++;
   }
@@ -154,5 +156,5 @@ export function unlockAllInfo(m: Meta) {
   m.equips = [...EQUIPS.keys()];
   m.skills = [...new Set([...m.skills, ...codexSkills().map((d) => d.id)])];
   m.bestAct = Math.max(m.bestAct, 5);
-  m.abyss = Math.max(m.abyss, 15);
+  m.abyss = Math.max(m.abyss, MAX_ASC);
 }

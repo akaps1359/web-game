@@ -7,6 +7,28 @@ export const DMG_TYPES: readonly DmgType[] = ['slash', 'pierce', 'blunt', 'fire'
 
 export type School = 'blade' | 'firearm' | 'occult' | 'alchemy' | 'resolve' | 'forbidden' | 'essence' | 'neutral';
 
+/**
+ * 상처의 문법: 계열을 잇는 키워드. 스킬이 만드는 것(SkillDef.makes)과 읽는 것(SkillDef.reads).
+ * 키워드마다 1차·2차 생산 계열과 읽는 계열을 정한 표는 src/content/keywords.ts (engine/keywords.ts가 보관)
+ * - 적에게 남는 것: bleed 출혈 · poison 독 · burn 화상 · mark 인장 · doom 파멸 · expose 약화·취약(공용)
+ * - 나에게 남는 것: block 방어도 · counter 반격 · barrier 보호막 · aim 조준 · ammo 탄약 · combo 연계(이번 턴 쓴 스킬 수) · sanity 잃은 정신력 · tentacle 촉수
+ */
+export type Keyword =
+  | 'bleed'
+  | 'poison'
+  | 'burn'
+  | 'mark'
+  | 'doom'
+  | 'expose'
+  | 'block'
+  | 'counter'
+  | 'barrier'
+  | 'aim'
+  | 'ammo'
+  | 'combo'
+  | 'sanity'
+  | 'tentacle';
+
 /** genesis(창세): 희귀 위의 최상위 — 계층군주·5층 강적에게서만, 판마다 하나 (content/genesis.ts) */
 export type Rarity = 'basic' | 'common' | 'uncommon' | 'rare' | 'forbidden' | 'boss' | 'special' | 'genesis';
 
@@ -150,7 +172,7 @@ export interface EssenceDef {
   /** 색별 액티브 스킬 id */
   actives: string[];
   colors: string[];
-  /** 이계 정수: 흡수 시 최대 정신력 -5 (수호자의 이계 정수라면 통찰 +1 — run.ts의 eldritchInsight) */
+  /** 이계 정수: 흡수 시 최대 정신력 -5 (통찰은 주지 않는다) */
   eldritch?: boolean;
   /** 계층정수: 제거 불가 */
   lord?: boolean;
@@ -303,9 +325,13 @@ export interface SkillDef {
   maxLvl?: number;
   /** 특정 출신/조건에서만 등장 */
   pool?: false;
+  /** 이 스킬이 만드는 키워드 (상처의 문법 — 적에게 남기거나 나에게 쌓는 것, 정신력을 치르면 'sanity') */
+  makes?: Keyword[];
+  /** 이 스킬이 읽는 키워드 (그 수치·유무에 따라 효과가 바뀌거나 그것을 거둔다). 남의 계열 키워드를 읽으면 '계열을 잇는 기술' */
+  reads?: Keyword[];
   /**
-   * 합기(合技): 두 계열을 엮은 스킬. 두 계열의 스킬을 하나씩 가지고 있을 때만 스킬 보상·상점에 나온다
-   * (기본 공격·정수 기술·다른 합기는 세지 않는다). school은 둘 중 하나 — 시전 연출이 그 계열을 따른다
+   * 예전 합기(合技)의 두 계열 짝. 보상 조건으로는 쓰지 않는다 (2026-10: 조건을 떼고 각자 계열 풀로 내려갔다).
+   * 계열 판정(engine/schools.ts의 skillSchools)은 두 계열 모두로 친다 — '계열을 잇는 기술'. 나중에 융합으로 되살릴 자리
    */
   duo?: [School, School];
 }
@@ -340,6 +366,11 @@ export interface RuneDef {
   cdMod?: number;
   powerMult?: number;
   hooks?: Hooks;
+  /**
+   * 계열 각인: 이 각인을 새긴 스킬은 이 계열로도 친다 (engine/schools.ts의 skillSchools — 틈을 열고 거둘 때 등).
+   * 없으면 무계열 (메아리·흡혈·파급·가속·분쇄·절약·사냥·공명)
+   */
+  school?: School;
 }
 
 export interface EquipDef {

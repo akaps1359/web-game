@@ -4,9 +4,11 @@ import type { EnemyUnit } from '../../engine/types';
 import { combo, detonate, guard, hit, needAmmo, reload, skill, spendAmmo } from '../lib';
 
 /**
- * 합기(合技) — 두 계열의 스킬을 하나씩 가지고 있을 때만 보상·상점에 나오는 희귀 스킬 (SkillDef.duo).
- * 한쪽 계열이 쌓은 것을 다른 쪽 계열이 거두거나 키운다. 6계열의 모든 짝 15종.
- * - 행동력을 주거나 재사용 대기를 되돌리는 합기는 없다 (무한 고리 방지).
+ * 예전의 합기(合技) 15종. 이제 조건 없이 각자 계열 풀(고급·희귀, 금기 계열은 금기의 길)로 내려간 '계열을 잇는 기술'이다.
+ * 한쪽 계열이 쌓은 키워드를 다른 쪽 계열이 거두거나 키운다 (SkillDef.makes/reads, 표는 src/content/keywords.ts).
+ * 이름은 그대로 두었다. 두 계열의 짝(SkillDef.duo)도 남긴다: 보상 조건으로는 쓰지 않고, 계열 판정(engine/schools.ts의 skillSchools)이 두 계열 모두로 친다.
+ * 나중에 '융합'(두 스킬을 녹여 하나로)으로 되살릴 자리이기도 하다.
+ * - 행동력을 주거나 재사용 대기를 되돌리지 않는다 (무한 고리 방지).
  * - 스스로 건 상태에 다시 반응하지 않는다. 메아리(위력 50%)로 두 번 발동해도 같은 효과가 겹쳐 커지지 않게 상태는 '큰 쪽'만 남긴다.
  * - 금기 쪽은 통찰 대신 정신력(소모·잃은 양)·촉수·파멸을 엮는다.
  */
@@ -74,8 +76,10 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'combo', 'ammo', 'gun', 'multi'],
+    makes: [],
+    reads: ['combo', 'ammo'],
     vals: { dmg: [7, 9], dmgshot: [5, 6], max: [3, 4] },
-    desc: '{D:dmg} 참격 피해. 이어서 이번 턴 앞서 쓴 스킬 1개당 탄약 1을 써 대상을 쏜다: {dmgshot} 관통 피해 (최대 {max}발, 조준이 실린다)',
+    desc: '{D:dmg} 참격 피해. 이번 턴 앞서 쓴 스킬 1개당 탄약 1로 {dmgshot} 관통 피해 1회 추가 (최대 {max}회)',
     run: (c, u, t) => {
       const shots = Math.min(u.v('max'), combo(c));
       hit(c, u, t);
@@ -101,8 +105,10 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'bleed', 'mark', 'multi'],
+    makes: ['mark'],
+    reads: ['bleed'],
     vals: { dmg: [4, 5], hits: 2, max: [6, 8] },
-    desc: '대상의 출혈만큼 인장을 새긴 뒤(최대 {max}) {D:dmg} 비전 피해 {hits}회 (인장이 타격마다 피해를 더한다, 출혈은 남는다)',
+    desc: '대상의 출혈만큼 인장 (최대 {max}). 이어서 {D:dmg} 비전 피해 {hits}회',
     run: (c, u, t) => {
       if (!t) return;
       const n = Math.min(u.v('max'), scale(t.st.bleed ?? 0, u.power));
@@ -118,13 +124,15 @@ reg.skills([
     icon: 'gi:dripping-sword',
     school: 'blade',
     duo: ['blade', 'alchemy'],
-    rarity: 'rare',
+    rarity: 'uncommon',
     cost: 1,
     cd: 2,
     range: 'melee',
     target: 'single',
     type: 'slash',
     tags: ['attack', 'bleed', 'poison'],
+    makes: ['bleed', 'poison'],
+    reads: ['bleed'],
     vals: { dmg: [6, 8], bleed: [2, 3] },
     desc: '{D:dmg} 참격 피해, 출혈 {bleed}. 그 뒤 대상의 출혈만큼 독',
     run: (c, u, t) => {
@@ -143,12 +151,14 @@ reg.skills([
     icon: 'gi:spiked-shield',
     school: 'resolve',
     duo: ['blade', 'resolve'],
-    rarity: 'rare',
+    rarity: 'uncommon',
     cost: 1,
     cd: 2,
     range: 'self',
     target: 'self',
     tags: ['block', 'bleed', 'counter'],
+    makes: ['block', 'bleed'],
+    reads: ['block'],
     vals: { blk: [7, 9], pct: [50, 75] },
     desc: '방어도 {B:blk}. 다음 내 턴까지 방어도로 공격을 막을 때마다 공격자에게 막은 피해의 {pct}%만큼 출혈',
     run: (c, u) => {
@@ -164,15 +174,17 @@ reg.skills([
     icon: 'gi:cut-palm',
     school: 'forbidden',
     duo: ['blade', 'forbidden'],
-    rarity: 'rare',
+    rarity: 'forbidden',
     cost: 1,
     cd: 2,
     range: 'melee',
     target: 'single',
     type: 'slash',
     tags: ['attack', 'bleed', 'sanity', 'doom'],
+    makes: ['bleed', 'doom', 'sanity'],
+    reads: ['bleed'],
     vals: { dmg: [6, 8], bleed: 2, mul: [3, 4], san: 3 },
-    desc: '정신력 {san} 소모. {D:dmg} 참격 피해, 출혈 {bleed}. 그 뒤 대상의 출혈 × {mul}만큼 파멸 (파멸이 체력 이상이면 그 적의 차례가 끝날 때 즉사)',
+    desc: '정신력 {san} 소모. {D:dmg} 참격 피해, 출혈 {bleed}. 그 뒤 대상의 출혈 × {mul}만큼 파멸',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
       hit(c, u, t);
@@ -197,6 +209,8 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'mark', 'detonate', 'multi'],
+    makes: [],
+    reads: ['mark', 'ammo'],
     vals: { dmg: [5, 6], max: [5, 6], per: [3, 4] },
     desc: '대상의 인장 1개당 탄약 1을 써 {D:dmg} 관통 피해 (최소 1발, 최대 {max}발). 그 뒤 인장을 모두 터뜨려 인장당 {per} 비전 피해',
     canUse: needAmmo(1),
@@ -220,13 +234,15 @@ reg.skills([
     icon: 'gi:skull-with-syringe',
     school: 'firearm',
     duo: ['firearm', 'alchemy'],
-    rarity: 'rare',
+    rarity: 'uncommon',
     cost: 1,
     cd: 2,
     range: 'ranged',
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'poison'],
+    makes: ['poison'],
+    reads: ['poison', 'ammo'],
     vals: { dmg: [7, 9], poison: [3, 4], div: 3, max: 4 },
     desc: '탄약 1: 대상에게 독 {poison}을 묻힌 뒤 {D:dmg} 관통 피해. 대상의 독 {div}당 버팀 추가 -1 (최대 {max})',
     canUse: needAmmo(1),
@@ -246,15 +262,17 @@ reg.skills([
     icon: 'gi:barricade',
     school: 'firearm',
     duo: ['firearm', 'resolve'],
-    rarity: 'rare',
+    rarity: 'uncommon',
     cost: 1,
     cd: 2,
     range: 'ranged',
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'ammo', 'gun', 'block'],
+    makes: ['block'],
+    reads: ['block', 'ammo'],
     vals: { blk: [5, 6], dmg: [5, 6], pct: [60, 80] },
-    desc: '방어도 {B:blk}. 이어서 탄약 1: {D:dmg} + 현재 방어도의 {pct}% 관통 피해 (방어도는 그대로, 조준이 실린다)',
+    desc: '방어도 {B:blk}. 이어서 탄약 1: {D:dmg} + 내 방어도의 {pct}% 관통 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
       guard(c, u);
@@ -277,6 +295,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['buff', 'aim', 'ammo', 'sanity'],
+    makes: ['ammo', 'aim', 'sanity'],
+    reads: ['sanity'],
     vals: { san: 5, aim: 1, per: [20, 15], max: 3 },
     desc: '정신력 {san} 소모. 탄약을 가득 채우고 조준 {aim} + 잃은 정신력 {per}마다 1 (최대 {max})',
     run: (c, u) => {
@@ -303,8 +323,10 @@ reg.skills([
     target: 'all',
     type: 'arcane',
     tags: ['attack', 'aoe', 'mark', 'poison', 'burn'],
+    makes: ['mark'],
+    reads: ['poison', 'burn'],
     vals: { dmg: [4, 5], pct: [50, 75], max: 6 },
-    desc: '모든 적에게 각자 가진 (독 + 화상)의 {pct}%만큼 인장을 새기고(최대 {max}) {D:dmg} 비전 피해 (인장이 피해를 더한다)',
+    desc: '적마다 독과 화상을 더한 값의 {pct}%만큼 인장 (최대 {max}). 이어서 적 전체에 {D:dmg} 비전 피해',
     run: (c, u, t) => {
       for (const e of c.alive) {
         const n = Math.min(u.v('max'), scale((((e.st.poison ?? 0) + (e.st.burn ?? 0)) * u.v('pct')) / 100, u.power));
@@ -321,13 +343,15 @@ reg.skills([
     icon: 'gi:rosa-shield',
     school: 'resolve',
     duo: ['occult', 'resolve'],
-    rarity: 'rare',
+    rarity: 'uncommon',
     cost: 1,
     cd: 2,
     range: 'ranged',
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'mark', 'detonate', 'block'],
+    makes: ['block'],
+    reads: ['mark'],
     vals: { base: [5, 6], per: [4, 5], blk: [4, 5], blkper: [3, 4] },
     desc: '대상의 인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해. 방어도 {B:blk} + 터뜨린 인장 1개당 {blkper}',
     run: (c, u, t) => {
@@ -346,15 +370,17 @@ reg.skills([
     icon: 'gi:burning-eye',
     school: 'forbidden',
     duo: ['occult', 'forbidden'],
-    rarity: 'rare',
+    rarity: 'forbidden',
     cost: 1,
     cd: 2,
     range: 'ranged',
     target: 'single',
     type: 'void',
     tags: ['attack', 'mark', 'sanity', 'multi'],
+    makes: ['sanity'],
+    reads: ['mark'],
     vals: { dmg: [5, 6], san: 3, max: 8 },
-    desc: '정신력 {san} 소모. 대상의 인장 1개당 {D:dmg} 공허 피해 1회 (최소 1회, 최대 {max}회 · 방어도 무시 · 인장은 남는다)',
+    desc: '정신력 {san} 소모. 대상의 인장 1개당 {D:dmg} 공허 피해 1회 (최소 1회, 최대 {max}회). 방어도 무시, 인장은 남는다',
     run: (c, u, t) => {
       c.loseSanity(u.v('san'));
       if (!t || c.over) return;
@@ -369,15 +395,17 @@ reg.skills([
     icon: 'gi:acid-shield',
     school: 'alchemy',
     duo: ['alchemy', 'resolve'],
-    rarity: 'rare',
+    rarity: 'uncommon',
     cost: 1,
     cd: 2,
     range: 'melee',
     target: 'single',
     type: 'blunt',
     tags: ['attack', 'block', 'poison'],
+    makes: ['block', 'poison'],
+    reads: ['block'],
     vals: { blk: [5, 6], dmg: [5, 6], pct: [40, 60] },
-    desc: '방어도 {B:blk}. 이어서 {D:dmg} 타격 피해, 현재 방어도의 {pct}%만큼 독 (방어도는 그대로)',
+    desc: '방어도 {B:blk}. 이어서 {D:dmg} 타격 피해, 내 방어도의 {pct}%만큼 독',
     run: (c, u, t) => {
       guard(c, u);
       hit(c, u, t);
@@ -394,14 +422,16 @@ reg.skills([
     icon: 'gi:suckered-tentacle',
     school: 'forbidden',
     duo: ['alchemy', 'forbidden'],
-    rarity: 'rare',
+    rarity: 'forbidden',
     cost: 1,
     cd: 3,
     range: 'self',
     target: 'self',
     tags: ['summon', 'sanity', 'poison', 'tentacle', 'aoe'],
+    makes: ['poison', 'tentacle', 'sanity'],
+    reads: ['tentacle'],
     vals: { n: 1, san: 4, poison: [2, 3] },
-    desc: '정신력 {san} 소모. 적 전체에 독 {poison}, 촉수 {n} (내 턴이 끝날 때 무작위 적 공격). 이번 전투 동안 촉수에 맞은 적은 독 {poison}',
+    desc: '정신력 {san} 소모. 적 전체에 독 {poison}, 촉수 {n}. 이번 전투 동안 촉수에 맞은 적은 독 {poison}',
     run: (c, u) => {
       c.loseSanity(u.v('san'));
       if (c.over) return;
@@ -418,12 +448,14 @@ reg.skills([
     icon: 'gi:black-hand-shield',
     school: 'resolve',
     duo: ['resolve', 'forbidden'],
-    rarity: 'rare',
+    rarity: 'uncommon',
     cost: 1,
     cd: 2,
     range: 'self',
     target: 'self',
     tags: ['block', 'sanity'],
+    makes: ['block', 'sanity'],
+    reads: ['sanity'],
     vals: { blk: [6, 8], pct: [25, 35], san: 2 },
     desc: '정신력 {san} 소모. 방어도 {B:blk} + 잃은 정신력의 {pct}%',
     run: (c, u) => {

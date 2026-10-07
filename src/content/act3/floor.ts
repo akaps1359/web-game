@@ -43,7 +43,7 @@ function blizzard(run: RunState, f: FloorState) {
   }
   // 지금 서 있는 곳의 이웃은 등불이 닿는 만큼 다시 보인다
   reveal(run, f, f.pos);
-  log(run, buried > 0 ? '눈보라가 몰아쳤다 — 들르지 않은 방들이 다시 눈에 묻혔다' : '눈보라가 도시를 훑고 지나갔다');
+  log(run, buried > 0 ? '눈보라가 몰아쳐 들르지 않은 방들이 다시 눈에 묻혔다' : '눈보라가 도시를 훑고 지나갔다');
 }
 
 reg.floors([
@@ -51,9 +51,9 @@ reg.floors([
     act: 3,
     name: '얼어붙은 고대 도시',
     law:
-      `혹한 — 등불이 1.5배 빨리 닳는다. 등불이 25 미만일 때 벌어진 전투는 동상 ${DARK_FROST}을 안고 시작한다 (동상: 얻는 방어도 감소, 5가 되면 몸이 얼어붙는다. 화염이 녹인다).\n` +
-      `눈보라 — ${BLIZZARD_HOURS}시간마다 눈보라가 몰아쳐, 들르지 않은 방들이 다시 어둠에 묻힌다.\n` +
-      `얼음 속의 것들 — 얼어붙은 방(얼음 표시)의 적은 하루(${THAW_HOUR}시간)가 지나기 전에는 얼음에 갇혀 첫 차례를 움직이지 못한다. 하루가 지나면 녹아 깨어나 굶주린 채 덤빈다 (공격 피해 +25%).`,
+      `혹한: 등불이 1.5배 빨리 닳는다. 등불이 25 미만일 때 벌어진 전투는 동상 ${DARK_FROST}을 안고 시작한다. 동상이 쌓이면 얻는 방어도가 줄고 5가 되면 몸이 얼어붙는다. 화염이 녹인다.\n` +
+      `눈보라: ${BLIZZARD_HOURS}시간마다 눈보라가 몰아쳐 들르지 않은 방들이 다시 어둠에 묻힌다.\n` +
+      `얼음 속의 것들: 얼어붙은 방(얼음 표시)의 적은 ${THAW_HOUR}시간이 지나기 전에는 얼음에 갇혀 첫 차례를 움직이지 못한다. 그 뒤에는 녹아 깨어나 굶주린 채 덤빈다 (공격 피해 +25%).`,
     hooks: {
       onCombatStart(c, s) {
         if (s.unit !== c.p || c.run.light >= 25) return;
@@ -90,7 +90,7 @@ reg.floors([
       }
       if (!f.vars.coldTold) {
         f.vars.coldTold = 1;
-        log(run, `숨이 얼어붙는다 — 추위 속에서 등불이 빨리 닳는다 (이동마다 등불 -${extra} 더)`);
+        log(run, `숨이 얼어붙는다. 추위 속에서는 등불이 빨리 닳는다 (이동마다 등불 -${extra} 더)`);
       }
       // 눈보라 (야영·이벤트로 시간이 많이 흘렀어도 한 번만 몰아친다)
       const next = f.vars.nextBlizzard ?? BLIZZARD_HOURS;
@@ -99,12 +99,12 @@ reg.floors([
         blizzard(run, f);
       } else if (f.hours >= next - 2 && f.vars.blizzardWarned !== next) {
         f.vars.blizzardWarned = next;
-        log(run, `바람이 거세진다 — 곧 눈보라가 몰아친다 (${next}시간째)`);
+        log(run, `바람이 거세진다. 곧 눈보라가 몰아친다 (${next}시간째)`);
       }
       // 해동
       if (f.hours >= THAW_HOUR && !f.vars.thawTold) {
         f.vars.thawTold = 1;
-        if (f.rooms.some((x) => x.frozen !== undefined && !x.cleared)) log(run, '도시 곳곳에서 얼음이 갈라지는 소리가 난다 — 얼어붙어 있던 것들이 깨어났다');
+        if (f.rooms.some((x) => x.frozen !== undefined && !x.cleared)) log(run, '도시 곳곳에서 얼음이 갈라지는 소리가 난다. 얼어붙어 있던 것들이 깨어났다');
       }
     },
     roomAnomaly(_run, f, roomId) {
@@ -118,10 +118,10 @@ reg.floors([
       enc: 'lord-a3',
       goal: 5,
       warnings: [
-        '얼음 깊은 곳에서 무언가 갈라지는 소리가 났다…',
+        '얼음 깊은 곳에서 쩍 하고 갈라지는 소리가 났다…',
         '벽화 속 별 모양 머리들이 모두 같은 쪽으로 돌아가 있다',
-        '멀리서 피리 소리가 들린다. 테켈리-리… 그리고 그것에 답하는 다른 피리 소리',
-        '깨어난 원로가 얼음을 깨고 나왔다 — 지도에 표시됨',
+        '멀리서 피리 소리가 들린다. 테켈리-리… 다른 피리 소리가 거기에 답한다',
+        '깨어난 원로가 얼음을 깨고 나왔다 (지도에 표시)',
       ],
       // 숨겨진 조건 (온기와 해동): 야영지에서 불을 피움 +1 (야영지마다), 얼어붙은 방의 얼음을 깨뜨림(녹기 전에 승리) +1,
       // 하루가 지나 얼음이 녹기 시작함 +1, 반란의 벽화를 읽음 +1, 얼음 속의 형체를 녹임 +2, 피리 소리에 대답함 +1,

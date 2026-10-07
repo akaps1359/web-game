@@ -77,7 +77,8 @@ reg.runes([
     name: '출혈 각인',
     icon: 'gi:blood',
     rarity: 'common',
-    desc: '체력 피해를 줄 때마다 출혈 2',
+    desc: '체력 피해를 줄 때마다 출혈 2. 검술 계열',
+    school: 'blade',
     fits: isAttack,
     hooks: {
       onDamageDealt(c, _s, d) {
@@ -90,7 +91,8 @@ reg.runes([
     name: '화염 각인',
     icon: 'gi:flame',
     rarity: 'common',
-    desc: '타격마다 화상 1 (방어도에 막혀도)',
+    desc: '타격마다 화상 1 (방어도에 막혀도). 연금 계열',
+    school: 'alchemy',
     fits: isAttack,
     hooks: {
       onDamageDealt(c, _s, d) {
@@ -103,7 +105,8 @@ reg.runes([
     name: '인장 각인',
     icon: 'gi:pentagram-rose',
     rarity: 'common',
-    desc: '타격마다 인장 1 (인장 폭발 스킬에는 새길 수 없다)',
+    desc: '타격마다 인장 1 (인장 폭발 스킬에는 새길 수 없다). 비술 계열',
+    school: 'occult',
     // 폭발 스킬은 폭발 피해만 주므로(인장을 다시 새기지 않는다) 새겨도 아무 일도 일어나지 않는다
     fits: (s) => isAttack(s) && !s.tags.includes('detonate'),
     hooks: {
@@ -117,7 +120,8 @@ reg.runes([
     name: '공허 각인',
     icon: 'gi:portal',
     rarity: 'rare',
-    desc: '피해 속성이 공허로 바뀌고 통찰×2만큼 피해 증가. 사용 시 정신력 -2',
+    desc: '피해 속성이 공허로 바뀌고 통찰×2만큼 피해 증가. 사용 시 정신력 -2. 금기 계열',
+    school: 'forbidden',
     fits: isAttack,
     hooks: {
       beforeSkill(c, _s, u) {
@@ -147,7 +151,8 @@ reg.runes([
     name: '수호 각인',
     icon: 'gi:shield-echoes',
     rarity: 'common',
-    desc: '사용 후 방어도 4',
+    desc: '사용 후 방어도 4. 결의 계열',
+    school: 'resolve',
     hooks: {
       afterSkill(c) {
         c.gainBlock(c.p, 4);

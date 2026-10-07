@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { reg, SKILLS } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import type { EnemyUnit, Intent, MoveDef, Unit } from '../../engine/types';
@@ -121,7 +122,7 @@ export function seizeSkill(c: Combat, holder: EnemyUnit): boolean {
   holder.mem.specimen = pick.i + 1;
   holder.mem.specimenCd = c.s.cd[pick.uid] ?? 0;
   c.s.cd[pick.uid] = 99;
-  c.emit({ t: 'text', uid: 'p', text: `「${skillName(c, pick.uid)}」을(를) 표본으로 빼앗겼다`, tone: 'bad' });
+  c.emit({ t: 'text', uid: 'p', text: `「${skillName(c, pick.uid)}」${josa(skillName(c, pick.uid), '을')} 표본으로 빼앗겼다`, tone: 'bad' });
   return true;
 }
 
@@ -135,7 +136,7 @@ export function returnSkill(c: Combat, holder: EnemyUnit) {
   const left = holder.mem.specimenCd ?? 0;
   if (left > 0) c.s.cd[uid] = left;
   else delete c.s.cd[uid];
-  c.emit({ t: 'text', uid: 'p', text: `「${skillName(c, uid)}」을(를) 되찾았다`, tone: 'good' });
+  c.emit({ t: 'text', uid: 'p', text: `「${skillName(c, uid)}」${josa(skillName(c, uid), '을')} 되찾았다`, tone: 'good' });
 }
 
 function skillName(c: Combat, uid: string): string {
@@ -152,7 +153,7 @@ export function veiledHorror(c: Combat, e: EnemyUnit, n: number, feed = false): 
   if (b > 0) {
     c.p.block -= b;
     rest -= b;
-    c.emit({ t: 'text', uid: 'p', text: rest > 0 ? `눈을 가렸다 (방어도 -${b})` : '눈을 가렸다 — 보지 않았다', tone: 'info' });
+    c.emit({ t: 'text', uid: 'p', text: rest > 0 ? `눈을 가렸다 (방어도 -${b})` : '눈을 가려 보지 않았다', tone: 'info' });
   }
   if (rest <= 0 || c.over) return 0;
   const lost = c.horror(e, rest);

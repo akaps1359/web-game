@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { Combat, DISGUISE_REVEAL, type CombatEvent } from '../src/engine/combat';
+import { Combat, DISGUISE_REVEAL, weakMult, type CombatEvent } from '../src/engine/combat';
 import { ENCOUNTERS, ENEMIES } from '../src/engine/registry';
 import { newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
@@ -467,7 +467,8 @@ describe('종지기 — 마지막 종 (위협 퍼즐: 못 막으면 정신이 �
     plain(c);
     c.damage({ src: c.p, tgt: bell, base: 20, type: 'blunt', attack: true });
     expect(c.s.obj?.hit?.need).toBe(bell.hp);
-    expect(bell.hp).toBe(bell.maxHp - Math.floor(20 * RING_MULT));
+    // 대종의 약점은 타격 — 약점 공격 피해 보너스도 붙는다
+    expect(bell.hp).toBe(bell.maxHp - Math.floor(20 * RING_MULT * weakMult(c.p.insight)));
     c.damage({ src: c.p, tgt: bell, base: 9999, type: 'true' });
     expect(bell.dead).toBe(true);
     expect(c.s.obj ?? null).toBeNull();

@@ -133,7 +133,7 @@ reg.statuses([
       },
       onDamageDealt(c, s, d) {
         if (d.src !== s.unit || d.tgt !== c.p || !d.tags.includes('a5-illusory')) return;
-        c.emit({ t: 'text', uid: 'p', text: '실체 없는 일격 — 정신이 흔들린다', tone: 'eldritch' });
+        c.emit({ t: 'text', uid: 'p', text: '실체 없는 일격에 정신이 흔들린다', tone: 'eldritch' });
         c.loseSanity(Math.max(2, Math.round(d.base / 2)), true);
       },
       // 환영이 거는 해로운 효과는 진짜가 아니다

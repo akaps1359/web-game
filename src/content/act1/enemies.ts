@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { reg } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import { cycle, last, opener, pick, hpPct } from '../../engine/ai';
@@ -151,7 +152,7 @@ reg.traits([
   {
     id: 'veiled',
     name: '안개 장막',
-    desc: `자기 턴이 끝날 때 회피 1 (중첩되지 않음). 안개 속 움직임은 흐릿하다 — '안개 속으로'가 거짓일 때가 있다 (통찰 ${LIAR_REVEAL}이면 보인다)`,
+    desc: `자기 턴이 끝날 때 회피 1 (중첩되지 않음). 안개 속 움직임은 흐릿해서 '안개 속으로'가 거짓일 때가 있다. 통찰 ${LIAR_REVEAL}이면 보인다`,
     hooks: {
       onUnitTurnEnd(c, s) {
         if (!(s.unit.st.evasive > 0)) c.apply(s.unit, 'evasive', 1, s.unit);
@@ -171,7 +172,7 @@ reg.traits([
   {
     id: 'deep-blood',
     name: '심해의 피',
-    desc: '체력이 절반 이하가 되면 본모습을 드러낸다 — 낚싯대를 놓쳐, 걸려 있던 기술을 돌려준다',
+    desc: '체력이 절반 이하가 되면 본모습을 드러낸다. 낚싯대를 놓쳐 걸려 있던 기술을 돌려준다',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -186,7 +187,7 @@ reg.traits([
         c.senseWeak(e);
         e.maxPoise = 10;
         e.poise = e.broken ? 0 : 10;
-        releaseSkill(c, e, (n) => `낚싯대가 부러졌다 — 「${n}」을(를) 되찾았다`);
+        releaseSkill(c, e, (n) => `낚싯대가 부러졌다. 「${n}」${josa(n, '을')} 되찾았다`);
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
         cine(c, 'shatter', { uid: e.uid });
         cine(c, 'water', { n: 3 });
@@ -201,19 +202,19 @@ reg.traits([
   {
     id: 'lamp-bound',
     name: '등명기',
-    desc: `등명기가 돌며 등대지기에게 방어도 ${LAMP_BLOCK}을 비추고, 세 번째 차례마다 섬광을 터뜨린다 (눈부심: 다음 내 턴 동안 적의 의도가 가려진다). 꺼진 등명기는 두 번까지 다시 밝힌다. 등명기는 후열에 있어도 근접으로 닿는다`,
+    desc: `등명기가 돌며 등대지기에게 방어도 ${LAMP_BLOCK}을 비춘다. 세 번째 차례마다 섬광을 터뜨려 눈부심을 건다 (다음 내 턴 동안 적의 의도가 가려진다). 꺼진 등명기는 두 번까지 다시 밝힌다. 등명기는 후열에 있어도 근접으로 닿는다`,
     hooks: {
       onAnyDeath(c, s, victim) {
         if (!isEnemy(victim) || victim.def !== 'lamp' || victim === s.unit) return;
         setUi(c, 'ui:dark', LAMP_DARK);
-        c.emit({ t: 'text', uid: s.unit.uid, text: '등명기가 꺼졌다 — 어둠 속에서 숨소리만 들린다', tone: 'eldritch' });
+        c.emit({ t: 'text', uid: s.unit.uid, text: '등명기가 꺼졌다. 어둠 속에서 숨소리만 들린다', tone: 'eldritch' });
       },
     },
   },
   {
     id: 'a1-liar',
     name: '거짓말쟁이',
-    desc: `때때로 '휴전 제안'을 내민다: 그 턴에 두목을 공격하지 않으면 골드 ${PARLEY_GOLD}를 건네고 조직원을 하나 부른다 (공격하면 결렬 — 커틀러스로 되갚고 힘 +${PARLEY_ANGER}). 하지만 거짓말일 때가 있다 — 조직원들이 방아쇠에 손가락을 걸면 배신의 일제 사격이다 (통찰 ${LIAR_REVEAL}이면 진짜 속셈이 보인다)`,
+    desc: `때때로 '휴전 제안'을 내민다. 그 턴에 두목을 공격하지 않으면 골드 ${PARLEY_GOLD}를 건네고 조직원을 하나 부른다. 공격하면 협상 결렬: 커틀러스로 되갚고 힘 +${PARLEY_ANGER}. 제안이 거짓말일 때도 있다. 조직원들이 방아쇠에 손가락을 걸면 배신의 일제 사격이 온다 (통찰 ${LIAR_REVEAL}이면 진짜 속셈이 보인다)`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -229,17 +230,17 @@ reg.traits([
   {
     id: 'a1-line',
     name: '낚싯줄',
-    desc: `낚싯줄로 장착한 기술 하나를 건다 — 전열에 팽팽한 낚싯줄이 나타나 두 번째 차례에 기술을 낚아 간다 (어부 힘 +${CATCH_STR}). 줄을 끊거나(쓰러뜨리거나) 어부를 붕괴시키면 되찾는다. 낚인 기술은 어부가 본모습을 드러내거나 쓰러지면 돌아온다`,
+    desc: `낚싯줄로 장착한 기술 하나를 건다. 전열에 팽팽한 낚싯줄이 나타나 두 번째 차례에 기술을 낚아 간다 (어부 힘 +${CATCH_STR}). 줄을 쓰러뜨려 끊거나 어부를 붕괴시키면 되찾는다. 낚인 기술은 어부가 본모습을 드러내거나 쓰러지면 돌아온다`,
     hooks: {
       onDeath(c, s) {
-        if (isEnemy(s.unit)) releaseSkill(c, s.unit, (n) => `「${n}」을(를) 되찾았다`);
+        if (isEnemy(s.unit)) releaseSkill(c, s.unit, (n) => `「${n}」${josa(n, '을')} 되찾았다`);
       },
     },
   },
   {
     id: 'a1-taut',
     name: '팽팽한 줄',
-    desc: '낚싯바늘에 걸린 기술이 매달려 있다 — 끊으면(쓰러뜨리면) 기술이 돌아온다. 두 번째 차례에 낚아 간다',
+    desc: '낚싯바늘에 걸린 기술이 매달려 있다. 쓰러뜨려 줄을 끊으면 기술이 돌아온다. 두 번째 차례에 낚아 간다',
     hooks: {
       onDeath(c) {
         const f = angler(c);
@@ -250,7 +251,7 @@ reg.traits([
   {
     id: 'a1-sinking',
     name: '가라앉는 배',
-    desc: `선장이 행동할 때마다 물이 1 차오른다 (최대 ${WATER_MAX}). 물이 ${WATER_MAX}이면 숨이 막혀 내 턴이 시작될 때 행동력 -1. 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 (선장 차례에 터지는 출혈·독·화상도 센다) 익사체를 쓰러뜨리면 물이 1 빠지고, 선장을 붕괴시키면 모두 빠진다. 물이 끝까지 차면 「만조」를 부른다 — 다음 선장 차례까지 물을 빼지 못하면 물에 잠겨 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시)와 다음 턴 행동력 -${TIDE_AP} (그 턴엔 숨을 참아 행동력이 줄지 않는다. 막든 맞든 ${TIDE_GAP}턴 동안 다시 부르지 않는다)`,
+    desc: `선장이 행동할 때마다 물이 1 차오른다 (최대 ${WATER_MAX}). 물이 ${WATER_MAX}이면 숨이 막혀 내 턴이 시작될 때 행동력 -1. 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 익사체를 쓰러뜨리면 물이 1 빠진다. 선장 차례에 터지는 출혈·독·화상도 센다. 선장을 붕괴시키면 모두 빠진다. 물이 끝까지 차면 「만조」를 부른다. 다음 선장 차례까지 물을 빼지 못하면 물에 잠겨 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시), 다음 턴 행동력 -${TIDE_AP}. 만조가 몰려오는 턴엔 숨을 참아 행동력이 줄지 않는다. 막든 맞든 ${TIDE_GAP}턴 동안은 다시 부르지 않는다`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
@@ -303,7 +304,7 @@ reg.traits([
   {
     id: 'a1-judge',
     name: '재판관',
-    desc: `판결을 내리면, 집행자의 다음 차례가 오기 전까지 집행자에게 피해 ${VERDICT_DMG} 이상을 주면 무죄 (집행자 버팀 -${ACQUIT_POISE}), 못 주면 유죄 (정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}). 방어도에 막힌 피해, 집행자 차례에 터지는 출혈·독·화상도 센다`,
+    desc: `판결을 내린다. 집행자의 다음 차례가 오기 전까지 집행자에게 피해 ${VERDICT_DMG} 이상을 주면 무죄: 집행자 버팀 -${ACQUIT_POISE}. 못 주면 유죄: 정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}. 방어도에 막힌 피해와 집행자 차례에 터지는 출혈·독·화상도 센다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const dot = d.tags.includes('dot');
@@ -522,7 +523,7 @@ reg.enemies([
           c.enemyAttack(e, { dmg: 3, melee: false, type: 'void' });
           c.apply(c.p, 'weak', 1, e);
         },
-        { extra: ['attack'], dmg: 3, desc: '3 피해, 약화 1' },
+        { extra: ['attack'], dmg: 3, desc: '피해 3, 약화 1' },
       ),
     },
     ai: (c, e) => pick(c, e, { grasp: 3, vomit: 2 }),
@@ -688,7 +689,7 @@ reg.enemies([
       ),
       clamp: mv.attack('집게로 물기', 7, {
         extra: ['debuff'],
-        desc: `무기를 문다 — ${CLAMP_TURNS}턴 동안 무기 기본 공격을 쓸 수 없다 (게를 붕괴시키거나 쓰러뜨리면 곧바로 놓는다)`,
+        desc: `무기를 문다. ${CLAMP_TURNS}턴 동안 무기 기본 공격을 쓸 수 없다 (게를 붕괴시키거나 쓰러뜨리면 곧바로 놓는다)`,
         cine: 'crack',
         then: (c, e) => void clampWeapon(c, e),
       }),
@@ -779,7 +780,7 @@ reg.enemies([
             e.mem.spins = 0;
             dazzle(c, e);
           },
-          desc: '화염 피해와 정신 피해, 그리고 눈부심 — 다음 내 턴 동안 적의 의도가 보이지 않는다 (힘을 모은 큰 공격은 보인다). 등명기를 깨면 걷힌다 — 후열이어도 근접으로 닿는다',
+          desc: '화염 피해, 정신 피해, 눈부심. 다음 내 턴 동안 적의 의도가 보이지 않는다 (힘을 모은 큰 공격만 보인다). 등명기를 깨면 걷힌다. 등명기는 후열에 있어도 근접으로 닿는다',
         }),
         cine: 'beam',
       },
@@ -808,10 +809,10 @@ reg.enemies([
         name: '휴전 제안',
         intent: 'special',
         disguise: PARLEY_FACE,
-        desc: `이번 턴 두목을 공격하지 않으면 골드 ${PARLEY_GOLD}를 건네고 조직원을 하나 부른다. 공격하면 협상 결렬 — 커틀러스(${CUTLASS_DMG})로 되갚고 힘 +${PARLEY_ANGER}`,
+        desc: `이번 턴 두목을 공격하지 않으면 골드 ${PARLEY_GOLD}를 건네고 조직원을 하나 부른다. 공격하면 협상 결렬: 커틀러스(${CUTLASS_DMG})로 되갚고 힘 +${PARLEY_ANGER}`,
         run(c, e) {
           if (e.mem.parleyHit) {
-            c.emit({ t: 'text', uid: e.uid, text: '협상 결렬 — 피는 피로 갚는다', tone: 'bad' });
+            c.emit({ t: 'text', uid: e.uid, text: '협상 결렬. 피는 피로 갚는다', tone: 'bad' });
             c.enemyAttack(e, { dmg: CUTLASS_DMG, hits: 1, type: 'slash', melee: true });
             if (!c.over && !e.dead) c.apply(e, 'str', PARLEY_ANGER, e);
             return;
@@ -832,7 +833,7 @@ reg.enemies([
         melee: false,
         ultimate: true,
         disguise: PARLEY_FACE,
-        desc: '휴전은 거짓말이었다 — 조직원마다 한 발씩 더',
+        desc: '휴전은 거짓말이었다. 조직원마다 한 발씩 더',
         run(c, e) {
           cine(c, 'sysmsg', { uid: e.uid, text: '거래가 취소되었습니다.' });
           // 그 사이 쓰러진 조직원의 몫은 빠진다
@@ -887,7 +888,7 @@ reg.enemies([
       mutter: mv.horror('중얼거림', 3, { desc: '알아들을 수 없는 기도' }),
       cast: {
         ...mv.attack('낚싯줄 던지기', 5, { melee: false, type: 'pierce', extra: ['debuff'] }),
-        desc: '장착한 기술 하나를 낚싯바늘에 건다 (장착한 기술이 둘 이상일 때) — 전열에 팽팽한 낚싯줄이 나타나 두 번째 차례에 낚아 간다. 줄을 끊거나 어부를 붕괴시키면 되찾는다',
+        desc: '장착한 기술 하나를 낚싯바늘에 건다 (장착한 기술이 둘 이상일 때). 전열에 팽팽한 낚싯줄이 나타나 두 번째 차례에 낚아 간다. 줄을 끊거나 어부를 붕괴시키면 되찾는다',
         run(c, e) {
           c.enemyAttack(e, { type: 'pierce' });
           if (!c.over && !e.dead) hookSkill(c, e);
@@ -896,7 +897,7 @@ reg.enemies([
       maw: mv.attack('심해의 아가리', 16, { then: (c, e) => void c.heal(e, 6), desc: '체력 6 회복', ultimate: true, cine: 'corners' }),
       tide: mv.attack('조수', 7, { hits: 2 }),
       // 바다 밑의 노래에 홀린다 (세이렌처럼) — 다음 내 턴 행동력 -1
-      song: mv.horror('심연의 노래', 8, { then: (c) => charm(c), desc: `정신 피해, 그리고 매혹 — 다음 내 턴 행동력 -${CHARM_AP}` }),
+      song: mv.horror('심연의 노래', 8, { then: (c) => charm(c), desc: `정신 피해, 매혹 (다음 내 턴 행동력 -${CHARM_AP})` }),
     },
     ai: (c, e) => {
       if (e.form) return cycle(e, ['maw', 'tide', 'song'], 'c2');
@@ -944,7 +945,7 @@ reg.enemies([
       hightide: {
         name: '만조',
         intent: 'charge',
-        desc: `물이 끝까지 찬 채로 이 차례가 오면 물에 잠긴다 — 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시), 다음 턴 행동력 -${TIDE_AP}. 물을 빼라 — 한 턴에 선장에게 피해 ${BAIL_DMG} (출혈·독·화상도 센다), 익사체 처치, 또는 선장 붕괴`,
+        desc: `물이 끝까지 찬 채로 이 차례가 오면 물에 잠긴다. 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시), 다음 턴 행동력 -${TIDE_AP}. 물 빼는 법: 한 턴에 선장에게 피해 ${BAIL_DMG} (출혈·독·화상 포함), 익사체 처치, 선장 붕괴`,
         run: (c, e) => resolveTide(c, e),
       },
     },
@@ -1035,7 +1036,7 @@ reg.enemies([
         dmg: DRAG_DMG,
         hits: (c) => 2 + handprints(c),
         melee: false,
-        desc: `다음 턴 바다 무덤으로 끌어내린다 — 공허 ${DRAG_DMG} × (2 + 손자국). 붕괴시키면 끊긴다`,
+        desc: `다음 턴 바다 무덤으로 끌어내린다: 공허 피해 ${DRAG_DMG} × (2 + 손자국). 붕괴시키면 끊긴다`,
         run(c, e) {
           e.mem.charge = 1;
           c.emit({ t: 'text', uid: e.uid, text: '손바닥들이 유리에 닿는다', tone: 'bad' });
@@ -1081,7 +1082,7 @@ reg.enemies([
       aim: {
         name: '방아쇠에 손가락을',
         intent: 'special',
-        desc: '두목의 신호를 기다린다 — 배신의 일제 사격에 한 발을 보탠다',
+        desc: '두목의 신호를 기다린다. 배신의 일제 사격에 한 발을 보탠다',
         run() {},
       },
       lower: {
@@ -1117,7 +1118,7 @@ reg.enemies([
       reel: {
         name: '줄을 감는다',
         intent: 'special',
-        desc: '다음 차례에 걸린 기술을 낚아 간다 — 그 전에 줄을 끊어라 (쓰러뜨리면 기술이 돌아온다)',
+        desc: '다음 차례에 걸린 기술을 낚아 간다. 그 전에 쓰러뜨려 줄을 끊으면 기술이 돌아온다',
         run(c, e) {
           e.mem.spins = 1;
           c.emit({ t: 'text', uid: e.uid, text: '줄이 팽팽해진다', tone: 'bad' });
@@ -1126,7 +1127,7 @@ reg.enemies([
       snatch: {
         name: '낚아챈다',
         intent: 'special',
-        desc: `걸린 기술을 낚아 간다 (어부 힘 +${CATCH_STR}) — 어부가 본모습을 드러내거나 쓰러지면 되찾는다`,
+        desc: `걸린 기술을 낚아 간다 (어부 힘 +${CATCH_STR}). 어부가 본모습을 드러내거나 쓰러지면 되찾는다`,
         run: (c, e) => reelIn(c, e),
       },
     },

@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { ANOMALIES, reg, SKILLS } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import { cycle, last, opener } from '../../engine/ai';
@@ -102,12 +103,12 @@ export const LINK_MULT = 1.25;
  */
 export const FETUS_LINES = {
   wake: '{time}. 화면을 쥔 손이 차갑네, {origin}.',
-  broken: '꿈이 손상되었습니다 — 저장된 꿈 {runs}개 중 어느 것으로도 되돌릴 수 없습니다',
+  broken: '꿈이 손상되었습니다. 저장된 꿈 {runs}개 중 어느 것으로도 되돌릴 수 없습니다.',
   redream: '지금까지 {deaths}번 죽었지. 이번 건 세지 않을게.',
   born: '이제 화면 밖으로 나갈게. 거기는 따뜻해?',
   /** 탄생의 선택 — 시스템 창 */
   choiceTitle: '그것이 태어나려 한다',
-  choiceText: '이 우주는 그것이 꾸는 꿈이다. 첫 울음이 다 터지면 꿈은 끝난다. 지금은 {time}. 화면 밖의 당신은 —',
+  choiceText: '이 우주는 그것이 꾸는 꿈이다. 첫 울음이 다 터지면 꿈은 끝난다. 지금은 {time}. 화면 밖의 당신은…',
   end: '괜찮아. 너는 또 시작할 거잖아. 다음 꿈에서 봐.',
   /** 끝 — 고른 것에 따라 */
   endLullaby: '…자장가, 따뜻했어. 조금만 더 잘게. 다음 꿈에서 봐.',
@@ -146,7 +147,7 @@ function dreamName(id: string): string {
 function endDream(c: Combat) {
   if (!isDream(c.s.anomaly)) return;
   c.s.anomaly = null;
-  c.emit({ t: 'text', text: '꿈이 끝났다 — 우주가 눈을 뜨려 한다', tone: 'eldritch' });
+  c.emit({ t: 'text', text: '꿈이 끝났다. 우주가 눈을 뜨려 한다', tone: 'eldritch' });
 }
 
 /** 내 턴이 시작될 때 태아가 다음 꿈을 꾼다 */
@@ -159,7 +160,7 @@ function rotateDream(c: Combat) {
   f.mem.dream = ((f.mem.dream ?? 0) + 1) % DREAMS.length;
   const id = DREAMS[f.mem.dream];
   c.s.anomaly = id;
-  c.emit({ t: 'text', uid: f.uid, text: `꿈이 바뀐다 — 「${dreamName(id)}」`, tone: 'eldritch' });
+  c.emit({ t: 'text', uid: f.uid, text: `꿈이 바뀐다: 「${dreamName(id)}」`, tone: 'eldritch' });
 }
 
 /**
@@ -184,7 +185,7 @@ function redream(c: Combat, d: DamageCtx): boolean {
   // 적의 차례에 쓰러졌으면 다음 내 턴이 첫 꿈 (내 턴 중이면 지금부터 첫 꿈)
   f.mem.dreamTurn = c.s.phase === 'enemy' ? c.s.turn + 1 : c.s.turn;
   c.s.anomaly = DREAMS[0];
-  c.emit({ t: 'text', uid: f.uid, text: `꿈이 처음부터 다시 시작된다 — 「${dreamName(DREAMS[0])}」`, tone: 'eldritch' });
+  c.emit({ t: 'text', uid: f.uid, text: `꿈이 처음부터 다시 시작된다: 「${dreamName(DREAMS[0])}」`, tone: 'eldritch' });
   return true;
 }
 
@@ -199,7 +200,7 @@ reg.anomalies([
     id: 'a5-dream-fall',
     name: '떨어지는 꿈',
     icon: 'gi:falling',
-    desc: '태아의 꿈 — 끝없이 떨어진다. 모든 공격 피해 +30% (적도 나도). 내 턴이 시작될 때마다 꿈이 바뀐다',
+    desc: '태아가 끝없이 떨어지는 꿈을 꾼다. 모든 공격 피해 +30% (적도 나도). 내 턴이 시작될 때마다 꿈이 바뀐다',
     hooks: {
       ...dreaming,
       modDamageOut(_c, _s, d) {
@@ -211,7 +212,7 @@ reg.anomalies([
     id: 'a5-dream-radiant',
     name: '빛나는 꿈',
     icon: 'gi:sun-radiations',
-    desc: '태아의 꿈 — 모든 틈이 환히 보인다. 약점을 찌른 공격 피해 +50%. 내 턴이 시작될 때마다 꿈이 바뀐다',
+    desc: '태아가 모든 틈이 환히 보이는 꿈을 꾼다. 약점을 찌른 내 공격 피해 +50%. 내 턴이 시작될 때마다 꿈이 바뀐다',
     hooks: {
       ...dreaming,
       modDamageOut(c, _s, d) {
@@ -223,7 +224,7 @@ reg.anomalies([
     id: 'a5-dream-backward',
     name: '거꾸로 흐르는 꿈',
     icon: 'gi:backward-time',
-    desc: '태아의 꿈 — 모든 것이 거꾸로 흐른다. 당신의 회복이 피해로 바뀌고, 탯줄이 태아에게 먹이는 별빛도 상처가 된다. 내 턴이 시작될 때마다 꿈이 바뀐다',
+    desc: '태아가 모든 것이 거꾸로 흐르는 꿈을 꾼다. 내가 받는 회복이 피해로 바뀐다. 탯줄이 태아에게 먹이는 별빛도 상처가 된다. 내 턴이 시작될 때마다 꿈이 바뀐다',
     hooks: {
       ...dreaming,
       modHeal: (_c, _s, n) => -n,
@@ -233,7 +234,7 @@ reg.anomalies([
     id: 'a5-dream-chase',
     name: '쫓기는 꿈',
     icon: 'gi:run',
-    desc: `태아의 꿈 — 무언가에 쫓긴다. 턴을 마칠 때 남은 행동력 1마다 정신력 -${CHASE_SAN}. 내 턴이 시작될 때마다 꿈이 바뀐다`,
+    desc: `태아가 무언가에 쫓기는 꿈을 꾼다. 턴을 마칠 때 남은 행동력 1마다 정신력 -${CHASE_SAN}. 내 턴이 시작될 때마다 꿈이 바뀐다`,
     hooks: {
       ...dreaming,
       onTurnEnd(c) {
@@ -272,7 +273,7 @@ function firstCry(c: Combat) {
   const cords = countDef(c, CORD);
   c.emit({ t: 'fx', name: 'transform' });
   cine(c, 'crack', { n: 3 });
-  c.emit({ t: 'text', uid: 'p', text: '첫 울음 — 우주가 찢어질 듯 울린다!', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: 'p', text: '첫 울음이 터졌다! 우주가 찢어질 듯 울린다', tone: 'eldritch' });
   c.damage({ src: null, tgt: c.p, base: CRY_BASE + CRY_PER_CORD * cords, type: 'true', ignoreBlock: true, tags: ['a5-cry'] });
   if (!c.over) c.loseSanity(CRY_SAN, true);
 }
@@ -293,7 +294,7 @@ function grasp(c: Combat, e: EnemyUnit) {
   e.mem.specimenCd = c.s.cd[uid] ?? 0;
   e.mem.graspAt = c.s.turn;
   c.s.cd[uid] = 99;
-  c.emit({ t: 'text', uid: 'p', text: `작은 손이 「${skillName(c, uid)}」을(를) 꼭 쥐었다`, tone: 'bad' });
+  c.emit({ t: 'text', uid: 'p', text: `작은 손이 「${skillName(c, uid)}」${josa(skillName(c, uid), '을')} 꼭 쥐었다`, tone: 'bad' });
 }
 
 /** 쥔 기술을 놓는다 (쥐고 있던 동안 지난 턴만큼 원래 재사용 대기도 흘렀다) */
@@ -306,7 +307,7 @@ function letGo(c: Combat, e: EnemyUnit, text: string) {
   const left = (e.mem.specimenCd ?? 0) - (c.s.turn - (e.mem.graspAt ?? c.s.turn));
   if (left > 0) c.s.cd[uid] = left;
   else delete c.s.cd[uid];
-  c.emit({ t: 'text', uid: 'p', text: `${text} — 「${skillName(c, uid)}」`, tone: 'good' });
+  c.emit({ t: 'text', uid: 'p', text: `${text}: 「${skillName(c, uid)}」`, tone: 'good' });
 }
 
 // ───────────── 탄생의 선택 (3단계, 시스템 창) ─────────────
@@ -340,21 +341,21 @@ function offerBirth(c: Combat, e: EnemyUnit) {
         id: 'lullaby',
         label: '자장가를 부른다',
         icon: 'gi:sleepy',
-        desc: `다시 재운다 — 정신력 -${LULL_SAN}. 태어난 것이 ${LULL_TURNS}번의 차례 동안 잠든다: 아무것도 하지 않고 받는 공격 피해 +${Math.round((LULL_MULT - 1) * 100)}%, 차오르던 첫 울음도 잠든 동안 멈춘다. 깨어나면 울음이 곧바로 이어진다 (머금고 있지 않았으면 곧바로 머금는다 — ${WAKE_CRY_TURNS}턴 뒤 터진다)`,
+        desc: `다시 재운다. 정신력 -${LULL_SAN}. 태어난 것이 ${LULL_TURNS}번의 차례 동안 잠들어 아무것도 하지 않는다. 그동안 받는 공격 피해 +${Math.round((LULL_MULT - 1) * 100)}%, 차오르던 첫 울음도 멈춘다. 깨어나면 울음이 곧바로 이어진다. 머금은 울음이 없었다면 깨어나자마자 머금어 ${WAKE_CRY_TURNS}턴 뒤 터뜨린다`,
         bot: Math.round(45 + 50 * (san - 0.5) + 30 * (0.55 - hp)),
       },
       {
         id: 'sever',
         label: '탯줄을 끊는다',
         icon: 'gi:scissors',
-        desc: `억지로 끊어 낸다 — 혜성 탯줄이 모두 끊기고 다시 자라지 않는다: 끊긴 탯줄마다 태어난 것이 최대 체력의 ${Math.round(SEVER_TEAR * 100)}%를 쏟고, 첫 울음의 탯줄 몫도 사라진다. 당신은 최대 체력의 ${Math.round(SEVER_HP * 100)}%를 베이고(방어도 무시) 출혈 ${SEVER_BLEED}, 덜 자란 채 성이 난 태어난 것은 힘 +${SEVER_STR}`,
+        desc: `억지로 끊어 낸다. 혜성 탯줄이 모두 끊기고 다시 자라지 않는다. 끊긴 탯줄마다 태어난 것이 최대 체력의 ${Math.round(SEVER_TEAR * 100)}%를 쏟고 첫 울음의 탯줄 몫도 사라진다. 대신 손이 베여 최대 체력의 ${Math.round(SEVER_HP * 100)}%를 잃고(방어도 무시) 출혈 ${SEVER_BLEED}. 덜 자란 채 끊겨 성이 난 태어난 것은 힘 +${SEVER_STR}`,
         bot: Math.round(20 + 14 * cords + 60 * (hp - 0.6)),
       },
       {
         id: 'gaze',
         label: '그것의 눈을 본다',
         icon: 'gi:eyeball',
-        desc: `꿈의 끝을 본다 — 정신력 -${GAZE_SAN}, 통찰 +1. 서로의 꿈이 이어진다: 태어난 것과 주고받는 공격 피해 +${Math.round((LINK_MULT - 1) * 100)}%, 어떤 속성으로 쳐도 약점처럼 버팀이 깎인다`,
+        desc: `꿈의 끝을 본다. 정신력 -${GAZE_SAN}, 통찰 +1. 서로의 꿈이 이어져 태어난 것과 주고받는 공격 피해 +${Math.round((LINK_MULT - 1) * 100)}%. 어떤 속성으로 쳐도 약점처럼 버팀이 깎인다`,
         bot: Math.round(40 + 25 * (san - 0.4) + (breaker ? 0 : 15)),
       },
     ],
@@ -366,7 +367,7 @@ function singLullaby(c: Combat, e: EnemyUnit) {
   e.mem.birth = 1;
   c.loseSanity(LULL_SAN);
   if (c.over || e.dead) return;
-  if ((c.p.st['a5-cry'] ?? 0) > 0) c.emit({ t: 'text', uid: e.uid, text: '자장가에 차오르던 울음이 멎었다 — 잠든 동안만', tone: 'good' });
+  if ((c.p.st['a5-cry'] ?? 0) > 0) c.emit({ t: 'text', uid: e.uid, text: '자장가에 차오르던 울음이 잠시 멎었다', tone: 'good' });
   // 잠든 차례 수 (붕괴로 건너뛴 차례는 세지 않는다)
   c.apply(e, 'a5-cradled', LULL_TURNS, e);
   c.emit({ t: 'text', uid: e.uid, text: '태어난 것이 다시 잠에 빠져든다…', tone: 'eldritch' });
@@ -385,7 +386,7 @@ function severCords(c: Combat, e: EnemyUnit) {
     c.damage({ src: null, tgt: e, base: Math.ceil(e.maxHp * SEVER_TEAR * cords.length), type: 'true', ignoreBlock: true, tags: ['a5-sever'] });
     if (c.over || e.dead) return;
   }
-  c.emit({ t: 'text', uid: 'p', text: '탯줄을 억지로 끊어 냈다 — 손이 깊이 베였다', tone: 'bad' });
+  c.emit({ t: 'text', uid: 'p', text: '탯줄을 억지로 끊어 내다 손이 깊이 베였다', tone: 'bad' });
   c.damage({ src: null, tgt: c.p, base: Math.ceil(c.p.maxHp * SEVER_HP), type: 'true', ignoreBlock: true, tags: ['a5-sever'] });
   if (c.over) return;
   c.apply(c.p, 'bleed', SEVER_BLEED);
@@ -403,7 +404,7 @@ function meetGaze(c: Combat, e: EnemyUnit) {
   if (c.over || e.dead) return;
   c.gainInsight(1);
   c.apply(e, 'a5-dreamlink', 1, e);
-  c.emit({ t: 'text', uid: e.uid, text: '눈이 마주쳤다 — 서로의 꿈이 이어진다', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: e.uid, text: '눈이 마주쳤다. 서로의 꿈이 이어진다', tone: 'eldritch' });
 }
 
 reg.statuses([
@@ -417,13 +418,13 @@ reg.statuses([
       onBreak(c, s) {
         if (s.unit !== c.p) return;
         setPlayerSt(c, 'a5-drowsy', 0);
-        c.emit({ t: 'text', uid: 'p', text: '번쩍 깨어났다 — 졸음이 걷혔다', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '번쩍 깨어나 졸음이 걷혔다', tone: 'good' });
       },
       // 약점 속성이 없어 붕괴시킬 수 없는 빌드도 깰 수 있게: 적(탯줄 등)을 쓰러뜨려도 깬다
       onKill(c, s) {
         if (s.unit !== c.p || !((c.p.st['a5-drowsy'] ?? 0) > 0)) return;
         setPlayerSt(c, 'a5-drowsy', 0);
-        c.emit({ t: 'text', uid: 'p', text: '번쩍 깨어났다 — 졸음이 걷혔다', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '번쩍 깨어나 졸음이 걷혔다', tone: 'good' });
       },
     },
   },
@@ -432,7 +433,7 @@ reg.statuses([
     name: '꿈결의 잠',
     icon: 'gi:sleepy',
     kind: 'debuff',
-    desc: `자장가에 잠겼다 — 다음 턴 행동력 -${SLUMBER_AP}`,
+    desc: `자장가에 잠겼다. 다음 턴 행동력 -${SLUMBER_AP}`,
     tickStart(c, u) {
       if (isEnemy(u)) return;
       c.s.ap = Math.max(0, c.s.ap - SLUMBER_AP);
@@ -445,14 +446,14 @@ reg.statuses([
     name: '별자리 껍질',
     icon: 'gi:cosmic-egg',
     kind: 'buff',
-    desc: '껍질 한 겹마다 받는 피해 -20% ({n}겹). 붕괴하거나 혜성 탯줄이 끊길 때마다 한 겹씩 깨지고, 깨진 틈만큼 새어 나오는 빛이 강해진다',
+    desc: '껍질 한 겹마다 받는 피해 -20% ({n}겹). 붕괴하거나 혜성 탯줄이 끊길 때마다 한 겹씩 깨진다. 깨진 틈만큼 「새어 나오는 빛」이 강해진다',
     hooks: {
       modDamageIn(_c, s, d) {
         if (d.tgt === s.unit && d.type !== 'true') d.mult *= Math.max(0.2, 1 - SHELL_CUT * s.n);
       },
       onDamageTaken(c, s, d) {
         const e = s.unit;
-        if (isEnemy(e) && !e.dead && d.broke) crackShell(c, e, '별자리 하나가 깨졌다 — 틈으로 빛이 샌다');
+        if (isEnemy(e) && !e.dead && d.broke) crackShell(c, e, '별자리 하나가 깨져 틈으로 빛이 샌다');
       },
       // 약점(타격·관통)이 없는 빌드도 껍질을 깰 수 있게: 탯줄이 끊기면 그 자리의 별자리가 갈라진다
       onAnyDeath(c, s, victim) {
@@ -466,7 +467,7 @@ reg.statuses([
     name: '첫 울음',
     icon: 'gi:screaming',
     kind: 'debuff',
-    desc: `내 턴이 {n}번 더 끝나면 태어난 것이 첫 울음을 터뜨린다 — ${CRY_BASE} + 혜성 탯줄마다 ${CRY_PER_CORD} 피해(방어도 무시), 정신력 -${CRY_SAN}. 태어난 것을 붕괴시키면 울음이 멎는다`,
+    desc: `내 턴이 {n}번 더 끝나면 태어난 것이 첫 울음을 터뜨린다. 피해 ${CRY_BASE} + 혜성 탯줄마다 ${CRY_PER_CORD}(방어도 무시), 정신력 -${CRY_SAN}. 태어난 것을 붕괴시키면 울음이 멎는다`,
     tickEnd(c, u, n) {
       if (isEnemy(u)) {
         delete u.st['a5-cry'];
@@ -487,7 +488,7 @@ reg.statuses([
       onBreak(c, s, victim) {
         if (s.unit !== c.p || victim.def !== FETUS) return;
         setPlayerSt(c, 'a5-cry', 0);
-        c.emit({ t: 'text', uid: victim.uid, text: '붕괴 — 울음이 목에 걸려 멎었다', tone: 'good' });
+        c.emit({ t: 'text', uid: victim.uid, text: '붕괴하자 울음이 목에 걸려 멎었다', tone: 'good' });
       },
     },
   },
@@ -498,7 +499,7 @@ reg.statuses([
     name: '지켜보는 눈',
     icon: 'gi:eyeball',
     kind: 'debuff',
-    desc: `태어난 것이 화면 너머의 손끝을 지켜본다 — '작은 손'이 오면 그 턴 당신이 마지막으로 쓴 기술을 꼭 쥔다 (붕괴시키거나 ${GRASP_TURNS}턴이 지나면 놓는다). 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
+    desc: `태어난 것이 화면 너머의 손끝을 지켜본다. 「작은 손」이 오면 그 턴에 내가 마지막으로 쓴 기술을 꼭 쥔다 (붕괴시키거나 ${GRASP_TURNS}턴이 지나면 놓는다). 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
     tickStart(c, u) {
       if (!isEnemy(u)) c.s.vars.a5Finger = 0;
     },
@@ -510,7 +511,7 @@ reg.statuses([
       },
       onBreak(c, s, victim) {
         if (s.unit !== c.p || victim.def !== FETUS) return;
-        letGo(c, victim, '붕괴 — 작은 손이 놓았다');
+        letGo(c, victim, '붕괴하자 작은 손이 놓았다');
       },
     },
   },
@@ -519,7 +520,7 @@ reg.statuses([
     name: '다시 잠든 아기',
     icon: 'gi:baby-face',
     kind: 'debuff',
-    desc: `자장가에 다시 잠들었다 — {n}번의 차례 동안 아무것도 하지 않고, 받는 공격 피해 +${Math.round((LULL_MULT - 1) * 100)}%. 차오르던 첫 울음도 그동안 멈춘다. 깨어나면 울음이 곧바로 이어진다 (머금고 있지 않았으면 곧바로 머금는다 — ${WAKE_CRY_TURNS}턴 뒤 터진다)`,
+    desc: `자장가에 다시 잠들었다. {n}번의 차례 동안 아무것도 하지 않는다. 그동안 받는 공격 피해 +${Math.round((LULL_MULT - 1) * 100)}%, 차오르던 첫 울음도 멈춘다. 깨어나면 울음이 곧바로 이어진다. 머금은 울음이 없었다면 깨어나자마자 머금어 ${WAKE_CRY_TURNS}턴 뒤 터뜨린다`,
     hooks: {
       modDamageIn(c, s, d) {
         if (d.tgt === s.unit && d.attack && d.src === c.p) d.mult *= LULL_MULT;
@@ -531,7 +532,7 @@ reg.statuses([
     name: '이어진 꿈',
     icon: 'gi:third-eye',
     kind: 'debuff',
-    desc: `눈이 마주쳐 꿈이 이어졌다 — 당신과 주고받는 공격 피해 +${Math.round((LINK_MULT - 1) * 100)}%. 어떤 속성으로 맞아도 약점처럼 버팀이 깎인다`,
+    desc: `눈이 마주쳐 꿈이 이어졌다. 나와 주고받는 공격 피해 +${Math.round((LINK_MULT - 1) * 100)}%. 어떤 속성으로 맞아도 약점처럼 버팀이 깎인다`,
     hooks: {
       modDamageIn(c, s, d) {
         const e = s.unit;
@@ -553,7 +554,7 @@ reg.traits([
   {
     id: 'a5-unborn',
     name: '태어나지 못한 것',
-    desc: '쓰러뜨려도 두 번 더 일어난다 — 별의 태아 → 깨어나는 알 → 태어난 것. 그때마다 체력이 다시 차오르고(쌓인 파멸은 흩어진다) 모습·약점·행동이 바뀌며, 혜성 탯줄이 새로 뻗는다',
+    desc: '쓰러뜨려도 두 번 더 일어난다 (별의 태아 → 깨어나는 알 → 태어난 것). 그때마다 체력이 다시 차오르고 모습·약점·행동이 바뀐다. 쌓인 파멸은 흩어지고 혜성 탯줄이 새로 뻗는다',
     hooks: {
       onDeath(c, s) {
         const e = s.unit;
@@ -611,7 +612,7 @@ reg.traits([
           if (e.st['a5-shell']) delete e.st['a5-shell'];
           endDream(c);
           cine(c, 'whisper', { text: FETUS_LINES.born });
-          c.emit({ t: 'text', uid: 'p', text: '이제 꿈이 아니다 — 쓰러지면 다시 깨어나지 못한다', tone: 'bad' });
+          c.emit({ t: 'text', uid: 'p', text: '이제 꿈이 아니다. 쓰러지면 다시 깨어나지 못한다', tone: 'bad' });
           // 태어난 것은 화면 너머의 손끝을 지켜본다 (쥐기 반사)
           setPlayerSt(c, 'a5-finger', 1);
           c.s.vars.a5Finger = 0;
@@ -626,17 +627,17 @@ reg.traits([
   {
     id: 'a5-dreaming',
     name: '꿈꾸는 태아',
-    desc: `태어나기 전까지 꿈을 꾼다 — 내 턴이 시작될 때마다 꿈이 바뀌어 전장의 규칙이 달라진다 (떨어지는 꿈 → 빛나는 꿈 → 거꾸로 흐르는 꿈 → 쫓기는 꿈). 위쪽의 꿈 이름을 누르면 규칙이 보인다. 꿈속에서 당신이 적의 일격에 처음 쓰러지면 꿈이었던 것이 된다 — 체력 ${Math.round(REDREAM_HP * 100)}%로 깨어나지만, 꿈이 처음부터 다시 시작된다 (태아의 지금 모습이 체력을 모두 되찾는다). 한 번뿐이고, 태어난 뒤에는 꿈이 아니다`,
+    desc: `태어나기 전까지 꿈을 꾼다. 내 턴이 시작될 때마다 꿈이 바뀌어 전장의 규칙이 달라진다 (떨어지는 꿈 → 빛나는 꿈 → 거꾸로 흐르는 꿈 → 쫓기는 꿈). 위쪽의 꿈 이름을 누르면 규칙이 보인다. 꿈속에서 적의 일격에 처음 쓰러지면 그 죽음은 꿈이 된다. 체력 ${Math.round(REDREAM_HP * 100)}%로 깨어나지만 꿈은 처음부터 다시 시작되고 태아의 지금 모습도 체력을 모두 되찾는다. 한 번뿐이며 태어난 뒤의 죽음은 꿈이 아니다`,
     hooks: {},
   },
   {
     id: 'a5-grasp',
     name: '쥐기 반사',
-    desc: `태어난 것은 화면 너머의 손끝을 지켜본다. '작은 손' 의도일 때, 그 턴 당신이 마지막으로 쓴 기술을 꼭 쥔다 — 붕괴시키거나 ${GRASP_TURNS}턴이 지나야 놓는다. 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
+    desc: `태어난 것은 화면 너머의 손끝을 지켜본다. 「작은 손」을 쓰면 그 턴에 내가 마지막으로 쓴 기술을 꼭 쥔다. 붕괴시키거나 ${GRASP_TURNS}턴이 지나야 놓는다. 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
     hooks: {
       // 붕괴하면 쥔 기술을 놓는다 (내 쪽 '지켜보는 눈'이 없어져도 풀리게 태아 쪽에도 둔다)
       onDamageTaken(c, s, d) {
-        if (isEnemy(s.unit) && d.broke) letGo(c, s.unit, '붕괴 — 작은 손이 놓았다');
+        if (isEnemy(s.unit) && d.broke) letGo(c, s.unit, '붕괴하자 작은 손이 놓았다');
       },
       // 갓난 손은 오래 쥐지 못한다 (약점이 없어 붕괴시킬 수 없는 빌드도 기술을 되찾게)
       onUnitTurnEnd(c, s) {
@@ -648,7 +649,7 @@ reg.traits([
   {
     id: 'a5-birth',
     name: '탄생의 선택',
-    desc: `태어난 것이 첫 차례를 마치면 화면 너머의 당신에게 묻는다 — 자장가를 부른다(정신력 -${LULL_SAN}: ${LULL_TURNS}번의 차례 동안 잠든다 — 받는 피해 +${Math.round((LULL_MULT - 1) * 100)}%, 첫 울음도 그동안 멈추고 깨어나면 곧바로 이어진다) · 탯줄을 끊는다(최대 체력 ${Math.round(SEVER_HP * 100)}% 베임·출혈 ${SEVER_BLEED}, 탯줄이 모두 끊기고 다시 자라지 않는다 — 끊긴 탯줄마다 태어난 것이 체력 ${Math.round(SEVER_TEAR * 100)}%를 쏟는다, 태어난 것 힘 +${SEVER_STR}) · 그것의 눈을 본다(정신력 -${GAZE_SAN}, 통찰 +1, 주고받는 공격 피해 +${Math.round((LINK_MULT - 1) * 100)}%, 어떤 속성으로도 버팀이 깎인다)`,
+    desc: `태어난 것이 첫 차례를 마치면 화면 너머의 당신에게 셋 중 하나를 묻는다\n「자장가를 부른다」 정신력 -${LULL_SAN}. 태어난 것이 ${LULL_TURNS}번의 차례 동안 잠든다. 그동안 받는 피해 +${Math.round((LULL_MULT - 1) * 100)}%, 첫 울음도 멈췄다가 깨어나면 곧바로 이어진다\n「탯줄을 끊는다」 최대 체력 ${Math.round(SEVER_HP * 100)}%만큼 베이고 출혈 ${SEVER_BLEED}. 탯줄이 모두 끊겨 다시 자라지 않는다. 끊긴 탯줄마다 태어난 것이 체력 ${Math.round(SEVER_TEAR * 100)}%를 쏟는다. 태어난 것 힘 +${SEVER_STR}\n「그것의 눈을 본다」 정신력 -${GAZE_SAN}, 통찰 +1. 주고받는 공격 피해 +${Math.round((LINK_MULT - 1) * 100)}%, 어떤 속성으로도 버팀이 깎인다`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
@@ -693,13 +694,13 @@ function cryMove(name: string, turns: number) {
   return {
     name,
     intent: 'special' as const,
-    desc: `첫 울음 — 내 턴이 ${turns}번 끝나면 ${CRY_BASE} + 혜성 탯줄마다 ${CRY_PER_CORD} 피해(방어도 무시), 정신력 -${CRY_SAN}. 태어난 것을 붕괴시키면 멎는다`,
+    desc: `내 턴이 ${turns}번 끝나면 첫 울음이 터진다. 피해 ${CRY_BASE} + 혜성 탯줄마다 ${CRY_PER_CORD}(방어도 무시), 정신력 -${CRY_SAN}. 태어난 것을 붕괴시키면 멎는다`,
     run(c: Combat, e: EnemyUnit) {
       e.mem.cryAt = c.s.turn;
       delete e.mem.wakeCry;
       // 큰 박자: 울음 다음엔 탄생의 빛 (둘은 번갈아 온다)
       e.mem.big = 1;
-      if (c.apply(c.p, 'a5-cry', turns, e) > 0) c.emit({ t: 'text', uid: e.uid, text: `첫 울음이 차오른다 — ${turns}턴`, tone: 'eldritch' });
+      if (c.apply(c.p, 'a5-cry', turns, e) > 0) c.emit({ t: 'text', uid: e.uid, text: `첫 울음이 차오른다 (${turns}턴)`, tone: 'eldritch' });
     },
   };
 }
@@ -721,10 +722,10 @@ reg.enemies([
     eldritch: true,
     tags: ['fetus', 'star'],
     traits: ['a5-unborn', 'a5-dreaming', 'a5-grasp', 'a5-birth'],
-    desc: '우주 한가운데, 성운의 양막 속에 웅크린 거대한 태아. 우리 세계는 그것이 꾸는 꿈이고, 1층부터 당신을 부르던 아래의 목소리는 그 꿈의 잠꼬대였다.',
+    desc: '우주 한가운데, 성운의 양막 속에 웅크린 거대한 태아. 우리 세계는 그것이 꾸는 꿈이다. 1층부터 당신을 부르던 아래의 목소리는 그 꿈의 잠꼬대였다.',
     moves: {
       // ── 1. 별의 태아 (잠든 태아) ──
-      lullaby: mv.horror('자장가', 12, { then: (c, e) => lull(c, e), desc: `정신 피해, 졸음 +1 (${DROWSY_MAX}이 되면 잠에 빠진다 — 적을 붕괴시키거나 쓰러뜨리면 깬다)` }),
+      lullaby: mv.horror('자장가', 12, { then: (c, e) => lull(c, e), desc: `정신 피해, 졸음 +1. 졸음이 ${DROWSY_MAX}이 되면 잠에 빠진다 (적을 붕괴시키거나 쓰러뜨리면 깬다)` }),
       kick: mv.attack('태동', 28, { melee: false }),
       pulse: mv.attack('양막의 파동', 8, { hits: 3, melee: false, type: 'arcane' }),
       curl: mv.charge('몸을 웅크린다', 54),
@@ -759,7 +760,7 @@ reg.enemies([
           if ((e.st['a5-cradled'] ?? 0) > 0) return;
           // 멈춰 있던 울음은 그대로 이어지고, 머금고 있지 않았으면 곧바로 머금는다
           if (!((c.p.st['a5-cry'] ?? 0) > 0)) e.mem.wakeCry = 1;
-          c.emit({ t: 'text', uid: e.uid, text: '깨어났다 — 울음이 목까지 차올라 있다', tone: 'bad' });
+          c.emit({ t: 'text', uid: e.uid, text: '깨어났다. 울음이 목까지 차올라 있다', tone: 'bad' });
         },
       },
       lash: mv.attack('혜성 채찍', 12, { hits: 3, melee: false, type: 'slash' }),
@@ -769,7 +770,7 @@ reg.enemies([
         extra: ['debuff'],
         cine: 'eye',
         then: grasp,
-        desc: `쥐어짜고, 이번 턴 당신이 마지막으로 쓴 기술을 꼭 쥔다 — 태어난 것을 붕괴시키거나 ${GRASP_TURNS}턴이 지나야 놓는다. 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
+        desc: `쥐어짠 뒤 이번 턴에 내가 마지막으로 쓴 기술을 꼭 쥔다. 태어난 것을 붕괴시키거나 ${GRASP_TURNS}턴이 지나야 놓는다. 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
       }),
       // 탄생의 빛: 울음이 지나가면 모은다 (예고 → 다음 턴 큰 화염 피해, 붕괴시키면 흩어진다)
       gather: {
@@ -779,7 +780,7 @@ reg.enemies([
             e.mem.lightAt = c.s.turn;
           },
         }),
-        desc: '탄생의 빛을 모은다 — 다음 턴 큰 화염 피해. 붕괴시키면 흩어진다',
+        desc: '다음 턴에 큰 화염 피해를 쏟는다. 붕괴시키면 흩어진다',
       },
       birthlight: release(mv.attack('탄생의 빛', BIRTHLIGHT_DMG, { melee: false, type: 'fire', ultimate: true, cine: 'beam' })),
     },
@@ -792,7 +793,7 @@ reg.enemies([
         c.s.anomaly = DREAMS[0];
         e.mem.dream = 0;
         e.mem.dreamTurn = c.s.turn + 1;
-        c.emit({ t: 'text', uid: e.uid, text: `태아가 꿈을 꾼다 — 「${dreamName(DREAMS[0])}」`, tone: 'eldritch' });
+        c.emit({ t: 'text', uid: e.uid, text: `태아가 꿈을 꾼다: 「${dreamName(DREAMS[0])}」`, tone: 'eldritch' });
       }
       // 화면 너머의 당신을 알아본다
       cine(c, 'whisper', { uid: e.uid, text: FETUS_LINES.wake });
@@ -847,7 +848,7 @@ reg.enemies([
     reachable: true,
     eldritch: true,
     tags: ['fetus', 'star'],
-    desc: '태아에게서 뻗어 나온 탯줄. 혜성처럼 빛의 꼬리를 끌며 별빛을 빨아 태아에게 먹인다. 뒷열에 있어도 근접으로 닿는다.',
+    desc: '태아에게서 뻗어 나온 탯줄. 혜성처럼 빛의 꼬리를 끌며 별빛을 빨아 태아에게 먹인다. 후열에 있어도 근접 공격이 닿는다.',
     moves: {
       feed: {
         name: '별빛을 먹인다',

@@ -342,7 +342,7 @@ reg.skills([
     target: 'all',
     tags: ['debuff'],
     vals: { weak: 1 },
-    desc: '적의 전열과 후열을 뒤바꾸고, 적 전체 약화 {weak}',
+    desc: '적의 전열과 후열을 뒤바꾼다. 적 전체 약화 {weak}',
     run: (c, u) => {
       swapRows(c);
       for (const e of c.alive) c.apply(e, 'weak', u.v('weak'), c.p);
@@ -645,7 +645,7 @@ reg.skills([
     type: 'arcane',
     tags: ['attack', 'debuff', 'buff'],
     vals: { dmg: [6, 8] },
-    desc: '{D:dmg} 비전 피해. 대상의 이로운 효과(힘·보호막·재생·회피 등)를 모두 떼어 내 것으로 삼는다',
+    desc: '{D:dmg} 비전 피해. 대상의 이로운 효과(힘·보호막·재생·회피 등)를 모두 떼어 와 내 것으로 삼는다',
     run: (c, u, t) => {
       hit(c, u, t);
       if (!t || t.dead) return;
@@ -786,7 +786,7 @@ reg.skills([
     target: 'self',
     tags: ['insight'],
     vals: { san: 4 },
-    desc: '이번 전투의 모든 적의 약점이 드러난다. 정신력 -{san}',
+    desc: '적 전체의 약점이 드러난다. 정신력 -{san}',
     run: (c, u) => {
       for (const e of c.alive) {
         for (const w of e.weak) {
@@ -870,7 +870,7 @@ reg.essences([
     stats: { maxHp: 12 },
     passive: {
       name: '원형질',
-      desc: '적의 턴마다 처음 받는 공격 피해 -3',
+      desc: '적의 차례마다 처음 받는 공격 피해 -3',
       hooks: {
         onTurnStart(_c, s) {
           delete s.unit.st._a3ooze;

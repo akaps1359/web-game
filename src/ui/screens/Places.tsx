@@ -1,9 +1,9 @@
 import { useState } from 'preact/hooks';
 import { ESSENCES, MADNESS, EQUIPS } from '../../engine/registry';
-import { CAMP_INFO, camp, campRefuel, cureMadness, CURE_COST, forbiddenOffer, acceptForbidden, leavePlace, PRAY_SANITY, purgeEssence, removalCost, shrinePray, type CampAction } from '../../engine/places';
+import { CAMP_INFO, camp, campDesc, campRefuel, cureMadness, CURE_COST, forbiddenOffer, acceptForbidden, leavePlace, PRAY_SANITY, purgeEssence, removalCost, shrinePray, type CampAction } from '../../engine/places';
 import { applyAsk } from '../ask';
 import { store } from '../../state/store';
-import { EssenceCard, SkillCard } from '../cards';
+import { EssenceCard, SkillCard, lootClue } from '../cards';
 import { FlaskList } from '../flasks';
 import { Icon, showTip } from '../components';
 import { RunHud } from '../Hud';
@@ -46,7 +46,7 @@ export function CampScreen() {
                     store.sheet = { kind: 'pick', title: '수련할 스킬', purpose: 'train-camp' };
                     store.emit();
                   } else if (k === 'tinker') setTinker(true);
-                  else void applyAsk({ title: CAMP_INFO[k].name, icon: CAMP_ICON[k], body: `${CAMP_INFO[k].desc} · ${CAMP_INFO[k].hours}시간이 흐른다. 야영지에선 한 가지만 할 수 있다.`, ok: '한다' }, (r) => camp(r, k));
+                  else void applyAsk({ title: CAMP_INFO[k].name, icon: CAMP_ICON[k], body: `${campDesc(run, k)} · ${CAMP_INFO[k].hours}시간이 흐른다. 야영지에선 한 가지만 할 수 있다.`, ok: '한다' }, (r) => camp(r, k));
                 }}
               >
                 <div class="badge">
@@ -55,7 +55,7 @@ export function CampScreen() {
                 <div class="body">
                   <div class="name">{CAMP_INFO[k].name}</div>
                   <div class="desc">
-                    {CAMP_INFO[k].desc} · {CAMP_INFO[k].hours}시간
+                    {campDesc(run, k)} · {CAMP_INFO[k].hours}시간
                   </div>
                 </div>
               </button>
@@ -204,7 +204,7 @@ export function ShrineScreen() {
                   <button
                     class="btn danger wide"
                     disabled={ESSENCES.get(es.id)?.lord || run.player.gold < removalCost(run)}
-                    onClick={() => applyAsk({ title: `${ESSENCES.get(es.id)?.name ?? '정수'}를 지울까요?`, icon: 'gi:heart-beats', body: `${removalCost(run)} 골드. 이 정수가 준 스탯·패시브·스킬이 모두 사라지고 되돌릴 수 없다.`, ok: '지운다', danger: true }, (r) => purgeEssence(r, es.uid), '정수를 지웠다').then(() => setMode('main'))}
+                    onClick={() => applyAsk({ title: `${ESSENCES.get(es.id)?.name ?? '정수'}를 지울까요?`, icon: 'gi:heart-beats', body: `${removalCost(run)} 골드. 이 정수가 준 스탯·패시브·스킬이 모두 사라지고 되돌릴 수 없어요.`, ok: '지운다', danger: true }, (r) => purgeEssence(r, es.uid), '정수를 지웠다').then(() => setMode('main'))}
                   >
                     지운다
                   </button>
@@ -242,7 +242,7 @@ export function ShrineScreen() {
           <div class="list">
             <div class="section-label">금기의 지식 하나를 받아들인다</div>
             {offers.map((id) => (
-              <SkillCard id={id} onClick={() => applyAsk({ title: '금기를 받아들일까요?', icon: 'gi:tentacle-heart', color: 'var(--eldritch)', body: '최대 정신력 -8을 바치고 이 스킬을 얻는다.', ok: '받아들인다', danger: true }, (r) => acceptForbidden(r, id)).then(() => setMode('main'))} />
+              <SkillCard id={id} clue={lootClue(run, { kind: 'skill', id })} onClick={() => applyAsk({ title: '금기를 받아들일까요?', icon: 'gi:tentacle-heart', color: 'var(--eldritch)', body: '최대 정신력 -8을 바치고 이 스킬을 얻어요.', ok: '받아들인다', danger: true }, (r) => acceptForbidden(r, id)).then(() => setMode('main'))} />
             ))}
             <button class="btn ghost" onClick={() => setMode('main')}>
               거절한다

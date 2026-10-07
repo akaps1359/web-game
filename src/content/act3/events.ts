@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { reg, ENEMIES, EQUIPS, MADNESS, SKILLS } from '../../engine/registry';
 import { finish } from '../../engine/events';
 import { advanceTime, connectSeen, distances, floorSignal, reveal, revealPath, shiftCorridors } from '../../engine/dungeon';
@@ -24,7 +25,7 @@ import { INSIGHT_PRICE, canTakeMadness, cutMaxSanity, floorFoes, learnWeak, take
 function sanity(run: RunState, n: number): string {
   const r = loseSanityRun(run, n);
   if (r.fatal) return ' 정신이 완전히 무너졌다.';
-  if (r.madness) return ` 정신이 무너졌다 — ${MADNESS.get(r.madness)?.name ?? '광기'}.`;
+  if (r.madness) return ` 정신이 무너졌다. (${MADNESS.get(r.madness)?.name ?? '광기'})`;
   return '';
 }
 
@@ -85,7 +86,7 @@ reg.events([
     acts: [3],
     stages: {
       start: () => ({
-        text: '오각형 방의 한 모서리가 이상하게 날카롭다. 아무리 봐도 각도가 맞지 않는다. 모서리 안쪽에서 푸른 연기가 새어 나오고, 오래 굶주린 무언가가 냄새를 맡는 소리가 들린다.',
+        text: '오각형 방의 한 모서리가 유난히 날카롭다. 아무리 봐도 각도가 맞지 않는다. 모서리 안쪽에서 푸른 연기가 새어 나온다. 오래 굶주린 것이 킁킁거리며 냄새를 맡는 소리가 들린다.',
         choices: [
           {
             label: '모서리를 얼음으로 메운다',
@@ -110,13 +111,13 @@ reg.events([
             hint: '각도의 사냥개·각도의 왕의 약점을 알게 된다, 위험',
             go: (r, e) => {
               const note = weakNote(learnWeak(r, ANGLES));
-              if (rng(r, 'event').chance(0.5)) finish(e, '모서리 너머로 굽은 시간이 보였다. 그 속을 헤매는 것들이 어디가 무른지도. 다행히 그것들은 아직 당신을 보지 못했다.' + note + sanity(r, 6));
+              if (rng(r, 'event').chance(0.5)) finish(e, '모서리 너머로 굽은 시간이 보였다. 그 속을 헤매는 것들이 어디가 무른지도. 다행히 그것들은 아직 이쪽을 보지 못했다.' + note + sanity(r, 6));
               else finish(e, '눈이 마주쳤다. 푸른 고름을 흘리며 그것들이 모서리를 비집고 나온다!' + note, { fight: 'a3-hounds' });
             },
           },
           {
             label: '벽의 각도를 따라 걷는다',
-            hint: '복도가 뒤틀리고, 주변 지도가 드러난다',
+            hint: '복도가 뒤틀리고 주변 지도가 드러난다',
             go: (r, e) => {
               const f = r.floor;
               if (f) {
@@ -148,7 +149,7 @@ reg.events([
             go: (r, e) => {
               const id = rollEquip(r, 'normal');
               let got: string;
-              if (id && gainEquip(r, id)) got = `${EQUIPS.get(id)?.name ?? '장비'}을(를) 챙겼다.`;
+              if (id && gainEquip(r, id)) got = `${EQUIPS.get(id)?.name ?? '장비'}${josa(EQUIPS.get(id)?.name ?? '장비', '을')} 챙겼다.`;
               else {
                 r.player.gold += 35;
                 got = '골드 +35.';
@@ -182,7 +183,7 @@ reg.events([
     weight: 1.4,
     stages: {
       start: (run) => ({
-        text: '오각형 회랑의 벽 전체에 벽화가 새겨져 있다. 통 같은 몸에 별 모양 머리를 한 것들이 별에서 내려와 도시를 쌓고, 검은 원형질을 빚어 부린다. 회랑 끝으로 갈수록 선이 거칠어지고, 같은 장면이 몇 번이고 덧새겨져 있다.',
+        text: '오각형 회랑의 벽 전체에 벽화가 새겨져 있다. 통 같은 몸에 별 모양 머리를 한 것들이 별에서 내려와 도시를 쌓고 검은 원형질을 빚어 부린다. 회랑 끝으로 갈수록 선이 거칠어진다. 같은 장면이 몇 번이고 덧새겨져 있다.',
         choices: [
           {
             label: '도시를 쌓는 장면을 따라 그린다 (2시간)',
@@ -194,7 +195,7 @@ reg.events([
               const slotted = all.filter((s) => r.slots.includes(s.uid));
               const s = rng(r, 'event').pick(slotted.length ? slotted : all);
               upgradeSkill(r, s.uid);
-              finish(e, `돌을 다루는 그들의 손놀림을 따라 그리다 보니, 내 손도 조금 달라졌다. (${SKILLS.get(s.id)?.name ?? '스킬'} 강화, 2시간 경과)`);
+              finish(e, `돌을 다루는 그들의 손놀림을 따라 그리다 보니 내 손도 조금 달라졌다. (${SKILLS.get(s.id)?.name ?? '스킬'} 강화, 2시간 경과)`);
             },
           },
           {
@@ -217,7 +218,7 @@ reg.events([
               lordSignal(r, 'a3-murals', 'revolt');
               finish(
                 e,
-                '마지막 벽화에서 노예들이 주인들을 삼키고 있었다. 새긴 손은 떨리고 있었다. 벽화 아래 얼음 틈에서 그 손의 주인이 떨어뜨린 것을 주웠다.' + sanity(r, 12),
+                '마지막 벽화에서는 노예들이 주인들을 삼키고 있었다. 새긴 손이 떨렸는지 선이 삐뚤빼뚤했다. 벽화 아래 얼음 틈에서 그 손의 주인이 떨어뜨린 것을 주웠다.' + sanity(r, 12),
                 { loot: relicLoot(r) },
               );
             },
@@ -235,7 +236,7 @@ reg.events([
     weight: 1.4,
     stages: {
       start: (run) => ({
-        text: '검은 얼음벽 속에 거대한 형체가 갇혀 있다. 펼친 막날개, 통 같은 몸통, 별 모양의 머리. 얼음 너머로 다섯 개의 눈이 반쯤 떠져 있다. 그것은 무언가를 촉수로 감싸 안고 있다.',
+        text: '검은 얼음벽 속에 거대한 형체가 갇혀 있다. 펼친 막날개, 통 같은 몸통, 별 모양의 머리. 얼음 너머로 반쯤 뜬 다섯 개의 눈이 보인다. 촉수로 무언가를 감싸 안고 있다.',
         choices: [
           {
             label: '등유를 부어 얼음을 녹인다',
@@ -255,7 +256,7 @@ reg.events([
             go: (r, e) => {
               const n = hurtRun(r, 10);
               const id = rollEquip(r, 'elite');
-              finish(e, `얼음 조각이 손등을 베었지만, 촉수 사이에 끼어 있던 물건을 빼냈다. (체력 -${n})`, {
+              finish(e, `얼음 조각이 손등을 베었지만 촉수 사이에 끼어 있던 물건을 빼냈다. (체력 -${n})`, {
                 loot: id ? [{ kind: 'equip', id }] : [{ kind: 'gold', id: 'gold', n: 45 }],
               });
             },
@@ -265,7 +266,7 @@ reg.events([
             hint: '의지 +1 (영구), 정신력 -12',
             go: (r, e) => {
               r.player.will += 1;
-              finish(e, '얼음 너머의 눈동자가 아주 천천히 당신을 따라 움직였다. 그것은 오래전부터 깨어 있었다. 끝까지 눈을 피하지 않았다. 이제 웬만한 것은 견딜 수 있다. (의지 +1)' + sanity(r, 12));
+              finish(e, '얼음 너머의 눈동자가 아주 천천히 당신을 따라 움직였다. 그것은 오래전부터 깨어 있었다. 끝까지 눈을 피하지 않고 버텼다. 이제 웬만한 것은 견딜 수 있다. (의지 +1)' + sanity(r, 12));
             },
           },
           { label: '건드리지 않는다', go: (_r, e) => finish(e, '지나가는 내내, 다섯 개의 눈이 등 뒤를 따라왔다.') },
@@ -281,7 +282,7 @@ reg.events([
     weight: 1.4,
     stages: {
       start: () => ({
-        text: '어두운 터널 저편에서 피리 소리가 들린다. 테켈리-리. 테켈리-리. 처음엔 바람 소리인 줄 알았다. 소리는 점점 가까워지고, 터널을 꽉 채운 무언가가 미끄러지는 소리가 그 뒤를 따른다.',
+        text: '어두운 터널 저편에서 피리 소리가 들린다. 테켈리-리. 테켈리-리. 처음엔 바람 소리인 줄 알았다. 소리가 점점 가까워진다. 터널을 꽉 채운 무언가가 미끄러지는 소리가 그 뒤를 따른다.',
         choices: [
           {
             label: '피리 소리를 흉내 내어 대답한다',
@@ -290,7 +291,7 @@ reg.events([
               lordSignal(r, 'a3-tekeli-li', 'answer');
               if (rng(r, 'event').chance(0.5)) {
                 const c = rollConsumable(r);
-                finish(e, '소리가 뚝 멎었다. 그것은 당신을 옛 주인으로 여긴 듯 물러갔다. 그것이 지나간 자리에 삼키다 만 것이 남아 있었다.', {
+                finish(e, '소리가 뚝 멎었다. 그것은 당신을 옛 주인으로 여긴 듯 물러갔다. 지나간 자리에 삼키다 만 것이 남아 있었다.', {
                   loot: c ? [{ kind: 'consumable', id: c }] : [{ kind: 'gold', id: 'gold', n: 40 }],
                 });
               } else finish(e, '대답이 틀렸다. 피리 소리가 비명처럼 높아지며 원형질이 터널을 메우고 쏟아진다!', { fight: 'a3-spawn-pair' });
@@ -301,7 +302,7 @@ reg.events([
             hint: '시간이 흐른다',
             go: (r, e) => {
               advanceTime(r, 2);
-              finish(e, '거대한 원형질이 터널을 꽉 메운 채 지나갔다. 그것이 지나간 벽은 거울처럼 매끄럽게 닦여 있었다. (2시간 경과)');
+              finish(e, '거대한 원형질이 터널을 꽉 메운 채 지나갔다. 쓸고 간 벽이 거울처럼 매끄럽게 닦여 있었다. (2시간 경과)');
             },
           },
           {
@@ -321,13 +322,13 @@ reg.events([
     weight: 1.4,
     stages: {
       start: () => ({
-        text: '얼음 동굴 바닥에 사람 키만 한 흰 펭귄들이 모여 있다. 눈이 있어야 할 자리가 매끈하다. 그것들은 소리 나는 쪽으로 일제히 고개를 돌린다. 둥지마다 커다란 알이 하나씩 놓여 있다.',
+        text: '얼음 동굴 바닥에 사람 키만 한 흰 펭귄들이 모여 있다. 눈이 있어야 할 자리가 매끈하다. 소리가 나면 일제히 그쪽으로 고개를 돌린다. 둥지마다 커다란 알이 하나씩 놓여 있다.',
         choices: [
           {
             label: '알 하나를 훔친다',
             hint: '체력 +20… 소리를 내면 무리가 덤빈다',
             go: (r, e) => {
-              if (rng(r, 'event').chance(0.6)) finish(e, `숨을 참고 알 하나를 품에 안았다. 따뜻하고, 놀랍도록 배가 든든하다. (체력 +${healRun(r, 20)})`);
+              if (rng(r, 'event').chance(0.6)) finish(e, `숨을 참고 알 하나를 품에 안았다. 따뜻하고 놀랍도록 배가 든든하다. (체력 +${healRun(r, 20)})`);
               else finish(e, '얼음이 발밑에서 쩍 갈라졌다. 매끈한 얼굴들이 일제히 이쪽을 향한다!', { fight: 'a3-e-penguins' });
             },
           },
@@ -370,7 +371,7 @@ reg.events([
               r.light = Math.min(100, r.light + 40);
               const h = healRun(r, 15);
               lordSignal(r, 'a3-lake-camp', 'stove');
-              finish(e, `난로가 웅웅거리며 천막을 데웠다. 얼었던 손가락이 풀리고, 등불에 기름을 채웠다. 발밑의 얼음이 조금 녹아 질척해졌다. (등불 +40, 체력 +${h}, 3시간 경과)`);
+              finish(e, `난로가 웅웅거리며 천막을 데웠다. 얼었던 손가락이 풀렸다. 등불에 기름도 채웠다. 발밑의 얼음이 조금 녹아 질척해졌다. (등불 +40, 체력 +${h}, 3시간 경과)`);
             },
           },
           {
@@ -397,7 +398,7 @@ reg.events([
               });
             },
           },
-          { label: '떠난다', go: (_r, e) => finish(e, '천막을 나서는데, 안에서 누군가 메스를 내려놓는 소리가 났다.') },
+          { label: '떠난다', go: (_r, e) => finish(e, '천막을 나서는데 안에서 누군가 메스를 내려놓는 소리가 났다.') },
         ],
       }),
     },
@@ -432,7 +433,7 @@ reg.events([
                 const portal = f.rooms[f.portal];
                 if (portal) portal.seen = portal.scouted = true;
               }
-              finish(e, '증기를 보지 않으려 애쓰며, 봉우리 사이로 난 길만 눈에 새겼다. 아래로 이어지는 비석이 보였다.' + sanity(r, 5));
+              finish(e, '증기를 보지 않으려 애쓰며 봉우리 사이로 난 길만 눈에 새겼다. 아래로 이어지는 비석이 보였다.' + sanity(r, 5));
             },
           },
           { label: '눈을 돌린다', hint: '정신력 +6', go: (r, e) => finish(e, `창에서 등을 돌리자 숨이 쉬어졌다. (정신력 +${gainSanityRun(r, 6)})`) },

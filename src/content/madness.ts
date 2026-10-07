@@ -151,9 +151,10 @@ reg.madness([
     name: '각성: 계시',
     icon: 'gi:all-seeing-eye',
     virtue: true,
-    desc: '통찰 +2',
+    // 2026-10 2차: +2 → +1 (붕괴가 잦아져 각성도 자주 나온다)
+    desc: '통찰 +1',
     onGain(run) {
-      run.player.insight += 2;
+      run.player.insight += 1;
     },
   },
 ]);

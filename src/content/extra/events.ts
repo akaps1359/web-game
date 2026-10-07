@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { reg, ENCOUNTERS, MADNESS, RELICS, RUNES } from '../../engine/registry';
 import { finish } from '../../engine/events';
 import { advanceTime, distances } from '../../engine/dungeon';
@@ -28,7 +29,7 @@ const CHESS_MAX = 0.75;
 function sanity(run: RunState, n: number): string {
   const r = loseSanityRun(run, n);
   if (r.fatal) return ' 정신이 완전히 무너졌다.';
-  if (r.madness) return ` 정신이 무너졌다 — ${MADNESS.get(r.madness)?.name ?? '광기'}.`;
+  if (r.madness) return ` 정신이 무너졌다. (${MADNESS.get(r.madness)?.name ?? '광기'})`;
   return '';
 }
 
@@ -110,7 +111,7 @@ reg.events([
                 const id = rollRune(r);
                 if (id) loot.push({ kind: 'rune', id });
               }
-              finish(e, '노인이 당신의 이마에 손을 얹었다. 어린 시절의 어떤 오후가 통째로 사라졌다.' + sanity(r, 12), { loot });
+              finish(e, '노인이 내 이마에 손을 얹었다. 어린 시절의 어떤 오후가 통째로 사라졌다.' + sanity(r, 12), { loot });
             },
           },
           { label: '그냥 지나간다', go: (_r, e) => finish(e, '끌 소리가 등 뒤에서 한참 이어졌다.') },
@@ -158,7 +159,7 @@ reg.events([
               hint: '정신력 +8',
               go: (r, e) => finish(e, `굳은 피를 긁어내자 제단은 그저 돌이 되었다. (정신력 +${gainSanityRun(r, 8)})`),
             },
-            { label: '떠난다', go: (_r, e) => finish(e, '돌판의 떨림이 멎었다. 다음 손님을 기다리는 것이다.') },
+            { label: '떠난다', go: (_r, e) => finish(e, '돌판의 떨림이 멎었다. 다음 손님을 기다리는 모양이다.') },
           ],
         };
       },
@@ -171,7 +172,7 @@ reg.events([
     acts: [2, 3, 4],
     stages: {
       start: (run) => ({
-        text: '두건 쓴 형체가 빈 의자를 마주하고 체스를 두고 있다. 상대편의 말이 저절로 움직인다. 형체가 당신에게 빈자리를 가리킨다.',
+        text: '두건 쓴 형체가 빈 의자를 마주하고 체스를 두고 있다. 상대편의 말이 저절로 움직인다. 형체가 손을 들어 빈자리를 권한다.',
         choices: [
           {
             label: '대국을 받아들인다',
@@ -183,7 +184,7 @@ reg.events([
               if (win) {
                 const n = upgradeRandom(r, 2);
                 finish(e, `외통수. 형체가 고개를 숙이자 손끝에 수읽기의 감각이 남았다. (스킬 ${n}개 강화)`);
-              } else finish(e, '당신의 왕이 쓰러지는 순간, 머릿속의 무언가도 함께 쓰러졌다.' + sanity(r, 15));
+              } else finish(e, '내 왕이 쓰러지는 순간, 머릿속의 무언가도 함께 쓰러졌다.' + sanity(r, 15));
             },
           },
           {
@@ -192,7 +193,7 @@ reg.events([
             disabled: !encPool(run, 'normal').length && '아무도 응하지 않는다',
             go: (r, e) => {
               const enc = pickEnc(r, 'normal');
-              if (enc) finish(e, '말들이 바닥에 흩어지자, 그림자 속의 하수인들이 일어섰다!', { fight: enc });
+              if (enc) finish(e, '말들이 바닥에 흩어지자 그림자 속의 하수인들이 일어섰다!', { fight: enc });
               else finish(e, '판이 뒤집혔지만 아무 일도 일어나지 않았다.');
             },
           },
@@ -203,7 +204,7 @@ reg.events([
               const names = learnWeak(r, floorFoes(r));
               finish(
                 e,
-                '보이지 않는 상대의 수가 보이기 시작했다. 그것은 체스가 아니었다. 판 위의 말들은 이 층의 것들이었고, 어느 말이 어디로 무너지는지 다 보였다.' +
+                '보이지 않는 상대의 수가 보이기 시작했다. 그것은 체스가 아니었다. 판 위의 말들은 이 층의 것들이었고 어느 말이 어디로 무너지는지 다 보였다.' +
                   weakNote(names) +
                   (names.length ? sanity(r, 10) : ''),
               );
@@ -237,7 +238,7 @@ reg.events([
                 return;
               }
               r.relics = r.relics.filter((x) => x.id !== old.id);
-              finish(e, `상인이 ${oldDef?.name ?? '유물'}을(를) 가면 속으로 삼키고, 다른 것을 내밀었다.`, { loot: [{ kind: 'relic', id }] });
+              finish(e, `상인이 ${oldDef?.name ?? '유물'}${josa(oldDef?.name ?? '유물', '을')} 가면 속으로 삼키고 다른 것을 내밀었다.`, { loot: [{ kind: 'relic', id }] });
             },
           },
           {
@@ -260,7 +261,7 @@ reg.events([
             hint: '골드 +50, 정신력 -8',
             go: (r, e) => {
               r.player.gold += 50;
-              finish(e, '가면이 당신의 얼굴을 잠시 흉내 냈다. 주머니가 무거워졌다. (골드 +50)' + sanity(r, 8));
+              finish(e, '가면이 잠시 내 얼굴을 흉내 냈다. 주머니가 무거워졌다. (골드 +50)' + sanity(r, 8));
             },
           },
           { label: '거래하지 않는다', go: (_r, e) => finish(e, '"언젠가는 팔게 될 거야." 상인이 어둠 속으로 녹아들었다.') },

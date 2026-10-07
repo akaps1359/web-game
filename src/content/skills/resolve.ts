@@ -15,6 +15,8 @@ reg.skills([
     target: 'single',
     type: 'blunt',
     tags: ['attack', 'block'],
+    makes: [],
+    reads: ['block'],
     vals: { dmg: [6, 7], pct: [50, 75] },
     desc: '{D:dmg} + 현재 방어도의 {pct}% 타격 피해',
     // 방어도 비례 피해도 위력(메아리·절약 각인)을 따른다
@@ -31,6 +33,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'sanity'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [6, 8], san: [3, 4] },
     desc: '방어도 {B:blk}, 정신력 +{san}',
     run: (c, u) => {
@@ -49,8 +53,10 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'retain'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [5, 8], turns: 2 },
-    desc: '방어도 {B:blk}. {turns}턴 동안 방어도가 사라지지 않음',
+    desc: '방어도 {B:blk}. {turns}턴 동안 방어도 유지',
     run: (c, u) => {
       guard(c, u);
       c.apply(c.p, 'retain', u.v('turns'), c.p);
@@ -67,6 +73,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'counter'],
+    makes: ['block', 'counter'],
+    reads: [],
     vals: { blk: [7, 10], counter: [3, 4] },
     desc: '방어도 {B:blk}, 반격 {counter} (다음 내 턴까지)',
     run: (c, u) => {
@@ -85,6 +93,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [16, 22] },
     desc: '방어도 {B:blk}',
     run: (c, u) => void guard(c, u),
@@ -100,6 +110,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block'],
+    makes: ['block'],
+    reads: [],
     vals: { pct: [35, 50] },
     desc: '잃은 체력의 {pct}%만큼 방어도',
     run: (c, u) => void guard(c, u, Math.floor(((c.p.maxHp - c.p.hp) * u.v('pct') * u.power) / 100)),
@@ -115,6 +127,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['buff', 'sanity'],
+    makes: [],
+    reads: [],
     vals: { str: 1, san: 2 },
     desc: '힘 +{str} (전투 동안), 정신력 +{san}',
     run: (c, u) => {
@@ -134,6 +148,8 @@ reg.skills([
     target: 'single',
     type: 'blunt',
     tags: ['attack', 'block'],
+    makes: [],
+    reads: ['block'],
     vals: { poise: [0, 1] },
     desc: '현재 방어도만큼 타격 피해. 버팀 추가 -{poise}',
     run: (c, u, t) => void hit(c, u, t, { dmg: Math.floor(c.p.block * u.power) }),

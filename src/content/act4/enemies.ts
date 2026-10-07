@@ -129,7 +129,7 @@ reg.traits([
   {
     id: 'a4-scarab-curse',
     name: '왕의 저주',
-    desc: '파라오의 심판은 풍뎅이 떼가 나눠 짊어진다 — 풍뎅이를 모두 쓰러뜨리면 풀린다 (풍뎅이가 없으면 파라오가 짊어진다)',
+    desc: '파라오의 심판은 풍뎅이 떼가 나눠 짊어진다. 풍뎅이를 모두 쓰러뜨리면 풀린다. 풍뎅이가 없으면 파라오가 짊어진다',
     hooks: {},
   },
   {
@@ -166,7 +166,7 @@ reg.traits([
   {
     id: 'a4-masks',
     name: '천의 가면',
-    desc: '지난 턴 당신이 가한 가장 강한 일격을 기억했다가 「메아리」로 되돌려준다. 가면을 바꿔 쓰면 약점이 바뀐다. 가면 하나는 거짓말을 한다 — 「천 개의 가면」을 쓰는 척 덮칠 때가 있다 (통찰 3이면 보인다)',
+    desc: '지난 턴에 받은 가장 강한 일격을 기억했다가 「메아리」로 되돌려준다. 가면을 바꿔 쓰면 약점이 바뀐다. 가면 하나는 거짓말을 한다. 「천 개의 가면」을 쓰는 척하다가 덮칠 때가 있다 (통찰 3이면 보인다)',
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -198,7 +198,7 @@ reg.traits([
   {
     id: 'a4-chronicle',
     name: '시간의 기록',
-    desc: '지난 몸을 기억한다 — 「시간 되감기」로 두 차례 전의 체력으로 돌아간다',
+    desc: '지난 몸을 기억한다. 「시간 되감기」로 두 차례 전의 체력으로 돌아간다',
     hooks: {
       onUnitTurnStart(c) {
         // 「정신 교환」으로 뒤섞였던 기억은 봉인이 풀리면 제자리를 찾는다
@@ -218,7 +218,7 @@ reg.traits([
   {
     id: 'a4-bodythief',
     name: '몸 도둑',
-    desc: `당신이 자신보다 체력 비율이 ${Math.round(SWAP_GAP * 100)}%p 이상 높으면 「몸 바꾸기」를 준비한다 — 다음 차례 체력 비율이 서로 뒤바뀐다 (최대 ${Math.round(SWAP_CAP * 100)}%p, 방어도로 막을 수 없다). 준비하는 동안 붕괴시키거나, 최대 체력의 ${Math.round(SWAP_BREAK * 100)}%만큼 피해(지속 피해 포함)를 주면 끊긴다 (전투마다 ${SWAP_MAX}번까지)`,
+    desc: `내 체력 비율이 방랑자보다 ${Math.round(SWAP_GAP * 100)}%p 이상 높으면 「몸 바꾸기」를 준비한다. 다음 차례에 체력 비율이 최대 ${Math.round(SWAP_CAP * 100)}%p만큼 서로 뒤바뀐다. 방어도로는 막을 수 없다. 준비하는 동안 붕괴시키거나 최대 체력의 ${Math.round(SWAP_BREAK * 100)}%만큼 피해(지속 피해 포함)를 주면 끊긴다. 전투마다 ${SWAP_MAX}번까지`,
     hooks: {
       onDamageTaken(c, s, d) {
         if (isEnemy(s.unit) && d.tgt === s.unit) shakeReach(c, s.unit, d.hpLoss + d.blocked);
@@ -239,7 +239,7 @@ reg.traits([
   {
     id: 'a4-unison',
     name: '하나 되는 빛',
-    desc: '「모든 것이 하나」의 빛은 문과 살아 있는 구체마다 한 줄기씩 모인다 — 구체를 부수면 모이던 빛줄기가 바로 줄어든다',
+    desc: '「모든 것이 하나」의 빛은 문과 살아 있는 구체마다 한 줄기씩 모인다. 구체를 부수면 모이던 빛줄기가 바로 줄어든다',
     hooks: {
       onAnyDeath(c, _s, victim) {
         if (isEnemy(victim) && GATE_ORBS.includes(victim.def)) recountUnison(c);
@@ -249,7 +249,7 @@ reg.traits([
   {
     id: 'a4-folding',
     name: '접히는 차원',
-    desc: '차원을 접는 동안(힘을 모으는 동안) 문이 전열로 끌려 나와 근접 공격이 닿는다. 접힌 차원이 펴지면 다시 뒤로 물러난다',
+    desc: '차원을 접어 힘을 모으는 동안 문이 전열로 끌려 나와 근접 공격이 닿는다. 접힌 차원이 펴지면 다시 뒤로 물러난다',
     hooks: {
       onUnitTurnEnd(c, s) {
         if (isEnemy(s.unit)) unfold(c, s.unit);
@@ -262,7 +262,7 @@ reg.traits([
   {
     id: 'a4-unmasking',
     name: '황금 가면',
-    desc: '체력이 절반 이하가 되면 가면이 벗겨진다 — 약점과 행동이 바뀐다',
+    desc: '체력이 절반 이하가 되면 가면이 벗겨진다. 약점과 행동이 바뀐다',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -285,7 +285,7 @@ reg.traits([
   {
     id: 'a4-liar',
     name: '거짓의 왕',
-    desc: `가면을 쓴 동안 그가 베푸는 '자비'는 거짓 의도다 — 실제로는 등을 찌른다 (통찰 ${LIAR_REVEAL}이면 진짜 의도가 보인다). 가면이 벗겨지면 「왕의 명령」으로 당신의 기술 하나를 지목한다 — 그 턴에 쓰지 않으면 정신 피해 ${DEFY_SAN}, 공포 2, 힘 +${DEFY_STR}`,
+    desc: `가면을 쓴 동안 그가 베푸는 '자비'는 거짓 의도다. 실제로는 등을 찌른다 (통찰 ${LIAR_REVEAL}이면 진짜 의도가 보인다). 가면이 벗겨지면 「왕의 명령」으로 내 기술 하나를 지목한다. 그 턴에 그 기술을 쓰지 않으면 정신 피해 ${DEFY_SAN}, 공포 2, 파라오 힘 +${DEFY_STR}`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
@@ -299,25 +299,25 @@ reg.traits([
   {
     id: 'a4-hieroglyph',
     name: '심판의 상형문자',
-    desc: `전투 셋째 턴부터, 별의 심판이 걸려 있지 않을 때 상형문자 ${GLYPH_COUNT}개를 새긴다 — 지금 당신이 낼 수 있는 피해 속성(무기 기본 공격과 장착한 공격 기술)으로만. 내 턴 ${GLYPH_TURNS}번 안에 그 속성으로 파라오를 차례대로 맞혀 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사 (결계가 한 번 막는다). 틀린 속성은 아무 일도 없고, 파라오를 붕괴시키거나 기절시켜도 지워진다. 다 지우면 파라오가 비틀거린다 (버팀 -${GLYPH_STAGGER}). 심판이 끝나면 ${GLYPH_GAP}턴 뒤에야 다시 새긴다 (전투마다 ${GLYPH_MAX}번까지)`,
+    desc: `전투 셋째 턴부터 별의 심판이 걸려 있지 않으면 상형문자 ${GLYPH_COUNT}개를 새긴다. 속성은 지금 내가 낼 수 있는 것(무기 기본 공격과 장착한 공격 기술)에서만 고른다. 내 턴 ${GLYPH_TURNS}번 안에 그 속성으로 파라오를 차례대로 맞혀 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사 (결계가 한 번 막는다). 틀린 속성으로 맞히면 아무 일도 없다. 파라오를 붕괴시키거나 기절시켜도 지워진다. 다 지우면 파라오가 비틀거린다 (버팀 -${GLYPH_STAGGER}). 심판이 끝나면 ${GLYPH_GAP}턴 뒤에야 다시 새긴다. 전투마다 ${GLYPH_MAX}번까지`,
     hooks: {},
   },
   {
     id: 'a4-overturn',
     name: '뒤집히는 대지',
-    desc: `체력을 일정량 잃을 때마다(흔들리는 대지) 고통에 몸부림치며 다음 행동이 「대지를 뒤집는다」로 바뀐다 — 덮치고, 모든 적의 열을 뒤바꾸고, 방어도 ${FLIP_BLOCK}. 문턱은 최대 체력의 ${Math.round(QUAKE_FIRST * 100)}%에서 뒤집을 때마다 ${Math.round(QUAKE_STEP * 100)}%p씩 오른다. 내 턴에 무너뜨리면 하려던 행동은 다음 차례로 미뤄진다`,
+    desc: `체력을 일정량 잃을 때마다(흔들리는 대지) 고통에 몸부림치며 다음 행동이 「대지를 뒤집는다」로 바뀐다. 덮치면서 모든 적의 열을 뒤바꾸고 방어도 ${FLIP_BLOCK}. 문턱은 최대 체력의 ${Math.round(QUAKE_FIRST * 100)}%에서 시작해 뒤집을 때마다 ${Math.round(QUAKE_STEP * 100)}%p씩 오른다. 내 턴에 무너뜨리면 하려던 행동은 다음 차례로 미뤄진다`,
     hooks: {},
   },
   {
     id: 'a4-lighteater',
     name: '빛을 먹는 별',
-    desc: `「빛을 삼킨다」와 공허의 눈이 당신에게 어둠을 쌓는다 (최대 ${DARK_MAX}). 어둠 2부터 적의 의도가 어둠에 묻히고(통찰 ${DARK_REVEAL}이면 보인다), ${DARK_MAX}이 되면 일식을 일으킨다. 검은 별을 화염이나 비전으로 공격하면(내 턴마다 한 번), 공허의 눈을 쓰러뜨리면, 검은 별을 붕괴시키면 어둠이 1씩 걷힌다`,
+    desc: `「빛을 삼킨다」와 공허의 눈이 어둠을 쌓는다 (최대 ${DARK_MAX}). 어둠 2부터 적의 의도가 어둠에 묻힌다 (통찰 ${DARK_REVEAL}이면 보인다). ${DARK_MAX}이 되면 일식을 일으킨다. 어둠은 1씩 걷힌다: 검은 별을 화염이나 비전으로 공격할 때(내 턴마다 한 번), 공허의 눈을 쓰러뜨릴 때, 검은 별을 붕괴시킬 때`,
     hooks: {},
   },
   {
     id: 'a4-event-horizon',
     name: '사건의 지평선',
-    desc: '검은 별의 차례가 시작되면 당신의 방어도가 절반이 된다',
+    desc: '검은 별의 차례가 시작되면 내 방어도가 절반이 된다',
     hooks: {
       onUnitTurnStart(c) {
         if (c.p.block > 1) {
@@ -536,7 +536,7 @@ reg.enemies([
           e.mem.rebuildUsed = 1;
           reviveAlly(c, e, 0.4);
         },
-        '쓰러진 동료 하나를 체력 40%로 꿰매어 되살린다 (외과의마다 한 번)',
+        '쓰러진 동료 하나를 체력 40%로 꿰매어 되살린다 (봉합사마다 한 번)',
       ),
     },
     ai: (c, e) => {
@@ -634,7 +634,7 @@ reg.enemies([
     moves: {
       drain: mv.attack('생기 흡수', 9, { melee: false, type: 'void' }),
       glare: mv.horror('형언할 수 없는 빛', 11, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
-      taint: mv.debuff('색채 오염', (c, e) => void c.apply(c.p, 'corrode', 1, e), { desc: '부식 1 — 받는 공격 피해 +1 (전투 내내)' }),
+      taint: mv.debuff('색채 오염', (c, e) => void c.apply(c.p, 'corrode', 1, e), { desc: '부식 1 (받는 공격 피해 +1, 전투 내내)' }),
     },
     ai: (c, e) => cycle(e, ['drain', 'glare', 'drain', 'taint']),
     visual: { tint: 0x8a6aa0, glow: 0xff80ff, fx: ['flicker', 'float'] },
@@ -713,7 +713,7 @@ reg.enemies([
         extra: ['debuff'],
         dmg: 9,
         melee: false,
-        desc: '당신의 방어도를 모두 흩어 버린 뒤 공격한다',
+        desc: '내 방어도를 모두 흩어 버리고 공격한다',
         run(c, e) {
           if (c.p.block > 0) {
             c.p.block = 0;
@@ -746,7 +746,7 @@ reg.enemies([
       offer: {
         name: '헌신',
         intent: 'special',
-        desc: '군주에게 녹아든다 — 군주 체력 12 회복, 유충은 사라진다',
+        desc: '군주에게 녹아든다. 군주 체력 12 회복, 유충은 사라진다',
         run(c, e) {
           const lord = c.alive.find((x) => x.def === 'starspawn-lord');
           if (lord) c.heal(lord, 12);
@@ -784,7 +784,7 @@ reg.enemies([
       grow: {
         name: '자라나기',
         intent: 'buff',
-        desc: '자란 새끼가 된다 — 최대 체력 +14, 힘 +2',
+        desc: '자란 새끼가 된다. 최대 체력 +14, 힘 +2',
         run(c, e) {
           e.form = 1;
           e.name = '자란 새끼';
@@ -907,7 +907,7 @@ reg.enemies([
         name: '빛 흡수',
         intent: 'heal',
         extra: ['debuff'],
-        desc: '검은 별 체력 8 회복, 당신에게 어둠 +1',
+        desc: '검은 별 체력 8 회복, 어둠 +1',
         run(c, e) {
           c.heal(c.alive.find((x) => x.def === 'black-star') ?? e, 8);
           addDark(c, e, 1);
@@ -939,7 +939,7 @@ reg.enemies([
         intent: 'attack',
         melee: false,
         dmg: (_c, e) => echoDmg(e),
-        desc: '지난 턴 당신이 가한 가장 강한 일격을 되돌려준다 (그 피해를 8~32 사이로 맞춘 뒤 이 층 적의 힘이 더해진다)',
+        desc: '지난 턴에 받은 가장 강한 일격을 되돌려준다. 그 피해를 8~32 사이로 맞추고 이 층 적의 힘을 더한다',
         run(c, e) {
           c.enemyAttack(e, { type: DMG_TYPES[e.mem.echoPlanType ?? -1] ?? 'void' });
         },
@@ -948,13 +948,13 @@ reg.enemies([
         name: '천 개의 가면',
         intent: 'buff',
         extra: ['block'],
-        desc: '가면을 바꿔 쓴다 — 약점이 바뀌고 방어도 14',
+        desc: '가면을 바꿔 쓴다. 약점이 바뀌고 방어도 14',
         run(c, e) {
           const pool = DMG_TYPES.filter((t) => !e.weak.includes(t));
           setWeak(c, e, c.rng.sample(pool, 2));
           e.form = ((e.form ?? 0) % 3) + 1;
           c.gainBlock(e, 14);
-          c.emit({ t: 'text', uid: e.uid, text: '가면이 바뀌었다 — 약점이 달라졌다', tone: 'eldritch' });
+          c.emit({ t: 'text', uid: e.uid, text: '가면이 바뀌었다. 약점이 달라졌다', tone: 'eldritch' });
         },
       },
       whisper: mv.horror('혼돈의 속삭임', 13, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
@@ -965,7 +965,7 @@ reg.enemies([
           melee: false,
           type: 'void',
           then: (c, e) => void c.apply(c.p, 'dread', 1, e),
-          desc: '가면을 바꿔 쓰는 척하다가 웃으며 덮친다 (거짓 의도), 공포 1',
+          desc: '가면을 바꿔 쓰는 척하다가 웃으며 덮친다 (거짓 의도). 공포 1',
         }),
         disguise: { kind: 'buff', label: '천 개의 가면' },
       },
@@ -1026,7 +1026,7 @@ reg.enemies([
         melee: false,
         cine: 'ink',
         then: (c, e) => entangle(c, e),
-        desc: `검은 뿌리가 솟아 발목을 휘감는다 — ${ROOT_TURNS}턴 동안 내 턴이 시작될 때 행동력 -1. 화염이나 참격 기술을 쓰거나, 어머니를 공격해 피해를 주면 끊어진다`,
+        desc: `검은 뿌리가 솟아 발목을 휘감는다. ${ROOT_TURNS}턴 동안 내 턴이 시작될 때 행동력 -1. 화염이나 참격 기술을 쓰거나 어머니를 공격해 피해를 주면 끊어진다`,
       }),
       bleat: mv.horror('천 개의 울음', 12, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       rear: mv.charge('숲이 일어선다', 42),
@@ -1071,26 +1071,26 @@ reg.enemies([
           // 기억을 빼앗긴 턴엔 기술의 이름과 설명이 뒤섞여 보인다 (방랑자의 다음 차례에 제자리를 찾는다)
           if (lockSkill(c, 2)) setUi(c, 'ui:scramble', 1);
         },
-        desc: '당신의 기억을 훔쳐 간다 — 무작위 스킬 하나가 다음 턴 동안 봉인된다',
+        desc: '기억을 훔쳐 간다. 무작위 스킬 하나가 다음 턴 동안 봉인된다',
       }),
       // 몸 바꾸기: 한 차례 예고(붕괴시키면 끊긴다) → 체력 비율이 서로 뒤바뀐다
       reach: {
         name: '몸 바꾸기 준비',
         intent: 'charge',
         charging: true,
-        desc: `시간 너머에서 당신의 몸을 더듬는다 — 다음 차례 「몸 바꾸기」: 체력 비율이 서로 뒤바뀐다 (최대 ${Math.round(SWAP_CAP * 100)}%p, 방어도로 막을 수 없다). 붕괴시키거나 최대 체력의 ${Math.round(SWAP_BREAK * 100)}%만큼 피해를 주면 끊긴다`,
+        desc: `시간 너머에서 내 몸을 더듬는다. 다음 차례에 「몸 바꾸기」로 체력 비율이 최대 ${Math.round(SWAP_CAP * 100)}%p만큼 서로 뒤바뀐다. 방어도로는 막을 수 없다. 붕괴시키거나 최대 체력의 ${Math.round(SWAP_BREAK * 100)}%만큼 피해를 주면 끊긴다`,
         run(c, e) {
           e.mem.charge = 2;
           e.mem.reachHit = 0;
           e.mem.reaches = (e.mem.reaches ?? 0) + 1;
-          c.emit({ t: 'text', uid: e.uid, text: '시간 너머에서 당신의 몸을 더듬는다…', tone: 'eldritch' });
+          c.emit({ t: 'text', uid: e.uid, text: '시간 너머에서 몸을 더듬어 온다…', tone: 'eldritch' });
         },
       },
       bodyswap: {
         name: '몸 바꾸기',
         intent: 'special',
         cine: 'timestop',
-        desc: `당신이 더 멀쩡하면 체력 비율이 서로 뒤바뀐다 — 그 차이(최대 ${Math.round(SWAP_CAP * 100)}%p)만큼 당신은 체력을 잃고 방랑자는 회복한다 (방어도로 막을 수 없다)`,
+        desc: `내가 더 멀쩡하면 체력 비율이 서로 뒤바뀐다. 그 차이(최대 ${Math.round(SWAP_CAP * 100)}%p)만큼 나는 체력을 잃고 방랑자는 회복한다. 방어도로는 막을 수 없다`,
         run(c, e) {
           bodySwap(c, e);
         },
@@ -1139,7 +1139,7 @@ reg.enemies([
     eldritch: true,
     tags: ['outer'],
     traits: ['a4-orbshield', 'a4-unison', 'a4-folding'],
-    desc: '모든 시간과 공간이 맞닿는 문. 무지갯빛 구체들이 그것을 감싼다.',
+    desc: '모든 시간과 공간이 맞닿는 문. 무지갯빛 구체들이 문을 감싸고 있다.',
     moves: {
       rays: mv.attack('구체의 빛', 6, { hits: 3, melee: false, type: 'arcane' }),
       // 문과 살아 있는 구체마다 한 줄기 — 구체가 부서지면 준비하던 의도가 바로 줄어든다 (a4-unison)
@@ -1152,7 +1152,7 @@ reg.enemies([
         hits: (c) => unisonHits(c),
         melee: false,
         cine: 'beam',
-        desc: `구체들의 빛이 하나로 모인다 — 문과 살아 있는 구체마다 한 줄기씩 ${UNISON_DMG} 비전 피해 (구체를 부수면 바로 줄어든다), 그리고 정신 피해`,
+        desc: `구체들의 빛이 하나로 모인다. 문과 살아 있는 구체마다 한 줄기씩 비전 피해 ${UNISON_DMG}, 마지막에 정신 피해. 구체를 부수면 빛줄기가 바로 줄어든다`,
         run(c, e) {
           // 제4의 벽: 모든 시간이 하나인 문은 화면 너머의 지금도 안다
           if (once(c, 'a4-unison')) cine(c, 'whisper', { uid: e.uid, text: '모든 것이 하나다.\n{hour}의 너도,\n문 앞에 설 모든 너도.' });
@@ -1174,7 +1174,7 @@ reg.enemies([
       rise: {
         ...mv.charge('차원이 접힌다', 42),
         cine: 'blackhole',
-        desc: '차원을 접어 힘을 모은다 — 다음 차례 「차원 압착」. 그동안 문이 전열로 끌려 나와 근접 공격이 닿는다',
+        desc: '차원을 접어 힘을 모은다. 다음 차례에 「차원 압착」. 그동안 문이 전열로 끌려 나와 근접 공격이 닿는다',
         run(c, e) {
           e.mem.charge = 1;
           c.emit({ t: 'text', uid: e.uid, text: '힘을 모은다…', tone: 'bad' });
@@ -1255,7 +1255,7 @@ reg.enemies([
         name: '왕의 명령',
         intent: 'special',
         extra: ['horror', 'buff'],
-        desc: `당신의 기술 하나를 지목해 명령한다 — 이번 턴 그 기술을 쓰면 흡족해하고, 쓰지 않으면 정신 피해 ${DEFY_SAN}, 공포 2, 힘 +${DEFY_STR}`,
+        desc: `내 기술 하나를 지목해 명령한다. 이번 턴에 그 기술을 쓰면 흡족해한다. 쓰지 않으면 정신 피해 ${DEFY_SAN}, 공포 2, 힘 +${DEFY_STR}`,
         run(c, e) {
           judgeCommand(c, e);
         },
@@ -1265,7 +1265,7 @@ reg.enemies([
         name: '심판의 상형문자',
         intent: 'special',
         extra: ['death'],
-        desc: `상형문자 ${GLYPH_COUNT}개를 새긴다 — 지금 당신이 낼 수 있는 피해 속성으로만. 내 턴 ${GLYPH_TURNS}번 안에 그 속성으로 파라오를 차례대로 맞혀 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사`,
+        desc: `상형문자 ${GLYPH_COUNT}개를 새긴다. 속성은 지금 내가 낼 수 있는 것 중에서만 고른다. 내 턴 ${GLYPH_TURNS}번 안에 그 속성으로 파라오를 차례대로 맞혀 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사`,
         run(c, e) {
           inscribe(c, e);
         },
@@ -1273,7 +1273,7 @@ reg.enemies([
       judgment: {
         name: JUDGMENT,
         intent: 'death',
-        desc: `상형문자를 기한 안에 모두 지우지 못하면 사경 없이 즉사 (결계가 한 번 막는다). 위 띠에 적힌 속성으로 파라오를 차례대로 맞혀 지우거나, 파라오를 붕괴시키거나 기절시키면 흩어진다. 기한이 남은 차례엔 모래시계만 흐른다`,
+        desc: `상형문자를 기한 안에 모두 지우지 못하면 사경 없이 즉사 (결계가 한 번 막는다). 위 띠에 적힌 속성으로 파라오를 차례대로 맞혀 지우면 흩어진다. 파라오를 붕괴시키거나 기절시켜도 흩어진다. 기한이 남은 차례엔 모래시계만 흐른다`,
         run(c, e) {
           judge(c, e);
         },
@@ -1327,7 +1327,7 @@ reg.enemies([
         dmg: FLIP_DMG,
         melee: false,
         cine: 'flip',
-        desc: `땅을 뒤집어 덮친다 — 모든 적의 전열과 후열이 뒤바뀌고 방어도 ${FLIP_BLOCK}`,
+        desc: `땅을 뒤집어 덮친다. 모든 적의 전열과 후열이 뒤바뀌고 방어도 ${FLIP_BLOCK}`,
         run(c, e) {
           overturn(c, e);
         },
@@ -1355,7 +1355,7 @@ reg.enemies([
         name: '별을 부른다',
         intent: 'special',
         ultimate: true,
-        desc: `하늘의 별 하나를 끌어내린다 — 내 턴이 ${STAR_TURNS}번 끝나면 전열에 떨어진다: 전열의 적은 저마다 최대 체력의 ${Math.round(STAR_PCT * 100)}%(최소 ${STAR_MIN}) 피해, 당신은 ${STAR_DMG} 피해 (방어도가 먼저 막는다). 군주를 붕괴시키거나 쓰러뜨리면 별이 흩어진다`,
+        desc: `하늘의 별 하나를 끌어내린다. 내 턴이 ${STAR_TURNS}번 끝나면 별이 전열에 떨어진다. 전열의 적은 저마다 최대 체력의 ${Math.round(STAR_PCT * 100)}%(최소 ${STAR_MIN}) 피해. 나에게는 피해 ${STAR_DMG} (방어도가 먼저 막는다). 군주를 붕괴시키거나 쓰러뜨리면 별이 흩어진다`,
         run(c, e) {
           callStar(c, e);
         },
@@ -1433,7 +1433,7 @@ reg.enemies([
         sanity: ECLIPSE_SAN,
         ultimate: true,
         cine: 'ink',
-        desc: `빛이 모두 먹힌다 — 정신 피해, 공포 2, 힘 +${ECLIPSE_STR}. 배를 채운 별이 어둠을 1까지 물린다 (그 전에 어둠을 걷어 내면 흩어진다)`,
+        desc: `빛이 모두 먹힌다. 정신 피해, 공포 2, 힘 +${ECLIPSE_STR}. 배를 채운 별은 어둠을 1까지 물린다. 그 전에 어둠을 걷어 내면 일식이 흩어진다`,
         run(c, e) {
           eclipse(c, e);
         },
@@ -1502,7 +1502,7 @@ reg.enemies([
         dmg: 5,
         hits: 2,
         melee: false,
-        desc: `별바람을 타고 떠오르며 할퀸다 — 바람 타기 ${RIDE_HITS}: 받는 공격 피해 -50%, 공격을 ${RIDE_HITS}번 맞으면 바람에서 떨어져 붕괴한다. 다음 차례가 오면 바람이 잦아든다`,
+        desc: `별바람을 타고 떠오르며 할퀸다. 바람 타기 ${RIDE_HITS}: 받는 공격 피해 -50%, 공격을 ${RIDE_HITS}번 맞으면 바람에서 떨어져 붕괴한다. 다음 차례가 오면 바람이 잦아든다`,
         run(c, e) {
           c.enemyAttack(e, { type: 'slash' });
           if (!c.over && !e.dead) rideWind(c, e);
@@ -1552,7 +1552,7 @@ reg.enemies([
         hits: (c) => huntHits(c),
         melee: false,
         type: 'slash',
-        desc: '어둠 속에서 여러 번 문다 — 등불이 25 모자랄 때마다 한 번 더 (등불 100이면 1번, 0이면 5번)',
+        desc: '어둠 속에서 여러 번 문다. 등불이 25 모자랄 때마다 한 번 더 문다 (등불 100이면 1번, 0이면 5번)',
       }),
       rise: mv.charge('아가리를 벌린다', 44),
       devour: release(mv.attack('포식', 44, { ultimate: true, cine: 'corners', then: (c, e) => void c.heal(e, 12), desc: '체력 12 회복' })),

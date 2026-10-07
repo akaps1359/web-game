@@ -23,7 +23,7 @@ import { INSIGHT_PRICE, cutMaxSanity, floorFoes, learnWeak, weakNote } from '../
 function sanity(run: RunState, n: number): string {
   const r = loseSanityRun(run, n);
   if (r.fatal) return ' 정신이 완전히 무너졌다.';
-  if (r.madness) return ` 정신이 무너졌다 — ${MADNESS.get(r.madness)?.name ?? '광기'}.`;
+  if (r.madness) return ` 정신이 무너졌다. (${MADNESS.get(r.madness)?.name ?? '광기'})`;
   return '';
 }
 
@@ -58,7 +58,7 @@ reg.events([
               }
               finish(
                 e,
-                '종소리가 수도원 전체를 훑고 지나갔다. 종 안쪽에 숨겨져 있던 공물이 발치에 떨어졌다. 어딘가에서 무언가가 그 소리에 답했다.' + sanity(r, 8),
+                '종소리가 수도원 전체를 훑고 지나갔다. 종 안쪽에 숨겨져 있던 공물이 발치에 떨어졌다. 한참 아래에서 낮은 울음이 그 소리에 답했다.' + sanity(r, 8),
                 { loot: relicLoot(r) },
               );
             },
@@ -72,7 +72,7 @@ reg.events([
               finish(e, `녹슨 칼날로 밧줄을 끊었다. 떨어지는 종이 팔을 긁고 지나갔다. 한동안 종소리는 조금 작게 들릴 것이다. (체력 -${n})`);
             },
           },
-          { label: '종 밑을 지나간다', go: (_r, e) => finish(e, '종 아래를 지날 때, 종이 아주 작게 한 번 흔들렸다.') },
+          { label: '종 밑을 지나간다', go: (_r, e) => finish(e, '종 아래를 지날 때 종이 아주 작게 한 번 흔들렸다.') },
         ],
       }),
     },
@@ -92,7 +92,7 @@ reg.events([
             go: (r, e) => {
               r.player.maxHp = Math.max(1, r.player.maxHp - 4);
               r.player.hp = Math.min(r.player.hp, r.player.maxHp);
-              finish(e, `말을 마치자 정말로 가벼워졌다. 무언가를 함께 덜어낸 것처럼. (정신력 +${gainSanityRun(r, 20)}, 최대 체력 -4)`);
+              finish(e, `말을 마치자 정말로 가벼워졌다. 살점 한 줌을 함께 덜어낸 것처럼. (정신력 +${gainSanityRun(r, 20)}, 최대 체력 -4)`);
             },
           },
           {
@@ -102,7 +102,7 @@ reg.events([
               const names = learnWeak(r, floorFoes(r));
               finish(
                 e,
-                '격자 틈으로 보인 것은 사람의 얼굴이 아니었다. 그것은 고백을 받아 적고 있었다. 펼쳐진 장부에는 이 수도원 식구들의 죄가 — 그들이 무엇에 무너지는지가 — 빼곡했다.' +
+                '격자 틈으로 보인 것은 사람의 얼굴이 아니었다. 그것은 고백을 받아 적고 있었다. 펼쳐진 장부에는 이 수도원 식구들의 죄가 빼곡했다. 그들이 무엇에 무너지는지도.' +
                   weakNote(names) +
                   (names.length ? sanity(r, 10) : ''),
               );
@@ -111,7 +111,7 @@ reg.events([
           {
             label: '칸막이를 칼로 찌른다',
             hint: '전투',
-            go: (_r, e) => finish(e, '칼끝에 무언가 걸렸다. 칸막이가 열리고 고해 신부가 걸어 나온다.', { fight: 'a2-confessor1' }),
+            go: (_r, e) => finish(e, '칼끝에 물컹한 것이 걸렸다. 칸막이가 열리고 고해 신부가 걸어 나온다.', { fight: 'a2-confessor1' }),
           },
           { label: '지나간다', go: (_r, e) => finish(e, '"언젠가는 고백하게 될 것이다." 목소리가 등 뒤에서 속삭였다.') },
         ],
@@ -125,7 +125,7 @@ reg.events([
     acts: [2],
     stages: {
       start: (run) => ({
-        text: '뼈가 천장까지 쌓인 납골당. 쭈그려 앉아 무언가를 뜯던 구울들이 일제히 고개를 든다. 그중 하나가 기름진 고깃덩이를 당신에게 내민다.',
+        text: '뼈가 천장까지 쌓인 납골당. 쭈그려 앉아 뼈를 뜯던 구울들이 일제히 고개를 든다. 그중 하나가 기름진 고깃덩이를 내민다.',
         choices: [
           {
             label: '받아 먹는다',
@@ -143,7 +143,7 @@ reg.events([
             go: (r, e) => {
               if (rng(r, 'event').chance(0.55)) {
                 const id = rollEquip(r, 'elite');
-                finish(e, '구울들이 식사에 정신이 팔린 사이, 뼈 사이에서 쓸 만한 물건을 건졌다.', {
+                finish(e, '구울들이 식사에 정신이 팔린 틈에 뼈 더미에서 쓸 만한 물건을 건졌다.', {
                   loot: id ? [{ kind: 'equip', id }] : [{ kind: 'gold', id: 'gold', n: 45 }],
                 });
               } else finish(e, '뼈 더미가 무너졌다. 구울들이 식탁에서 일어선다.', { fight: 'a2-ghouls' });
@@ -190,7 +190,7 @@ reg.events([
             go: (r, e) => {
               const n = hurtRun(r, 6);
               const [id] = rollSkills(r, 1);
-              finish(e, `미지근한 재 속에서 무언가 손가락을 물었지만, 가죽 장정의 책 한 권을 끄집어냈다. (체력 -${n})`, {
+              finish(e, `미지근한 재 속에서 작은 이빨이 손가락을 물었지만 가죽 장정의 책 한 권을 끄집어냈다. (체력 -${n})`, {
                 loot: id ? [{ kind: 'skill', id }] : [{ kind: 'gold', id: 'gold', n: 30 }],
               });
             },
@@ -201,7 +201,7 @@ reg.events([
             go: (r, e) => {
               const [id] = rollForbidden(r, 1);
               if (id) learnSkill(r, id);
-              finish(e, '글씨는 읽을수록 다른 문장이 되었다. 마지막 문장은 당신의 손등에 적혀 있었다.' + sanity(r, 12));
+              finish(e, '글씨는 읽을수록 다른 문장이 되었다. 마지막 문장은 손등에 적혀 있었다.' + sanity(r, 12));
             },
           },
         ],
@@ -215,7 +215,7 @@ reg.events([
     acts: [2],
     stages: {
       start: () => ({
-        text: '깨진 유리관 속에 성인의 손가락뼈가 놓여 있다. 뼈는 아직도 무언가를 가리키고 있다 — 아래쪽을.',
+        text: '깨진 유리관 속에 성인의 손가락뼈가 놓여 있다. 뼈는 아직도 한쪽을 가리킨다. 아래쪽이다.',
         choices: [
           { label: '기도한다', hint: '정신력 +12', go: (r, e) => finish(e, `오래된 기도문이 저절로 입에서 흘러나왔다. (정신력 +${gainSanityRun(r, 12)})`) },
           {
@@ -234,7 +234,7 @@ reg.events([
                 const p = f.rooms[f.portal];
                 p.seen = p.scouted = true;
               }
-              finish(e, '뼈가 가리키는 쪽으로 한참을 헤맨 끝에, 포탈 비석의 울림을 들었다. (2시간 경과)');
+              finish(e, '뼈가 가리키는 쪽으로 한참을 헤맨 끝에 포탈 비석의 울림을 들었다. (2시간 경과)');
             },
           },
         ],
@@ -248,7 +248,7 @@ reg.events([
     acts: [2],
     stages: {
       start: (run) => ({
-        text: '세례반에 재와 피를 갠 것이 먹처럼 검게 고여 있다. 그 표면 아래에서 무언가가 천천히 눈을 뜨고, 당신을 알아본다.',
+        text: '세례반에 재와 피를 갠 것이 먹처럼 검게 고여 있다. 그 표면 아래에서 눈 하나가 천천히 뜨인다. 이쪽을 알아보는 눈이다.',
         choices: [
           {
             label: '머리를 담근다',
@@ -265,7 +265,7 @@ reg.events([
           {
             label: '상처에 바른다',
             hint: '체력 +20, 정신력 -8',
-            go: (r, e) => finish(e, `검은 것이 닿자 상처가 연기를 내며 아물었다. 피부 아래에서 무언가 꿈틀거린다. (체력 +${healRun(r, 20)})` + sanity(r, 8)),
+            go: (r, e) => finish(e, `검은 것이 닿자 상처가 연기를 내며 아물었다. 피부 아래에서 가는 실 같은 것이 꿈틀거린다. (체력 +${healRun(r, 20)})` + sanity(r, 8)),
           },
           {
             label: '성수를 붓는다',
@@ -276,7 +276,7 @@ reg.events([
               finish(e, '성수가 닿자 검은 것이 비명을 지르며 끓어올랐다. 바닥에 묻혀 있던 것이 드러났다.', { loot: relicLoot(r) });
             },
           },
-          { label: '떠난다', go: (_r, e) => finish(e, '등 뒤에서 무언가 끈적하게 떨어지는 소리가 따라왔다.') },
+          { label: '떠난다', go: (_r, e) => finish(e, '등 뒤에서 끈적한 것이 뚝뚝 떨어지는 소리가 따라왔다.') },
         ],
       }),
     },
@@ -295,7 +295,7 @@ reg.events([
             hint: '정신력 -10, 성가대원의 정수',
             go: (r, e) => {
               const color = rng(r, 'event').int(0, 1);
-              finish(e, '목소리가 재 속의 노래와 겹치는 순간, 무언가가 목구멍 안쪽에 자리를 잡았다. 입안에서 재 맛이 난다.' + sanity(r, 10), {
+              finish(e, '목소리가 재 속의 노래와 겹치는 순간 낯선 음 하나가 목구멍 안쪽에 자리를 잡았다. 입안에서 재 맛이 난다.' + sanity(r, 10), {
                 loot: [{ kind: 'essence', id: 'chorister', color }],
               });
             },
@@ -305,13 +305,13 @@ reg.events([
             hint: '등불 -10, 정신력 +15',
             go: (r, e) => {
               r.light = Math.max(0, r.light - 10);
-              finish(e, `노래가 잦아들고, 아이들이 하나둘 재 속으로 고개를 묻었다. (등불 -10, 정신력 +${gainSanityRun(r, 15)})`);
+              finish(e, `노래가 잦아들고 아이들이 하나둘 재 속으로 고개를 묻었다. (등불 -10, 정신력 +${gainSanityRun(r, 15)})`);
             },
           },
           {
             label: '성가대석으로 뛰어든다',
             hint: '전투',
-            go: (_r, e) => finish(e, '노래가 뚝 그쳤다. 잿빛 얼굴들이 일제히 당신을 본다.', { fight: 'a2-choir' }),
+            go: (_r, e) => finish(e, '노래가 뚝 그쳤다. 잿빛 얼굴들이 일제히 이쪽을 본다.', { fight: 'a2-choir' }),
           },
         ],
       }),
@@ -334,7 +334,7 @@ reg.events([
               r.player.maxHp = Math.max(1, r.player.maxHp - 5);
               r.player.hp = Math.max(1, Math.min(r.player.hp, r.player.maxHp));
               r.player.str += 1;
-              finish(e, `등이 찢어질 때마다 무언가가 단단해졌다. 행렬은 당신을 남겨 두고 어둠 속으로 사라졌다. (체력 -${n}, 최대 체력 -5, 힘 +1)`);
+              finish(e, `등이 찢어질 때마다 팔에 힘이 붙었다. 행렬은 뒤도 돌아보지 않고 어둠 속으로 사라졌다. (체력 -${n}, 최대 체력 -5, 힘 +1)`);
             },
           },
           {
@@ -342,13 +342,13 @@ reg.events([
             hint: '체력 +12, 정신력 +15. 시간이 흐른다',
             go: (r, e) => {
               passTime(r, 4);
-              finish(e, `느린 걸음에 맞추어 함께 걸었다. 기도 소리에 마음이 이상하게 차분해진다. (체력 +${healRun(r, 12)}, 정신력 +${gainSanityRun(r, 15)}, 4시간 경과)`);
+              finish(e, `느린 걸음에 맞추어 함께 걸었다. 낮게 웅얼거리는 기도 소리에 마음이 가라앉는다. (체력 +${healRun(r, 12)}, 정신력 +${gainSanityRun(r, 15)}, 4시간 경과)`);
             },
           },
           {
             label: '행렬을 가로지른다',
             hint: '전투',
-            go: (_r, e) => finish(e, '행렬이 멈췄다. 채찍들이 일제히 당신을 향했다.', { fight: 'a2-sermon' }),
+            go: (_r, e) => finish(e, '행렬이 멈췄다. 채찍들이 일제히 이쪽을 향했다.', { fight: 'a2-sermon' }),
           },
         ],
       }),
@@ -408,7 +408,7 @@ reg.events([
               go: (r, e) => {
                 const n = hurtRun(r, 8);
                 if (r.floor) for (const room of r.floor.rooms) room.flooded = false;
-                finish(e, `시체를 끌어내고 발판을 밟았다. 뿜어져 나온 뜨거운 재가 얼굴을 할퀴었지만, 멀리서 재가 쓸려 나가는 소리가 울렸다. (체력 -${n})`);
+                finish(e, `시체를 끌어내고 발판을 밟았다. 뿜어져 나온 뜨거운 재가 얼굴을 할퀴었지만 멀리서 재가 쓸려 나가는 소리가 울렸다. (체력 -${n})`);
               },
             },
             {

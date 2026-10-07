@@ -13,6 +13,7 @@ import {
   type RunState,
 } from './run';
 import type { Rarity } from './types';
+import { abyssShopMult } from './abyss';
 
 export interface ShopItem {
   kind: 'skill' | 'relic' | 'equip' | 'rune' | 'consumable' | 'oil';
@@ -59,7 +60,8 @@ function price(run: RunState, kind: ShopItem['kind'], id: string): number {
   const base = PRICE[kind][rarityOf(kind, id)] ?? PRICE[kind].common ?? 50;
   const act = 1 + 0.1 * (Math.min(run.act, 5) - 1);
   const jitter = 0.9 + r.next() * 0.2;
-  return Math.round(base * act * jitter);
+  // 심연 「값을 올린 상인」: 상점 값이 오른다
+  return Math.round(base * act * jitter * abyssShopMult(run));
 }
 
 function stock(run: RunState, kind: 'merchant' | 'haven'): ShopItem[] {

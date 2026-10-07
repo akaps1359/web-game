@@ -1,8 +1,8 @@
 import { useState } from 'preact/hooks';
-import { absorbBlock, eldritchInsight, essenceStats, FLASK_CAP, inscribeCost, isGenesisLoot, slotFull } from '../../engine/run';
+import { absorbBlock, essenceStats, FLASK_CAP, inscribeCost, isGenesisLoot, slotFull } from '../../engine/run';
 import { bottle, choose, leaveReward, take } from '../../state/actions';
 import { store } from '../../state/store';
-import { EssenceCard, LootCard, lootInfo, lootName, STAT_NAME } from '../cards';
+import { EssenceCard, LootCard, lootClue, lootInfo, lootName, STAT_NAME } from '../cards';
 import { ask, confirmThen } from '../ask';
 import { ESSENCES, SKILLS } from '../../engine/registry';
 import type { EssenceStats } from '../../engine/types';
@@ -10,11 +10,12 @@ import type { LootItem } from '../../engine/run';
 import { Icon } from '../components';
 import { RunHud } from '../Hud';
 
-/** 전리품을 가질지 묻는다 (골드·등유는 묻지 않음) */
+/** 전리품을 가질지 묻는다 (골드·등유는 묻지 않음). 실마리 스킬이면 그 이유도 한 줄 */
 function askLoot(it: LootItem, verb: string) {
   if (it.kind === 'gold' || it.kind === 'oil') return Promise.resolve(true);
   const info = lootInfo(it);
-  return ask({ title: `${lootName(it)} — ${verb}`, icon: info.icon, color: info.color, body: [info.meta, info.desc].filter(Boolean).join('\n'), ok: verb });
+  const clue = lootClue(store.run, it);
+  return ask({ title: `${lootName(it)} ${verb}`, icon: info.icon, color: info.color, body: [info.meta, info.desc, clue && `실마리: ${clue}`].filter(Boolean).join('\n'), ok: verb });
 }
 
 /** 보통 정수는 그냥 흡수(본질), 수호자 정수는 기술로(core=false) 또는 본질로(core=true) */
@@ -24,11 +25,9 @@ function askAbsorb(it: LootItem, pick: string | null) {
   const st = essenceStats(it.id, it.guardian, true);
   const lines = Object.entries(st).map(([k, v]) => ({ label: STAT_NAME[k as keyof EssenceStats], value: `${(v as number) >= 0 ? '+' : ''}${v}`, color: '#b0ffc4' }));
   if (pick) lines.push({ label: '기술', value: SKILLS.get(pick)?.name ?? pick, color: '#ffcf9a' });
-  // 이계의 정수는 처음 흡수할 때 대가를 치른다 (같은 정수를 수호자판으로 바꿀 때는 없음). 통찰은 수호자의 이계 정수만
+  // 이계의 정수는 처음 흡수할 때 대가를 치른다 (같은 정수를 수호자판으로 바꿀 때는 없음)
   const had = store.run?.essences.find((e) => e.id === it.id);
   if (def?.eldritch && !had) lines.push({ label: '이계의 대가', value: '최대 정신력 -5', color: 'var(--eldritch)' });
-  const ins = eldritchInsight(it) - (had ? eldritchInsight(had) : 0);
-  if (ins > 0) lines.push({ label: '통찰', value: `+${ins}`, color: 'var(--eldritch)' });
   confirmThen(
     {
       title: `${name} 흡수`,
@@ -53,7 +52,7 @@ function askBottle(it: LootItem) {
   const cost = inscribeCost({ id: it.id, color: it.color ?? 0, guardian: it.guardian });
   confirmThen(
     {
-      title: `${name} — 병에 담기`,
+      title: `${name} · 병에 담기`,
       icon: 'gi:round-bottom-flask',
       color: 'var(--eldritch)',
       body: `지금 흡수하지 않고 병에 담아 둔다. 신전이나 거점의 신전에서 ${cost}골드를 내고 새길 수 있다.`,
@@ -115,7 +114,7 @@ export function RewardScreen() {
           const owned = run.essences.find((e) => e.id === it.id);
           return (
             <div style={{ marginBottom: 12 }}>
-              <div class="section-label">정수가 떨어졌다 — 흡수하거나 병에 담지 않으면 사라진다</div>
+              <div class="section-label">정수가 떨어졌다. 흡수하거나 병에 담지 않으면 사라진다</div>
               <EssenceCard
                 id={it.id}
                 color={it.color ?? 0}
@@ -131,7 +130,7 @@ export function RewardScreen() {
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 6 }}>
-                      {why && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{why}{slotFull(why) ? ' — 가진 정수 하나를 깨뜨리고 바꾸거나, 병에 담아 두거나, 두고 떠날 수 있다' : ''}</div>}
+                      {why && <div style={{ color: 'var(--bad)', fontSize: 12, textAlign: 'center' }}>{why}{slotFull(why) ? '. 가진 정수 하나를 깨뜨리고 바꾸거나, 병에 담아 두거나, 두고 떠날 수 있다' : ''}</div>}
                       {slotFull(why) ? (
                         <button
                           class="btn eldritch wide"
@@ -167,6 +166,7 @@ export function RewardScreen() {
             <LootCard
               it={it}
               off={it.taken}
+              clue={lootClue(run, it, !it.taken)}
               onClick={() => !it.taken && askLoot(it, '줍기').then((ok) => {
                   if (ok) void take(it);
                 })}
@@ -178,7 +178,7 @@ export function RewardScreen() {
         {rw.choice && rw.choice.length > 0 && (
           <>
             <div class="section-label">
-              {rw.chosen ? '선택 완료' : rw.choice.some(isGenesisLoot) ? '창세의 것 — 하나를 고르세요 (판마다 하나뿐이다)' : '하나를 고르세요'}
+              {rw.chosen ? '선택 완료' : rw.choice.some(isGenesisLoot) ? '창세의 것: 하나 선택 (판마다 하나뿐)' : '하나 선택'}
             </div>
             <div class="list">
               {rw.choice.map((it, i) => (
@@ -186,6 +186,7 @@ export function RewardScreen() {
                   it={it}
                   sel={rw.chosen && it.taken}
                   off={rw.chosen && !it.taken}
+                  clue={lootClue(run, it, !rw.chosen)}
                   onClick={() => {
                     if (rw.chosen) return;
                     if (it.kind === 'upgrade') {
@@ -204,7 +205,7 @@ export function RewardScreen() {
       <div class="footer">
         <button
           class={`btn wide ${pending ? 'ghost' : ''}`}
-          onClick={() => (pending ? confirmThen({ title: '남은 보상을 두고 떠날까요?', icon: 'gi:exit-door', body: '가져가지 않은 보상은 사라진다.', ok: '떠난다', danger: true }, leaveReward) : leaveReward())}
+          onClick={() => (pending ? confirmThen({ title: '남은 보상을 두고 떠날까요?', icon: 'gi:exit-door', body: '가져가지 않은 보상은 사라져요.', ok: '떠난다', danger: true }, leaveReward) : leaveReward())}
         >
           {pending ? '남기고 떠난다' : '계속'}
         </button>

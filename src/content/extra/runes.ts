@@ -13,7 +13,8 @@ reg.runes([
     name: '연계 각인',
     icon: 'gi:spinning-blades',
     rarity: 'uncommon',
-    desc: '이번 턴 앞서 쓴 스킬 1개당 위력 +15%',
+    desc: '이번 턴 앞서 쓴 스킬 1개당 위력 +15%. 검술 계열',
+    school: 'blade',
     fits: notBasic,
     hooks: {
       beforeSkill(c, _s, u) {
@@ -37,7 +38,7 @@ reg.runes([
         if (c.s.vars.xHuntRune === key) return;
         c.s.vars.xHuntRune = key;
         c.s.ap += 1;
-        c.emit({ t: 'text', uid: 'p', text: '사냥 — 행동력 +1', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '사냥 (행동력 +1)', tone: 'good' });
       },
     },
   },
@@ -46,7 +47,8 @@ reg.runes([
     name: '독 각인',
     icon: 'gi:poison',
     rarity: 'common',
-    desc: '체력 피해를 줄 때마다 독 2',
+    desc: '체력 피해를 줄 때마다 독 2. 연금 계열',
+    school: 'alchemy',
     fits: isAttack,
     hooks: {
       onDamageDealt(c, _s, d) {
@@ -59,8 +61,10 @@ reg.runes([
     name: '탄창 각인',
     icon: 'gi:machine-gun-magazine',
     rarity: 'common',
-    desc: '사용 후 탄약 +1',
-    fits: (s) => s.tags.includes('ammo') && notBasic(s),
+    desc: '사용 후 탄약 +1. 사격 계열',
+    school: 'firearm',
+    // 계열 각인이라 총이 아닌 스킬에도 새긴다 (사격으로도 쳐서 틈을 거둔다 — content/gap.ts)
+    fits: notBasic,
     hooks: {
       afterSkill(c) {
         c.s.ammo = Math.min(c.s.maxAmmo, c.s.ammo + 1);
@@ -72,7 +76,8 @@ reg.runes([
     name: '피의 각인',
     icon: 'gi:bleeding-eye',
     rarity: 'rare',
-    desc: '행동력 비용 -1. 사용할 때 체력 3을 잃는다',
+    desc: '행동력 비용 -1. 사용할 때 체력 3을 잃는다. 금기 계열',
+    school: 'forbidden',
     costMod: -1,
     fits: (s) => {
       const cost = Array.isArray(s.cost) ? s.cost[0] : s.cost;
@@ -91,7 +96,7 @@ reg.runes([
     name: '공명 각인',
     icon: 'gi:double-ringed-orb',
     rarity: 'uncommon',
-    desc: '사용 후 재사용 대기 중인 다른 스킬 하나의 대기 -1 (가장 긴 것. 1턴 아래로는 줄지 않는다)',
+    desc: '사용 후 재사용 대기가 가장 긴 다른 스킬 하나의 대기 -1 (1턴 아래로는 줄지 않는다)',
     fits: notBasic,
     hooks: {
       afterSkill(c, _s, u) {

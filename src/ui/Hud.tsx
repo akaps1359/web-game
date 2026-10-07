@@ -2,6 +2,7 @@ import { store } from '../state/store';
 import { essenceCap, essenceUsed, xpToNext } from '../engine/run';
 import { Icon, showTip, Stat } from './components';
 import { INSIGHT_SOURCES, insightText } from './text';
+import { BREAKDOWN_RESET, MAX_MADNESS } from '../engine/combat';
 
 /** 판 진행 중 상단 표시줄 */
 export function RunHud({ compact }: { compact?: boolean }) {
@@ -33,7 +34,7 @@ export function RunHud({ compact }: { compact?: boolean }) {
             title: '정신력',
             icon: 'gi:brain',
             color: 'var(--san-2)',
-            body: `0이 되면 붕괴해 광기를 얻고 50으로 돌아온다. 나쁜 광기 4개째에는 완전히 미쳐 끝난다.\n현재 광기 ${run.madness.length}개`,
+            body: `0이 되면 정신이 무너져 광기를 얻고 ${BREAKDOWN_RESET}으로 돌아온다. 나쁜 광기가 ${MAX_MADNESS}개가 되면 여정이 끝난다.\n지금 광기 ${run.madness.length}개`,
           })
         }
       />

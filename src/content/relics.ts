@@ -1,5 +1,6 @@
-import { reg } from '../engine/registry';
+import { reg, SKILLS } from '../engine/registry';
 import { isEnemy } from '../engine/combat';
+import { learnSkill, log, rollForbidden } from '../engine/run';
 
 /**
  * 넘버스 유물. 번호가 작을수록 희귀.
@@ -239,12 +240,14 @@ reg.relics([
     name: 'No.25 찢긴 금서 페이지',
     icon: 'gi:scroll-unfurled',
     rarity: 'uncommon',
-    // 통찰은 언제나 영구 대가를 치르고 얻는다 (2026-10 개편 — 이벤트의 통찰 +1과 같은 값)
-    desc: '획득 시 통찰 +1, 최대 정신력 -8',
+    // 2026-10 2차: 통찰 대신 금기 스킬 (통찰을 주는 물건은 수호자 유물 '공허의 왕관' 하나만 남긴다).
+    // 보상의 스킬을 가져갈 때처럼 스킬 목록에 들어간다 (칸은 직접 낀다). 금기를 모두 알면 아무것도 없다
+    desc: '획득 시 아직 배우지 않은 금기 스킬 하나',
     onGain(run) {
-      run.player.insight += 1;
-      run.player.maxSanity = Math.max(10, run.player.maxSanity - 8);
-      run.player.sanity = Math.min(run.player.sanity, run.player.maxSanity);
+      const [id] = rollForbidden(run, 1);
+      if (!id) return;
+      learnSkill(run, id);
+      log(run, `금서의 문장이 머릿속에 새겨졌다. ${SKILLS.get(id)?.name ?? '금기'} 습득`);
     },
   },
   {

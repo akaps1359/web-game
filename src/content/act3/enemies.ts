@@ -155,7 +155,7 @@ reg.traits([
   {
     id: 'a3-angle-lord',
     name: '각도의 주인',
-    desc: `「유리를 긋는다」로 화면에 날카로운 각을 연다 (최대 ${MAX_ANGLES}) — 열린 각은 당신의 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메우고, 붕괴시키면 모두 닫힌다. 세 각이 모두 열리면 다음 차례에 「${HUNT}」 — 그때까지 사냥을 끊지 못하면 ${HUNT_FAIL}. 끊는 법: 왕에게 피해 ${HUNT_DMG}, 방어도 ${PLASTER} 이상으로 턴을 마쳐 각 하나를 메우기, 왕을 붕괴. 한 번 끝난 사냥은 ${HUNT_GAP}턴 뒤에야 다시 온다. 체력이 절반 아래로 떨어지면 남은 모서리를 한꺼번에 연다. 후열로 숨으면 각도가 비틀려 화면이 기운다`,
+    desc: `「유리를 긋는다」로 화면에 날카로운 각을 연다 (최대 ${MAX_ANGLES}). 열린 각은 내 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나가 메워진다. 붕괴시키면 모두 닫힌다. 세 각이 모두 열리면 다음 차례에 「${HUNT}」이 온다. 그때까지 사냥을 끊지 못하면 ${HUNT_FAIL}. 끊는 법: 왕에게 피해 ${HUNT_DMG}, 방어도 ${PLASTER} 이상으로 턴을 마쳐 각 하나를 메우기, 왕을 붕괴. 한 번 끝난 사냥은 ${HUNT_GAP}턴 뒤에야 다시 온다. 체력이 절반 아래로 떨어지면 남은 모서리를 한꺼번에 연다. 후열로 숨으면 각도가 비틀려 화면이 기운다`,
     hooks: {
       onCombatStart(c) {
         cine(c, 'whisper', { text: '당신의 화면은 모서리가 둥글다.\n그래서 아직 들어오지 못했다.' });
@@ -195,7 +195,7 @@ reg.traits([
   {
     id: 'a3-protoplasm',
     name: '원형질 분리',
-    desc: '체력이 75%·50%·25% 아래로 떨어질 때마다 원형질 조각 둘을 떼어낸다. 떼어 낸 조각은 후열에 있어도 근접으로 닿는다 (삼켜지기 전에 끊어 낼 수 있게)',
+    desc: '체력이 75%·50%·25% 아래로 떨어질 때마다 원형질 조각 둘을 떼어 낸다. 떼어 낸 조각은 후열에 있어도 근접 공격이 닿는다',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -220,18 +220,18 @@ reg.traits([
   {
     id: 'a3-full-dissection',
     name: '완전 해부',
-    desc: `절개선 ${MAX_INCISION}개가 다 그어진 채로 해부대를 펼치면 「${FULL}」 — 다음 다음 차례에 즉사 (사경 없음, 결계가 한 번 막는다). 내 턴 2번 안에 이것에게 피해 ${FULL_DMG}(출혈·독·화상 포함), 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복(절개선이 아문다), 붕괴 중 하나면 막는다. 전투마다 ${FULL_MAX}번까지`,
+    desc: `절개선 ${MAX_INCISION}개가 다 그어진 채로 해부대를 펼치면 「${FULL}」를 건다: 다음 다음 차례에 즉사 (사경 없음, 결계가 한 번 막는다). 내 턴 2번 안에 이것에게 피해 ${FULL_DMG}, 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복, 붕괴 중 하나면 막는다. 출혈·독·화상 피해도 센다. 전투마다 ${FULL_MAX}번까지`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
         if (!isEnemy(e) || !e.mem.full) return;
-        if (d.broke) cancelFull(c, '해부학자가 무너졌다 — 완전 해부가 멈췄다');
+        if (d.broke) cancelFull(c, '해부학자가 무너져 완전 해부가 멈췄다');
         else if (!isEnemy(d.src)) fullHit(c, e, d.amount);
       },
       onUnitTurnStart(c, s) {
         // 피해 없이 무너졌을 때도 (버팀 깎기)
         const e = s.unit;
-        if (isEnemy(e) && e.mem.full && e.broken === 2) cancelFull(c, '해부학자가 무너졌다 — 완전 해부가 멈췄다');
+        if (isEnemy(e) && e.mem.full && e.broken === 2) cancelFull(c, '해부학자가 무너져 완전 해부가 멈췄다');
       },
       onDeath(c) {
         cancelFull(c, '해부학자가 쓰러졌다');
@@ -241,7 +241,7 @@ reg.traits([
   {
     id: 'a3-egg-link',
     name: '이어진 알',
-    desc: `당신 몸속에 심은 알은 어미와 이어져 있다 — 알이 있는 동안 이것에게 피해 ${EGG_LINK_DMG}을 주면(출혈·독·화상 포함) 알이 함께 죽는다`,
+    desc: `몸속에 심은 알은 어미와 이어져 있다. 알이 있는 동안 이것에게 피해 ${EGG_LINK_DMG}을 주면 알이 함께 죽는다 (출혈·독·화상 포함)`,
     hooks: {
       onDamageTaken(c, _s, d) {
         if (!isEnemy(d.src)) broodHurt(c, d.amount);
@@ -251,7 +251,7 @@ reg.traits([
   {
     id: 'a3-mimicry',
     name: '흉내',
-    desc: '당신이 쓰는 기술을 듣고 있다 — 「흉내」는 이번 턴 당신이 마지막으로 쓴 기술을 따라 한다. 피해를 준 기술이면 그 피해의 절반을 같은 속성으로 되돌려 주고, 방어도만 얻은 기술이면 그만큼 방어도를 얻는다',
+    desc: '내 기술을 엿듣고 있다. 「흉내」는 이번 턴 내가 마지막으로 쓴 기술을 따라 한다. 피해를 준 기술이면 그 피해의 절반을 같은 속성으로 되돌려 준다. 방어도만 얻은 기술이면 그만큼 방어도를 얻는다',
     hooks: {
       onCombatStart(c) {
         startListening(c);
@@ -281,14 +281,14 @@ reg.traits([
   {
     id: 'a3-burrower',
     name: '땅굴 벌레',
-    desc: '얼음 밑으로 파고들면 회피 2를 얻는다. 얼음 밑에서는 의도를 속인다 — 땅울림은 읽을 수 없고, 웅크린 척(방어)하다가 아가리를 벌리기도 한다 (통찰 3 이상이면 보인다). 솟구치기 전의 준비는 보인다',
+    desc: '얼음 밑으로 파고들면 회피 2를 얻는다. 얼음 밑에서는 의도를 속인다. 땅울림은 읽을 수 없고 웅크린 척하다가 아가리를 벌리기도 한다 (통찰 3 이상이면 보인다). 솟구치기 전의 준비는 보인다',
     hooks: {},
   },
   // ── 얼어붙은 고대 도시의 새 특성 ──
   {
     id: 'a3-blind',
     name: '눈이 없다',
-    desc: '소리를 쫓는다 — 「소리를 쫓는 부리」는 이번 턴 당신이 쓴 기술 하나마다 한 번씩 쫀다. 기술을 하나도 쓰지 않으면 당신을 찾지 못한다',
+    desc: '소리를 쫓는다. 「소리를 쫓는 부리」는 이번 턴 내가 쓴 기술 하나마다 한 번씩 쫀다. 기술을 하나도 쓰지 않으면 찾지 못한다',
     hooks: {},
   },
   {
@@ -316,7 +316,7 @@ reg.traits([
   {
     id: 'a3-specimen',
     name: '표본 채집',
-    desc: '「표본 채집」으로 당신의 기술 하나를 빼앗아 간다. 쓰러뜨리면 되찾는다',
+    desc: '「표본 채집」으로 내 기술 하나를 빼앗아 간다. 쓰러뜨리면 되찾는다',
     hooks: {
       onDeath(c, s) {
         if (isEnemy(s.unit)) returnSkill(c, s.unit);
@@ -326,7 +326,7 @@ reg.traits([
   {
     id: 'a3-cold-bringer',
     name: '눈보라를 끄는 털가죽',
-    desc: '자기 차례가 끝날 때마다 당신에게 동상 1',
+    desc: '자기 차례가 끝날 때마다 동상 1을 건다',
     hooks: {
       onUnitTurnEnd(c, s) {
         frost(c, c.p, 1, s.unit);
@@ -336,7 +336,7 @@ reg.traits([
   {
     id: 'a3-dissected',
     name: '해부된 몸',
-    desc: '갈라진 몸속이 훤히 보인다 — 약점이 처음부터 모두 드러나 있다. 다른 썰매개가 쓰러지면 힘 +2',
+    desc: '갈라진 몸속이 훤히 보여 약점이 처음부터 모두 드러나 있다. 다른 썰매개가 쓰러지면 힘 +2',
     hooks: {
       onAnyDeath(c, s, victim) {
         if (isEnemy(victim) && victim !== s.unit && victim.def === 'sled-dog') c.apply(s.unit, 'str', 2, s.unit);
@@ -356,7 +356,7 @@ reg.traits([
   {
     id: 'a3-veil',
     name: '눈을 감아라',
-    desc: '이것이 주는 정신 피해는 당신의 방어도가 먼저 막아 낸다 (막은 만큼 방어도가 줄어든다)',
+    desc: '이것이 주는 정신 피해는 내 방어도가 먼저 막는다 (막은 만큼 방어도가 줄어든다)',
     hooks: {},
   },
   {
@@ -368,7 +368,7 @@ reg.traits([
   {
     id: 'a3-sight',
     name: '보는 것과 보지 않는 것',
-    desc: `「봉우리 너머가 드러난다」를 붕괴로 끊지 못하면 그것을 보게 된다. 그 뒤 당신의 턴 ${REVEAL_TURNS}번 동안 형체가 드러나 받는 피해 +50% — 대신 그것을 공격하는 기술마다 정신 피해 ${LOOK_SAN}. 보지 않으려면 공격하지 않으면 된다`,
+    desc: `「봉우리 너머가 드러난다」를 붕괴로 끊지 못하면 그것을 보게 된다. 그 뒤 내 턴 ${REVEAL_TURNS}번 동안 형체가 드러나 받는 피해 +50%. 대신 그것을 공격하는 기술마다 정신 피해 ${LOOK_SAN}. 보지 않으려면 공격하지 않으면 된다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -387,7 +387,7 @@ reg.traits([
   {
     id: 'a3-old-master',
     name: '옛 주인',
-    desc: '체력이 절반 아래로 떨어지거나 붕괴하면(피리 소리가 끊긴다) 쇼고스 노예가 옛 반란을 기억해 낸다 — 그 뒤로 노예는 주인을 공격한다',
+    desc: '체력이 절반 아래로 떨어지거나 붕괴해 피리 소리가 끊기면 쇼고스 노예가 옛 반란을 기억해 낸다. 그 뒤로 노예는 주인을 공격한다',
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -483,7 +483,7 @@ reg.enemies([
     eldritch: true,
     tags: ['gaunt'],
     traits: ['a3-faceless'],
-    desc: '얼굴이 없는 검은 날개. 얼어붙은 탑 꼭대기에 거꾸로 매달려 있다가 소리 없이 내려와 간지럼을 태우고, 낚아채 어둠 속으로 날아간다.',
+    desc: '얼굴이 없는 검은 날개. 얼어붙은 탑 꼭대기에 거꾸로 매달려 있다가 소리 없이 내려와 간지럼을 태우고 낚아채 어둠 속으로 날아간다.',
     moves: {
       tickle: hid(mv.horror('간지럼', 8, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' })),
       clutch: hid(mv.attack('움켜쥐기', 10, { desc: '고무 같은 발톱으로 움켜쥔다' })),
@@ -510,7 +510,7 @@ reg.enemies([
     eldritch: true,
     tags: ['yuggoth'],
     traits: ['a3-brain-thief'],
-    desc: '갑각과 균사로 된 날개 달린 것. 얼음 밑 광맥을 캐러 별 너머에서 왔다. 윙윙거리는 목소리로 말하며, 뇌를 원통에 담아 가져간다.',
+    desc: '갑각과 균사로 된 날개 달린 것. 얼음 밑 광맥을 캐러 별 너머에서 왔다. 윙윙거리는 목소리로 말하고 뇌를 원통에 담아 가져간다.',
     moves: {
       extract: mv.horror('뇌 적출', 6, { then: (c, e) => void stealInsight(c, e, 1), desc: '정신 피해, 통찰 1 강탈 (통찰이 없으면 정신 피해 +4)' }),
       buzz: mv.horror('윙윙거리는 목소리', 9),
@@ -584,7 +584,7 @@ reg.enemies([
     eldritch: true,
     tags: ['shoggoth'],
     traits: ['a3-split'],
-    desc: '아직 작은 원형질 덩어리. 눈과 입이 생겼다 사라지며, 쓰러뜨려도 갈라져 다시 기어 온다.',
+    desc: '아직 작은 원형질 덩어리. 눈과 입이 생겼다 사라진다. 쓰러뜨려도 갈라져 다시 기어 온다.',
     moves: {
       lash: mv.attack('위족 채찍', 4, { hits: 3 }),
       engulf: mv.attack('집어삼키기', 10, { then: (c, e) => void c.heal(e, 5), desc: '체력 5 회복' }),
@@ -630,7 +630,7 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['leng'],
-    desc: '렝 고원에서 얼음을 건너온 보랏빛 거미. 얼음 틈 사이에 실을 걸고, 걸린 것을 천천히 녹여 먹는다.',
+    desc: '렝 고원에서 얼음을 건너온 보랏빛 거미. 얼음 틈 사이에 실을 걸어 두고 걸린 것을 천천히 녹여 먹는다.',
     moves: {
       spit: mv.attack('독액 뱉기', 6, { melee: false, type: 'pierce', then: (c, e) => void c.apply(c.p, 'poison', 3, e), desc: '독 3' }),
       web: mv.debuff(
@@ -672,7 +672,7 @@ reg.enemies([
     dread: 2,
     tags: ['ice', 'beast'],
     traits: ['a3-blind'],
-    desc: '사람 키만 한 흰 펭귄. 눈이 있어야 할 자리가 매끈하다. 소리 나는 쪽으로 일제히 고개를 돌리고, 뒤뚱거리며 몰려온다.',
+    desc: '사람 키만 한 흰 펭귄. 눈이 있어야 할 자리가 매끈하다. 소리 나는 쪽으로 일제히 고개를 돌리고 뒤뚱거리며 몰려온다.',
     moves: {
       peck: {
         name: '소리를 쫓는 부리',
@@ -680,7 +680,7 @@ reg.enemies([
         dmg: 3,
         // 횟수는 실행할 때 센다 — 의도를 정하는 시점(라운드 끝)의 c.s.used는 지난 턴 값이라 '×N'으로 보여 주면 틀린다
         melee: true,
-        desc: '이번 턴 당신이 쓴 기술 하나마다 한 번씩 쫀다 (표시된 피해는 한 번 쫄 때의 피해. 기술을 하나도 쓰지 않으면 당신을 찾지 못한다)',
+        desc: '이번 턴 내가 쓴 기술 하나마다 한 번씩 쫀다. 표시된 피해는 한 번 쫄 때의 피해. 기술을 하나도 쓰지 않으면 찾지 못한다',
         run(c, e) {
           const n = c.s.used;
           if (n <= 0) {
@@ -737,14 +737,14 @@ reg.enemies([
     eldritch: true,
     tags: ['ice', 'spirit'],
     traits: ['incorporeal'],
-    desc: '얼어 죽은 자의 마지막 숨이 서리가 되어 떠돈다. 그것이 지나간 자리마다 온기가 사라진다.',
+    desc: '얼어 죽은 자의 마지막 숨이 서리가 되어 떠돈다. 지나간 자리마다 온기가 사라진다.',
     moves: {
       breath: mv.attack('서리 숨결', 7, { melee: false, type: 'arcane', then: (c, e) => frost(c, c.p, 2, e), desc: '동상 2' }),
       whisper: mv.horror('얼어붙은 속삭임', 8, { then: (c, e) => frost(c, c.p, 1, e), desc: '정신 피해, 동상 1' }),
       drain: {
         name: '온기 흡수',
         intent: 'heal',
-        desc: '당신의 동상 1당 체력 4 회복 (최소 8)',
+        desc: '내 동상 1당 체력 4 회복 (최소 8)',
         run(c, e) {
           c.heal(e, Math.max(8, (c.p.st['a3-frostbite'] ?? 0) * 4));
         },
@@ -775,7 +775,7 @@ reg.enemies([
         extra: ['attack'],
         dmg: 6,
         melee: false,
-        desc: '장착한 기술 하나를 빼앗아 간다 (장착한 기술이 둘 이상일 때) — 쓰러뜨리면 되찾는다',
+        desc: '장착한 기술 하나를 빼앗아 간다 (장착한 기술이 둘 이상일 때). 쓰러뜨리면 되찾는다',
         run(c, e) {
           c.enemyAttack(e, { type: 'pierce' });
           if (!c.over && !e.dead) seizeSkill(c, e);
@@ -808,7 +808,7 @@ reg.enemies([
     eldritch: true,
     tags: ['ice', 'beast'],
     traits: ['a3-cold-bringer'],
-    desc: '긴 털에 덮인 여섯 다리의 짐승. 이마에 돋은 뿔 하나로 얼음을 가른다. 그것이 지나가면 눈보라가 뒤따른다.',
+    desc: '긴 털에 덮인 여섯 다리의 짐승. 이마에 돋은 뿔 하나로 얼음을 가른다. 지나간 자리에는 눈보라가 뒤따른다.',
     moves: {
       horn: mv.attack('뿔 들이받기', 13, { type: 'pierce' }),
       claws: mv.attack('여섯 다리 할퀴기', 4, { hits: 3, type: 'slash' }),
@@ -982,7 +982,7 @@ reg.enemies([
         type: 'pierce',
         extra: ['debuff'],
         then: (c, e) => implantEggs(c, e),
-        desc: `산란관을 꽂아 알을 심는다 — 내 턴이 ${EGG_TURNS}번 끝나면 부화해 새끼 거미 ${HATCH_N}마리가 살을 찢고 나온다. 그 사이 대거미에게 피해 ${EGG_LINK_DMG}을 주거나, 회복하거나, 불로 지지면 알이 죽는다 (이미 알이 있으면 대신 독 ${EGG_POISON})`,
+        desc: `산란관을 꽂아 알을 심는다. 내 턴이 ${EGG_TURNS}번 끝나면 부화해 새끼 거미 ${HATCH_N}마리가 살을 찢고 나온다. 그 사이 대거미에게 피해 ${EGG_LINK_DMG}을 주거나 회복하거나 불로 지지면 알이 죽는다. 이미 알이 있으면 대신 독 ${EGG_POISON}`,
       }),
       crouch: mv.charge('도약 준비', 32),
       leap: release(mv.attack('짓누르는 도약', 32, { ultimate: true, cine: 'impact' })),
@@ -1010,7 +1010,7 @@ reg.enemies([
     dread: 5,
     eldritch: true,
     tags: ['flyer'],
-    desc: '말처럼 생긴 머리에 비늘 덮인 날개. 산맥 너머의 고원으로 가는 길을 지키며, 밤의 마귀를 몹시 두려워한다.',
+    desc: '말처럼 생긴 머리에 비늘 덮인 날개. 산맥 너머 고원으로 가는 길을 지킨다. 밤의 마귀를 몹시 두려워한다.',
     moves: {
       peck: mv.attack('말 머리 부리', 15, { type: 'pierce' }),
       buffet: mv.attack('날개 폭풍', 6, { hits: 3, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
@@ -1040,7 +1040,7 @@ reg.enemies([
         extra: ['debuff'],
         cine: 'flip',
         then: (c, e) => liftUp(c, e),
-        desc: `움켜쥐고 하늘 높이 날아오른다 — 다음 턴 샨탁을 공격으로 ${ESCAPE_HITS}번 맞히면 발톱에서 빠져나오고, 아니면 턴이 끝날 때 떨어진다 (피해 ${FALL_DMG}, 다음 턴 행동력 -1)`,
+        desc: `움켜쥐고 하늘 높이 날아오른다. 다음 턴 샨탁을 공격으로 ${ESCAPE_HITS}번 맞히면 빠져나온다. 빠져나오지 못하면 턴이 끝날 때 떨어진다 (피해 ${FALL_DMG}, 다음 턴 행동력 -1)`,
       }),
     },
     ai: (c, e) => {
@@ -1072,7 +1072,7 @@ reg.enemies([
         name: '적출',
         intent: 'debuff',
         extra: ['buff'],
-        desc: '당신의 이로운 효과(힘·보호막·재생·회피 등)를 모두 떼어 가 제 것으로 삼는다. 떼어 갈 것이 없으면 취약 2',
+        desc: '내 이로운 효과(힘·보호막·재생·회피 등)를 모두 떼어 가 제 것으로 삼는다. 떼어 갈 것이 없으면 취약 2',
         run(c, e) {
           if (!stealBuffs(c, e)) c.apply(c.p, 'vuln', 2, e);
         },
@@ -1091,10 +1091,10 @@ reg.enemies([
         type: 'slash',
         extra: ['debuff'],
         then: (c, e) => incise(c, e),
-        desc: `메스 끝으로 절개선 ${INCISE_N}개를 긋는다 — 「생체 해부」가 절개선마다 ${CUT_DMG} 피해를 더 준다. ${MAX_INCISION}개가 다 그어진 채로 해부대를 펼치면 「${FULL}」이 온다. 체력을 회복하면 아문다`,
+        desc: `절개선 ${INCISE_N}개를 긋는다. 「생체 해부」의 피해가 절개선마다 +${CUT_DMG}. ${MAX_INCISION}개가 다 그어진 채로 해부대를 펼치면 「${FULL}」가 온다. 체력을 회복하면 아문다`,
       }),
       // 피해 = 기본 + 절개선마다 CUT_DMG (의도에 그대로 보인다)
-      table: { ...mv.charge('해부대를 펼친다', 0), dmg: (c: Combat) => vivisectDmg(c), desc: `다음 턴 생체 해부 — 그어 둔 절개선마다 피해 +${CUT_DMG}` },
+      table: { ...mv.charge('해부대를 펼친다', 0), dmg: (c: Combat) => vivisectDmg(c), desc: `다음 턴 생체 해부. 그어 둔 절개선마다 피해 +${CUT_DMG}` },
       vivisect: release({
         ...mv.attack('생체 해부', 0, {
           ultimate: true,
@@ -1111,20 +1111,20 @@ reg.enemies([
       opentable: {
         name: '해부대에 눕힌다',
         intent: 'death',
-        desc: `절개선이 다 그어졌다 — 다음 차례에 「${FULL}」 (즉사, 결계가 한 번 막는다). 내 턴 2번 안에 해부학자에게 피해 ${FULL_DMG}(출혈·독·화상 포함), 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복(절개선이 아문다), 붕괴 중 하나면 막는다`,
+        desc: `절개선이 다 그어졌다. 다음 차례에 「${FULL}」 (즉사, 결계가 한 번 막는다). 내 턴 2번 안에 해부학자에게 피해 ${FULL_DMG}, 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복, 붕괴 중 하나면 막는다. 출혈·독·화상 피해도 센다`,
         run: (c, e) => layOnTable(c, e),
       },
       fullcut: {
         name: FULL,
         intent: 'death',
         ultimate: true,
-        desc: `이 차례에 「${FULL}」 — 막지 못하면 사경 없이 죽는다 (결계가 한 번 막는다). 해부학자에게 피해 ${FULL_DMG}(출혈·독·화상 포함), 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복(절개선이 아문다), 붕괴 중 하나면 막는다`,
+        desc: `이 차례에 「${FULL}」. 막지 못하면 사경 없이 죽는다 (결계가 한 번 막는다). 해부학자에게 피해 ${FULL_DMG}, 방어도 ${FULL_BLOCK} 이상으로 턴 종료, 체력 회복, 붕괴 중 하나면 막는다. 출혈·독·화상 피해도 센다`,
         run: (c, e) => resolveFull(c, e),
       },
       withdraw: {
         name: '메스를 거둔다',
         intent: 'unknown',
-        desc: '완전 해부가 막혔다 — 이번 차례에는 아무것도 하지 않는다',
+        desc: '완전 해부가 막혀 이번 차례에는 아무것도 하지 않는다',
         run: (c, e) => void c.emit({ t: 'text', uid: e.uid, text: '메스를 거둔다', tone: 'info' }),
       },
     },
@@ -1165,7 +1165,7 @@ reg.enemies([
     eldritch: true,
     tags: ['shoggoth'],
     traits: ['a3-protoplasm', 'a3-regrow', 'a3-mimicry'],
-    desc: '고대인들이 부리던 원형질의 노예. 주인들의 피리 소리를 흉내 내며, 무엇이든 될 수 있고 무엇이든 삼킨다. 아주 오래전, 주인들에게 반란을 일으켰다.',
+    desc: '고대인들이 부리던 원형질의 노예. 주인들의 피리 소리를 흉내 낸다. 무엇이든 될 수 있고 무엇이든 삼킨다. 아주 오래전, 주인들에게 반란을 일으켰다.',
     moves: {
       pseudopods: mv.attack('위족 난타', 5, { hits: 4 }),
       crush: mv.attack('짓누르기', 17, { then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
@@ -1186,7 +1186,7 @@ reg.enemies([
       copy: {
         name: '흉내',
         intent: 'special',
-        desc: `이번 턴 당신이 마지막으로 쓴 기술을 흉내 낸다 — 피해를 준 기술이면 그 피해의 절반을 같은 속성으로 되돌려 주고(방어도가 먼저 막는다), 방어도만 얻은 기술이면 그만큼 방어도를 얻는다. 둘 다 아니거나 기술을 쓰지 않았다면 테켈리-리 — 정신 피해 ${MIMIC_SCREAM}`,
+        desc: `이번 턴 내가 마지막으로 쓴 기술을 흉내 낸다. 피해를 준 기술이면 그 피해의 절반을 같은 속성으로 되돌려 준다 (방어도가 먼저 막는다). 방어도만 얻은 기술이면 그만큼 방어도를 얻는다. 둘 다 아니거나 기술을 쓰지 않았다면 테켈리-리: 정신 피해 ${MIMIC_SCREAM}`,
         run: (c, e) => throwBack(c, e),
       },
       surge: mv.charge('원형질이 부풀어 오른다', 36),
@@ -1214,7 +1214,7 @@ reg.enemies([
     eldritch: true,
     tags: ['angle'],
     traits: ['a3-angles', 'a3-angle-lord'],
-    desc: '모든 각도의 주인. 시간이 굽어지기 전부터 굶주려 왔고, 오각형 탑의 모서리마다 새끼를 풀어 둔다. 둥근 것은 지나지 못한다 — 날카로운 각이 있어야 들어온다.',
+    desc: '모든 각도의 주인. 시간이 굽어지기 전부터 굶주려 왔고 오각형 탑의 모서리마다 새끼를 풀어 둔다. 둥근 것은 지나지 못한다. 날카로운 각이 있어야 들어온다.',
     moves: {
       fang: mv.attack('시간의 송곳니', 16, { type: 'slash', then: (c, e) => corrode(c, e, 2), desc: '부식 1 (최대 2)' }),
       whelp: {
@@ -1243,14 +1243,14 @@ reg.enemies([
       carve: {
         name: '유리를 긋는다',
         intent: 'debuff',
-        desc: `화면에 날카로운 각 하나를 연다 (최대 ${MAX_ANGLES}) — 열린 각은 당신의 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메운다. 세 각이 모두 열리면 「${HUNT}」이 온다`,
+        desc: `화면에 날카로운 각 하나를 연다 (최대 ${MAX_ANGLES}). 열린 각은 내 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나를 메운다. 세 각이 모두 열리면 「${HUNT}」이 온다`,
         run: (c, e) => void openAngle(c, e),
       },
       flood: {
         name: '모든 모서리가 열린다',
         intent: 'debuff',
         cine: { name: 'crack', n: 3 },
-        desc: `남은 모서리를 한꺼번에 연다 — 세 각이 모두 열리면 다음 차례에 「${HUNT}」이 온다`,
+        desc: `남은 모서리를 한꺼번에 연다. 세 각이 모두 열리면 다음 차례에 「${HUNT}」이 온다`,
         run: (c, e) => void openAllAngles(c, e),
       },
       // 막아야 하는 큰 위협: 세 각이 모두 열린 채로 이 차례가 오면 사냥개들이 들어온다
@@ -1259,13 +1259,13 @@ reg.enemies([
         intent: 'charge',
         ultimate: true,
         cine: 'corners',
-        desc: `모든 모서리가 열렸다 — 이 차례까지 사냥을 끊지 못하면 ${HUNT_FAIL}. 그 뒤 모서리는 모두 닫힌다. 끊는 법: 각도의 왕에게 피해 ${HUNT_DMG} / 방어도 ${PLASTER} 이상으로 턴을 마쳐 각 하나를 메운다 / 왕을 붕괴시킨다`,
+        desc: `모든 모서리가 열렸다. 이 차례까지 사냥을 끊지 못하면 ${HUNT_FAIL}. 그 뒤 모서리는 모두 닫힌다. 끊는 법: 각도의 왕에게 피해 ${HUNT_DMG} / 방어도 ${PLASTER} 이상으로 턴을 마쳐 각 하나를 메운다 / 왕을 붕괴시킨다`,
         run: (c, e) => resolveHunt(c, e),
       },
       lost: {
         name: '길을 잃은 사냥',
         intent: 'unknown',
-        desc: '메워진 모서리 앞에서 사냥개들이 길을 잃었다 — 이번 차례에는 아무것도 하지 않는다',
+        desc: '메워진 모서리 앞에서 사냥개들이 길을 잃었다. 이번 차례에는 아무것도 하지 않는다',
         run: (c, e) => void c.emit({ t: 'text', uid: e.uid, text: '사냥개들이 둥근 모서리 앞을 맴돈다', tone: 'info' }),
       },
       gnaw: mv.attack('시간 갉아먹기', 8, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'a3-timeworn', 1, e), desc: '다음 턴 행동력 -1' }),
@@ -1346,7 +1346,7 @@ reg.enemies([
       peaks: mv.attack('끝없는 봉우리', 7, { hits: 3, melee: false, type: 'arcane' }),
       gaze: {
         ...mv.horror('보랏빛 응시', 18),
-        desc: '정신 피해 18 — 방어도가 먼저 막아 낸다',
+        desc: '정신 피해 18 (방어도가 먼저 막는다)',
         run(c, e) {
           veiledHorror(c, e, 18, true);
         },
@@ -1373,7 +1373,7 @@ reg.enemies([
         intent: 'charge',
         charging: true,
         sanity: 34,
-        desc: `다음 턴 그것의 모습이 드러난다 — 정신 피해 34 (방어도가 먼저 막는다). 그 뒤 당신의 턴 ${REVEAL_TURNS}번 동안 형체가 드러난다. 붕괴시키면 다시 증기에 가려진다`,
+        desc: `다음 턴 그것의 모습이 드러난다: 정신 피해 34 (방어도가 먼저 막는다). 그 뒤 내 턴 ${REVEAL_TURNS}번 동안 형체가 드러난 채로 있다. 지금 붕괴시키면 다시 증기에 가려진다`,
         run(c, e) {
           e.mem.charge = 1;
           c.emit({ t: 'text', uid: e.uid, text: '증기가 걷히기 시작한다…', tone: 'eldritch' });
@@ -1389,7 +1389,7 @@ reg.enemies([
         ...mv.horror('그것을 보았다', 34),
         ultimate: true,
         cine: 'eye',
-        desc: `정신 피해 34 — 방어도가 먼저 막아 낸다. 그 뒤 당신의 턴 ${REVEAL_TURNS}번 동안 형체가 드러난다: 받는 피해 +50%, 대신 그것을 공격하는 기술마다 정신 피해 ${LOOK_SAN}`,
+        desc: `정신 피해 34 (방어도가 먼저 막는다). 그 뒤 내 턴 ${REVEAL_TURNS}번 동안 형체가 드러난다: 받는 피해 +50%, 대신 그것을 공격하는 기술마다 정신 피해 ${LOOK_SAN}`,
         run(c, e) {
           veiledHorror(c, e, 34, true);
           if (!c.over && !e.dead) reveal(c, e);
@@ -1421,7 +1421,7 @@ reg.enemies([
     eldritch: true,
     tags: ['elder'],
     traits: ['a3-old-master'],
-    desc: '수억 년 전 얼음 속에 잠든 고대인의 원로. 모닥불의 온기가 얼음을 녹이자 다섯 눈을 떴다. 그것은 아직 이 도시가 자기 것이라고 믿는다.',
+    desc: '수억 년 전 얼음 속에 잠든 고대인의 원로. 모닥불의 온기가 얼음을 녹이자 다섯 눈을 떴다. 아직도 이 도시가 제 것이라고 믿는다.',
     moves: {
       tentacles: mv.attack('다섯 갈래 촉수', 5, { hits: 3, melee: false, type: 'slash' }),
       pipe: mv.buff(
@@ -1459,7 +1459,7 @@ reg.enemies([
         intent: 'special',
         ultimate: true,
         cine: 'timestop',
-        desc: `시간을 멈춘다 — 촉수 끝 칼날 ${BLADE_N}개가 당신을 겨눈 채 멈춘다. 원로를 때리는 기술을 쓸 때마다 하나씩 쳐낼 수 있고, 내 턴이 끝나면 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다)`,
+        desc: `시간을 멈춘다. 촉수 끝의 칼날 ${BLADE_N}개가 이쪽을 겨눈 채 멈춘다. 원로를 때리는 기술을 쓸 때마다 하나씩 쳐낸다. 내 턴이 끝나면 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다)`,
         run(c, e) {
           if ((c.p.st[BLADES] ?? 0) > 0) return;
           if (c.apply(c.p, BLADES, BLADE_N, e) > 0) c.emit({ t: 'text', uid: 'p', text: '칼날들이 허공에 멈췄다', tone: 'eldritch' });
@@ -1588,7 +1588,7 @@ reg.enemies([
         name: '시계를 멈춘다',
         intent: 'special',
         cine: 'timestop',
-        desc: `시간을 멈춘다 — 적의 공격 피해가 들어오지 않고 쌓였다가, 내 턴이 ${STOP_TURNS}번 끝나면 한꺼번에 터진다 (방어도가 먼저 막는다). 그 전에 탐사대장을 붕괴시키면 멈춘 시계가 부서져 쌓인 상처가 사라진다`,
+        desc: `시간을 멈춘다. 적의 공격 피해가 들어오지 않고 쌓였다가 내 턴이 ${STOP_TURNS}번 끝나면 한꺼번에 터진다 (방어도가 먼저 막는다). 그 전에 탐사대장을 붕괴시키면 멈춘 시계가 부서져 쌓인 상처가 사라진다`,
         run(c, e) {
           if (!stopTime(c, e) || e.mem.told) return;
           // 처음 멈출 때 한 번: 그의 손목시계는 화면 너머 당신의 시각에 멈춰 있다

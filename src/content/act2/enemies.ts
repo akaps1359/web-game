@@ -128,7 +128,7 @@ function resonate(c: Combat) {
   if (!bell) return;
   bell.mem.resT = c.s.turn + 1;
   setSt(c, bell, RESONANCE, 1);
-  c.emit({ t: 'text', uid: bell.uid, text: '종이 떨고 있다 — 지금이다', tone: 'good' });
+  c.emit({ t: 'text', uid: bell.uid, text: '종이 떨고 있다. 지금이다', tone: 'good' });
 }
 
 /** 종지기의 타종 */
@@ -137,7 +137,7 @@ function toll(step: number): MoveDef {
     ...mv.horror(`타종 (${step}/3)`, 6, {
       desc:
         `종지기 힘 +1. 울린 대종은 다음 턴 동안 공명한다 (받는 피해 +${Math.round((RING_MULT - 1) * 100)}%). ` +
-        '세 번 울리면 마지막 종의 카운트다운이 시작된다 — 2턴 뒤 네 번째 종소리를 들으면 정신이 무너진다',
+        '세 번 울리면 마지막 종의 카운트다운이 시작된다. 2턴 뒤 네 번째 종소리를 들으면 정신이 무너진다',
     }),
     run(c, e) {
       if (countDef(c, 'great-bell') === 0) {
@@ -208,7 +208,7 @@ reg.traits([
   {
     id: 'a2-possessed',
     name: '빙의',
-    desc: '체력이 절반 이하가 되면 몸속의 악령이 빠져나온다 (수도사는 힘 -2, 당신은 정신력 -3)',
+    desc: '체력이 절반 이하가 되면 몸속의 악령이 빠져나온다. 수도사 힘 -2, 내 정신력 -3',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -224,7 +224,7 @@ reg.traits([
   {
     id: 'a2-carapace',
     name: '뼈 껍데기',
-    desc: '마디마다 덧댄 뼈 때문에 근접 공격으로 받는 피해 25% 감소',
+    desc: '마디마다 뼈를 덧댔다. 근접 공격으로 받는 피해 25% 감소',
     hooks: {
       modDamageIn(_c, _s, d) {
         if (d.melee && d.attack) d.mult *= 0.75;
@@ -235,21 +235,21 @@ reg.traits([
     id: 'a2-crescendo',
     name: '크레셴도',
     desc:
-      '지휘하거나 뒤엉킨 성가를 부를 때마다 크레셴도가 쌓이고, 3이 되면 노래를 준비한다 — 첫 번째와 세 번째는 레퀴엠, 그 사이엔 대합창. ' +
-      `레퀴엠은 2턴 뒤 끝나고, 끝까지 들은 자는 사경 없이 죽는다 (결계가 한 번 막는다). 성가대원 하나를 쓰러뜨리거나, 성가대장에게 피해 ${REQUIEM_HIT}을 주거나 ` +
-      '(후열이어도 근접으로 닿는다), 성가대장을 붕괴시키면 끊긴다. 대합창은 준비 중에 붕괴시키면 처음부터 다시 쌓아야 한다',
+      '지휘하거나 뒤엉킨 성가를 부를 때마다 크레셴도가 쌓인다. 3이 되면 노래를 준비한다: 첫 번째와 세 번째는 레퀴엠, 그 사이엔 대합창. ' +
+      `레퀴엠은 2턴 뒤 끝난다. 끝까지 들은 자는 사경 없이 죽는다 (결계가 한 번 막는다). 성가대원 하나를 쓰러뜨리거나 성가대장에게 피해 ${REQUIEM_HIT}을 주거나 ` +
+      '성가대장을 붕괴시키면 끊긴다. 성가대장은 후열에 있어도 근접으로 닿는다. 대합창을 준비할 때 붕괴시키면 크레셴도가 처음으로 돌아간다',
     hooks: {
       // 레퀴엠이 끊기는 길: 성가대장 붕괴 / 성가대장에게 피해 (막힌 피해·지속 피해도 센다) / 성가대원 하나가 쓰러짐
       onDamageTaken(c, s, d) {
         const e = s.unit;
         if (!isEnemy(e) || !e.mem.req) return;
-        if (d.broke) cutRequiem(c, e, '붕괴 — 지휘가 끊겼다');
+        if (d.broke) cutRequiem(c, e, '붕괴로 지휘가 끊겼다');
         else requiemHit(c, e, d.hpLoss + d.blocked);
       },
       onAnyDeath(c, s, victim) {
         const e = s.unit;
         if (!isEnemy(e) || !e.mem.req || !isEnemy(victim) || victim.def !== 'chorister') return;
-        cutRequiem(c, e, '성가대원이 쓰러졌다 — 레퀴엠이 끊겼다');
+        cutRequiem(c, e, '성가대원이 쓰러져 레퀴엠이 끊겼다');
       },
       onDeath(c, s) {
         if (isEnemy(s.unit) && s.unit.mem.req) endRequiem(c, s.unit);
@@ -273,7 +273,7 @@ reg.traits([
   {
     id: 'a2-adaptive',
     name: '성유물의 가호',
-    desc: '마지막으로 받은 공격의 속성에 대해 피해 50% 저항 (속성을 바꿔 가며 공격할 것). 자기 턴이 시작되면 적응이 풀린다',
+    desc: '마지막으로 받은 공격 속성의 피해 50% 저항 (속성을 바꿔 가며 공격할 것). 자기 턴이 시작되면 적응이 풀린다',
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -291,8 +291,8 @@ reg.traits([
     id: 'a2-offering-rite',
     name: '제물 의식',
     desc:
-      `결박된 제물을 바쳐 회복하고 강해진다. 제물이 하나라도 살아 있으면, 쓰러지는 순간 제물 하나를 태워 체력 ${Math.round(RISE_PCT * 100)}%로 다시 일어선다 ` +
-      '(한 번, 제물의 비명에 정신력 -4). 살아 있는 제물을 먼저 모두 거두면 막을 수 있다 (제물은 후열에 있어도 근접으로 닿는다). 대사제가 끝내 쓰러지면 남은 제물들은 풀려나 달아난다',
+      `결박된 제물을 바쳐 회복하고 강해진다. 제물이 하나라도 살아 있으면 쓰러지는 순간 제물 하나를 태워 체력 ${Math.round(RISE_PCT * 100)}%로 다시 일어선다 ` +
+      '(한 번, 제물의 비명에 정신력 -4). 살아 있는 제물을 먼저 모두 거두면 막을 수 있다. 제물은 후열에 있어도 근접으로 닿는다. 대사제가 끝내 쓰러지면 남은 제물들은 풀려나 달아난다',
     hooks: {
       onDeath(c, s) {
         const e = s.unit;
@@ -352,9 +352,9 @@ reg.traits([
     id: 'a2-buried',
     name: '재 속의 몸',
     desc:
-      '후열(재 속)에 파묻혀 있는 동안 받는 피해 30% 감소, 자기 턴이 끝날 때 체력 6 회복. 재에 가려 의도가 보이지 않는다 (통찰 3 이상이면 보인다). ' +
-      `재 속에서 공격받으면 의도가 '재 속의 반격'으로 바뀌고, 맞을 때마다 반격 피해 +${LASH_STEP} (최대 +${LASH_STEP * LASH_MAX}). ` +
-      '재를 덮어 주던 잿빛 유충(근접으로도 닿는다)이 모두 쓰러지면 재 밖으로 드러나 취약해진다',
+      '후열의 재 속에 파묻혀 있는 동안 받는 피해 30% 감소, 자기 턴이 끝날 때 체력 6 회복. 재에 가려 의도가 보이지 않는다 (통찰 3 이상이면 보인다). ' +
+      `재 속에서 공격받으면 의도가 '재 속의 반격'으로 바뀐다. 맞을 때마다 반격 피해 +${LASH_STEP} (최대 +${LASH_STEP * LASH_MAX}). ` +
+      '재를 덮어 주던 잿빛 유충이 모두 쓰러지면 재 밖으로 드러나 취약해진다. 유충은 근접으로도 닿는다',
     hooks: {
       modDamageIn(_c, s, d) {
         if (isEnemy(s.unit) && s.unit.row === 1) d.mult *= 0.7;
@@ -371,7 +371,7 @@ reg.traits([
         if (!d.attack || d.src !== c.p || c.s.phase !== 'player' || e.broken === 2) return;
         e.mem.prov = Math.min(LASH_MAX, (e.mem.prov ?? 0) + 1);
         setIntent(c, e, 'lash');
-        c.emit({ t: 'text', uid: e.uid, text: e.mem.prov === 1 ? '재 속의 것이 당신을 느꼈다' : `재가 들끓는다 (반격 +${LASH_STEP * e.mem.prov})`, tone: 'eldritch' });
+        c.emit({ t: 'text', uid: e.uid, text: e.mem.prov === 1 ? '재 속의 것이 이쪽을 알아챘다' : `재가 들끓는다 (반격 +${LASH_STEP * e.mem.prov})`, tone: 'eldritch' });
       },
       onAnyDeath(c, s, victim) {
         const e = s.unit;
@@ -396,8 +396,8 @@ reg.traits([
     id: 'a2-great-bell',
     name: '대종',
     desc:
-      `잠잠한 종은 받는 피해 ${Math.round((1 - SILENT_MULT) * 100)}% 감소. 종지기가 타종한 직후엔 공명해, 다음 당신 턴 동안 받는 피해 +${Math.round((RING_MULT - 1) * 100)}% — 종소리에 맞춰 쳐야 깨진다. ` +
-      '후열에 있어도 근접으로 닿는다. 종지기는 이 종이 있어야 타종할 수 있다. 종이 깨지면 종지기가 비틀거리다(기절 1) 격노한다(힘 +3)',
+      `잠잠한 종은 받는 피해 ${Math.round((1 - SILENT_MULT) * 100)}% 감소. 종지기가 타종한 직후엔 공명해서 다음 내 턴 동안 받는 피해 +${Math.round((RING_MULT - 1) * 100)}%. 종소리에 맞춰 쳐야 깨진다. ` +
+      '후열에 있어도 근접으로 닿는다. 종지기는 이 종이 있어야 타종할 수 있다. 종이 깨지면 종지기가 비틀거리다 격노한다: 기절 1, 힘 +3',
     hooks: {
       modDamageIn(_c, s, d) {
         d.mult *= (s.unit.st[RESONANCE] ?? 0) > 0 ? RING_MULT : SILENT_MULT;
@@ -416,7 +416,7 @@ reg.traits([
         const bk = c.alive.find((x) => x.def === 'bellkeeper');
         if (!bk) return;
         cine(c, 'shatter', { uid: s.unit.uid });
-        c.emit({ t: 'text', uid: bk.uid, text: '대종이 깨졌다 — 종지기가 비틀거린다', tone: 'good' });
+        c.emit({ t: 'text', uid: bk.uid, text: '대종이 깨지자 종지기가 비틀거린다', tone: 'good' });
         c.apply(bk, 'stun', 1, s.unit);
         c.apply(bk, 'str', 3, s.unit);
         cutKnell(c, bk, '깨진 종은 마지막 종을 울리지 못한다');
@@ -427,14 +427,14 @@ reg.traits([
     id: 'a2-bell-bound',
     name: '종에 묶인 자',
     desc:
-      '대종을 울릴 때마다 강해진다. 세 번 울리면 마지막 종의 카운트다운 — 2턴 뒤 네 번째 종소리를 들으면 정신이 무너진다 ' +
-      `(정신 피해 ${KNELL_SAN}, 공포 ${KNELL_DREAD}, 최대 체력의 ${Math.round(KNELL_HP_PCT * 100)}% 피해 — 방어도 무시). ` +
-      '그 전에 대종(근접으로도 닿는다)을 깨뜨리거나 종지기를 붕괴시키면 끊긴다. 종이 울리는 턴에 기술을 하나도 쓰지 않으면 귀를 막아 듣지 않는다 ' +
+      '대종을 울릴 때마다 강해진다. 세 번 울리면 마지막 종의 카운트다운이 시작된다. 2턴 뒤 네 번째 종소리를 들으면 정신이 무너진다 ' +
+      `(정신 피해 ${KNELL_SAN}, 공포 ${KNELL_DREAD}, 최대 체력의 ${Math.round(KNELL_HP_PCT * 100)}% 피해, 방어도 무시). ` +
+      '그 전에 대종을 깨뜨리거나 종지기를 붕괴시키면 끊긴다. 대종은 근접으로도 닿는다. 종이 울리는 턴에 기술을 하나도 쓰지 않으면 귀를 막아 듣지 않는다 ' +
       `(대신 먹먹한 종소리에 정신 피해 ${MUFFLE_SAN}, 대종은 남아 다시 울린다). 종을 잃으면 제 심장을 종처럼 울린다`,
     hooks: {
       // 카운트다운 중에 붕괴하면 줄을 놓친다
       onDamageTaken(c, s, d) {
-        if (isEnemy(s.unit) && d.broke) cutKnell(c, s.unit, '붕괴 — 종지기가 밧줄을 놓쳤다');
+        if (isEnemy(s.unit) && d.broke) cutKnell(c, s.unit, '붕괴로 종지기가 밧줄을 놓쳤다');
       },
       onDeath(c, s) {
         if (!isEnemy(s.unit) || !s.unit.dead) return;
@@ -449,7 +449,7 @@ reg.traits([
   {
     id: 'a2-lure',
     name: '어둠의 사냥꾼',
-    desc: '등불이 25 미만이면 공격 피해 +25%. 손짓하는 촛불로 등불을 흐리고, 등불을 강탈해 제 촛불에 옮긴다 — 강탈당한 등불은 쓰러뜨리면 되찾는다. 향 연기 속에 숨어 얻은 회피는 자기 턴이 오면 사라진다',
+    desc: '등불이 25 미만이면 공격 피해 +25%. 손짓하는 촛불로 등불을 흐리고 등불을 강탈해 제 촛불에 옮긴다. 강탈당한 등불은 쓰러뜨리면 되찾는다. 향 연기 속에 숨어 얻은 회피는 자기 턴이 오면 사라진다',
     hooks: {
       modDamageOut(c, _s, d) {
         if (d.attack && c.run.light < 25) d.mult *= 1.25;
@@ -478,7 +478,7 @@ reg.traits([
   {
     id: 'a2-miracle',
     name: '거꾸로 된 기적',
-    desc: '기적을 준비하는 동안 붕괴시키지 못하면 크게 회복하고 해로운 효과를 털어낸다',
+    desc: '기적을 준비하는 동안 붕괴시키지 못하면 체력 40을 회복하고 해로운 효과를 털어낸다',
     hooks: {
       // 거꾸로 매달림이 이번 적 차례로 끝나면 화면도 바로 선다 (연출)
       onUnitTurnEnd(c) {
@@ -493,8 +493,8 @@ reg.traits([
     id: 'a2-silence',
     name: '침묵의 서약',
     desc:
-      `당신에게 침묵의 서약을 지운다: 행동력을 쓰는 기술(기본기 포함)을 쓸 때마다 남은 말이 줄고, ${VOW_WORDS}번째 말에서 서약이 새로 시작된다. ` +
-      `그 순간 행동력이 남아 있으면 말을 끊긴다 — 남은 행동력을 잃고 이번 턴 기술을 쓸 수 없으며, 대사제 힘 +${VOW_STR} (전투당 ${VOW_STR_TIMES}번까지). 행동력을 다 쓰는 말로 끝맺으면 무사하다. 행동력 0인 기술은 말로 치지 않는다. 대사제가 쓰러지면 서약도 풀린다`,
+      `침묵의 서약을 지운다. 행동력을 쓰는 기술(기본기 포함)을 쓸 때마다 남은 말이 줄고 ${VOW_WORDS}번째 말에서 서약이 새로 시작된다. ` +
+      `그 순간 행동력이 남아 있으면 말을 끊긴다: 남은 행동력을 잃고 이번 턴 기술을 쓸 수 없으며 대사제 힘 +${VOW_STR} (전투당 ${VOW_STR_TIMES}번까지). 행동력을 다 쓰는 말로 끝맺으면 무사하다. 행동력 0인 기술은 말로 치지 않는다. 대사제가 쓰러지면 서약도 풀린다`,
     hooks: {
       onDeath(c, s) {
         if (!isEnemy(s.unit) || !s.unit.dead) return;
@@ -505,7 +505,7 @@ reg.traits([
   {
     id: 'a2-false-feast',
     name: '거짓 만찬',
-    desc: '먹을 것(시체·새끼)이 하나도 없는 식탁에 차리는 만찬은 거짓이다 — 당신에게 달려들어 입힌 피해만큼 회복한다 (속임수: 통찰 3 이상이면 진짜 의도가 보인다. 전투당 두 번까지). 불에 타 죽은 새끼는 먹지 못한다',
+    desc: '먹을 것(시체·새끼)이 하나도 없는 식탁에 차리는 만찬은 거짓이다. 달려들어 입힌 피해만큼 회복한다 (전투당 두 번까지). 통찰 3 이상이면 진짜 의도가 보인다. 불에 타 죽은 새끼는 먹지 못한다',
     hooks: {},
   },
   {
@@ -519,7 +519,7 @@ reg.traits([
         if (d.type !== 'fire' && !d.tags.includes('burn')) return;
         // 시체 수에서 빼 둔다 (먹힌 시체와 같은 셈)
         c.s.vars.a2eaten = (c.s.vars.a2eaten ?? 0) + 1;
-        c.emit({ t: 'text', uid: e.uid, text: '재가 되어 흩어졌다 — 먹을 것이 남지 않았다', tone: 'good' });
+        c.emit({ t: 'text', uid: e.uid, text: '재가 되어 흩어졌다. 먹을 것이 남지 않았다', tone: 'good' });
       },
     },
   },
@@ -580,7 +580,7 @@ reg.enemies([
           e.mem.rite = 1;
           c.apply(e, 'ritual', 1, e);
         },
-        { desc: '의식 1 — 매 턴 힘 +1' },
+        { desc: '의식 1 (매 턴 힘 +1)' },
       ),
       communion: mv.buff(
         '검은 성찬',
@@ -838,7 +838,7 @@ reg.enemies([
     weak: ['pierce', 'blunt'],
     row: 1,
     tags: ['ash', 'beast'],
-    desc: '향로 연기를 따라 모여드는 창백한 나방. 시체에 알을 슬고, 그 날갯가루를 들이마신 자는 생각이 굳는다.',
+    desc: '향로 연기를 따라 모여드는 창백한 나방. 시체에 알을 슨다. 그 날갯가루를 들이마신 자는 생각이 굳는다.',
     moves: {
       dust: mv.attack('날갯가루', 5, { melee: false, type: 'arcane' }),
       rub: mv.charge('날개를 비빈다', 9),
@@ -846,7 +846,7 @@ reg.enemies([
         mv.attack('마비의 가루', 9, {
           melee: false,
           type: 'arcane',
-          desc: '침묵 1 — 다음 턴엔 기본기만 쓸 수 있다',
+          desc: '침묵 1 (다음 턴엔 기본기만 쓸 수 있다)',
           then: (c, e) => void c.apply(c.p, 'silence', 1, e),
         }),
       ),
@@ -865,11 +865,11 @@ reg.enemies([
     weak: ['void', 'slash'],
     row: 0,
     tags: ['cult'],
-    desc: '모든 죄를 들어주고, 모든 죄를 기록한다. 그 장부는 아래의 목소리에게 바쳐진다.',
+    desc: '모든 죄를 들어주고 모든 죄를 기록한다. 그 장부는 아래의 목소리에게 바쳐진다.',
     moves: {
       penance: mv.attack('참회의 매', 8, { then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
       confess: {
-        ...mv.horror('고해 강요', 4, { desc: '이번 턴 당신이 쓴 스킬 1개당 정신 피해 +1 (최대 +5)' }),
+        ...mv.horror('고해 강요', 4, { desc: '이번 턴 내가 쓴 스킬 1개당 정신 피해 +1 (최대 +5)' }),
         run(c, e) {
           c.horror(e, 4 + Math.min(5, c.s.used));
         },
@@ -903,7 +903,7 @@ reg.enemies([
     moves: {
       reach: mv.attack('뻗어 오는 손', 7, { melee: false, type: 'void' }),
       baptize: mv.horror('검은 세례', 4, {
-        desc: '부식 1 — 받는 피해 +1 (전투 동안)',
+        desc: '부식 1 (받는 피해 +1, 전투 동안)',
         then: (c, e) => void c.apply(c.p, 'corrode', 1, e),
       }),
       clutch: mv.attack('움켜쥐기', 3, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
@@ -944,9 +944,9 @@ reg.enemies([
       penance: mv.debuff(
         '강요된 고행',
         (c, e) => {
-          if (c.apply(c.p, PENANCE, 2, e) > 0) c.emit({ t: 'text', uid: 'p', text: '속죄하라 — 손을 쓸 때마다 피가 흐른다', tone: 'bad' });
+          if (c.apply(c.p, PENANCE, 2, e) > 0) c.emit({ t: 'text', uid: 'p', text: '속죄하라. 손을 쓸 때마다 피가 흐른다', tone: 'bad' });
         },
-        { desc: `속죄 2 — 2턴 동안 기술(기본기 포함)을 쓸 때마다 체력 ${PENANCE_HP}를 잃는다 (방어 무시)` },
+        { desc: `속죄 2: 2턴 동안 기술을 쓸 때마다 체력 ${PENANCE_HP}를 잃는다 (기본기 포함, 방어도 무시)` },
       ),
       windup: mv.charge('백 번의 채찍질', 5, { hits: 4 }),
       rain: release(mv.attack('백 번의 채찍질', 5, { hits: 4, type: 'slash', ultimate: true, cine: 'impact' })),
@@ -980,7 +980,7 @@ reg.enemies([
       // 귀를 파고드는 엇박의 성가 — 기술 이름이 뒤섞여 보이고, 같은 기술을 거듭 쓸 수 없다. 이것도 지휘의 한 마디다
       tangle: {
         ...mv.horror('뒤엉킨 성가', 5, {
-          desc: '정신 피해, 크레셴도 +1. 뒤엉킨 기억 1 — 다음 턴 기술 이름과 설명이 뒤섞여 보이고, 쓴 기술은 그 턴에 다시 쓸 수 없다',
+          desc: '정신 피해, 크레셴도 +1. 뒤엉킨 기억 1: 다음 턴 기술 이름과 설명이 뒤섞여 보이고 쓴 기술은 그 턴에 다시 쓸 수 없다',
         }),
         extra: ['debuff', 'buff'],
         run(c, e) {
@@ -1005,7 +1005,7 @@ reg.enemies([
       prelude: {
         ...mv.charge('대합창 준비', 5),
         hits: (c) => 1 + countDef(c, 'chorister'),
-        desc: '다음 턴 대합창 — 살아 있는 성가대원 1명당 1회 추가 타격 (붕괴시키면 취소)',
+        desc: '다음 턴 대합창. 살아 있는 성가대원 1명당 1회 추가 타격 (붕괴시키면 취소)',
         run(c, e) {
           e.mem.charge = 1;
           // 레퀴엠과 번갈아 온다 (첫 번째·세 번째 크레셴도가 레퀴엠)
@@ -1015,12 +1015,12 @@ reg.enemies([
       },
       // 즉사 퍼즐 「레퀴엠」: 크레셴도가 차면 2턴 — 성가대원 하나를 쓰러뜨리거나, 성가대장에게 피해, 또는 붕괴
       requiem1: {
-        name: '레퀴엠 — 첫 소절',
+        name: '레퀴엠 (첫 소절)',
         intent: 'death',
         cine: { name: 'glitch', n: 2 },
         desc:
-          '레퀴엠이 이어진다 — 다음 차례에 끝나면 끝까지 들은 자는 죽는다 (즉사, 결계가 한 번 막는다). ' +
-          `성가대원 하나를 쓰러뜨리거나, 성가대장에게 피해 ${REQUIEM_HIT}을 주거나(후열이어도 근접으로 닿는다, 지속 피해도 센다), 성가대장을 붕괴시키면 끊긴다`,
+          '레퀴엠이 이어진다. 다음 차례에 노래가 끝나면 끝까지 들은 자는 죽는다 (즉사, 결계가 한 번 막는다). ' +
+          `성가대원 하나를 쓰러뜨리거나 성가대장에게 피해 ${REQUIEM_HIT}을 주거나 성가대장을 붕괴시키면 끊긴다. 성가대장은 후열에 있어도 근접으로 닿는다. 지속 피해도 센다`,
         run(c, e) {
           if (!advanceRequiem(c, e)) {
             endRequiem(c, e);
@@ -1034,8 +1034,8 @@ reg.enemies([
         intent: 'death',
         ultimate: true,
         desc:
-          '끝까지 들은 자는 죽는다 (즉사 — 사경 없이 패배, 결계가 한 번 막는다). ' +
-          `성가대원 하나를 쓰러뜨리거나, 성가대장에게 피해 ${REQUIEM_HIT}을 주거나, 성가대장을 붕괴시키면 끊긴다`,
+          '끝까지 들은 자는 죽는다 (즉사: 사경 없이 패배, 결계가 한 번 막는다). ' +
+          `성가대원 하나를 쓰러뜨리거나 성가대장에게 피해 ${REQUIEM_HIT}을 주거나 성가대장을 붕괴시키면 끊긴다`,
         run(c, e) {
           if (e.mem.req !== 2) {
             endRequiem(c, e);
@@ -1104,14 +1104,14 @@ reg.enemies([
       confess: {
         ...mv.charge('고해성사', 26),
         desc:
-          `봉인이 열린다 — 다음 턴 성인의 분노 (붕괴시키면 취소). 그리고 고해를 청한다: 다음 턴 공격하지 않으면 죄를 사하고 (정신력 +${ABSOLVE_SAN}, 해로운 효과 모두 제거), ` +
-          `공격하는 순간 신성모독 (성유물함 방어도 ${SACRILEGE_BLOCK}, 정신력 -${SACRILEGE_SAN})`,
+          `봉인이 열린다. 다음 턴 성인의 분노 (붕괴시키면 취소). 고해도 청한다. 다음 턴 공격하지 않으면 죄를 사한다: 정신력 +${ABSOLVE_SAN}, 해로운 효과 모두 제거. ` +
+          `공격하는 순간 신성모독: 성유물함 방어도 ${SACRILEGE_BLOCK}, 정신력 -${SACRILEGE_SAN}`,
         run(c, e) {
           e.mem.charge = 1;
           c.emit({ t: 'text', uid: e.uid, text: '봉인이 열린다…', tone: 'bad' });
           setSt(c, c.p, CONFESSION, 1);
           setUi(c, 'ui:eye', 1);
-          c.emit({ t: 'text', uid: e.uid, text: '뚜껑 틈에서 눈이 당신의 고백을 기다린다', tone: 'eldritch' });
+          c.emit({ t: 'text', uid: e.uid, text: '뚜껑 틈에서 눈 하나가 고백을 기다린다', tone: 'eldritch' });
         },
       },
       wrath: release({ ...mv.horror('성인의 분노', 8, { dmg: 26 }), ultimate: true, cine: 'beam' }),
@@ -1140,12 +1140,12 @@ reg.enemies([
       vow: {
         name: '침묵의 서약',
         intent: 'debuff',
-        desc: `침묵의 서약 — 남은 말 ${VOW_WORDS}. 행동력을 쓰는 기술(기본기 포함)을 쓸 때마다 1씩 준다. 0이 되는 순간 행동력이 남아 있으면 말을 끊긴다 (남은 행동력을 잃고 이번 턴 기술 봉인, 대사제 힘 +${VOW_STR} — ${VOW_STR_TIMES}번까지)`,
+        desc: `침묵의 서약: 남은 말 ${VOW_WORDS}. 행동력을 쓰는 기술(기본기 포함)을 쓸 때마다 1씩 줄어든다. 0이 되는 순간 행동력이 남아 있으면 말을 끊긴다 (남은 행동력을 잃고 이번 턴 기술 봉인, 대사제 힘 +${VOW_STR}, ${VOW_STR_TIMES}번까지)`,
         run(c, e) {
           e.mem.vowed = 1;
           setSt(c, c.p, VOW, VOW_WORDS);
           cine(c, 'scrawl', { uid: e.uid, text: '침묵하라' });
-          c.emit({ t: 'text', uid: 'p', text: `침묵의 서약 — 남은 말 ${VOW_WORDS}`, tone: 'eldritch' });
+          c.emit({ t: 'text', uid: 'p', text: `침묵의 서약: 남은 말 ${VOW_WORDS}`, tone: 'eldritch' });
         },
       },
       blade: mv.attack('제례검', 11, { type: 'slash' }),
@@ -1260,7 +1260,7 @@ reg.enemies([
         name: '왕의 만찬',
         intent: 'heal',
         extra: ['buff'],
-        desc: '시체를 먹어 체력 16 회복, 힘 +1. 시체가 없으면 제 새끼를 산 채로 삼킨다 (체력 24 회복, 힘 +1, 당신은 정신력 -4)',
+        desc: '시체를 먹어 체력 16 회복, 힘 +1. 시체가 없으면 제 새끼를 산 채로 삼킨다 (체력 24 회복, 힘 +1, 내 정신력 -4)',
         run(c, e) {
           e.mem.feasts = (e.mem.feasts ?? 0) + 1;
           if (eatCorpse(c)) {
@@ -1294,7 +1294,7 @@ reg.enemies([
         melee: true,
         cine: 'corners',
         disguise: { kind: 'heal', label: '왕의 만찬' },
-        desc: '식탁이 비었다 — 당신에게 달려들어 입힌 피해만큼 회복한다 (만찬으로 위장한다)',
+        desc: '식탁이 비었다. 달려들어 입힌 피해만큼 회복한다 (만찬으로 위장한다)',
         run(c, e) {
           e.mem.lunges = (e.mem.lunges ?? 0) + 1;
           if (once(c, 'a2-lunge')) cine(c, 'whisper', { uid: e.uid, text: '{time}. 식탁이 비었다. 그러니 너다.' });
@@ -1491,7 +1491,7 @@ reg.enemies([
     eldritch: true,
     tags: ['undead'],
     traits: ['a2-bell-bound'],
-    desc: '수도원이 재에 묻힌 뒤에도 종을 멈추지 않은 자. 그의 등은 종의 모양으로 굽었고, 심장은 종추처럼 뛴다.',
+    desc: '수도원이 재에 묻힌 뒤에도 종을 멈추지 않은 자. 그의 등은 종 모양으로 굽었고 심장은 종추처럼 뛴다.',
     moves: {
       hammer: mv.attack('종추 내려치기', 13),
       toll1: toll(1),
@@ -1510,8 +1510,8 @@ reg.enemies([
         name: '마지막 종을 당긴다',
         intent: 'charge',
         desc:
-          `다음 차례에 종말의 종이 울린다 — 들으면 정신이 무너진다 (정신 피해 ${KNELL_SAN}, 공포 ${KNELL_DREAD}, 최대 체력의 ${Math.round(KNELL_HP_PCT * 100)}% 피해 — 방어도 무시). ` +
-          '대종을 깨뜨리거나(공명 중 피해 +50%) 종지기를 붕괴시키면 끊긴다. 대종은 다시 공명한다',
+          `다음 차례에 종말의 종이 울린다. 들으면 정신이 무너진다 (정신 피해 ${KNELL_SAN}, 공포 ${KNELL_DREAD}, 최대 체력의 ${Math.round(KNELL_HP_PCT * 100)}% 피해, 방어도 무시). ` +
+          '대종을 깨뜨리거나 종지기를 붕괴시키면 끊긴다. 대종은 다시 공명한다 (받는 피해 +50%)',
         run(c, e) {
           if (!tightenKnell(c, e)) {
             c.emit({ t: 'text', uid: e.uid, text: '당길 종이 없다', tone: 'info' });
@@ -1530,8 +1530,8 @@ reg.enemies([
         ultimate: true,
         cine: 'crack',
         desc:
-          `들으면 정신이 무너진다 — 정신 피해 ${KNELL_SAN}, 공포 ${KNELL_DREAD}, 최대 체력의 ${Math.round(KNELL_HP_PCT * 100)}% 피해 (방어도 무시). ` +
-          `막으려면 대종을 깨뜨리거나 종지기를 붕괴시킨다. 이번 턴 기술을 하나도 쓰지 않으면 귀를 막아 듣지 않는다 (대신 정신 피해 ${MUFFLE_SAN})`,
+          `들으면 정신이 무너진다: 정신 피해 ${KNELL_SAN}, 공포 ${KNELL_DREAD}, 최대 체력의 ${Math.round(KNELL_HP_PCT * 100)}% 피해 (방어도 무시). ` +
+          `대종을 깨뜨리거나 종지기를 붕괴시키면 막는다. 이번 턴 기술을 하나도 쓰지 않으면 귀를 막아 듣지 않는다 (대신 정신 피해 ${MUFFLE_SAN})`,
         run(c, e) {
           cine(c, 'impact', { uid: e.uid });
           // 마지막 종이 울릴 때마다 화면 유리에 금이 남는다
@@ -1545,7 +1545,7 @@ reg.enemies([
       },
       // 귀를 막아 마지막 종소리를 듣지 않았다 (KNELL 상태가 턴 끝에 이 의도로 바꾼다)
       muffled: {
-        ...mv.horror('먹먹한 종소리', MUFFLE_SAN, { desc: '귀를 막아 마지막 종소리를 듣지 않았다 — 그래도 뼈를 타고 울린다 (정신 피해). 대종은 남아 다시 울린다' }),
+        ...mv.horror('먹먹한 종소리', MUFFLE_SAN, { desc: '귀를 막아 마지막 종소리를 듣지 않았다. 그래도 소리가 뼈를 타고 울린다 (정신 피해). 대종은 남아 다시 울린다' }),
         run(c, e) {
           cine(c, 'bell', { uid: e.uid });
           endKnell(c, e);
@@ -1556,7 +1556,7 @@ reg.enemies([
       dirge: mv.horror('깨진 종의 장송곡', 8, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       // 종을 잃은 종지기는 종추처럼 뛰는 제 심장을 울린다
       heart: {
-        ...mv.horror('심장의 종', 7, { desc: '깨진 종 대신 제 심장을 울린다 — 정신 피해, 종지기 힘 +1' }),
+        ...mv.horror('심장의 종', 7, { desc: '깨진 종 대신 제 심장을 울린다. 정신 피해, 종지기 힘 +1' }),
         extra: ['buff'],
         run(c, e) {
           cine(c, 'bell', { uid: e.uid });
@@ -1643,7 +1643,7 @@ reg.enemies([
         extra: ['debuff'],
         dmg: 11,
         melee: true,
-        desc: `할퀴고 등불 ${SNATCH}을 빼앗아 제 촛불에 옮긴다 — 쓰러뜨리면 되찾는다 (등불이 25 미만이면 이것의 공격 피해 +25%)`,
+        desc: `할퀴고 등불 ${SNATCH}을 빼앗아 제 촛불에 옮긴다. 쓰러뜨리면 되찾는다. 등불이 25 미만이면 이것의 공격 피해 +25%`,
         run(c, e) {
           c.enemyAttack(e, { type: 'slash' });
           if (c.over || e.dead) return;
@@ -1695,11 +1695,11 @@ reg.enemies([
         hits: 2,
         melee: false,
         cine: 'flip',
-        desc: '먼저 거꾸로 매단 뒤 못을 박는다. 거꾸로 매달림 2 — 2턴 동안 체력 피해는 정신력을, 정신력 손실은 체력을 깎는다',
+        desc: '먼저 거꾸로 매단 뒤 못을 박는다. 거꾸로 매달림 2: 2턴 동안 체력 피해는 정신력을, 정신력 손실은 체력을 깎는다',
         run(c, e) {
           if (c.apply(c.p, HANGED, 2, e) > 0) {
             setUi(c, 'ui:swap', 1);
-            c.emit({ t: 'text', uid: 'p', text: '세상이 뒤집혔다 — 피가 머리로 쏠린다', tone: 'eldritch' });
+            c.emit({ t: 'text', uid: 'p', text: '세상이 뒤집혔다. 피가 머리로 쏠린다', tone: 'eldritch' });
           }
           c.enemyAttack(e, { type: 'pierce' });
         },
@@ -1708,7 +1708,7 @@ reg.enemies([
         name: '뒤집힌 축복',
         intent: 'debuff',
         extra: ['block'],
-        desc: '당신의 방어도를 모두 빼앗아 제 것으로 삼는다',
+        desc: '내 방어도를 모두 빼앗아 제 것으로 삼는다',
         run(c, e) {
           const b = c.p.block;
           if (b <= 0) {
@@ -1735,7 +1735,7 @@ reg.enemies([
         intent: 'heal',
         ultimate: true,
         cine: 'timestop',
-        desc: '체력 40 회복, 해로운 효과 제거. 당신은 정신력 -4',
+        desc: '체력 40 회복, 해로운 효과 제거. 내 정신력 -4',
         run(c, e) {
           for (const id of ['weak', 'vuln', 'frail', 'bleed', 'poison', 'burn', 'mark', 'madden', 'corrode', 'doom']) c.clear(e, id);
           c.heal(e, 40);

@@ -59,7 +59,7 @@ reg.statuses([
     name: '별의 심판',
     icon: 'gi:falling-star',
     kind: 'debuff',
-    desc: '내 턴이 {n}번 더 끝나면 별이 떨어진다 — 방어도를 무시하는 큰 피해와 정신 피해. 심판을 짊어진 적(별 표식)을 붕괴시키거나 쓰러뜨리면 그 몫이 사라지고, 모두 없애면 심판이 풀린다. 짊어진 적은 후열에 있어도 근접 공격이 닿는다',
+    desc: '내 턴이 {n}번 더 끝나면 별이 떨어진다. 방어도를 무시하는 큰 피해와 정신 피해. 심판을 짊어진 적(별 표식)을 붕괴시키거나 쓰러뜨리면 그 몫이 사라진다. 모두 없애면 심판이 풀린다. 짊어진 적은 후열에 있어도 근접 공격이 닿는다',
     tickEnd(c, u, n) {
       if (isEnemy(u)) {
         delete u.st[DOOM];
@@ -74,7 +74,7 @@ reg.statuses([
     },
     hooks: {
       onBreak(c, _s, victim) {
-        liftDoom(c, victim, '붕괴 — 별의 심판이 흩어졌다');
+        liftDoom(c, victim, '붕괴하자 별의 심판이 흩어졌다');
       },
       onAnyDeath(c, _s, victim) {
         if (isEnemy(victim)) liftDoom(c, victim, '별의 심판이 거두어졌다');
@@ -122,7 +122,7 @@ export function castDoom(c: Combat, caster: EnemyUnit, turns: number, dmg: numbe
   c.emit({
     t: 'text',
     uid: 'p',
-    text: pending ? '심판이 더 무거워진다' : `별의 심판 — ${turns}턴 뒤 별이 떨어진다`,
+    text: pending ? '심판이 더 무거워진다' : `별의 심판: ${turns}턴 뒤 별이 떨어진다`,
     tone: 'eldritch',
   });
   return true;
@@ -148,7 +148,7 @@ export function canDoom(c: Combat, e: EnemyUnit, gap: number): boolean {
 }
 
 export function doomDesc(turns: number, dmg: number, san: number, who = '시전자') {
-  return `별의 심판 — 내 턴이 ${turns}번 끝나면 ${dmg} 피해(방어도 무시), 정신력 -${san}. ${who}를 붕괴시키거나 쓰러뜨리면 풀린다`;
+  return `별의 심판을 건다. 내 턴이 ${turns}번 끝나면 피해 ${dmg}(방어도 무시), 정신력 -${san}. ${who}를 붕괴시키거나 쓰러뜨리면 풀린다`;
 }
 
 /** 시전자 자신이 짊어지는 별의 심판 */

@@ -2,18 +2,34 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { garbleStable, mountWatcher, realWorld, staticCracks } from '../cinema';
 import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
-import { HIDDEN_REVEAL, lvlVal, shownIntentOf } from '../../engine/combat';
-import type { CombatChoice, EnemyUnit, Intent, SkillDef } from '../../engine/types';
+import { DISGUISE_REVEAL, HIDDEN_REVEAL, lvlVal, shownIntentOf } from '../../engine/combat';
+import type { CombatChoice, EnemyUnit, Intent, IntentKind, Objective, SkillDef } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
 import { stage } from '../../render/stage';
 import { endTurn, pickChoice, useItem, useSkill } from '../../state/actions';
 import { store } from '../../state/store';
 import { saveMeta } from '../../state/meta';
-import { sound } from '../../sound';
-import { Bar, Icon, press, Segs, showTip } from '../components';
+import { Bar, Icon, press, Segs, Sheet, showTip } from '../components';
+import { keywordsIn } from '../glossary';
 import { schoolLabel } from '../cards';
-import { DMG_COLOR, DMG_ICON, DMG_NAME, INTENT_COLOR, INTENT_ICON, RARITY_COLOR, SCHOOL_COLOR, skillDesc, statusText } from '../text';
+import { GAP_ICON, GapLegend, GapMark, GapPeek, gapLine, gapView, harvestHint, harvestSay, type HarvestHint } from '../gap';
+import {
+  DMG_COLOR,
+  DMG_ICON,
+  DMG_NAME,
+  INTENT_COLOR,
+  INTENT_ICON,
+  INTENT_MEANING,
+  INTENT_NAME,
+  INTENT_WAIT,
+  RARITY_COLOR,
+  SCHOOL_COLOR,
+  josa,
+  skillDesc,
+  statusText,
+} from '../text';
+import '../../styles/combat-ui.css';
 
 const RANGE_NAME = { melee: '근접', ranged: '원거리', self: '자신' } as const;
 const TARGET_NAME = { single: '단일', front: '전열', back: '후열', all: '전체', random: '무작위', self: '자신' } as const;
@@ -25,6 +41,12 @@ export function CombatScreen() {
   const areaRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
   const [, setTick] = useState(0);
+  /** 의도 표시 읽는 법 (범례 창) */
+  const [legend, setLegend] = useState(false);
+  /** 자세히 보는 의도 (적 uid) */
+  const [peek, setPeek] = useState<string | null>(null);
+  /** 자세히 보는 틈 (적 uid) */
+  const [gapPeek, setGapPeek] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     const el = areaRef.current;
@@ -44,6 +66,11 @@ export function CombatScreen() {
       window.removeEventListener('resize', measure);
     };
   }, []);
+
+  // 틈이 닫히면 자세히 보기도 닫는다 (연출 중에 열어 둔 것이 나중에 다시 뜨지 않게)
+  useEffect(() => {
+    if (gapPeek && !gapView(gapPeek)) setGapPeek(null);
+  });
 
   if (!c) return <div class="screen" />;
   const snap: Snap = s.snap ?? c.snap();
@@ -98,6 +125,10 @@ export function CombatScreen() {
             <Icon name="gi:sands-of-time" size={13} />
             {c.s.turn}턴
           </span>
+          <button class="chip intent-key" onClick={() => setLegend(true)} aria-label="의도 표시 읽는 법">
+            <Icon name="gi:help" size={13} />
+            의도
+          </button>
           {c.s.anomaly && <AnomalyChip id={c.s.anomaly} />}
           {run.rift && (
             <span class="chip" style={{ color: '#c08cff' }}>
@@ -135,7 +166,7 @@ export function CombatScreen() {
                       color: '#ff2a3a',
                       body: `${objective.text}
 
-${objective.fail ?? '막지 못하면 사경도 없이 그 자리에서 죽는다.'} 결계가 있으면 한 번 막아 준다.`,
+${objective.fail ?? '막지 못하면 사경 없이 그 자리에서 죽는다.'} 결계가 있으면 한 번 막아 준다.`,
                     }
                   : {
                       title: '막아야 할 위협',
@@ -178,94 +209,93 @@ ${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
                 focus={s.focus === e.uid}
                 valid={!!(validTargets?.has(e.uid) || itemSingle)}
                 onTap={() => tapEnemy(e.uid)}
+                onIntent={() => setPeek(e.uid)}
+                onGap={() => setGapPeek(e.uid)}
               />
             );
           })}
 
-        <div class="pbox panel">
-          <div class="prow">
-            <button id="p-anchor" class="badge" style={{ width: 30, height: 30, display: 'grid', placeItems: 'center' }} onClick={() => playerTip()}>
-              <Icon name={ORIGINS.get(run.origin)?.icon ?? 'gi:hood'} size={24} color="var(--brass-2)" />
-            </button>
-            {swap ? sanBar : hpBar}
-            {p.block > 0 && (
-              <span class="blockpill">
-                <Icon name="gi:shield" size={14} color="#8fc4ea" />
-                {p.block}
-              </span>
-            )}
-            {(p.st.barrier ?? 0) > 0 && (
-              <span class="blockpill" style={{ color: '#b0e0ff' }}>
-                <Icon name="gi:bubble-field" size={14} color="#b0e0ff" />
-                {p.st.barrier}
-              </span>
-            )}
-          </div>
-          <div class="prow">
-            <div class="ap" title="행동력">
-              {Array.from({ length: Math.max(run.player.maxAp, p.ap) }, (_, i) => (
-                <i class={i < p.ap ? '' : 'off'} />
-              ))}
+        {/* 아래쪽: 탐험가의 가죽 수첩과 장비 띠 (내 상태 · 설명 쪽지 · 스킬 카드 · 주머니와 도장) */}
+        <div class="kit">
+          <div class="pbox">
+            <div class="prow">
+              <button id="p-anchor" class="medal" onClick={() => playerTip()} aria-label="내 정보">
+                <Icon name={ORIGINS.get(run.origin)?.icon ?? 'gi:hood'} size={21} color="#f3dca0" />
+              </button>
+              {swap ? sanBar : hpBar}
+              {p.block > 0 && <Guard icon="gi:shield" n={p.block} color="#6f95b5" label="방어도" />}
+              {(p.st.barrier ?? 0) > 0 && <Guard icon="gi:bubble-field" n={p.st.barrier} color="#7aaed2" label="보호막" />}
             </div>
-            {ownGun && (
-              <div class="ammo" title="탄약">
-                {Array.from({ length: c.s.maxAmmo }, (_, i) => (
-                  <i class={i < p.ammo ? '' : 'off'} />
+            <div class="prow">
+              <div class="ap" title="행동력">
+                {Array.from({ length: Math.max(run.player.maxAp, p.ap) }, (_, i) => (
+                  <i class={i < p.ap ? '' : 'off'} />
                 ))}
               </div>
-            )}
-            <div class={swap ? 'swapped' : ''} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-              {swap ? hpBar : sanBar}
+              {ownGun && (
+                <div class="ammo" title="탄약">
+                  {Array.from({ length: c.s.maxAmmo }, (_, i) => (
+                    <i class={i < p.ammo ? '' : 'off'} />
+                  ))}
+                </div>
+              )}
+              <div class={`grow ${swap ? 'swapped' : ''}`}>{swap ? hpBar : sanBar}</div>
+              {p.insight > 0 && (
+                <span class="insight" title="통찰">
+                  <Icon name="gi:third-eye" size={13} />
+                  {p.insight}
+                </span>
+              )}
             </div>
-            {p.insight > 0 && (
-              <span class="chip" style={{ color: 'var(--ins)', padding: '1px 6px' }}>
-                <Icon name="gi:third-eye" size={12} />
-                {p.insight}
-              </span>
-            )}
+            <StatusRow st={p.st} />
           </div>
-          <StatusRow st={p.st} />
-        </div>
 
-        <InfoBox />
+          <InfoBox onIntent={setPeek} />
 
-        <div class="skills">
-          {refs.map((ref, i) => (ref ? <SkillButton key={ref} r={ref} /> : <EmptySlot key={`e${i}`} />))}
-        </div>
+          <div class={`skills ${refs.length > 9 ? 'many' : ''}`}>
+            {refs.map((ref, i) => (ref ? <SkillButton key={ref} r={ref} /> : <EmptySlot key={`e${i}`} />))}
+          </div>
 
-        <div class="footer">
-          {run.consumables.map((id, i) => {
-            const def = id ? CONSUMABLES.get(id) : null;
-            const key = `c${i}`;
-            return (
-              <button
-                class={`slot-item ${s.sel === key ? 'sel' : ''}`}
-                style={s.sel === key ? { borderColor: 'var(--brass-2)', boxShadow: '0 0 12px rgba(240,207,122,0.4)' } : undefined}
-                {...press(
-                  () => {
-                    if (!def || s.busy) return;
-                    if (s.sel === key && def.target !== 'single') void useItem(i);
-                    else {
-                      s.sel = key;
-                      s.emit();
-                    }
-                  },
-                  () => def && showTip({ title: def.name, icon: def.icon, body: def.desc }),
-                )}
-              >
-                {def ? <Icon name={def.icon} size={22} color="var(--brass-2)" /> : <span class="muted">·</span>}
-              </button>
-            );
-          })}
-          <button class={`btn endturn ${!anyUsable && !s.busy ? 'ready' : ''}`} disabled={s.busy || c.s.phase !== 'player'} onClick={() => endTurn()}>
-            {s.busy ? '…' : '턴 종료'}
-          </button>
+          <div class="footer">
+            {run.consumables.map((id, i) => {
+              const def = id ? CONSUMABLES.get(id) : null;
+              const key = `c${i}`;
+              return (
+                <button
+                  class={`slot-item ${s.sel === key ? 'sel' : ''} ${def ? '' : 'empty'}`}
+                  aria-label={def?.name ?? '빈 주머니'}
+                  {...press(
+                    () => {
+                      if (!def || s.busy) return;
+                      if (s.sel === key && def.target !== 'single') void useItem(i);
+                      else {
+                        s.sel = key;
+                        s.emit();
+                      }
+                    },
+                    () => def && showTip({ title: def.name, icon: def.icon, body: def.desc }),
+                  )}
+                >
+                  {def ? <Icon name={def.icon} size={22} color="#f0d9a0" /> : <i class="pouch-dot" />}
+                </button>
+              );
+            })}
+            <button class={`endturn ${!anyUsable && !s.busy ? 'ready' : ''}`} disabled={s.busy || c.s.phase !== 'player'} onClick={() => endTurn()}>
+              <span class="stamp-face">
+                <Icon name="gi:stamper" size={17} />
+                {s.busy ? '…' : '턴 종료'}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
       {/* 피해 숫자는 기울어진 화면 밖에서 — 똑바로 선 그림 위에 뜬다 */}
       <Floaters />
       {/* 전투 중 선택지 (연출이 끝난 내 턴에) — 화면 밖의 시스템 창처럼 */}
       {c.s.choice && !s.busy && c.s.phase === 'player' && <ChoiceDialog ch={c.s.choice} />}
+      {peek && <IntentPeek uid={peek} onClose={() => setPeek(null)} />}
+      {gapPeek && <GapPeek uid={gapPeek} onClose={() => setGapPeek(null)} />}
+      {legend && <IntentLegend onClose={() => setLegend(false)} />}
     </>
   );
 }
@@ -356,6 +386,16 @@ function playerTip() {
   });
 }
 
+/** 방어도·보호막: 방패 그림 위에 수치 */
+function Guard({ icon, n, color, label }: { icon: string; n: number; color: string; label: string }) {
+  return (
+    <span class="guard" aria-label={`${label} ${n}`}>
+      <Icon name={icon} size={30} color={color} />
+      <b>{n}</b>
+    </span>
+  );
+}
+
 function StatusRow({ st, max }: { st: Record<string, number>; max?: number }) {
   const ids = Object.keys(st).filter((id) => st[id] && STATUSES.has(id) && !STATUSES.get(id)!.hidden);
   if (!ids.length) return null;
@@ -399,54 +439,425 @@ function StatusRow({ st, max }: { st: Record<string, number>; max?: number }) {
   );
 }
 
-function intentView(e: EnemyUnit, real: Intent | null): { icon: string; color: string; text: string; sub?: string; charging?: boolean } | null {
-  const c = store.combat!;
-  // 속임수 의도는 통찰이 모자라면 가짜로 보인다
-  const it = shownIntentOf(real, c.p.insight);
-  if (!it) return null;
-  if (it.hidden && c.p.insight < HIDDEN_REVEAL) return { icon: 'gi:help', color: '#8a8f96', text: '???' };
-  const color = INTENT_COLOR[it.kind];
-  // 즉사기: 해골과 함께 크게
-  if (it.kind === 'death') return { icon: INTENT_ICON.death, color, text: '즉사', sub: it.label, charging: true };
-  if (it.kind === 'stunned') return { icon: INTENT_ICON.stunned, color, text: '붕괴', sub: '행동 불가' };
-  // 기절(얼어붙음 등)이면 계획한 행동 대신 쉰다는 것을 보여 준다
-  if ((e.st.stun ?? 0) > 0) return { icon: INTENT_ICON.stunned, color: INTENT_COLOR.stunned, text: '기절', sub: '행동 불가' };
-  if (it.dmg && (it.kind === 'attack' || it.kind === 'charge' || it.extra?.includes('attack') || it.kind === 'horror' || it.kind === 'debuff')) {
-    const dmg = c.preview(e, c.p, it.dmg, 'blunt');
-    const hits = it.hits ?? 1;
-    const txt = hits > 1 ? `${dmg}×${hits}` : `${dmg}`;
-    if (it.charging) return { icon: INTENT_ICON.charge, color, text: txt, sub: '다음 턴', charging: true };
-    if (it.kind === 'horror') return { icon: INTENT_ICON.horror, color, text: `${txt}`, sub: `정신 ${c.previewSanityLoss(it.sanity ?? 0)}` };
-    return { icon: INTENT_ICON.attack, color: INTENT_COLOR.attack, text: txt, sub: it.extra?.length ? '+효과' : undefined };
-  }
-  if (it.kind === 'horror') return { icon: INTENT_ICON.horror, color, text: `${c.previewSanityLoss(it.sanity ?? 0)}`, sub: '정신' };
-  return { icon: INTENT_ICON[it.kind], color, text: '', sub: it.label };
+// ───────────── 의도 ─────────────
+
+/** 의도 표시와 자세히 보기에 쓰는 값 */
+interface IntentRead {
+  icon: string;
+  color: string;
+  /** 아이콘 아래 짧은 이름 (준비·공격·방어…) */
+  word: string;
+  /** 큰 숫자 (22, 7×2) */
+  num?: string;
+  /** 숫자 대신 보이는 행동 이름 */
+  name?: string;
+  /** 숫자 옆 작은 글자 (합 14 · 피해 6 · +효과) */
+  sub?: string;
+  /** 빛나는 테두리: 큰 공격이 오고 있다 */
+  glow?: 'charge' | 'death';
+  /** 자세히 보기의 제목 */
+  title: string;
+  /** 자세히 보기의 해요체 문장 (앞 문장이 요약) */
+  says: string[];
+  /** 그 행동의 고유 설명 (규칙 문장) */
+  rule?: string;
 }
 
-function EnemyOverlay({ e, real, a, place, areaTop, focus, valid, onTap }: { e: Snap['e'][number]; real: EnemyUnit; a: Anchor; place: Place; areaTop: number; focus: boolean; valid: boolean; onTap: () => void }) {
+/** 연출 중인 화면과 같은 시점의 의도 (스냅숏) */
+function snapIntentOf(e: EnemyUnit): Intent | null {
+  const se = store.snap?.e.find((x) => x.uid === e.uid);
+  return se ? se.intent : e.intent;
+}
+
+/** 내게 걸린, 의도를 가리는 상태의 이름 (눈부심·어둠 — 설명에 '의도'가 나오는 해로운 상태) */
+function veilName(): string | null {
+  const st = store.combat!.p.st;
+  for (const id of Object.keys(st)) {
+    const d = STATUSES.get(id);
+    if ((st[id] ?? 0) > 0 && d && !d.hidden && d.kind === 'debuff' && d.desc.includes('의도')) return d.name;
+  }
+  return null;
+}
+
+/** 지금 방어도로 막으면 얼마를 받는가 (이 적의 공격만 놓고) */
+function guardSay(total: number): string | null {
+  const p = store.combat!.p;
+  const barrier = p.st.barrier ?? 0;
+  const g = p.block + barrier;
+  if (g <= 0 || total <= 0) return null;
+  const what = barrier > 0 ? (p.block > 0 ? `방어도와 ${STATUSES.get('barrier')?.name ?? '보호막'}` : (STATUSES.get('barrier')?.name ?? '보호막')) : '방어도';
+  const after = Math.max(0, total - g);
+  return after > 0 ? `지금 ${what} ${g}${josa(g, '으로')} 막으면 ${after}${josa(after, '을')} 받는다.` : `지금 ${what} ${g}${josa(g, '으로')} 모두 막는다.`;
+}
+
+/** 힘을 모은 뒤에 쓸 일격의 이름 (같은 피해의 공격 — 모르면 null) */
+function chargeFollowUp(e: EnemyUnit, it: Intent): string | null {
+  const moves = ENEMIES.get(e.def)?.moves;
+  if (!moves || !it.dmg) return null;
+  const hits = it.hits ?? 1;
+  const cands = Object.entries(moves).filter(
+    ([id, m]) => id !== it.move && !m.charging && m.intent !== 'charge' && typeof m.dmg === 'number' && m.dmg === it.dmg && (typeof m.hits === 'function' || (m.hits ?? 1) === hits),
+  );
+  const pick = cands.find(([, m]) => m.ultimate) ?? (cands.length === 1 ? cands[0] : null);
+  return pick ? pick[1].name : null;
+}
+
+/** 즉사·위협 띠가 이 적과 이어져 있으면 그 한 줄 */
+function threatSay(e: EnemyUnit, it: Intent | null, obj: Objective | null | undefined): string | null {
+  if (!obj) return null;
+  const tied = it?.kind === 'death' || !!it?.extra?.includes('death') || obj.hit?.uid === e.uid || obj.break === e.uid || !!obj.kill?.includes(e.uid);
+  if (!tied) return null;
+  return `${obj.lethal ? '즉사를 막는 법' : '막아야 할 위협'}: ${obj.text}`;
+}
+
+/** 다음 적의 차례에 하는 일 (피해가 없는 의도) */
+const NEXT_TURN: IntentKind[] = ['block', 'buff', 'debuff', 'summon', 'advance', 'retreat', 'heal', 'flee'];
+
+/**
+ * 보이는 의도를 읽는다: 거짓 의도는 보이는 모습 그대로 (진짜를 흘리지 않는다), 가려진 의도는 가려진 이유만.
+ * 숫자는 엔진 미리보기 값 (약화·취약·힘·층 배율 반영, 내 방어도로 막기 전)
+ */
+function readIntent(e: EnemyUnit, real: Intent | null): IntentRead | null {
+  const c = store.combat!;
+  const it = shownIntentOf(real, c.p.insight);
+  if (!it) return null;
+  const veil = veilName();
+  // 가려진 의도
+  if (it.hidden && c.p.insight < HIDDEN_REVEAL) {
+    return {
+      icon: INTENT_ICON.unknown,
+      color: INTENT_COLOR.unknown,
+      word: '가려짐',
+      num: '???',
+      title: '???',
+      says: [veil ? `의도가 보이지 않는다. ${veil} 때문이다.` : `의도가 보이지 않는다. 이 적은 할 일을 숨기고 있다. 통찰 ${HIDDEN_REVEAL}${josa(HIDDEN_REVEAL, '이면')} 보인다.`],
+    };
+  }
+  // 어둠에 묻힌 의도 (종류조차 보이지 않는 속임수)
+  if (it.move === '_disguise' && it.kind === 'unknown') {
+    const at = real?.disguise?.reveal ?? DISGUISE_REVEAL;
+    return {
+      icon: INTENT_ICON.unknown,
+      color: INTENT_COLOR.unknown,
+      word: '가려짐',
+      name: it.label,
+      title: it.label,
+      says: [veil ? `의도가 보이지 않는다. ${veil} 때문이다. 통찰 ${at}${josa(at, '이면')} 보인다.` : '의도가 보이지 않는다.'],
+    };
+  }
+  const fake = it.move === '_disguise';
+  const move = fake ? null : c.moveDef(e, it.move);
+  const rule = (it.desc ?? move?.desc) || undefined;
+  const color = INTENT_COLOR[it.kind];
+  const canBreak = e.maxPoise > 0;
+
+  // 즉사기: 해골과 함께 크게
+  if (it.kind === 'death') {
+    const ward = c.p.st.ward ?? 0;
+    const wardName = STATUSES.get('ward')?.name ?? '결계';
+    return {
+      icon: INTENT_ICON.death,
+      color,
+      word: INTENT_NAME.death,
+      name: it.label,
+      glow: 'death',
+      title: it.label,
+      says: ['즉사기다. 막지 못하면 사경 없이 그 자리에서 죽는다.', ward > 0 ? `지금 ${wardName}${josa(wardName, '이')} 있어 한 번은 막아 준다.` : `${wardName}${josa(wardName, '이')} 있으면 한 번 막아 준다.`],
+      rule,
+    };
+  }
+  if (it.kind === 'stunned') {
+    return {
+      icon: INTENT_ICON.stunned,
+      color,
+      word: INTENT_NAME.stunned,
+      name: '행동 불가',
+      title: it.label,
+      says: [it.move === '_broken' ? '붕괴해서 다음 적의 차례엔 행동하지 못한다. 버팀이 돌아올 때까지 받는 피해가 50% 늘어난다.' : INTENT_MEANING.stunned],
+      rule,
+    };
+  }
+  // 기절(얼어붙음 등)이면 계획한 행동 대신 쉰다는 것을 보여 준다
+  if ((e.st.stun ?? 0) > 0) {
+    return { icon: INTENT_ICON.stunned, color: INTENT_COLOR.stunned, word: '기절', name: '행동 불가', title: '기절', says: ['기절해서 다음 적의 차례엔 행동하지 못한다.'] };
+  }
+
+  const hits = it.hits ?? 1;
+  const dealt = !!it.dmg && (it.kind === 'attack' || it.kind === 'charge' || it.kind === 'horror' || it.kind === 'debuff' || !!it.extra?.includes('attack'));
+  const per = dealt ? c.preview(e, c.p, it.dmg!, 'blunt') : 0;
+  const total = per * hits;
+  const num = hits > 1 ? `${per}×${hits}` : `${per}`;
+  const sum = hits > 1 ? `합 ${total}` : undefined;
+  /** '7 피해를 2번(합계 14)' */
+  const hitPhrase = hits > 1 ? `${per} 피해를 ${hits}번(합계 ${total})` : `${per} 피해를`;
+
+  // 힘을 모은다 (번개): 다음 차례엔 모으기만, 그다음 차례에 큰 공격.
+  // 모으지 않는 번개(만조·사냥 같은 퍼즐 위협)는 이 차례에 바로 닥친다 — 막는 법은 행동 설명과 띠에
+  if (it.kind === 'charge' || it.charging) {
+    const next = fake ? null : chargeFollowUp(e, it);
+    const says = it.charging
+      ? ['다음 적의 차례엔 힘만 모은다.', dealt ? (next ? `그다음 차례에 쓸 「${next}」${josa(next, '은')} ${hitPhrase} 준다.` : `그다음 차례에 ${hitPhrase} 준다.`) : '그다음 차례에 큰 행동을 한다.']
+      : dealt
+        ? [`다음 적의 차례에 ${hitPhrase} 준다.`]
+        : [rule ? '큰 행동을 앞두고 있다. 막는 법은 아래 설명에 있다.' : '큰 행동을 앞두고 있다.'];
+    if (canBreak) says.push(it.charging ? '그 전에 버팀을 0으로 깎아 붕괴시키면 끊긴다.' : '붕괴시키면 끊긴다.');
+    return {
+      icon: INTENT_ICON.charge,
+      color: INTENT_COLOR.charge,
+      word: INTENT_NAME.charge,
+      num: dealt ? num : undefined,
+      name: dealt ? undefined : it.label,
+      sub: dealt ? sum : undefined,
+      glow: 'charge',
+      title: it.label,
+      says,
+      rule,
+    };
+  }
+
+  // 정신 공격: 큰 숫자는 잃을 정신력
+  if (it.kind === 'horror') {
+    const san = c.previewSanityLoss(it.sanity ?? 0);
+    const says = [dealt ? `다음 적의 차례에 정신력 ${san}${josa(san, '을')} 깎고 ${hitPhrase} 준다.` : `다음 적의 차례에 정신력 ${san}${josa(san, '을')} 깎는다.`];
+    const g = dealt ? guardSay(total) : null;
+    if (g) says.push(g);
+    return { icon: INTENT_ICON.horror, color, word: INTENT_NAME.horror, num: `${san}`, sub: dealt ? `피해 ${num}` : undefined, title: it.label, says, rule };
+  }
+
+  if (dealt) {
+    // 모아 둔 힘을 쏟아내는 일격 (번개 다음 차례)
+    const release = !fake && !!e.mem.charge && real?.move === e.intent?.move;
+    const says: string[] = [];
+    if (release) says.push('모아 둔 힘을 쏟아내는 일격이다.');
+    says.push(it.kind === 'debuff' ? `다음 적의 차례에 ${hitPhrase} 주고 해로운 상태를 건다.` : `다음 적의 차례에 ${hitPhrase} 준다.`);
+    const g = guardSay(total);
+    if (g) says.push(g);
+    if (release && canBreak) says.push('그 전에 붕괴시키면 끊긴다.');
+    if ((e.st.madden ?? 0) > 0) says.push(`${STATUSES.get('madden')?.name ?? '광란'} 상태라 공격마다 절반 확률로 다른 적을 때린다.`);
+    const more = !!it.extra?.length || it.kind === 'debuff';
+    return {
+      icon: INTENT_ICON.attack,
+      color: INTENT_COLOR.attack,
+      word: INTENT_NAME.attack,
+      num,
+      sub: sum ? (more ? `${sum} +효과` : sum) : release ? '모은 힘' : more ? '+효과' : undefined,
+      glow: release ? 'charge' : undefined,
+      title: it.label,
+      says,
+      rule: rule ?? extraSay(it),
+    };
+  }
+
+  // 피해가 없는 의도
+  const wait = it.move === '_wait';
+  const word = wait ? '관망' : INTENT_NAME[it.kind];
+  const says = wait
+    ? [INTENT_WAIT]
+    : NEXT_TURN.includes(it.kind)
+      ? [`다음 적의 차례에 ${INTENT_MEANING[it.kind]}`]
+      : it.kind === 'special'
+        ? ['이 적만의 특별한 행동이다.']
+        : it.kind === 'unknown'
+          ? ['무엇을 할지 알 수 없다.']
+          : [INTENT_MEANING[it.kind]];
+  return { icon: INTENT_ICON[it.kind], color, word, name: it.label !== word ? it.label : undefined, title: it.label, says, rule: rule ?? extraSay(it) };
+}
+
+/** 고유 설명이 없는 행동의 덧붙는 효과 */
+function extraSay(it: Intent): string | undefined {
+  const more = (it.extra ?? []).filter((k) => k !== it.kind);
+  return more.length ? `덧붙는 효과: ${more.map((k) => INTENT_NAME[k]).join(', ')}` : undefined;
+}
+
+/** 적 머리 위의 의도 표시: 아이콘 아래 짧은 이름, 옆에 숫자(다단이면 7×2와 합계) */
+function IntentBadge({ r, onPress, big }: { r: IntentRead; onPress?: () => void; big?: boolean }) {
+  const inner = (
+    <>
+      <span class="ib-ic">
+        <Icon name={r.icon} size={big ? 22 : 16} color={r.color} />
+        <small>{r.word}</small>
+      </span>
+      {(r.num || r.name || r.sub) && (
+        <span class="ib-v">
+          {r.num && <b class="num">{r.num}</b>}
+          {r.name && <b class="nm">{r.name}</b>}
+          {r.sub && <small>{r.sub}</small>}
+        </span>
+      )}
+    </>
+  );
+  const cls = `ibadge ${r.glow ?? ''} ${big ? 'big' : ''}`;
+  if (!onPress) return <span class={cls} style={{ color: r.color }}>{inner}</span>;
+  return (
+    <button class={cls} style={{ color: r.color }} aria-label={`${r.word} 의도 자세히`} {...press(onPress, onPress)}>
+      {inner}
+    </button>
+  );
+}
+
+/** 글 속 숫자를 굵게 (7×2, 50% 같은 것도) */
+function Nums({ text }: { text: string }) {
+  const parts = text.split(/(\d+(?:×\d+)?%?)/);
+  return <>{parts.map((t, i) => (i % 2 ? <b class="kv">{t}</b> : t))}</>;
+}
+
+/** 의도를 누르면: 종류의 뜻과 실제 수치, 그 행동의 설명, 걸린 위협 */
+function IntentPeek({ uid, onClose }: { uid: string; onClose: () => void }) {
+  const c = store.combat;
+  const e = c?.s.enemies.find((x) => x.uid === uid && !x.dead);
+  if (!c || !e) return null;
+  const real = snapIntentOf(e);
+  const r = readIntent(e, real);
+  if (!r) return null;
+  const obj = store.snap?.obj ?? c.s.obj;
+  const threat = threatSay(e, shownIntentOf(real, c.p.insight), obj);
+  const say = r.says.join(' ');
+  return (
+    <div class="veil" style={{ background: 'rgba(0,0,0,0.35)', alignItems: 'flex-end' }} onClick={onClose}>
+      <div class="tip panel intent-peek" onClick={onClose}>
+        <div class="tip-head">
+          <IntentBadge r={r} big />
+          <div>
+            <div class="t" style={{ color: r.color }}>
+              {r.title}
+            </div>
+            <div class="s">{e.name}의 의도</div>
+          </div>
+        </div>
+        <p class="peek-say">
+          <Nums text={say} />
+        </p>
+        {r.rule && <p class="peek-rule">{r.rule}</p>}
+        {threat && (
+          <p class={`peek-threat ${obj?.lethal ? '' : 'warn'}`}>
+            <Icon name="gi:hazard-sign" size={14} />
+            {threat}
+          </p>
+        )}
+        <PeekWords text={[say, r.rule ?? ''].join(' ')} />
+      </div>
+    </div>
+  );
+}
+
+/** 자세히 보기에서 풀지 않는 용어 (이 창이 곧 그 풀이다) */
+const PEEK_SKIP = new Set(['의도', '준비', '즉사기']);
+
+/** 자세히 보기 아래의 용어 풀이 (넷까지 — 휴대폰 한 화면에 들게) */
+function PeekWords({ text }: { text: string }) {
+  // 「행동 이름」 속 낱말은 용어가 아니다 (「어둠의 피라미드」의 '어둠' 같은 것)
+  const ks = keywordsIn(text.replace(/「[^」]*」/g, ''))
+    .filter((k) => !PEEK_SKIP.has(k.name))
+    .slice(0, 4);
+  if (!ks.length) return null;
+  return (
+    <div class="kw-list">
+      {ks.map((k) => (
+        <div class="kw">
+          <Icon name={k.icon} size={16} color={k.color} />
+          <div>
+            <b style={{ color: k.color }}>{k.name}</b> {k.desc}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 의도 표시 읽는 법: 모든 아이콘의 뜻 */
+function IntentLegend({ onClose }: { onClose: () => void }) {
+  const rows: [IntentKind, string, string][] = [
+    ['attack', INTENT_NAME.attack, INTENT_MEANING.attack],
+    ['charge', INTENT_NAME.charge, INTENT_MEANING.charge],
+    ['death', INTENT_NAME.death, INTENT_MEANING.death],
+    ['horror', INTENT_NAME.horror, INTENT_MEANING.horror],
+    ['debuff', INTENT_NAME.debuff, INTENT_MEANING.debuff],
+    ['block', INTENT_NAME.block, INTENT_MEANING.block],
+    ['buff', INTENT_NAME.buff, INTENT_MEANING.buff],
+    ['heal', INTENT_NAME.heal, INTENT_MEANING.heal],
+    ['summon', INTENT_NAME.summon, INTENT_MEANING.summon],
+    ['special', INTENT_NAME.special, INTENT_MEANING.special],
+    ['advance', INTENT_NAME.advance, INTENT_MEANING.advance],
+    ['retreat', INTENT_NAME.retreat, INTENT_MEANING.retreat],
+    ['flee', INTENT_NAME.flee, INTENT_MEANING.flee],
+    ['stunned', '붕괴·기절', INTENT_MEANING.stunned],
+    ['sleep', INTENT_NAME.sleep, INTENT_MEANING.sleep],
+    ['unknown', '관망', INTENT_WAIT],
+    ['unknown', '가려짐', INTENT_MEANING.unknown],
+  ];
+  const sample: IntentRead = { icon: INTENT_ICON.attack, color: INTENT_COLOR.attack, word: INTENT_NAME.attack, num: '7×2', sub: '합 14', title: '', says: [] };
+  return (
+    <Sheet title="의도 읽는 법" icon="gi:open-book" onClose={onClose}>
+      <div class="legend scroll">
+        <div class="legend-lead">
+          <IntentBadge r={sample} />
+          <p>
+            적 머리 위의 표시는 그 적이 다음 차례에 할 행동이다. 숫자는 내가 받을 피해다. 약화·취약·힘을 반영했고 방어도로 막기 전 값이다. <b class="kv">7×2</b>는 7 피해를 2번, 합계 14라는 뜻이다.
+          </p>
+        </div>
+        <p class="legend-note">표시를 누르면 그 적의 의도가 자세히 나온다. 테두리가 빛나면 큰 공격이 오고 있다.</p>
+        <div class="legend-rows">
+          {rows.map(([k, w, t]) => (
+            <div class="legend-row">
+              <span class="lg-mark" style={{ color: INTENT_COLOR[k] }}>
+                <Icon name={INTENT_ICON[k]} size={20} color={INTENT_COLOR[k]} />
+                <small>{w}</small>
+              </span>
+              <span class="lg-text">{t}</span>
+            </div>
+          ))}
+        </div>
+        <GapLegend />
+      </div>
+    </Sheet>
+  );
+}
+
+function EnemyOverlay({
+  e,
+  real,
+  a,
+  place,
+  areaTop,
+  focus,
+  valid,
+  onTap,
+  onIntent,
+  onGap,
+}: {
+  e: Snap['e'][number];
+  real: EnemyUnit;
+  a: Anchor;
+  place: Place;
+  areaTop: number;
+  focus: boolean;
+  valid: boolean;
+  onTap: () => void;
+  onIntent: () => void;
+  onGap: () => void;
+}) {
   const def = ENEMIES.get(real.def);
-  const iv = intentView(real, e.intent);
+  const iv = readIntent(real, e.intent);
+  // 틈: 체력 막대 끝에 계열 색의 갈라진 표시 (연출 중이면 그 시점의 모습)
+  const gap = gapView(e.uid);
   const w = a.size * 0.95;
   const h = a.size * 1.1;
   const tip = () => enemyTip(real);
   const feet = place(a.x, a.y);
-  const head = place(a.x, a.y - a.size * stage.battle.headroom(e.uid) - 30);
+  // 의도 표시는 두 줄(아이콘 아래 이름) — 머리와 겹치지 않게 조금 더 위에
+  const head = place(a.x, a.y - a.size * stage.battle.headroom(e.uid) - 36);
   const plate = place(a.x, a.y + 4);
   return (
     <>
       <div class={`enemy-hit ${focus ? 'focus' : ''} ${valid ? 'valid' : ''}`} style={{ left: feet.x, top: feet.y, width: w, height: h }} {...press(onTap, tip)} />
       {iv && (
-        <div class="enemy-ui" style={{ left: head.x, top: Math.max(areaTop - 4, head.y) }}>
-          <span class={`intent ${iv.charging ? 'charging' : ''}`} style={{ color: iv.color }}>
-            <Icon name={iv.icon} size={17} color={iv.color} />
-            {iv.text}
-            {iv.sub && <small>{iv.sub}</small>}
-          </span>
+        <div class="enemy-ui ib-wrap" style={{ left: head.x, top: Math.max(areaTop - 4, head.y) }}>
+          <IntentBadge r={iv} onPress={onIntent} />
         </div>
       )}
       <div class="enemy-ui" style={{ left: plate.x, top: plate.y }}>
         <div class="eplate" style={{ width: Math.max(64, Math.min(116, (a.slot ?? 116) - 4)) }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, maxWidth: '100%' }}>
             <span class="ename">{real.name}</span>
             {e.block > 0 && (
               <span class="ebl">
@@ -454,6 +865,8 @@ function EnemyOverlay({ e, real, a, place, areaTop, focus, valid, onTap }: { e: 
                 {e.block}
               </span>
             )}
+            {/* 틈: 이름 옆 (긴 이름은 말줄임으로 줄어든다. 아래 버팀·약점 줄과 겹치지 않게) */}
+            {gap && <GapMark key={`${gap.school}${gap.big ? '+' : ''}`} g={gap} onPress={onGap} />}
           </div>
           <Bar kind="hp" value={Math.max(0, e.hp)} max={e.maxHp} label={def?.tier === 'boss' ? '' : undefined} />
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -485,7 +898,6 @@ function EnemyOverlay({ e, real, a, place, areaTop, focus, valid, onTap }: { e: 
             </div>
           </div>
           <StatusRow st={e.st} max={Math.max(64, Math.min(130, (a.slot ?? 130) - 4))} />
-          {def?.traits?.length ? null : null}
         </div>
       </div>
     </>
@@ -501,15 +913,16 @@ function enemyTip(e: EnemyUnit) {
   const def = ENEMIES.get(e.def);
   if (!def) return;
   const traits = (def.traits ?? []).map((t) => TRAITS.get(t)).filter(Boolean);
-  const it = store.combat!.shownIntent(e);
-  const move = it && it.move !== '_disguise' ? store.combat!.moveDef(e, it.move) : null;
+  const r = readIntent(e, snapIntentOf(e));
+  const gap = gapView(e.uid);
   showTip({
     title: e.name,
     sub: `${def.tier === 'boss' ? '수호자' : def.tier === 'elite' ? '정예' : def.tier === 'minion' ? '하수인' : '일반'} · ${e.row === 0 ? '전열' : '후열'}`,
     icon: def.icon,
     color: def.eldritch ? '#4fffc4' : '#e9e3d6',
     body:
-      (it ? `의도: ${it.hidden && store.combat!.p.insight < HIDDEN_REVEAL ? '???' : `${it.label}${(it.desc ?? move?.desc) ? ` — ${it.desc ?? move?.desc}` : ''}`}` : '') +
+      (r ? `의도: ${r.title}\n${r.says.join(' ')}` : '') +
+      (gap ? `${r ? '\n\n' : ''}${gapLine(gap)}` : '') +
       (traits.length ? `\n\n${traits.map((t) => `【${t!.name}】 ${t!.desc}`).join('\n')}` : ''),
     lines: [
       { label: '체력', value: def.tier === 'boss' ? woundWord(e.hp / Math.max(1, e.maxHp)) : `${e.hp}/${e.maxHp}` },
@@ -526,7 +939,15 @@ function enemyTip(e: EnemyUnit) {
 }
 
 /** cost·cd: 전투 중 실제 값 (각인·유물이 바꾼 행동력·재사용 대기) */
-function skillTip(def: SkillDef, lvl: number, runes: string[], use?: ReturnType<NonNullable<typeof store.combat>['makeUse']>, cost = lvlVal(def.cost, lvl), cd = lvlVal(def.cd, lvl)) {
+function skillTip(
+  def: SkillDef,
+  lvl: number,
+  runes: string[],
+  use?: ReturnType<NonNullable<typeof store.combat>['makeUse']>,
+  cost = lvlVal(def.cost, lvl),
+  cd = lvlVal(def.cd, lvl),
+  gap?: HarvestHint | null,
+) {
   const c = store.combat;
   const segs = skillDesc(def, lvl, { c, target: c?.enemy(store.focus) ?? null, use: use ?? null });
   showTip({
@@ -535,7 +956,7 @@ function skillTip(def: SkillDef, lvl: number, runes: string[], use?: ReturnType<
     sub: `${schoolLabel(def)} · ${RANGE_NAME[def.range]} · ${TARGET_NAME[def.target]}${def.type ? ` · ${DMG_NAME[def.type]}` : ''}`,
     icon: def.icon,
     color: SCHOOL_COLOR[def.school],
-    body: segs.map((x) => x.t).join('') + (runes.length ? `\n\n각인: ${runes.map((r) => RUNES.get(r)?.name).join(', ')}` : ''),
+    body: segs.map((x) => x.t).join('') + (runes.length ? `\n\n각인: ${runes.map((r) => RUNES.get(r)?.name).join(', ')}` : '') + (gap ? `\n\n${harvestSay(gap)}` : ''),
     lines: [
       { label: '행동력', value: String(cost) },
       { label: '재사용 대기', value: cd >= 99 ? '전투당 1회' : cd > 0 ? `${cd}턴` : '없음' },
@@ -543,6 +964,22 @@ function skillTip(def: SkillDef, lvl: number, runes: string[], use?: ReturnType<
   });
 }
 
+/** 두 색을 섞는다 (#rrggbb, t = b 쪽 비율) */
+function mix(a: string, b: string, t: number): string {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const x = p(a);
+  const y = p(b);
+  return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('');
+}
+
+/** 카드마다 고정된 작은 기울기 (손으로 늘어놓은 듯, -0.5°~0.5°) */
+function tiltOf(key: string): number {
+  let h = 7;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return (((h >>> 0) % 11) - 5) / 10;
+}
+
+/** 스킬 카드: 잉크로 그린 수첩 낱장. 왼쪽 위 밀랍 인장 = 계열 색과 행동력 */
 function SkillButton({ r }: { r: string }) {
   const s = store;
   const c = s.combat!;
@@ -553,7 +990,7 @@ function SkillButton({ r }: { r: string }) {
   const why = c.blockReason(r);
   const cost = c.costOf(info);
   const sel = s.sel === r;
-  const color = info.basic ? '#cfc8b8' : SCHOOL_COLOR[def.school];
+  const hue = info.basic ? '#a39a88' : SCHOOL_COLOR[def.school];
   // 기억을 빼앗기면 이름이 뒤섞여 보인다 (기본기는 그대로)
   const scrambled = !!(s.snap?.ui ?? c.s.vars)['ui:scramble'] && !info.basic;
   const tap = () => {
@@ -565,44 +1002,57 @@ function SkillButton({ r }: { r: string }) {
       }
       if (def.target !== 'single' || c.validTargets(def).length === 1 || (s.focus && c.validTargets(def).some((e) => e.uid === s.focus))) {
         void useSkill(r, def.target === 'single' ? (c.validTargets(def).find((e) => e.uid === s.focus)?.uid ?? c.validTargets(def)[0]?.uid) : null);
-      } else s.toast('대상을 누르세요', 'info', 1200);
+      } else s.toast('대상 선택', 'info', 1200);
       return;
     }
     s.sel = r;
     s.emit();
   };
+  const wax = `--tilt:${tiltOf(owned.uid)}deg;--wax-hi:${mix(hue, '#1a0d08', 0.25)};--wax:${mix(hue, '#1a0d08', 0.52)};--wax-lo:${mix(hue, '#080402', 0.76)}`;
+  // 틈 거두기: 오른쪽 위에 틈 색의 갈라진 밀랍 (대상을 아직 안 골랐으면 흐리게)
+  const gh = cd > 0 ? null : harvestHint(r);
+  const gapWax = gh ? `--g:${gh.color};--gw-hi:${mix(gh.color, '#1a0d08', 0.18)};--gw:${mix(gh.color, '#1a0d08', 0.45)};--gw-lo:${mix(gh.color, '#080402', 0.72)}` : '';
   return (
-    <button class={`skill ${sel ? 'sel' : ''} ${why && !cd ? 'off' : ''}`} {...press(tap, () => skillTip(def, owned.lvl, owned.runes, c.makeUse(info), cost, c.cdOf(info)))}>
-      {cost > 0 ? (
-        <span class="cost">
-          {Array.from({ length: cost }, () => (
-            <i />
-          ))}
+    <button
+      class={`skill ${sel ? 'sel' : ''} ${why && !cd ? 'off' : ''} ${cd > 0 ? 'cooling' : ''} ${info.basic ? 'basic' : ''} ${gh ? 'gap' : ''}`}
+      style={wax}
+      {...press(tap, () => skillTip(def, owned.lvl, owned.runes, c.makeUse(info), cost, c.cdOf(info), gh))}
+    >
+      <span class="seal" aria-label={`행동력 ${cost}`}>
+        {cost}
+      </span>
+      {gh && (
+        <span class={`gapseal ${gh.sure ? 'sure' : 'maybe'}`} style={gapWax} aria-label={harvestSay(gh)}>
+          <Icon name={GAP_ICON} size={gh.sure ? 13 : 11} color="#fff1d6" />
         </span>
-      ) : (
-        <span class="cost zero">0</span>
       )}
       {info.basic && <span class="basic-tag">{info.basic === 'weapon' ? '무기' : '방어'}</span>}
-      <Icon name={def.icon} size={24} color={color} />
+      <Icon name={def.icon} size={24} color={mix(hue, '#eadcbc', 0.28)} />
       <span class={`sn ${scrambled ? 'scrambled' : ''} ${!scrambled && def.rarity === 'genesis' ? 'genesis-name' : ''}`} style={{ color: def.rarity === 'basic' ? '#e9e3d6' : RARITY_COLOR[def.rarity] === '#cfc8b8' ? '#e9e3d6' : RARITY_COLOR[def.rarity] }}>
         {scrambled ? garbleStable(def.name) : def.name}
         {owned.lvl > 0 ? '+' : ''}
       </span>
       {owned.runes.length > 0 && <span class="rune-dot" />}
-      {cd > 0 && <span class="cd">{cd >= 99 ? '✕' : cd}</span>}
+      {cd > 0 && (
+        <span class="cd">
+          <b>{cd >= 99 ? '✕' : cd}</b>
+          <small>{cd >= 99 ? '다 씀' : '턴'}</small>
+        </span>
+      )}
     </button>
   );
 }
 
 function EmptySlot() {
   return (
-    <div class="skill" style={{ opacity: 0.25, borderStyle: 'dashed' }}>
-      <span class="sn muted">빈 슬롯</span>
+    <div class="skill empty">
+      <span class="sn">빈 슬롯</span>
     </div>
   );
 }
 
-function InfoBox() {
+/** 설명 쪽지: 고른 스킬·소모품, 눌러 둔 적의 의도, 아무것도 없으면 쓰는 법 */
+function InfoBox({ onIntent }: { onIntent: (uid: string) => void }) {
   const s = store;
   const c = s.combat!;
   const run = s.run!;
@@ -611,20 +1061,20 @@ function InfoBox() {
     const def = id ? CONSUMABLES.get(id) : null;
     if (def)
       return (
-        <div class="infobox panel">
-          <Icon name={def.icon} size={30} color="var(--brass-2)" />
+        <div class="infobox note">
+          <span class="note-ic">
+            <Icon name={def.icon} size={28} color="var(--brass-2)" />
+          </span>
           <div class="txt">
             <div class="nm">{def.name}</div>
             {def.desc}
           </div>
           {def.target !== 'single' ? (
-            <button class="btn sm" disabled={s.busy} onClick={() => useItem(Number(s.sel!.slice(1)))}>
+            <button class="use" disabled={s.busy} onClick={() => useItem(Number(s.sel!.slice(1)))}>
               사용
             </button>
           ) : (
-            <span class="muted" style={{ fontSize: 12 }}>
-              대상을 누르세요
-            </span>
+            <span class="aim">대상 선택</span>
           )}
         </div>
       );
@@ -637,24 +1087,33 @@ function InfoBox() {
     const segs = skillDesc(info.def, info.owned.lvl, { c, target, use }).map((x) => (scrambled ? { ...x, t: garbleStable(x.t) } : x));
     const why = c.blockReason(s.sel!);
     const cd = c.cdOf(info);
+    const gh = harvestHint(s.sel);
     return (
-      <div class="infobox panel">
-        <Icon name={info.def.icon} size={30} color={SCHOOL_COLOR[info.def.school]} />
+      <div class="infobox note">
+        <span class="note-ic">
+          <Icon name={info.def.icon} size={28} color={SCHOOL_COLOR[info.def.school]} />
+        </span>
         <div class="txt">
           <div class={`nm ${scrambled ? 'scrambled' : ''}`}>
             {scrambled ? garbleStable(info.def.name) : info.def.name}
             {info.owned.lvl > 0 ? '+' : ''}
-            <span class="muted" style={{ fontSize: 11, fontWeight: 500 }}>
+            <span class="nm-sub">
               {RANGE_NAME[info.def.range]} · {TARGET_NAME[info.def.target]}
               {info.def.type ? ` · ${DMG_NAME[info.def.type]}` : ''}
-              {cd > 0 ? ` · 대기 ${cd >= 99 ? '전투당 1회' : cd + '턴'}` : ''}
+              {cd > 0 ? ` · 재사용 대기 ${cd >= 99 ? '전투당 1회' : cd + '턴'}` : ''}
             </span>
           </div>
           <Segs segs={segs} />
-          {why && <div style={{ color: 'var(--bad)', fontSize: 12 }}>{why}</div>}
+          {gh && (
+            <div class={`gap-line ${gh.sure ? '' : 'maybe'}`} style={{ color: gh.color }}>
+              <Icon name={GAP_ICON} size={13} color={gh.color} />
+              <span>{harvestSay(gh)}</span>
+            </div>
+          )}
+          {why && <div class="why">{why}</div>}
         </div>
         {!why && info.def.target !== 'single' && (
-          <button class="btn sm" disabled={s.busy} onClick={() => useSkill(s.sel!)}>
+          <button class="use" disabled={s.busy} onClick={() => useSkill(s.sel!)}>
             사용
           </button>
         )}
@@ -663,25 +1122,34 @@ function InfoBox() {
   }
   const e = c.enemy(s.focus);
   if (e) {
-    const it = c.shownIntent(e);
-    const move = it && it.move !== '_disguise' ? c.moveDef(e, it.move) : null;
+    const r = readIntent(e, snapIntentOf(e));
     return (
-      <div class="infobox panel" role="button" {...press(() => enemyTip(e))}>
-        <Icon name={ENEMIES.get(e.def)?.icon ?? 'gi:help'} size={30} />
+      <div class="infobox note" role="button" {...press(() => onIntent(e.uid), () => enemyTip(e))}>
+        <span class="note-ic">
+          <Icon name={ENEMIES.get(e.def)?.icon ?? 'gi:help'} size={28} color="#d9c9a6" />
+        </span>
         <div class="txt">
-          <div class="nm">{e.name}</div>
-          {it ? (it.hidden && c.p.insight < HIDDEN_REVEAL ? '의도를 알 수 없다' : `${it.label}${(it.desc ?? move?.desc) ? ` — ${it.desc ?? move?.desc}` : ''}`) : ''}
-          <div class="muted" style={{ fontSize: 11 }}>
-            길게 눌러 자세히
+          <div class="nm">
+            {e.name}
+            {r && (
+              <span class="nm-sub" style={{ color: r.color }}>
+                {r.word}
+                {r.title !== r.word ? ` · ${r.title}` : ''}
+              </span>
+            )}
           </div>
+          <div class="clamp">{r ? r.says.join(' ') : '보이는 의도 없음'}</div>
+          <div class="hint">누르면 의도 자세히 · 길게 누르면 적 정보</div>
         </div>
       </div>
     );
   }
   return (
-    <div class="infobox panel">
-      <Icon name="gi:help" size={26} color="var(--ink-3)" />
-      <div class="txt">스킬을 누르면 설명이 보이고, 한 번 더 누르거나 적을 눌러 사용한다. 길게 누르면 자세한 정보.</div>
+    <div class="infobox note idle">
+      <span class="note-ic">
+        <Icon name="gi:quill-ink" size={26} color="#a8977a" />
+      </span>
+      <div class="txt">누르면 설명. 한 번 더 누르거나 적을 누르면 사용. 길게 누르면 자세히</div>
     </div>
   );
 }

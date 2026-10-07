@@ -185,7 +185,7 @@ reg.relics([
         if (c.s.phase !== 'player' || c.s.vars.xFangTurn === c.s.turn) return;
         c.s.vars.xFangTurn = c.s.turn;
         c.s.ap += 1;
-        c.emit({ t: 'text', uid: 'p', text: '사냥 — 행동력 +1', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '사냥 (행동력 +1)', tone: 'good' });
       },
     },
   },
@@ -308,7 +308,7 @@ reg.relics([
       afterSkill(c) {
         if (c.s.ammo > 0 || c.over) return;
         c.s.ammo = c.s.maxAmmo;
-        c.emit({ t: 'text', uid: 'p', text: '끝없는 탄띠 — 재장전', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '끝없는 탄띠 (재장전)', tone: 'good' });
         c.apply(c.p, 'aim', 1, c.p);
       },
     },
@@ -331,7 +331,7 @@ reg.relics([
     name: 'No.13 쌍둥이 달',
     icon: 'gi:moon-orbit',
     rarity: 'boss',
-    desc: '매 턴 처음 쓰는 스킬(기본기·행동력 스킬·대기를 되돌리는 스킬·전투당 1회 스킬 제외)이 50% 위력으로 한 번 더 발동 (탄약이 바닥났으면 불발). 전투 시작 시 모든 적의 체력 +15%',
+    desc: '매 턴 처음 쓰는 스킬이 50% 위력으로 한 번 더 발동 (탄약이 바닥났으면 불발). 기본기·행동력 스킬·대기를 되돌리는 스킬·전투당 1회 스킬은 제외. 전투 시작 시 모든 적의 체력 +15%',
     hooks: {
       onCombatStart(c) {
         for (const e of c.alive) {

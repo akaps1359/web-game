@@ -18,6 +18,8 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'sanity', 'insight'],
+    makes: ['sanity'],
+    reads: [],
     vals: { dmg: [8, 10], per: [4, 6], san: 2 },
     desc: '정신력 {san} 소모. {D:dmg} + 통찰×{per} 공허 피해',
     run: (c, u, t) => {
@@ -37,6 +39,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['summon', 'sanity'],
+    makes: ['tentacle', 'sanity'],
+    reads: [],
     vals: { n: 1, san: 4 },
     desc: '정신력 {san} 소모. 촉수 {n} (턴 종료마다 무작위 적 공격)',
     run: (c, u) => {
@@ -56,6 +60,8 @@ reg.skills([
     target: 'single',
     type: 'void',
     tags: ['attack', 'sanity', 'debuff'],
+    makes: ['sanity'],
+    reads: [],
     vals: { dmg: [13, 17], madden: 2, san: 5 },
     desc: '정신력 {san} 소모. {D:dmg} 공허 피해, 광란 {madden}',
     run: (c, u, t) => {
@@ -75,6 +81,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['barrier', 'sanity', 'insight'],
+    makes: ['barrier', 'sanity'],
+    reads: [],
     vals: { barrier: [8, 12], per: 4, san: 3 },
     desc: '정신력 {san} 소모. 보호막 {barrier} + 통찰×{per}',
     run: (c, u) => {
@@ -93,9 +101,12 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['insight', 'sanity'],
-    vals: { maxsan: [4, 3], max: 3 },
-    desc: '최대 정신력 -{maxsan}, 통찰 +1 (둘 다 영구). 전투당 1회 — 이 기술로 얻는 통찰은 판 전체에서 {max}까지',
+    makes: [],
+    reads: [],
+    vals: { maxsan: [8, 6], max: 2 },
+    desc: '최대 정신력 -{maxsan}, 통찰 +1 (둘 다 영구). 전투당 1회. 이 기술로 얻는 통찰은 판 전체에서 {max}까지',
     // 통찰은 얻기 어려워야 한다 (2026-10 개편): 정신력을 조금 쓰고 전투마다 쌓던 것을, 영구 대가를 치르고 판 전체에서 몇 번만.
+    // 2026-10 2차: 판당 3·최대 정신력 -4는 대가가 가벼웠다 → 판당 2, -8 (강화 -6). 이벤트·신전 봉헌의 통찰 +1과 같은 값
     // 얼마나 응시했는지는 판에 남는다 (run.gazed) — 기술을 잃었다 다시 얻어도 이어진다
     canUse: (c, u) =>
       (c.run.gazed ?? 0) >= u.v('max') ? '더 들여다볼 심연이 없다' : c.p.maxSanity - u.v('maxsan') < 10 ? '더 내어 줄 정신이 없다' : null,
@@ -122,6 +133,8 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     tags: ['debuff', 'sanity', 'insight'],
+    makes: ['doom', 'sanity'],
+    reads: [],
     vals: { doom: [8, 12], per: 4, san: 3 },
     desc: '정신력 {san} 소모. 파멸 {doom} + 통찰×{per} (파멸이 체력 이상이면 그 적의 차례가 끝날 때 즉사)',
     run: (c, u, t) => {
@@ -140,6 +153,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['energy', 'hp-cost'],
+    makes: [],
+    reads: [],
     vals: { hp: [5, 3], ap: 2 },
     desc: '체력 {hp} 소모. 행동력 +{ap}',
     run: (c, u) => {
@@ -160,6 +175,8 @@ reg.skills([
     target: 'all',
     type: 'void',
     tags: ['attack', 'aoe', 'sanity', 'insight'],
+    makes: ['sanity'],
+    reads: [],
     vals: { dmg: [14, 18], per: 4, san: 8 },
     desc: '정신력 {san} 소모. 적 전체에 {D:dmg} + 통찰×{per} 공허 피해 (방어도 무시)',
     run: (c, u, t) => {

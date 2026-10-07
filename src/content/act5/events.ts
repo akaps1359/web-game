@@ -24,7 +24,7 @@ import { INSIGHT_PRICE, cutMaxSanity, floorFoes, learnWeak, weakNote } from '../
 function sanity(run: RunState, n: number): string {
   const r = loseSanityRun(run, n);
   if (r.fatal) return ' 정신이 완전히 무너졌다.';
-  if (r.madness) return ` 정신이 무너졌다 — ${MADNESS.get(r.madness)?.name ?? '광기'}.`;
+  if (r.madness) return ` 정신이 무너졌다. (${MADNESS.get(r.madness)?.name ?? '광기'})`;
   return '';
 }
 
@@ -61,7 +61,7 @@ reg.events([
               cutMaxSanity(r, INSIGHT_PRICE.maxSanity);
               finish(
                 e,
-                `그것은 별보다 오래된 꿈을 꾸고 있었다. 그 꿈의 한 자락에 당신의 이름이 적혀 있다. 그 이름을 읽은 자리가 다시는 메워지지 않는다. (통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity})`,
+                `그것은 별보다 오래된 꿈을 꾸고 있었다. 꿈의 한 자락에 당신의 이름이 적혀 있다. 그 이름을 읽은 자리는 다시 메워지지 않는다. (통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity})`,
               );
             },
           },
@@ -76,7 +76,7 @@ reg.events([
     acts: [5],
     stages: {
       start: (run) => ({
-        text: '섬 가장자리에 조사자들의 유해가 둥둥 떠 있다. 모두 우주 한가운데를 향해 웅크린 채, 몇몇의 손에는 꺼진 등불이 들려 있다. 그중 한 사람의 얼굴이 낯익다.',
+        text: '섬 가장자리 허공에 조사자들의 유해가 떠 있다. 모두 우주 한가운데를 향해 웅크린 채, 몇몇의 손에는 꺼진 등불이 들려 있다. 그중 한 사람의 얼굴이 낯익다.',
         choices: [
           {
             label: '그들의 장비를 챙긴다',
@@ -107,13 +107,13 @@ reg.events([
             hint: '등불 가득, 체력 +15',
             go: (r, e) => {
               r.light = 100;
-              finish(e, `꺼진 등잔들에서 남은 기름을 모았다. 그들의 빛이 당신의 길을 비춘다. (등불 가득, 체력 +${healRun(r, 15)})`);
+              finish(e, `꺼진 등잔들에서 남은 기름을 모았다. 이제 그들의 빛이 앞길을 비춘다. (등불 가득, 체력 +${healRun(r, 15)})`);
             },
           },
           {
             label: '그들을 위해 기도한다',
             hint: '정신력 +20',
-            go: (r, e) => finish(e, `이름 모를 이들을 위해 잠시 눈을 감았다. 당신은 그들처럼 되지 않을 것이다. (정신력 +${gainSanityRun(r, 20)})`),
+            go: (r, e) => finish(e, `이름 모를 이들을 위해 잠시 눈을 감았다. 그들처럼 되지는 않을 것이다. (정신력 +${gainSanityRun(r, 20)})`),
           },
         ],
       }),
@@ -133,7 +133,7 @@ reg.events([
             hint: '별의 태아의 약점을 모두 알게 된다, 정신력 -12',
             go: (r, e) => {
               r.knownWeak = { ...r.knownWeak, [FETUS]: [...DMG_TYPES] };
-              finish(e, '자장가는 태아의 세 모습을 노래하고 있었다 — 잠든 몸, 깨어나는 알, 태어난 것. 그 틈새가 머릿속에 새겨졌다. (별의 태아의 약점 공개)' + sanity(r, 12));
+              finish(e, '자장가는 태아의 세 모습을 노래하고 있었다. 잠든 몸, 깨어나는 알, 태어난 것. 그 틈새가 머릿속에 새겨졌다. (별의 태아의 약점 공개)' + sanity(r, 12));
             },
           },
           {
@@ -148,7 +148,7 @@ reg.events([
           {
             label: '노래를 끊는다',
             hint: '정예 전투',
-            go: (_r, e) => finish(e, '제단을 걷어차자 대사제가 천천히 고개를 돌렸다. 그 앞으로 검은 무언가가 굴러 나온다!', { fight: 'a5-elite-hierophant' }),
+            go: (_r, e) => finish(e, '제단을 걷어차자 대사제가 천천히 고개를 돌렸다. 그 앞으로 검은 덩어리가 굴러 나온다!', { fight: 'a5-elite-hierophant' }),
           },
         ],
       }),
@@ -199,7 +199,7 @@ reg.events([
     acts: [5],
     stages: {
       start: (run) => ({
-        text: '별빛 사이에 낡은 침대가 떠 있다. 이불은 아직 따뜻하고, 베개에는 누군가 방금 일어난 듯한 자국이 남아 있다.',
+        text: '별빛 사이에 낡은 침대가 떠 있다. 이불은 아직 따뜻하고 베개에는 누군가 방금 일어난 듯한 자국이 남아 있다.',
         choices: [
           {
             label: '눕는다',
@@ -211,7 +211,7 @@ reg.events([
               const s = gainSanityRun(r, 10);
               advanceTime(r, 6);
               floorSignal(r, { t: 'event', id: 'a5-strange-bed', choice: 'sleep' });
-              finish(e, `눕자마자 깊은 잠에 빠졌다. 꿈속 어딘가에서 무언가가 당신의 꿈을 맛보는 소리가 들렸다. (체력 +${h}, 정신력 +${s})`);
+              finish(e, `눕자마자 깊은 잠에 빠졌다. 꿈 한구석에서 누군가 그 꿈을 맛보며 입맛을 다셨다. (체력 +${h}, 정신력 +${s})`);
             },
           },
           {
@@ -234,7 +234,7 @@ reg.events([
               if (rng(r, 'event').chance(0.5)) {
                 r.player.gold += 40;
                 finish(e, '먼지 속에서 누군가 잃어버린 돈주머니를 찾았다. (골드 +40)');
-              } else finish(e, '침대 밑에서 잠든 사람들이 기어 나왔다. 눈은 감겨 있는데, 손은 당신을 더듬어 찾는다!', { fight: 'a5-e-sleepers' });
+              } else finish(e, '침대 밑에서 잠든 사람들이 기어 나왔다. 눈은 감겨 있는데 손은 당신을 더듬어 찾는다!', { fight: 'a5-e-sleepers' });
             },
           },
           { label: '지나친다', go: (_r, e) => finish(e, '몇 걸음 가다 돌아보니 침대는 사라지고 없었다.') },
@@ -249,7 +249,7 @@ reg.events([
     acts: [5],
     stages: {
       start: (run) => ({
-        text: '눈이 달빛처럼 빛나는 검은 고양이가 앞을 막아선다. 울타르의 고양이들은 꿈의 땅에서 가장 오래된 수호자들이다. 이 섬까지 어떻게 왔을까. 고양이가 꼬리를 한 번 흔들고 당신을 빤히 바라본다.',
+        text: '눈이 달빛처럼 빛나는 검은 고양이가 앞을 막아선다. 울타르의 고양이들은 꿈의 땅에서 가장 오래된 수호자들이다. 이 섬까지 어떻게 왔을까. 고양이가 꼬리를 한 번 흔들더니 빤히 바라본다.',
         choices: [
           {
             label: '먹을 것을 나눠준다',
@@ -272,7 +272,7 @@ reg.events([
                 revealPath(f, f.pos, f.portal);
               }
               advanceTime(r, 2);
-              finish(e, '고양이는 몇 번이나 섬과 섬 사이를 건너뛰더니, 포탈 비석이 보이는 곳에서 꼬리를 감추었다.');
+              finish(e, '고양이는 섬과 섬 사이를 몇 번이나 건너뛰더니 포탈 비석이 보이는 곳에서 꼬리를 감추었다.');
             },
           },
           { label: '쓰다듬는다', hint: '정신력 +14', go: (r, e) => finish(e, `고양이가 가르랑거린다. 이 꿈속에도 따뜻한 것이 있다. (정신력 +${gainSanityRun(r, 14)})`) },
@@ -287,7 +287,7 @@ reg.events([
     acts: [5],
     stages: {
       start: (run) => ({
-        text: '별들 사이에 검은 갤리선이 떠 있다. 노를 젓는 것은 뿔 달린 렝의 노예들이고, 갑판 위에서는 두꺼비 같은 달짐승들이 붉은 루비를 세고 있다.',
+        text: '별들 사이에 검은 갤리선이 떠 있다. 노는 뿔 달린 렝의 노예들이 젓는다. 갑판 위에서는 두꺼비 같은 달짐승들이 붉은 루비를 세고 있다.',
         choices: [
           {
             label: '등불 기름과 루비를 바꾼다',
@@ -328,7 +328,7 @@ reg.events([
     acts: [5],
     stages: {
       start: (run) => ({
-        text: '희미한 빛이 새어 나오는 계단이 허공으로 이어진다. 꿈꾸는 자들은 이것을 얕은 잠의 일흔 계단이라 부른다. 계단 끝 불꽃의 동굴에서 두 사제가 당신을 기다린다.',
+        text: '희미한 빛이 새어 나오는 계단이 허공으로 이어진다. 꿈꾸는 자들은 이를 얕은 잠의 일흔 계단이라 부른다. 계단 끝 불꽃의 동굴에서 두 사제가 기다리고 있다.',
         choices: [
           {
             label: '끝까지 내려간다',
@@ -351,7 +351,7 @@ reg.events([
                 portal.seen = portal.scouted = true;
                 revealPath(f, f.pos, f.portal);
               }
-              finish(e, '일흔 개가 아니었다. 일흔한 번째 계단이 있었고, 그것은 위로 나 있었다. 그 끝에서 포탈 비석의 빛이 깜빡였다.' + sanity(r, 6));
+              finish(e, '일흔 개가 아니었다. 위로 난 일흔한 번째 계단이 있었다. 그 끝에서 포탈 비석의 빛이 깜빡였다.' + sanity(r, 6));
             },
           },
           {
@@ -377,7 +377,7 @@ reg.events([
     acts: [5],
     stages: {
       start: (run) => ({
-        text: '별빛 로브를 입은 순례자들이 소리 없이 줄지어 지나간다. 모두 우주 한가운데의 요람을 향해 걷고 있다. 그들이 지나간 자리마다 별가루가 눈처럼 쌓인다. 행렬의 끝에 선 이가 당신에게 손짓한다.',
+        text: '별빛 로브를 입은 순례자들이 소리 없이 줄지어 지나간다. 모두 우주 한가운데의 요람을 향해 걷고 있다. 그들이 지나간 자리마다 별가루가 눈처럼 쌓인다. 행렬 끝에 선 이가 손짓한다.',
         choices: [
           {
             label: '행렬에 합류한다',
@@ -402,7 +402,7 @@ reg.events([
               r.light -= 25;
               r.player.maxSanity += 4;
               const s = gainSanityRun(r, 20);
-              finish(e, `순례자가 당신의 등불에서 불씨를 옮겨 갔다. 그 불씨가 별이 되어 요람으로 흘러간다. (등불 -25, 정신력 +${s}, 최대 정신력 +4)`);
+              finish(e, `순례자가 등불에서 불씨를 옮겨 갔다. 그 불씨가 별이 되어 요람으로 흘러간다. (등불 -25, 정신력 +${s}, 최대 정신력 +4)`);
             },
           },
           {
@@ -427,7 +427,7 @@ reg.events([
         const san = p.sanity / p.maxSanity;
         const look = san > hp + 0.05 ? '상처는 덜하지만 눈빛이 흐리다' : san < hp - 0.05 ? '상처투성이지만 눈빛이 맑다' : '당신과 꼭 닮았다';
         return {
-          text: `별빛처럼 일렁이는 거울. 거울 속의 당신은 조금 늦게 움직인다. 그쪽의 당신은 ${look}.`,
+          text: `별빛처럼 일렁이는 거울. 거울 속의 당신은 조금 늦게 움직인다. 그쪽은 ${look}.`,
           choices: [
             {
               label: '거울 속의 나와 자리를 바꾼다',
@@ -449,7 +449,7 @@ reg.events([
                 finish(e, `거울 조각이 손을 베었다. 조각 하나에는 아직 무언가가 비친다. (체력 -${n})`, { loot: relicLoot(r) });
               },
             },
-            { label: '외면한다', go: (_r, e) => finish(e, '거울 속의 당신은 끝까지 당신을 바라보았다.') },
+            { label: '외면한다', go: (_r, e) => finish(e, '거울 속의 당신은 끝까지 눈을 떼지 않았다.') },
           ],
         };
       },
@@ -462,7 +462,7 @@ reg.events([
     acts: [5],
     stages: {
       start: (run) => ({
-        text: '떠도는 섬 위로 거대한 버섯 숲이 자라 있다. 줄기 사이로 작은 눈들이 반짝인다. 파닥이는 소리로 말하는 주그들이 당신을 둘러싼다. 그들은 당신의 등불을 몹시 탐내는 것 같다.',
+        text: '떠도는 섬 위로 거대한 버섯 숲이 자라 있다. 줄기 사이로 작은 눈들이 반짝인다. 파닥이는 소리로 말하는 주그들이 주위를 둘러싼다. 다들 등불을 몹시 탐내는 눈치다.',
         choices: [
           {
             label: '등불 기름을 나눠준다',
@@ -488,7 +488,7 @@ reg.events([
               const s = gainSanityRun(r, 12);
               const lost = r.player.insight > 0 ? 1 : 0;
               r.player.insight -= lost;
-              finish(e, `달나무 수액으로 빚은 술은 달고 어지러웠다. 무언가를 잊어버린 것 같다. (체력 +${h}, 정신력 +${s}${lost ? ', 통찰 -1' : ''})`);
+              finish(e, `달나무 수액으로 빚은 술은 달고 어지러웠다. 무엇을 잊었는지조차 떠오르지 않는다. (체력 +${h}, 정신력 +${s}${lost ? ', 통찰 -1' : ''})`);
             },
           },
           {
@@ -497,7 +497,7 @@ reg.events([
             go: (r, e) => {
               if (r.floor) for (const room of r.floor.rooms) room.seen = room.scouted = true;
               r.light = Math.max(0, r.light - 20);
-              finish(e, '주그들의 속삭임에 숲 너머의 비밀이 섞여 있었다 — 어느 섬이 어디로 떠가는지. 정신을 차려 보니 등불 심지가 갉아먹혀 있다. (지도 공개, 등불 -20)');
+              finish(e, '주그들의 수다에 어느 섬이 어디로 떠가는지가 섞여 있었다. 정신을 차려 보니 등불 심지가 갉아먹혀 있었다. (지도 공개, 등불 -20)');
             },
           },
           { label: '쫓아낸다', hint: '전투', go: (_r, e) => finish(e, '등불을 휘두르자 주그들이 작은 이빨을 드러냈다!', { fight: 'a5-e-zoogs' }) },

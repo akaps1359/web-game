@@ -1,3 +1,4 @@
+import { josa } from './josa';
 import { EQUIPS, MADNESS, need } from './registry';
 import { advanceTime, descend } from './dungeon';
 import {
@@ -15,6 +16,7 @@ import {
   upgradeSkill,
 } from './run';
 import type { EquipSlot } from './types';
+import { abyssSleep } from './abyss';
 
 // ───────────── 야영지 ─────────────
 
@@ -22,19 +24,32 @@ export type CampAction = 'sleep' | 'meditate' | 'train' | 'tinker';
 
 /**
  * 쉬는 곳에서 회복하는 정신력: 야영 명상, 신전 기도, 거점 여관(최대치의 이 비율까지 — 이미 그보다 높으면 그대로).
- * 2026-10 통찰 개편 때 줄였다 (명상 30 → 20, 기도 15 → 10, 여관 전부 → 85%): 통찰이 귀해지면서 받는 정신 피해(+5%/통찰)도
- * 줄어 5층 평균 정신력이 최대치의 75%까지 올랐다 — 층마다 정신력을 가득 채우고 시작하지 않게 해 70% 안쪽으로
+ * 2026-10 통찰 개편 때 줄였다 (명상 30 → 20, 기도 15 → 10, 여관 전부 → 85%).
+ * 2026-10 2차: 정신 붕괴를 한 번도 겪지 않는 판이 많았다 → 명상 15, 기도 6, 여관 75%
  */
-export const MEDITATE_SANITY = 20;
-export const PRAY_SANITY = 10;
-export const INN_SANITY = 0.85;
+export const MEDITATE_SANITY = 15;
+export const PRAY_SANITY = 6;
+export const INN_SANITY = 0.75;
+
+/** 야영지 수면: 최대 체력의 이 비율을 회복한다 (심연 「얕은 잠」에서는 덜) */
+export const SLEEP_HEAL = 0.3;
 
 export const CAMP_INFO: Record<CampAction, { name: string; desc: string; hours: number }> = {
-  sleep: { name: '수면', desc: '체력 30% 회복', hours: 6 },
+  sleep: { name: '수면', desc: `체력 ${Math.round(SLEEP_HEAL * 100)}% 회복`, hours: 6 },
   meditate: { name: '명상', desc: `정신력 ${MEDITATE_SANITY} 회복`, hours: 4 },
   train: { name: '수련', desc: '스킬 하나 강화', hours: 4 },
   tinker: { name: '정비', desc: '장비 하나 강화', hours: 4 },
 };
+
+/** 이 판에서 야영지 수면이 회복하는 비율 */
+export function sleepHeal(run: RunState): number {
+  return abyssSleep(run, SLEEP_HEAL);
+}
+
+/** 야영지 행동 설명 (심연 단계로 바뀐 수치를 반영) */
+export function campDesc(run: RunState, act: CampAction): string {
+  return act === 'sleep' ? `체력 ${Math.round(sleepHeal(run) * 100)}% 회복` : CAMP_INFO[act].desc;
+}
 
 function campRoom(run: RunState) {
   const f = run.floor;
@@ -70,7 +85,7 @@ export function camp(run: RunState, act: CampAction, target?: string): string | 
       }
       const bonus = run.relics.some((r) => r.id === 'old-blanket') ? 0.15 : 0;
       const half = run.madness.includes('insomnia') ? 0.5 : 1;
-      const n = healRun(run, p.maxHp * (0.3 + bonus) * half);
+      const n = healRun(run, p.maxHp * (sleepHeal(run) + bonus) * half);
       log(run, `잠을 청했다 (체력 +${n})`);
       break;
     }
@@ -80,14 +95,14 @@ export function camp(run: RunState, act: CampAction, target?: string): string | 
       break;
     }
     case 'train':
-      if (!target || !upgradeSkill(run, target)) return '강화할 스킬을 고르세요';
+      if (!target || !upgradeSkill(run, target)) return '강화할 스킬을 골라야 한다';
       log(run, '기술을 갈고닦았다');
       break;
     case 'tinker': {
       const it = target ? run.equip[target as EquipSlot] : null;
-      if (!it || it.lvl >= 2) return '강화할 장비를 고르세요';
+      if (!it || it.lvl >= 2) return '강화할 장비를 골라야 한다';
       it.lvl++;
-      log(run, `${need(EQUIPS, it.id, '장비').name}을(를) 손질했다 (+${it.lvl})`);
+      log(run, `${need(EQUIPS, it.id, '장비').name}${josa(need(EQUIPS, it.id, '장비').name, '을')} 손질했다 (+${it.lvl})`);
       break;
     }
   }

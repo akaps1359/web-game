@@ -611,9 +611,9 @@ describe('최종 수호자 별의 태아 — 탄생의 선택 (시스템 창)', 
     expect(ch.options.map((o) => o.id)).toEqual([...BIRTH_OPTIONS]);
     expect(ch.text).toContain('{time}');
     for (const o of ch.options) expect(o.desc.length).toBeGreaterThan(10);
-    expect(c.blockReason('weapon')).toBe('먼저 선택지를 고르세요');
-    expect(c.endTurn()).toBe('먼저 선택지를 고르세요');
-    expect(c.useConsumable(0)).toBe('먼저 선택지를 고르세요');
+    expect(c.blockReason('weapon')).toBe('선택지부터 골라야 한다');
+    expect(c.endTurn()).toBe('선택지부터 골라야 한다');
+    expect(c.useConsumable(0)).toBe('선택지부터 골라야 한다');
     expect(c.choose('lullaby')).toBeNull();
     expect(c.s.choice ?? null).toBeNull();
     expect(c.blockReason('weapon')).toBeNull();
@@ -709,7 +709,7 @@ describe('최종 수호자 별의 태아 — 탄생의 선택 (시스템 창)', 
     const saved = JSON.parse(JSON.stringify(run)) as RunState;
     const d = new Combat(saved);
     expect(d.s.choice?.id).toBe(BIRTH_CHOICE);
-    expect(d.endTurn()).toBe('먼저 선택지를 고르세요');
+    expect(d.endTurn()).toBe('선택지부터 골라야 한다');
     expect(d.choose('sever')).toBeNull();
     expect(d.alive.filter((e) => e.def === CORD).length).toBe(0);
     expect(d.s.enemies.find((e) => e.uid === f.uid)!.mem.birth).toBe(2);

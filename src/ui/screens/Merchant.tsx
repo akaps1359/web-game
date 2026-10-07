@@ -4,7 +4,7 @@ import { SKILLS } from '../../engine/registry';
 import { leavePlace } from '../../engine/places';
 import { store } from '../../state/store';
 import { sound } from '../../sound';
-import { LootCard, SkillCard, lootInfo, lootName } from '../cards';
+import { LootCard, SkillCard, lootClue, lootInfo, lootName } from '../cards';
 import { applyAsk } from '../ask';
 import { Icon } from '../components';
 import { RunHud } from '../Hud';
@@ -22,12 +22,14 @@ export function ShopList() {
           <LootCard
             it={{ kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined }}
             off={it.sold}
+            clue={lootClue(run, it, !it.sold)}
             onClick={() => {
               if (it.sold) return;
               const loot = { kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined } as Parameters<typeof lootInfo>[0];
               const info = lootInfo(loot);
               if (!afford) return void store.toast('골드가 모자라다', 'bad');
-              void applyAsk({ title: `${lootName(loot)} 구매`, icon: info.icon, color: info.color, body: info.desc || info.meta, lines: [{ label: '가격', value: `${cost} 골드` }, { label: '남는 골드', value: `${run.player.gold - cost} 골드` }], ok: '산다' }, (r) => {
+              const clue = lootClue(run, it);
+              void applyAsk({ title: `${lootName(loot)} 구매`, icon: info.icon, color: info.color, body: (info.desc || info.meta) + (clue ? `\n실마리: ${clue}` : ''), lines: [{ label: '가격', value: `${cost} 골드` }, { label: '남는 골드', value: `${run.player.gold - cost} 골드` }], ok: '산다' }, (r) => {
                 const why = buy(r, i);
                 if (!why) sound.sfx('coin');
                 return why;

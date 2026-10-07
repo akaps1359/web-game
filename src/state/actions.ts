@@ -18,12 +18,13 @@ import { sound } from '../sound';
 import { absorbRun, knownWeak, saveMeta } from './meta';
 import { essenceCap } from '../engine/run';
 import { tipOnce } from '../ui/tips';
+import { josa } from '../ui/cards';
 import { loadRun, saveRun } from './save';
 import { store } from './store';
 import { pausePrefetch, prefetchFloor } from './prefetch';
 
 function run(): RunState {
-  if (!store.run) throw new Error('진행 중인 판이 없습니다');
+  if (!store.run) throw new Error('진행 중인 판 없음');
   return store.run;
 }
 
@@ -190,7 +191,7 @@ export async function newGame(origin: string, asc = 0) {
 export async function continueGame() {
   const r = loadRun();
   if (!r) {
-    store.toast('저장된 판이 없습니다', 'bad');
+    store.toast('저장된 판 없음', 'bad');
     return;
   }
   store.run = r;
@@ -248,6 +249,60 @@ export async function useSkill(ref: string, target?: string | null) {
   await refresh();
 }
 
+// ───────────── 소모품 ─────────────
+
+/** 소모품을 쓰면 바뀌는 수치 (전투 밖) */
+export interface StatChange {
+  label: string;
+  from: number;
+  to: number;
+}
+
+const STAT_KEYS: [string, (r: RunState) => number][] = [
+  ['체력', (r) => r.player.hp],
+  ['최대 체력', (r) => r.player.maxHp],
+  ['정신력', (r) => r.player.sanity],
+  ['최대 정신력', (r) => r.player.maxSanity],
+  ['통찰', (r) => r.player.insight],
+  ['등불', (r) => r.light],
+  ['골드', (r) => r.player.gold],
+  ['힘', (r) => r.player.str],
+  ['민첩', (r) => r.player.dex],
+  ['의지', (r) => r.player.will],
+  ['행동력', (r) => r.player.maxAp],
+];
+
+function statSnap(r: RunState): number[] {
+  return STAT_KEYS.map(([, get]) => get(r));
+}
+
+function statChanges(a: number[], b: number[]): StatChange[] {
+  return STAT_KEYS.flatMap(([label], i) => (a[i] !== b[i] ? [{ label, from: a[i], to: b[i] }] : []));
+}
+
+/** 바뀐 수치를 '체력 +20, 등불 +35' 꼴로 */
+export function changeText(ch: StatChange[]): string {
+  return ch.map((c) => `${c.label} ${c.to > c.from ? '+' : ''}${c.to - c.from}`).join(', ');
+}
+
+/** 판 상태를 복사해 fn을 미리 해 보고 바뀌는 수치를 돌려준다 (확인 창에 '체력 52 → 72'로 보여 주려고) */
+export function previewChange(r: RunState, fn: (sim: RunState) => unknown): StatChange[] {
+  const sim = JSON.parse(JSON.stringify(r)) as RunState;
+  fn(sim);
+  return statChanges(statSnap(r), statSnap(sim));
+}
+
+/** 전투 밖에서 이 소모품을 쓰면 무엇이 바뀌는지. 전투용이면 빈 목록 */
+export function previewItem(r: RunState, idx: number): StatChange[] {
+  const id = r.consumables[idx];
+  const def = id ? CONSUMABLES.get(id) : undefined;
+  if (!def || def.combat) return [];
+  return previewChange(r, (sim) => {
+    sim.consumables[idx] = null;
+    def.use(sim, null, null);
+  });
+}
+
 export async function useItem(idx: number, target?: string | null) {
   const r = run();
   const id = r.consumables[idx];
@@ -261,14 +316,33 @@ export async function useItem(idx: number, target?: string | null) {
     await refresh();
     return;
   }
+  if (r.screen === 'combat' || r.over) return;
   if (def.combat) {
-    store.toast('전투 중에만 쓸 수 있다', 'bad');
+    fail('전투 중에만 사용 가능');
     return;
   }
+  const before = statSnap(r);
   r.consumables[idx] = null;
   def.use(r, null, null);
-  store.toast(`${def.name} 사용`, 'good');
-  sound.sfx('heal');
+  const ch = statChanges(before, statSnap(r));
+  store.toast(`${def.name}${josa(def.name, '을', '를')} 썼다${ch.length ? `. ${changeText(ch)}` : ''}`, 'good', 2600);
+  sound.sfx(ch.some((c) => (c.label === '체력' || c.label === '정신력') && c.to > c.from) ? 'heal' : 'select');
+  await refresh();
+}
+
+/** 소모품을 버린다 (전투 밖에서만 — 칸이 꽉 차서 새 소모품을 주울 수 없을 때) */
+export async function discardItem(idx: number) {
+  const r = run();
+  const id = r.consumables[idx];
+  if (!id) return;
+  if (store.combat || r.screen === 'combat') {
+    fail('전투 중에는 버릴 수 없음');
+    return;
+  }
+  const name = CONSUMABLES.get(id)?.name ?? '소모품';
+  r.consumables[idx] = null;
+  store.toast(`${name}${josa(name, '을', '를')} 버렸다`, 'info');
+  sound.sfx('select', { volume: 0.5 });
   await refresh();
 }
 
@@ -297,7 +371,7 @@ export async function take(item: LootItem, pick: string | null = null, replace: 
   const r = run();
   if (fail(takeLoot(r, item, pick, replace))) return;
   sound.sfx(item.kind === 'essence' ? 'essence' : item.kind === 'gold' ? 'coin' : 'select');
-  if (item.kind === 'essence') store.toast(`${replace ? '정수를 깨뜨리고 새 정수를 흡수했다' : '정수를 흡수했다'}${pick ? ` — 기술: ${SKILLS.get(pick)?.name ?? ''}` : ''}`, 'eldritch');
+  if (item.kind === 'essence') store.toast(`${replace ? '정수를 깨뜨리고 새 정수를 흡수했다' : '정수를 흡수했다'}${pick ? ` (기술: ${SKILLS.get(pick)?.name ?? ''})` : ''}`, 'eldritch');
   await refresh();
 }
 

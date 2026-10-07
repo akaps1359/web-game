@@ -132,7 +132,8 @@ describe('정수 자리제', () => {
         const ring = run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0;
         if (used > essenceCap(run) + ring) overflow++;
       });
-      expect(res.essences).toBeLessThanOrEqual(ESSENCE_SLOTS.base + 5);
+      // 다섯 수호자를 모두 쓰러뜨린 판: 자리 base + 5, 그리고 자리를 차지하지 않는 계층정수 하나
+      expect(res.essences).toBeLessThanOrEqual(ESSENCE_SLOTS.base + 5 + 1);
     }
     expect(overflow).toBe(0);
     expect(maxUsed).toBeGreaterThanOrEqual(4);

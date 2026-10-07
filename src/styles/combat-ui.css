@@ -1,0 +1,1054 @@
+/*
+ * 전투 화면 아래쪽: 탐험가의 낡은 가죽 수첩과 장비 띠 (지도 화면의 잉크 지도와 같은 재질)
+ * - 결은 한 번 그려 두는 정적 SVG 데이터 URI(타일)와 CSS만 쓴다. 움직이는 SVG 필터·backdrop-filter·mix-blend는 쓰지 않는다
+ *   (아이폰 사파리에서 가볍게). 움직임은 transform·opacity만.
+ * - 카드 기울기는 Combat.tsx가 카드마다 --tilt로 준다. 인장 색은 --wax-hi / --wax / --wax-lo
+ */
+
+.combat {
+  --cu-ink: #e2cc9e;
+  --cu-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 .03 0 0 0 0 .02 0 0 0 0 .01 1.25 0 0 0 -.5'/%3E%3C/filter%3E %3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  --cu-fiber: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='.03' numOctaves='3' seed='4' stitchTiles='stitch' result='a'/%3E %3CfeColorMatrix in='a' values='0 0 0 0 1 0 0 0 0 .9 0 0 0 0 .72 0 .4 0 0 -.16' result='m'/%3E %3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='1' seed='9' stitchTiles='stitch' result='b'/%3E %3CfeColorMatrix in='b' values='0 0 0 0 1 0 0 0 0 .92 0 0 0 0 .8 0 0 .7 0 -.5' result='g'/%3E %3CfeMerge%3E%3CfeMergeNode in='m'/%3E%3CfeMergeNode in='g'/%3E%3C/feMerge%3E%3C/filter%3E %3Crect width='200' height='200' filter='url(%23f)'/%3E%3C/svg%3E");
+  --cu-edge-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23e2cc9e' stroke-linecap='round'%3E %3Cpath stroke-opacity='0.58' stroke-width='1.3' vector-effect='non-scaling-stroke' d='M0.9 2.4 C33.4 1.2 66.1 3.3 99.4 1.9 M97.4 0.8 C97.0 31.4 95.4 69.5 97.6 99.8 M98.8 97.8 C67.2 97.9 30.3 95.1 0.8 96.8 M2.0 99.4 C0.5 65.7 3.0 35.7 2.0 0.9'/%3E %3Cpath stroke-opacity='0.3' stroke-width='1' vector-effect='non-scaling-stroke' d='M12.0 4.0 Q26.3 2.9 40.6 3.8 M3.3 41.4 Q2.5 56.0 3.5 70.6 M70.0 96.7 Q82.9 97.2 95.9 96.5'/%3E%3C/g%3E%3C/svg%3E");
+  --cu-edge-b: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23e2cc9e' stroke-linecap='round'%3E %3Cpath stroke-opacity='0.58' stroke-width='1.3' vector-effect='non-scaling-stroke' d='M1.5 2.7 C33.1 0.6 66.7 3.0 99.0 1.5 M97.0 0.6 C97.2 32.6 95.2 63.7 97.6 99.5 M99.3 97.5 C64.9 96.9 35.3 96.2 1.0 97.3 M2.8 99.3 C1.8 64.9 3.2 34.3 1.8 0.5'/%3E %3Cpath stroke-opacity='0.3' stroke-width='1' vector-effect='non-scaling-stroke' d='M11.6 3.2 Q26.3 2.3 41.1 4.4 M3.3 44.8 Q2.3 60.6 3.5 76.5 M64.6 95.8 Q73.5 97.0 82.5 96.2'/%3E%3C/g%3E%3C/svg%3E");
+  --cu-edge-c: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23e2cc9e' stroke-linecap='round'%3E %3Cpath stroke-opacity='0.58' stroke-width='1.3' vector-effect='non-scaling-stroke' d='M1.2 1.9 C30.9 1.9 68.7 3.1 98.8 1.8 M97.3 0.3 C98.0 33.8 95.7 66.0 97.6 99.4 M98.8 97.8 C68.7 97.0 29.6 95.6 0.7 97.4 M2.6 99.1 C1.6 66.6 2.3 33.2 1.7 0.7'/%3E %3Cpath stroke-opacity='0.3' stroke-width='1' vector-effect='non-scaling-stroke' d='M4.1 3.4 Q18.4 2.1 32.6 4.4 M3.8 52.8 Q3.3 65.8 3.6 78.8 M63.7 96.7 Q71.8 97.7 79.9 96.1'/%3E%3C/g%3E%3C/svg%3E");
+  --cu-edge-sel: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23f6d47e' stroke-linecap='round'%3E %3Cpath stroke-opacity='1' stroke-width='1.9' vector-effect='non-scaling-stroke' d='M0.9 2.4 C33.4 1.2 66.1 3.3 99.4 1.9 M97.4 0.8 C97.0 31.4 95.4 69.5 97.6 99.8 M98.8 97.8 C67.2 97.9 30.3 95.1 0.8 96.8 M2.0 99.4 C0.5 65.7 3.0 35.7 2.0 0.9'/%3E %3Cpath stroke-opacity='0.6' stroke-width='1' vector-effect='non-scaling-stroke' d='M12.0 4.0 Q26.3 2.9 40.6 3.8 M3.3 41.4 Q2.5 56.0 3.5 70.6 M70.0 96.7 Q82.9 97.2 95.9 96.5'/%3E%3C/g%3E%3C/svg%3E");
+  --cu-edge-note: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23e2cc9e' stroke-linecap='round'%3E %3Cpath stroke-opacity='0.48' stroke-width='1.2' vector-effect='non-scaling-stroke' d='M0.7 2.3 C27.3 1.9 63.9 3.2 98.5 1.8 M97.8 0.8 C97.8 34.0 96.3 65.9 97.9 99.5 M98.8 97.7 C62.2 97.3 32.8 96.6 0.5 97.3 M2.2 99.0 C2.1 68.1 2.5 35.1 1.9 1.1'/%3E %3Cpath stroke-opacity='0.26' stroke-width='1' vector-effect='non-scaling-stroke' d='M11.5 3.7 Q27.8 2.1 44.0 4.6 M67.4 96.4 Q79.5 96.6 91.6 96.0'/%3E%3C/g%3E%3C/svg%3E");
+  --cu-blot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 70' preserveAspectRatio='none'%3E %3Cg fill='%230b0704' fill-opacity='.86'%3E%3Cpath d='M116.1 35.0 Q116.1 35.0 116.3 38.5 Q114.8 44.1 112.0 47.2 Q108.5 52.6 102.0 57.4 Q98.6 60.1 90.3 61.3 Q83.7 64.3 77.5 67.1 Q68.4 67.8 59.9 66.9 Q52.8 63.4 45.1 63.7 Q37.3 63.0 28.5 62.9 Q21.4 60.1 17.6 57.5 Q12.6 52.2 9.4 47.6 Q3.8 44.3 5.7 38.6 Q8.4 35.0 6.9 29.4 Q7.5 26.3 11.0 22.9 Q15.6 18.9 18.2 15.7 Q23.7 11.4 29.8 8.4 Q36.9 6.5 45.8 6.5 Q52.8 6.7 59.6 6.1 Q67.5 5.7 75.4 5.4 Q82.0 7.8 91.7 7.5 Q98.4 10.0 104.1 14.8 Q108.2 17.5 107.6 23.0 Q109.9 26.7 112.6 31.1 Z' stroke='%236e3412' stroke-opacity='.55' stroke-width='2.2' vector-effect='non-scaling-stroke'/%3E%3Cellipse cx='113.0' cy='61.0' rx='2.4' ry='1.9'/%3E%3Cellipse cx='8.0' cy='9.0' rx='1.7' ry='1.4'/%3E%3Cellipse cx='106.0' cy='5.0' rx='1.3' ry='1.0'/%3E%3Cellipse cx='16.0' cy='64.0' rx='1.5' ry='1.2'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* ───────── 가죽 바탕 ───────── */
+.kit {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  /* 아이폰 아래 홈 막대 자리까지 가죽이 이어지게 */
+  margin-bottom: calc(-1 * var(--safe-b));
+  padding: 6px 0 calc(6px + var(--safe-b));
+}
+/* 가죽: 위 가장자리는 칼로 자른 듯 고르지 않게 */
+.kit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  clip-path: polygon(0 7px, 6.2% 6px, 12.5% 7px, 18.8% 5px, 25.0% 5px, 31.2% 4px, 37.5% 4px, 43.8% 8px, 50.0% 3px, 56.2% 5px, 62.5% 7px, 68.8% 6px, 75.0% 7px, 81.2% 3px, 87.5% 5px, 93.8% 7px, 100% 5px, 100% 100%, 0 100%);
+  background:
+    var(--cu-grain),
+    radial-gradient(130% 60% at 50% 0%, rgba(132, 88, 44, 0.26), transparent 70%),
+    radial-gradient(90% 50% at 50% 105%, rgba(0, 0, 0, 0.45), transparent 70%),
+    linear-gradient(180deg, #2a1b0f 0%, #1c120a 40%, #140c07 100%);
+}
+/* 박음질 */
+.kit::after {
+  content: '';
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 13px;
+  z-index: -1;
+  border-top: 1.5px dashed rgba(196, 150, 78, 0.42);
+  pointer-events: none;
+}
+
+/* ───────── 내 상태: 잉크 눈금 막대 · 놋쇠 징(행동력) ───────── */
+.kit .pbox {
+  margin: 0 12px;
+  padding: 14px 0 2px;
+  gap: 7px;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+.kit .prow {
+  gap: 8px;
+}
+.kit .prow .grow {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 출신 표식: 놋쇠 메달 (누르면 내 정보) */
+.kit .medal {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 36% 30%, #6a4a22, #2c1c0c 72%);
+  border: 1.5px solid #b98c3e;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 226, 160, 0.3), 0 1px 3px rgba(0, 0, 0, 0.75);
+}
+.kit .medal::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+.kit .medal:active {
+  scale: 0.93;
+}
+
+.kit .bar {
+  height: 15px;
+  border-radius: 3px 5px 4px 3px / 4px 3px 5px 4px;
+  background: #0c0805;
+  border: 1px solid rgba(226, 204, 158, 0.42);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 226, 170, 0.06);
+}
+.kit .bar > i {
+  border-radius: 2px;
+}
+/* 눈금: 10%마다 잉크로 그은 금 (채움 위, 글자 아래) */
+.kit .bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(12, 8, 5, 0.32) calc(10% - 1px) 10%);
+  pointer-events: none;
+}
+.kit .bar > span {
+  z-index: 2;
+}
+.kit .bar.hp > i.val {
+  background: linear-gradient(180deg, #e0644c 0%, #a8301f 55%, #73190f 100%);
+}
+.kit .bar.san > i.val {
+  background: linear-gradient(180deg, #b39cf2 0%, #7254c7 55%, #4a338f 100%);
+}
+.kit .bar > span {
+  color: #fbf1dc;
+}
+.kit .bar.block-on {
+  border-color: #8fc4ea;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(127, 182, 220, 0.45);
+}
+
+/* 방어도·보호막: 쇠 방패 위에 수치 */
+.kit .guard {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+}
+.kit .guard > .ic {
+  position: absolute;
+  inset: 0;
+  filter: none;
+}
+.kit .guard > b {
+  position: relative;
+  font-family: var(--num);
+  font-weight: 800;
+  font-size: 12.5px;
+  color: #f2f8ff;
+  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+}
+
+/* 행동력: 마름모 놋쇠 징 */
+.kit .ap {
+  gap: 6px;
+  padding: 0 3px;
+}
+.kit .ap i {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid #3b2508;
+  background: radial-gradient(circle at 34% 30%, #fff7d6 0 10%, #f2c862 28%, #b4801f 62%, #6b440f 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 236, 180, 0.32), 0 0 7px rgba(240, 180, 70, 0.5), 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+.kit .ap i.off {
+  background: radial-gradient(circle at 40% 35%, #2a1c10, #110a05 72%);
+  border-color: rgba(176, 128, 52, 0.5);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+/* 탄약: 띠에 꽂힌 놋쇠 탄 */
+.kit .ammo i {
+  width: 4px;
+  height: 12px;
+  border-radius: 2px 2px 1px 1px;
+  background: linear-gradient(180deg, #ecd8a8 0 28%, #c79232 29%, #7f5214);
+}
+.kit .ammo i.off {
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(176, 128, 52, 0.32);
+}
+.kit .insight {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--ins);
+  font-family: var(--num);
+  font-weight: 800;
+  font-size: 12.5px;
+}
+
+/* 내 상태이상: 가죽 꼬리표 (누르기 영역 44px) */
+.kit .st-row {
+  gap: 8px;
+  padding-top: 1px;
+}
+.kit .st {
+  width: auto;
+  min-width: 36px;
+  height: 24px;
+  padding: 0 6px 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 3px 8px 8px 3px / 3px 9px 9px 3px;
+  background: linear-gradient(180deg, #33231380, #1a110980), #20150c;
+  box-shadow: inset 0 0 0 1px rgba(201, 162, 74, 0.38), 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.kit .st::after {
+  content: '';
+  position: absolute;
+  inset: -10px -4px;
+}
+.kit .st b {
+  position: static;
+  font-size: 11px;
+  text-shadow: none;
+  color: #f3e6c8;
+}
+.kit .st:active {
+  scale: 0.94;
+}
+
+/* ───────── 설명 쪽지 ───────── */
+.kit .infobox {
+  margin: 8px 12px 0;
+  padding: 8px 12px 8px 8px;
+  min-height: 62px;
+  gap: 9px;
+  background: var(--cu-edge-note) 0 0 / 100% 100% no-repeat, var(--cu-fiber), radial-gradient(120% 90% at 50% 30%, rgba(255, 228, 180, 0.06), transparent 70%), linear-gradient(180deg, #2e2418, #231a10);
+  border: none;
+  border-radius: 3px 7px 4px 6px / 6px 3px 7px 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.kit .infobox .note-ic {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0) 70%);
+}
+.kit .infobox .txt {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.42;
+  color: #cbbfa6;
+}
+.kit .infobox .nm {
+  font-family: var(--serif);
+  font-size: 15px;
+  color: #f1e6cc;
+  gap: 2px 8px;
+  margin-bottom: 1px;
+}
+.kit .infobox .nm-sub {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  color: #9d917a;
+}
+.kit .infobox .why {
+  color: var(--bad);
+  font-size: 12px;
+}
+.kit .infobox .clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.kit .infobox .hint {
+  margin-top: 1px;
+  font-size: 11px;
+  color: #8a7f6a;
+}
+.kit .infobox.idle .txt {
+  color: #a99d86;
+}
+.kit .infobox[role='button']:active {
+  scale: 0.985;
+}
+.kit .infobox .aim {
+  flex: none;
+  font-size: 12px;
+  color: #a99d86;
+}
+/* 사용: 작은 붉은 도장 */
+.kit .infobox .use {
+  flex: none;
+  min-width: 52px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 4px 7px 5px 8px / 7px 4px 8px 5px;
+  background: var(--cu-grain), linear-gradient(180deg, #7a3220, #4c1a10);
+  border: 1px solid #1a0805;
+  color: #f8e2b4;
+  font-family: var(--serif);
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  box-shadow: inset 0 1px 0 rgba(255, 200, 160, 0.22), 0 3px 0 #1c0a06, 0 4px 8px rgba(0, 0, 0, 0.5);
+  translate: 0 -2px;
+  transition: translate 0.07s, box-shadow 0.07s;
+}
+.kit .infobox .use:active {
+  translate: 0 1px;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5), 0 0 0 #1c0a06;
+}
+.kit .infobox .use[disabled] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ───────── 스킬 카드: 잉크로 그린 수첩 낱장 ───────── */
+.kit .skills {
+  gap: 8px 7px;
+  padding: 10px 12px 0;
+}
+.kit .skills.many {
+  grid-template-columns: repeat(4, 1fr);
+}
+.kit .skill {
+  --edge: var(--cu-edge-a);
+  min-height: 56px;
+  padding: 8px 5px 6px;
+  gap: 3px;
+  border: none;
+  border-radius: 3px 5px 4px 6px / 5px 3px 6px 4px;
+  background: var(--edge) 0 0 / 100% 100% no-repeat, var(--cu-fiber), radial-gradient(110% 90% at 50% 35%, rgba(255, 226, 170, 0.07), transparent 72%), linear-gradient(180deg, #302517, #20170e);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.3);
+  rotate: var(--tilt, 0deg);
+  transition: translate 0.12s ease-out, scale 0.08s, rotate 0.12s, opacity 0.2s;
+}
+.kit .skill:nth-child(3n + 2) {
+  --edge: var(--cu-edge-b);
+}
+.kit .skill:nth-child(3n) {
+  --edge: var(--cu-edge-c);
+}
+.kit .skill:active {
+  transform: none;
+  scale: 0.96;
+}
+.kit .skill .sn {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+/* 창세 이름은 글자가 비치는 무지갯빛이라 그림자를 빼야 흐려지지 않는다 */
+.kit .skill .sn.genesis-name {
+  text-shadow: none;
+}
+/* 고른 카드: 똑바로 서서 살짝 들리고, 놋쇠 잉크 테두리 */
+.kit .skill.sel {
+  --edge: var(--cu-edge-sel);
+  rotate: 0deg;
+  translate: 0 -3px;
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.6), 0 0 16px rgba(240, 207, 122, 0.32);
+}
+.kit .skill.off {
+  opacity: 0.42;
+}
+
+/* 밀랍 인장: 계열 색 + 드는 행동력 */
+.kit .skill .seal {
+  position: absolute;
+  top: -6px;
+  left: -5px;
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  padding-top: 1px;
+  font-family: var(--num);
+  font-weight: 800;
+  font-size: 12.5px;
+  line-height: 1;
+  color: #fbecd0;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+  clip-path: polygon(50% 6%, 62% 5%, 72% 11%, 83% 17%, 91% 26%, 91% 39%, 92% 50%, 97% 63%, 88% 72%, 81% 81%, 75% 93%, 62% 94%, 50% 99%, 38% 94%, 26% 91%, 19% 81%, 9% 74%, 3% 63%, 4% 50%, 4% 38%, 9% 26%, 20% 20%, 26% 8%, 38% 5%);
+  /* 반들한 윗면의 빛 · 도장에 눌린 고리 · 두툼하게 굳은 가장자리 */
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 250, 235, 0.38) 0 7%, transparent 24%),
+    radial-gradient(circle at 50% 50%, var(--wax) 0 42%, var(--wax-lo) 46% 51%, var(--wax-hi) 55%, var(--wax) 63% 72%, var(--wax-lo) 100%);
+}
+.kit .skill .basic-tag {
+  top: 5px;
+  right: 7px;
+  font-family: var(--serif);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: rgba(226, 204, 158, 0.62);
+}
+.kit .skill .rune-dot {
+  bottom: 6px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  rotate: 45deg;
+  background: #c08cff;
+  box-shadow: 0 0 5px rgba(192, 140, 255, 0.8);
+}
+
+/* 재사용 대기: 먹물이 번져 덮는다 (가장자리는 그을린 갈색) */
+.kit .skill .cd {
+  inset: 3px 4px;
+  border-radius: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+  padding-top: 9px;
+  background: var(--cu-blot) center / 100% 100% no-repeat;
+  font-family: var(--serif);
+  color: #ead8b0;
+  text-shadow: 0 1px 2px #000;
+}
+.kit .skill .cd b {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+.kit .skill .cd small {
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #b9a682;
+}
+.kit .skill.cooling {
+  opacity: 1;
+}
+
+/* 빈 자리: 연필로 그어 둔 칸 */
+.kit .skill.empty {
+  background: none;
+  box-shadow: none;
+  border: 1.5px dashed rgba(226, 204, 158, 0.2);
+  rotate: 0deg;
+}
+.kit .skill.empty .sn {
+  color: rgba(226, 204, 158, 0.32);
+  font-weight: 500;
+  text-shadow: none;
+}
+
+/* ───────── 장비 띠: 주머니(소모품) · 도장(턴 종료) ───────── */
+.kit .footer {
+  padding: 12px 12px 4px;
+  gap: 8px;
+  align-items: stretch;
+}
+.kit .slot-item {
+  position: relative;
+  width: 46px;
+  height: 50px;
+  border: 1px solid #0d0703;
+  border-radius: 7px 7px 15px 15px / 7px 7px 18px 18px;
+  background: var(--cu-grain), radial-gradient(90% 70% at 50% 30%, rgba(150, 100, 52, 0.25), transparent 70%), linear-gradient(180deg, #3d2815, #24170b);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 160, 0.13), inset 0 -3px 5px rgba(0, 0, 0, 0.45), 0 2px 3px rgba(0, 0, 0, 0.6);
+  padding-top: 4px;
+}
+/* 주머니 박음질과 놋쇠 단추 */
+.kit .slot-item::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 5px 5px 12px 12px / 5px 5px 15px 15px;
+  border: 1px dashed rgba(196, 150, 78, 0.38);
+  pointer-events: none;
+}
+.kit .slot-item::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff1c4, #c4902f 55%, #6b440f);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
+}
+.kit .slot-item.empty {
+  opacity: 0.55;
+}
+.kit .slot-item .pouch-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(226, 204, 158, 0.25);
+}
+.kit .slot-item.sel {
+  border-color: var(--brass-2);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 160, 0.13), 0 0 0 1.5px var(--brass-2), 0 0 14px rgba(240, 207, 122, 0.45);
+}
+.kit .slot-item:active {
+  transform: none;
+  scale: 0.94;
+}
+
+/* 턴 종료: 붉은 가죽 도장. 누르면 꾹 눌린다 */
+.kit .endturn {
+  flex: 1.6;
+  position: relative;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border: 1px solid #1a0805;
+  border-radius: 5px 9px 6px 10px / 9px 5px 10px 6px;
+  background: var(--cu-grain), radial-gradient(100% 80% at 50% 25%, rgba(255, 150, 110, 0.18), transparent 70%), linear-gradient(180deg, #7a301f 0%, #521b10 55%, #391009 100%);
+  color: #f9e3b5;
+  font-family: var(--serif);
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.14em;
+  box-shadow: inset 0 1px 0 rgba(255, 200, 160, 0.24), inset 0 -2px 0 rgba(0, 0, 0, 0.3), 0 4px 0 #1f0b06, 0 6px 10px rgba(0, 0, 0, 0.55);
+  translate: 0 -2px;
+  transition: translate 0.07s, box-shadow 0.07s, opacity 0.2s;
+  animation: none;
+}
+.kit .endturn .stamp-face {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 14px 5px 11px;
+  border: 1.5px solid rgba(249, 227, 181, 0.6);
+  border-radius: 3px 5px 3px 4px;
+  box-shadow: 0 0 0 2px rgba(57, 16, 9, 0.9), 0 0 0 3px rgba(249, 227, 181, 0.22);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+.kit .endturn:active {
+  translate: 0 2px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 0 #1f0b06, 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.kit .endturn[disabled] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+/* 쓸 것이 남지 않았으면 도장 둘레가 은은하게 빛난다 (opacity만 움직인다) */
+.kit .endturn.ready {
+  animation: none;
+}
+.kit .endturn.ready::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px rgba(240, 207, 122, 0.75), 0 0 18px rgba(240, 190, 90, 0.55);
+  opacity: 0;
+  animation: cu-glow 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes cu-glow {
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ───────── 적의 의도 표시 ───────── */
+.ib-wrap {
+  z-index: 2;
+}
+.ibadge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  white-space: nowrap;
+  background: rgba(16, 11, 7, 0.92);
+  border: 1px solid rgba(226, 204, 158, 0.34);
+  border-radius: 4px 8px 5px 9px / 8px 4px 9px 5px;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.65);
+  line-height: 1;
+}
+button.ibadge {
+  pointer-events: auto;
+  transition: scale 0.08s;
+}
+/* 작은 표시라도 누르기 쉽게 */
+button.ibadge::before {
+  content: '';
+  position: absolute;
+  inset: -7px -5px;
+}
+button.ibadge:active {
+  scale: 0.93;
+}
+.ibadge .ib-ic {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.ibadge .ib-ic small {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.ibadge .ib-v {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+.ibadge .ib-v .num {
+  font-family: var(--num);
+  font-weight: 800;
+  font-size: 16px;
+  font-variant-numeric: lining-nums;
+}
+.ibadge .ib-v .nm {
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ece2cc;
+}
+.ibadge .ib-v small {
+  font-size: 10px;
+  font-weight: 700;
+  color: #bdb09a;
+}
+/* 큰 공격이 오고 있다: 테두리가 숨 쉬듯 빛난다 (opacity만) */
+.ibadge.charge,
+.ibadge.death {
+  border-color: currentColor;
+}
+.ibadge.charge::after,
+.ibadge.death::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 12px currentColor;
+  opacity: 0.25;
+  animation: cu-breathe 0.9s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes cu-breathe {
+  to {
+    opacity: 0.9;
+  }
+}
+.ibadge.big {
+  padding: 5px 10px 5px 8px;
+  gap: 7px;
+}
+.ibadge.big .ib-ic small {
+  font-size: 11px;
+}
+.ibadge.big .ib-v .num {
+  font-size: 21px;
+}
+.ibadge.big .ib-v .nm {
+  max-width: 120px;
+  font-size: 12px;
+}
+.ibadge.big .ib-v small {
+  font-size: 11px;
+}
+
+/* 의도 자세히 */
+.intent-peek .tip-head {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.intent-peek p {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.intent-peek .peek-say {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #e7dcc4;
+}
+.intent-peek .peek-rule {
+  margin: 10px 0 0;
+  padding: 7px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #bfb39b;
+  border-left: 2px solid rgba(226, 204, 158, 0.35);
+  background: rgba(255, 236, 200, 0.04);
+}
+.intent-peek .peek-threat {
+  margin: 10px 0 0;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #ffc4c0;
+}
+.intent-peek .peek-threat > .ic {
+  margin-top: 2px;
+  color: #ff5a5a;
+}
+.intent-peek .peek-threat.warn {
+  color: #ffe2b4;
+}
+.intent-peek .peek-threat.warn > .ic {
+  color: #ffb040;
+}
+
+/* 의도 읽는 법 */
+.legend {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding-bottom: 6px;
+}
+.legend p {
+  margin: 0;
+}
+.legend-lead {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.legend-lead .ibadge {
+  flex: none;
+}
+.legend-note {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.legend-rows {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.legend-row {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px dashed rgba(196, 168, 112, 0.14);
+}
+.legend-row .lg-mark {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+.legend-row .lg-text {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+/* 위쪽 '의도' 단추 (작은 칩이라 누르는 자리는 넓게) */
+.battle-top .intent-key {
+  position: relative;
+  color: var(--brass-2);
+  border-color: var(--line-2);
+}
+.battle-top .intent-key::after {
+  content: '';
+  position: absolute;
+  inset: -10px -4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ibadge.charge::after,
+  .ibadge.death::after,
+  .kit .endturn.ready::after {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/* ───────── 틈 (content/gap.ts) ─────────
+ * 적 이름 옆: 계열 색의 갈라진 자국 + 남은 턴. 큰 틈은 더 굵고 숨 쉬듯 빛난다 (opacity만 움직인다)
+ * 스킬 카드 오른쪽 위: 틈 색의 갈라진 밀랍 (대상이 정해졌으면 또렷하게, 아니면 흐리게)
+ */
+.gapmark {
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: var(--g);
+  background: radial-gradient(circle at 50% 42%, #2b1d12, #0c0704 75%);
+  border: 1.5px solid var(--g);
+  border-radius: 4px 9px 5px 10px / 9px 4px 10px 5px;
+  box-shadow: 0 0 6px -1px var(--g), 0 2px 4px rgba(0, 0, 0, 0.8);
+  rotate: -6deg;
+  line-height: 1;
+}
+/* 남은 턴: 오른쪽 위 작은 알 (아래 체력 막대를 가리지 않게) */
+.gapmark > b {
+  position: absolute;
+  right: -7px;
+  top: -6px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  display: grid;
+  place-items: center;
+  rotate: 6deg;
+  border-radius: 7px;
+  background: #0c0704;
+  border: 1px solid var(--g);
+  font-family: var(--num);
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #fff;
+}
+.gapmark.big {
+  width: 28px;
+  height: 28px;
+  border-width: 2px;
+  box-shadow: 0 0 10px var(--g), 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+.gapmark.big::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  box-shadow: 0 0 14px 2px var(--g);
+  opacity: 0.25;
+  animation: cu-breathe 0.9s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+/* 적 이름 옆: 이름 줄 높이(14px)를 늘리지 않게 위로 솟는다 (막대·버팀 줄은 제자리) */
+.eplate .gapmark {
+  margin: -9px 0 -1px 1px;
+  animation: gm-pop 0.36s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.eplate .gapmark.big {
+  margin: -12px 0 -2px 1px;
+}
+button.gapmark {
+  pointer-events: auto;
+  transition: scale 0.08s;
+}
+button.gapmark::before {
+  content: '';
+  position: absolute;
+  inset: -9px -7px;
+}
+button.gapmark:active {
+  scale: 0.9;
+}
+@keyframes gm-pop {
+  0% {
+    opacity: 0;
+    scale: 1.9;
+  }
+  60% {
+    opacity: 1;
+    scale: 0.92;
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+/* 스킬 카드: 틈 색의 갈라진 밀랍 */
+.kit .skill .gapseal {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 21px;
+  height: 21px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  rotate: 12deg;
+  pointer-events: none;
+}
+.kit .skill .gapseal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(50% 6%, 62% 5%, 72% 11%, 83% 17%, 91% 26%, 91% 39%, 92% 50%, 97% 63%, 88% 72%, 81% 81%, 75% 93%, 62% 94%, 50% 99%, 38% 94%, 26% 91%, 19% 81%, 9% 74%, 3% 63%, 4% 50%, 4% 38%, 9% 26%, 20% 20%, 26% 8%, 38% 5%);
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 250, 235, 0.4) 0 7%, transparent 24%),
+    radial-gradient(circle at 50% 50%, var(--gw) 0 42%, var(--gw-lo) 46% 51%, var(--gw-hi) 55%, var(--gw) 63% 72%, var(--gw-lo) 100%);
+}
+.kit .skill .gapseal > .ic {
+  position: relative;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7));
+}
+.kit .skill .gapseal.sure::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  box-shadow: 0 0 9px 1px var(--g);
+  opacity: 0.35;
+  animation: cu-breathe 0.9s ease-in-out infinite alternate;
+}
+.kit .skill .gapseal.maybe {
+  width: 17px;
+  height: 17px;
+  top: 5px;
+  right: 6px;
+  opacity: 0.55;
+}
+.kit .skill.gap .basic-tag {
+  right: 28px;
+}
+
+/* 설명 쪽지의 거두기 한 줄 */
+.kit .infobox .gap-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.kit .infobox .gap-line > .ic {
+  flex: none;
+}
+.kit .infobox .gap-line.maybe {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* 틈 자세히 */
+.gap-peek .tip-head {
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.gap-peek .tip-head .gapmark {
+  scale: 1.45;
+  margin: 0 6px 0 8px;
+}
+.gap-peek p,
+.gap-legend p {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.gap-peek .peek-say {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #e7dcc4;
+}
+.gp-h {
+  margin-top: 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.gp-bonus {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 10px;
+  margin-top: 5px;
+}
+.gp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: #e2d6bd;
+}
+.gp-sc {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid;
+  border-radius: 3px 6px 4px 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+.gap-peek .gp-left {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--brass-2);
+}
+.gap-peek .gp-left.none {
+  color: var(--ink-3);
+}
+.gp-rule {
+  margin-top: 10px;
+  padding: 7px 10px;
+  border-left: 2px solid rgba(226, 204, 158, 0.35);
+  background: rgba(255, 236, 200, 0.04);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #bfb39b;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.gp-rule p {
+  margin: 0;
+  color: #ddd0b4;
+}
+.gp-rule ul {
+  margin: 4px 0 0;
+  padding-left: 15px;
+}
+.gp-rule li {
+  margin: 1px 0;
+}
+/* 의도 읽는 법 아래의 틈 읽는 법 */
+.gap-legend {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.gap-legend .gp-rule,
+.gap-legend .gp-h {
+  margin-top: 0;
+}
+.gap-legend .gp-bonus {
+  margin-top: -4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gapmark.big::after,
+  .kit .skill .gapseal.sure::after {
+    animation: none;
+    opacity: 0.7;
+  }
+  .eplate .gapmark {
+    animation: none;
+  }
+}

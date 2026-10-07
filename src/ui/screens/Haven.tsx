@@ -136,7 +136,7 @@ export function HavenScreen() {
                 guardian={es.guardian}
                 core={es.core}
                 footer={
-                  <button class="btn danger wide" disabled={ESSENCES.get(es.id)?.lord || run.player.gold < removalCost(run)} onClick={() => applyAsk({ title: `${ESSENCES.get(es.id)?.name ?? '정수'}를 지울까요?`, icon: 'gi:heart-beats', body: `${removalCost(run)} 골드. 이 정수가 준 스탯·패시브·스킬이 모두 사라지고 되돌릴 수 없다.`, ok: '지운다', danger: true }, (r) => purgeEssence(r, es.uid), '정수를 지웠다')}>
+                  <button class="btn danger wide" disabled={ESSENCES.get(es.id)?.lord || run.player.gold < removalCost(run)} onClick={() => applyAsk({ title: `${ESSENCES.get(es.id)?.name ?? '정수'}를 지울까요?`, icon: 'gi:heart-beats', body: `${removalCost(run)} 골드. 이 정수가 준 스탯·패시브·스킬이 모두 사라지고 되돌릴 수 없어요.`, ok: '지운다', danger: true }, (r) => purgeEssence(r, es.uid), '정수를 지웠다')}>
                     지운다
                   </button>
                 }
@@ -146,7 +146,7 @@ export function HavenScreen() {
         )}
       </div>
       <div class="footer">
-        <button class="btn danger wide" onClick={() => applyAsk({ title: '다음 층으로 내려갈까요?', icon: 'gi:stairs', body: '거점을 떠나면 다음 수호자를 쓰러뜨릴 때까지 돌아올 수 없다.', ok: '내려간다', danger: true }, (r) => leaveHaven(r))}>
+        <button class="btn danger wide" onClick={() => applyAsk({ title: '다음 층으로 내려갈까요?', icon: 'gi:stairs', body: '거점을 떠나면 다음 수호자를 쓰러뜨릴 때까지 돌아올 수 없어요.', ok: '내려간다', danger: true }, (r) => leaveHaven(r))}>
           <Icon name="gi:dungeon-gate" size={18} />
           {`${run.act + 1}층으로 내려간다${next ? ` · ${next.name}` : ''}`}
         </button>

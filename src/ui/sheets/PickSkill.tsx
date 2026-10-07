@@ -83,7 +83,7 @@ export function PickSkillSheet() {
       <div class="footer" style={{ paddingTop: 10 }}>
         <button class="btn wide" disabled={!sel || !!done} onClick={() => void upgrade()}>
           <Icon name="gi:anvil-impact" size={18} />
-          {sel && def ? `${def.name} 강화한다` : '강화할 스킬을 고르세요'}
+          {sel && def ? `${def.name} 강화한다` : '강화할 스킬 선택'}
         </button>
       </div>
       {done && <UpgradeFx id={done.id} lvl={done.lvl} onClose={close} />}

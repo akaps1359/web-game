@@ -5,7 +5,7 @@ import { essenceStats } from '../../engine/run';
 import type { EnemyDef, EssenceStats, Rarity, SkillDef } from '../../engine/types';
 import { codexSkills } from '../../state/meta';
 import { store } from '../../state/store';
-import { STAT_NAME, lootInfo, schoolLabel } from '../cards';
+import { STAT_NAME, lootInfo } from '../cards';
 import { Icon, Sheet, showTip } from '../components';
 import { DMG_COLOR, DMG_NAME, RARITY_COLOR, RARITY_NAME, SCHOOL_COLOR, SCHOOL_NAME, rarityClass, skillDesc } from '../text';
 
@@ -102,17 +102,11 @@ const HINT: Record<Tab, string> = {
   enemies: '한 번 알아낸 약점은 다음 여정에서도 처음부터 보인다.',
   equips: '한 번이라도 손에 넣은 장비가 기록된다.',
   essences: '한 번이라도 흡수한 정수가 기록된다. 그 존재의 기술도 함께 볼 수 있다.',
-  skills: '한 번이라도 배운 스킬이 기록된다. 합기는 두 계열의 스킬을 하나씩 가지고 있을 때 보상에 나온다. 정수의 기술은 정수 도감에서 본다.',
+  skills: '한 번이라도 배운 스킬이 기록된다. 정수의 기술은 정수 도감에서 본다.',
   relics: '한 번이라도 얻은 유물이 기록된다.',
 };
 
 const unknown = (what: string) => () => showTip({ title: '???', icon: 'gi:help', body: what });
-
-/** '검술과' / '결의와' (받침에 따라) */
-function withGwa(word: string): string {
-  const code = word.charCodeAt(word.length - 1) - 0xac00;
-  return word + (code >= 0 && code < 11172 && code % 28 !== 0 ? '과' : '와');
-}
 
 // ───────── 탭마다 ─────────
 
@@ -215,7 +209,8 @@ const GROUPS: Record<Tab, () => Group[]> = {
                 nameClass: rarityClass(d.rarity),
                 icon: d.icon,
                 color: SCHOOL_COLOR[d.school],
-                sub: `${schoolLabel(d)} · ${RARITY_NAME[d.rarity]}${d.type ? ` · ${DMG_NAME[d.type]}` : ''}`,
+                // 예전의 합기: 두 계열로 친다 ('합기' 대신 성격 표시)
+                sub: `${d.duo ? `${SCHOOL_NAME[d.duo[0]]}×${SCHOOL_NAME[d.duo[1]]} 계열을 잇는 기술` : SCHOOL_NAME[d.school]} · ${RARITY_NAME[d.rarity]}${d.type ? ` · ${DMG_NAME[d.type]}` : ''}`,
                 body: skillDesc(d, 0)
                   .map((x) => x.t)
                   .join(''),
@@ -224,18 +219,11 @@ const GROUPS: Record<Tab, () => Group[]> = {
                   { label: '재사용 대기', value: cd >= 99 ? '전투당 1회' : cd > 0 ? `${cd}턴` : '없음' },
                 ],
               })
-          : d.duo
-            ? unknown(`아직 배우지 못한 합기. ${withGwa(SCHOOL_NAME[d.duo[0]])} ${SCHOOL_NAME[d.duo[1]]}의 스킬을 하나씩 가지고 있으면 보상에 나온다.`)
-            : unknown(d.rarity === 'genesis' ? GENESIS_HINT : '아직 배우지 못한 스킬.'),
+          : unknown(d.rarity === 'genesis' ? GENESIS_HINT : '아직 배우지 못한 스킬.'),
       };
     };
-    // 합기는 계열 칸이 아니라 따로 (짝의 계열 순서대로)
-    const order = (sc: string) => schools.indexOf(sc as (typeof schools)[number]);
-    const duos = list.filter((d) => d.duo).sort((a, b) => order(a.duo![0]) - order(b.duo![0]) || order(a.duo![1]) - order(b.duo![1]));
-    return [
-      ...schools.map((sc) => ({ label: SCHOOL_NAME[sc], cells: list.filter((d) => d.school === sc && !d.duo).sort(byRarity).map(cell) })),
-      { label: '합기', cells: duos.map(cell) },
-    ].filter((g) => g.cells.length);
+    // 예전의 합기도 이제 각자 계열 칸에 (조건 없이 계열 풀로 내려갔다)
+    return schools.map((sc) => ({ label: SCHOOL_NAME[sc], cells: list.filter((d) => d.school === sc).sort(byRarity).map(cell) })).filter((g) => g.cells.length);
   },
 
   relics: () => {

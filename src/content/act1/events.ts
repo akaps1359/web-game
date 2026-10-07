@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { reg } from '../../engine/registry';
 import { finish } from '../../engine/events';
 import {
@@ -23,7 +24,7 @@ import { INSIGHT_PRICE, cutMaxSanity, floorFoes, floorGuardian, learnWeak, weakN
 function sanity(run: RunState, n: number): string {
   const r = loseSanityRun(run, n);
   if (r.fatal) return ' 정신이 완전히 무너졌다.';
-  if (r.madness) return ` 정신이 무너졌다 — ${MADNESS.get(r.madness)?.name ?? '광기'}.`;
+  if (r.madness) return ` 정신이 무너졌다. (${MADNESS.get(r.madness)?.name ?? '광기'})`;
   return '';
 }
 
@@ -57,7 +58,7 @@ reg.events([
             go: (r, e) => {
               r.player.insight += 1;
               cutMaxSanity(r, INSIGHT_PRICE.maxSanity);
-              finish(e, `진주 속에서 별들이 소용돌이친다. 무언가를 알아버렸다. 알아버린 만큼, 마음 한 자리가 영영 비었다. (통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity})`);
+              finish(e, `진주 속에서 별들이 소용돌이친다. 별들이 무엇을 감싸고 도는지 알아버렸다. 그만큼 마음 한 자리가 영영 비었다. (통찰 +1, 최대 정신력 -${INSIGHT_PRICE.maxSanity})`);
             },
           },
         ],
@@ -75,14 +76,14 @@ reg.events([
         choices: [
           {
             label: '주머니를 뒤진다',
-            hint: '무언가 있을지도…',
+            hint: '쓸 만한 게 있을지도…',
             go: (r, e) => {
               if (rng(r, 'event').chance(0.6)) {
                 r.player.gold += 30;
                 const c = rollConsumable(r);
                 finish(e, '젖은 지폐와 쓸 만한 물건을 찾았다. (골드 +30)', { loot: c ? [{ kind: 'consumable', id: c }] : [] });
               } else {
-                finish(e, '시체의 손이 당신의 손목을 붙잡았다!', { fight: 'a1-drowned1' });
+                finish(e, '시체의 손이 손목을 붙잡았다!', { fight: 'a1-drowned1' });
               }
             },
           },
@@ -128,7 +129,7 @@ reg.events([
             go: (r, e) => {
               r.player.maxHp += 6;
               r.player.hp += 6;
-              finish(e, '굵은 바늘이 혈관으로 들어왔다. 몸이 단단해진다… 무언가 대가를 치른 것 같다. (최대 체력 +6)' + sanity(r, 10));
+              finish(e, '굵은 바늘이 혈관으로 들어왔다. 몸이 단단해진다. 바늘을 뺀 뒤에도 손끝이 한참 떨렸다. (최대 체력 +6)' + sanity(r, 10));
             },
           },
           { label: '거절한다', go: (_r, e) => finish(e, '"언제든 다시 찾게." 의사가 어둠 속으로 사라졌다.') },
@@ -143,7 +144,7 @@ reg.events([
     acts: [1, 2],
     stages: {
       start: (run) => ({
-        text: '교단 문양이 찍힌 화물 상자가 사슬로 묶여 있다. 안에서 무언가 딸깍거린다.',
+        text: '교단 문양이 찍힌 화물 상자가 사슬로 묶여 있다. 안에서 딸깍거리는 소리가 난다.',
         choices: [
           {
             label: '억지로 연다',
@@ -176,7 +177,7 @@ reg.events([
           {
             label: '물을 마신다',
             hint: '체력 +15, 정신력 -8',
-            go: (r, e) => finish(e, `물은 이상하게 따뜻했다. (체력 +${healRun(r, 15)})` + sanity(r, 8)),
+            go: (r, e) => finish(e, `물은 체온처럼 미지근했다. (체력 +${healRun(r, 15)})` + sanity(r, 8)),
           },
           {
             label: '동전을 던진다 (10 골드)',
@@ -216,7 +217,7 @@ reg.events([
             go: (r, e) => {
               const [id] = rollForbidden(r, 1);
               if (id) learnSkill(r, id);
-              finish(e, '입이 저절로 그들의 말을 따라 했다. 머릿속에 무언가가 새겨졌다.' + sanity(r, 12));
+              finish(e, '입이 저절로 그들의 말을 따라 했다. 머릿속에 낯선 주문 하나가 새겨졌다.' + sanity(r, 12));
             },
           },
           // 2층에서는 그 층의 교단 신도들과 싸운다 (1층 조우를 그대로 쓰면 2층에 1층 적이 나와 너무 쉽다)
@@ -279,7 +280,7 @@ reg.events([
             hint: '골드 +25, 정신력 -15',
             go: (r, e) => {
               r.player.gold += 25;
-              finish(e, '노파는 웃으며 무언가를 속삭였다. 그 말이 귀에서 떠나지 않는다. (골드 +25)' + sanity(r, 15));
+              finish(e, '노파는 웃으며 귓가에 짧게 속삭였다. 그 말이 귀에서 떠나지 않는다. (골드 +25)' + sanity(r, 15));
             },
           },
           { label: '떠난다', go: (_r, e) => finish(e, '"다시 만나겠지." 노파가 카드를 덮었다.') },
@@ -303,7 +304,7 @@ reg.events([
               const names = learnWeak(r, floorGuardian(r));
               finish(
                 e,
-                '등대지기는 이 수로의 주인을 오래 지켜보았다. 마지막 장을 넘기자 종이에 바다 냄새가 배어 나왔고, 그 앞 장에 그것이 무엇을 견디지 못하는지 적혀 있었다.' +
+                '등대지기는 이 수로의 주인을 오래 지켜보았다. 마지막 장을 넘기자 종이에서 바다 냄새가 배어 나왔다. 그 앞 장에 그것이 무엇을 견디지 못하는지 적혀 있었다.' +
                   weakNote(names) +
                   (names.length ? sanity(r, 5) : ''),
               );
@@ -323,7 +324,7 @@ reg.events([
       start: (run) => {
         const mad = run.madness.filter((m) => !MADNESS.get(m)?.virtue);
         return {
-          text: '수면에 비친 당신이 먼저 웃는다.',
+          text: '수면에 비친 얼굴이 먼저 웃는다.',
           choices: [
             {
               label: '마주 웃는다',
@@ -334,7 +335,7 @@ reg.events([
                 r.madness = r.madness.filter((m) => m !== id);
                 r.player.maxSanity = Math.max(10, r.player.maxSanity - 5);
                 r.player.sanity = Math.min(r.player.sanity, r.player.maxSanity);
-                finish(e, `그림자가 당신의 ${MADNESS.get(id)?.name ?? '광기'}을(를) 가져갔다. 무언가 함께 빠져나간 기분이다.`);
+                finish(e, `그림자가 ${MADNESS.get(id)?.name ?? '광기'}${josa(MADNESS.get(id)?.name ?? '광기', '을')} 가져갔다. 머리가 가벼워졌다. 조금 지나치게.`);
               },
             },
             { label: '물을 휘젓는다', hint: '정신력 +3', go: (r, e) => finish(e, `그림자가 흩어졌다. (정신력 +${gainSanityRun(r, 3)})`) },
@@ -350,7 +351,7 @@ reg.events([
     acts: [1],
     stages: {
       start: (run) => ({
-        text: '수십 마리의 쥐가 꼬리가 엉킨 채 하나의 덩어리가 되어 꿈틀댄다. 그 한가운데 무언가 반짝인다.',
+        text: '수십 마리의 쥐가 꼬리가 엉킨 채 한 덩어리가 되어 꿈틀댄다. 그 한가운데서 금빛이 반짝인다.',
         choices: [
           {
             label: '손을 넣는다',
@@ -367,7 +368,7 @@ reg.events([
             disabled: !run.consumables.includes('molotov') && '화염병이 없다',
             go: (r, e) => {
               r.consumables[r.consumables.indexOf('molotov')] = null;
-              finish(e, '불길 속에서 쥐들의 왕관이 녹아내렸다. 잿더미 속에 무언가 남았다.', { loot: relicLoot(r) });
+              finish(e, '불길 속에서 쥐들의 왕관이 녹아내렸다. 잿더미 속에 그을린 물건 하나가 남았다.', { loot: relicLoot(r) });
             },
           },
           { label: '지나친다', go: (_r, e) => finish(e, '찍찍거리는 소리가 한참 따라왔다.') },

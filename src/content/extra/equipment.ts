@@ -23,6 +23,8 @@ reg.skills([
     target: 'single',
     type: 'slash',
     tags: ['attack', 'basic', 'multi', 'combo'],
+    makes: [],
+    reads: ['combo'],
     // 2026-10: 고정 가산 1회 규칙(힘·숫돌이 대상마다 첫 타에만)으로 사브르(6+힘)보다 못해져 타격당 +1
     vals: { dmg: [3, 4, 5], hits: 2 },
     desc: '{D:dmg} 참격 피해 {hits}회. 이번 턴 앞서 스킬을 2개 이상 썼으면 1회 추가',
@@ -41,6 +43,8 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'basic', 'ammo', 'gun'],
+    makes: ['ammo'],
+    reads: ['ammo'],
     vals: { dmg: [6, 8, 10], bonus: [3, 4, 5] },
     desc: '탄약 1 소모, 적 하나에게 {D:dmg} 관통 피해. 후열의 적을 쏘면 피해 +{bonus}. 탄약이 없으면 쏘지 않고 재장전',
     run: (c, u, t) => {
@@ -79,6 +83,8 @@ reg.skills([
     target: 'single',
     type: 'blunt',
     tags: ['attack', 'basic', 'block'],
+    makes: ['block'],
+    reads: [],
     vals: { dmg: [3, 4, 5], blk: [3, 4, 5] },
     desc: '{D:dmg} 타격 피해, 방어도 {B:blk}',
     run: (c, u, t) => {
@@ -98,6 +104,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic', 'thorns'],
+    makes: ['block'],
+    reads: [],
     vals: { blk: [4, 5, 6], thorns: [1, 1, 2] },
     desc: '방어도 {B:blk}, 가시 +{thorns} (전투 동안 누적)',
     run: (c, u) => {
@@ -117,6 +125,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'basic'],
+    makes: ['block'],
+    reads: ['poison', 'burn'],
     vals: { blk: [4, 6, 8], per: [2, 2, 3] },
     desc: '방어도 {B:blk} + 독이나 화상에 걸린 적 1명당 {per}',
     run: (c, u) => {
@@ -136,6 +146,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['barrier', 'basic'],
+    makes: ['barrier'],
+    reads: [],
     vals: { barrier: [3, 4, 5] },
     desc: '보호막 {barrier} (턴이 지나도 유지)',
     run: (c, u) => void c.apply(c.p, 'barrier', u.v('barrier'), c.p),
@@ -237,7 +249,7 @@ reg.equips([
       onTurnStart(c, s) {
         if (!c.rng.chance(0.25 + 0.1 * s.n)) return;
         c.s.ap += 1;
-        c.emit({ t: 'text', uid: 'p', text: '주사위가 웃었다 — 행동력 +1', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '주사위가 웃었다 (행동력 +1)', tone: 'good' });
       },
     },
   },

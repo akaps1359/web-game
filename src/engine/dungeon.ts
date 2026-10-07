@@ -17,6 +17,7 @@ import {
 import { startEvent } from './events';
 import { openShop, type ShopState } from './shop';
 import type { EncounterDef } from './types';
+import { abyssFloor, abyssLightExtra } from './abyss';
 
 export type RoomType = 'start' | 'combat' | 'elite' | 'treasure' | 'event' | 'camp' | 'merchant' | 'shrine' | 'portal' | 'empty' | 'lord';
 
@@ -374,7 +375,8 @@ export function lightCost(run: RunState): number {
   if (lantern) cost -= 3 + lantern.lvl;
   if (has('diving')) cost += 2;
   if (run.relics.some((r) => r.id === 'lighthouse-lens')) cost *= 2;
-  return Math.max(1, cost);
+  // 심연 단계: 등불이 더 닳는다 (기름 먹는 어둠)
+  return Math.max(1, cost) + abyssLightExtra(run);
 }
 
 export function advanceTime(run: RunState, hours: number) {
@@ -382,10 +384,11 @@ export function advanceTime(run: RunState, hours: number) {
   if (!f) return;
   f.hours += hours;
   run.stats.hours += hours;
-  const tide = Math.floor(f.hours / HOURS_PER_TIDE) * (f.vars.tideMul ?? 1);
+  // tideBase: 층에 들어설 때 이미 차 있던 조수 (심연 「물러나지 않는 조수」: 지난 층에서 물러가지 않은 조수)
+  const tide = (f.vars.tideBase ?? 0) + Math.floor(f.hours / HOURS_PER_TIDE) * (f.vars.tideMul ?? 1);
   while (f.tide < tide) {
     f.tide++;
-    log(run, `심연의 조수가 차오른다 (${f.tide}단계) — 적이 강해진다`);
+    log(run, `심연의 조수가 차오른다 (${f.tide}단계). 적이 강해진다`);
     floorSignal(run, { t: 'tide', tide: f.tide });
   }
   for (let i = 0; i < hours; i++) maybeOpenRift(run, f);
@@ -408,7 +411,7 @@ function maybeOpenRift(run: RunState, f: FloorState) {
   room.rift = true;
   room.seen = true;
   f.rifts++;
-  log(run, '어딘가에서 공간이 찢어지는 소리가 났다 — 균열이 열렸다');
+  log(run, '어딘가에서 공간이 찢어지는 소리가 났다. 균열이 열렸다');
 }
 
 function moveStalker(run: RunState, f: FloorState) {
@@ -497,6 +500,11 @@ export function enterRoom(run: RunState, id: number) {
  */
 export const GUARDIAN_REST = { hp: 1 };
 
+/** 포탈 비석 앞에서 숨을 고르면 채워지는 체력 — 이미 그보다 많으면 그대로 */
+export function guardianRestHp(run: RunState): number {
+  return Math.round(run.player.maxHp * GUARDIAN_REST.hp);
+}
+
 /** 포탈 비석 / 계층군주 전투 시작 */
 export function startGuardian(run: RunState): string | null {
   const f = run.floor;
@@ -507,13 +515,13 @@ export function startGuardian(run: RunState): string | null {
   if (room.type === 'portal') {
     if (!f.bossEnc || !ENCOUNTERS.some((e) => e.id === f.bossEnc)) {
       // 수호자 조우가 없는 층 (개편 중): 막힌 채로 두지 않고 비석이 그냥 길을 연다
-      log(run, '포탈 비석을 지키는 자가 없다 — 길이 열렸다');
+      log(run, '포탈 비석을 지키는 자가 없다. 길이 열렸다');
       if (run.act >= FINAL_ACT) winRun(run);
       else goHaven(run);
       return null;
     }
     const p = run.player;
-    const rested = healRun(run, Math.round(p.maxHp * GUARDIAN_REST.hp) - p.hp);
+    const rested = healRun(run, guardianRestHp(run) - p.hp);
     if (rested > 0) log(run, `포탈 비석 앞에서 숨을 고른다 (체력 +${rested})`);
     startCombat(run, f.bossEnc, { rested });
     return null;
@@ -659,10 +667,13 @@ export function descend(run: RunState) {
     endRun(run, true, `${run.act}층은 아직 봉인되어 있다 (개발 중)`);
     return;
   }
+  const prev = run.floor;
   run.light = 100;
   run.floor = generateFloor(run, run.act);
   run.screen = 'dungeon';
   log(run, `${run.act}층으로 내려왔다`);
+  // 심연 단계: 층마다 바뀌는 규칙 (「아래의 목소리」, 「물러나지 않는 조수」)
+  abyssFloor(run, run.floor, prev);
 }
 
 /** from → to 최단 경로 위의 방들을 지도에 드러낸다 (내용은 그대로 미지) */

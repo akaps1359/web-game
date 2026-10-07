@@ -58,7 +58,7 @@ reg.skills([
     target: 'self',
     tags: ['buff', 'ritual'],
     vals: { ritual: 1 },
-    desc: '의식 {ritual} — 내 턴이 끝날 때마다 힘 +{ritual}. 전투당 1회',
+    desc: '의식 {ritual}: 내 턴이 끝날 때마다 힘 +{ritual}. 전투당 1회',
     run: (c, u) => void c.apply(c.p, 'ritual', u.v('ritual'), c.p),
   }),
   ess({
@@ -844,7 +844,7 @@ reg.essences([
     stats: { maxHp: 6, will: 1 },
     passive: {
       name: '꺼지지 않는 향',
-      desc: '3번째 턴마다 시작 시 힘 +1 (전투 동안)',
+      desc: '3의 배수 턴이 시작될 때 힘 +1 (전투 동안)',
       hooks: {
         onTurnStart(c, s) {
           if (c.s.turn % 3 === 0) c.apply(c.p, 'str', s.n, c.p);
@@ -862,7 +862,7 @@ reg.essences([
     stats: { maxHp: 7, str: 1 },
     passive: {
       name: '순교자의 각오',
-      desc: '체력이 30% 이하일 때 공격 피해 +3',
+      desc: '체력이 30% 이하면 공격 피해 +3',
       hooks: {
         modDamageOut(c, s, d) {
           if (d.attack && d.src === c.p && c.p.hp <= c.p.maxHp * 0.3) d.add += 3 * s.n;
@@ -916,7 +916,7 @@ reg.essences([
     stats: { maxHp: 6, str: 1 },
     passive: {
       name: '두 개의 목소리',
-      desc: '정신력이 절반 이하일 때 주는 공격 피해 +15%',
+      desc: '정신력이 절반 이하면 주는 공격 피해 +15%',
       hooks: {
         modDamageOut(c, s, d) {
           if (d.attack && d.src === c.p && c.p.sanity <= c.p.maxSanity / 2) d.mult *= 1 + 0.15 * s.n;
@@ -1071,12 +1071,12 @@ reg.essences([
     stats: { maxHp: 9, will: 2 },
     passive: {
       name: '지휘',
-      desc: '3번째 턴마다 시작 시 행동력 +1',
+      desc: '3의 배수 턴이 시작될 때 행동력 +1',
       hooks: {
         onTurnStart(c, s) {
           if (c.s.turn % 3 !== 0) return;
           c.s.ap += s.n;
-          c.emit({ t: 'text', uid: 'p', text: `지휘 — 행동력 +${s.n}`, tone: 'good' });
+          c.emit({ t: 'text', uid: 'p', text: `지휘: 행동력 +${s.n}`, tone: 'good' });
         },
       },
     },
@@ -1168,7 +1168,7 @@ reg.essences([
     stats: { maxHp: 18, str: 2, will: 2 },
     passive: {
       name: '대종의 울림',
-      desc: '3번째 턴마다 시작 시 대종이 울려 적 전체에 비전 피해 12, 약화 1',
+      desc: '3의 배수 턴이 시작될 때 대종이 울려 적 전체에 비전 피해 12, 약화 1',
       hooks: {
         onTurnStart(c, s) {
           if (c.s.turn % 3 !== 0 || !c.alive.length) return;
@@ -1218,7 +1218,7 @@ reg.essences([
           if (c.s.vars.a2saint) return false;
           c.s.vars.a2saint = 1;
           c.p.hp = Math.min(c.p.maxHp, 12 * s.n);
-          c.emit({ t: 'text', uid: 'p', text: '거꾸로 된 기적 — 쓰러지지 않았다', tone: 'eldritch' });
+          c.emit({ t: 'text', uid: 'p', text: '거꾸로 된 기적. 쓰러지지 않았다', tone: 'eldritch' });
           return true;
         },
       },

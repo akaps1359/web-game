@@ -1,0 +1,774 @@
+/* ───────── 소지품 창: 탐험가의 낡은 가죽 수첩 (잉크로 그은 줄, 놋쇠 단추) ─────────
+   카드 상자를 쌓지 않고 수첩 낱장의 줄글처럼: 위에 요약, 그 아래 줄 친 목록, 누르면 아래에 낱장(자세히)이 올라온다.
+   행동 단추는 언제나 낱장 맨 아래 같은 자리에 놓인다. 지도 화면의 잉크 지도와 같은 재질(옅은 잉크 점선, 놋쇠). */
+
+.inv,
+.inv-cmp {
+  --inv-ink: #ece4d2;
+  --inv-meta: #aaa190;
+  --inv-dim: #8a8273;
+  --inv-rule: rgba(226, 204, 158, 0.15);
+  --inv-rule-2: rgba(226, 204, 158, 0.32);
+  --inv-brass: #d9b45e;
+  --inv-rune: #c99cff;
+}
+
+/* 가죽 표지: 소지품 창을 담은 시트만 (다른 시트는 그대로) */
+.sheet:has(> .inv) {
+  position: relative;
+  background:
+    radial-gradient(140% 55% at 50% -6%, rgba(150, 108, 58, 0.2), transparent 70%),
+    linear-gradient(180deg, #1c150e 0%, #120d09 100%);
+  border-color: rgba(201, 162, 74, 0.55);
+}
+/* 가장자리 박음질 */
+.sheet:has(> .inv)::before {
+  content: '';
+  position: absolute;
+  inset: 6px 6px 0;
+  border: 1px dashed rgba(201, 162, 74, 0.26);
+  border-bottom: none;
+  border-radius: 11px 11px 0 0;
+  pointer-events: none;
+}
+
+.inv {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 탭: 수첩 색인처럼 글자 + 잉크 밑줄 ── */
+.inv-tabs {
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--inv-rule-2);
+}
+.inv-tab {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 2px;
+  position: relative;
+  font-size: 14px;
+  color: var(--inv-meta);
+  white-space: nowrap;
+  transition: color 0.12s, background 0.12s;
+}
+.inv-tab.on {
+  color: var(--brass-2);
+  font-weight: 700;
+}
+.inv-tab.on::after {
+  content: '';
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  bottom: -1px;
+  height: 2px;
+  background: var(--brass-2);
+}
+.inv-tab:active {
+  background: rgba(240, 207, 122, 0.08);
+  color: var(--inv-ink);
+}
+
+/* ── 요약: 장부의 숫자 칸 ── */
+.inv-sum {
+  flex: none;
+  display: flex;
+  padding: 9px 0 8px;
+  border-bottom: 1px dashed var(--inv-rule-2);
+}
+.inv-sum > div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 2px;
+  padding: 0 4px;
+  border-left: 1px solid var(--inv-rule);
+}
+.inv-sum > div:first-child {
+  border-left: none;
+}
+.inv-sum .k {
+  font-size: 11.5px;
+  color: var(--inv-meta);
+  white-space: nowrap;
+}
+.inv-sum .v {
+  font-family: var(--num);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--inv-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.inv-sum .v small {
+  font-size: 12.5px;
+  color: var(--inv-meta);
+}
+.inv-sum .v.word {
+  font-family: var(--serif);
+  font-size: 14px;
+  padding-top: 3px;
+}
+.inv-sum .v.bad {
+  color: #ffb4a6;
+}
+/* 칸 수를 놋쇠 마름모로 (행동력 ◆와 같은 꼴) */
+.inv-pips {
+  display: flex;
+  gap: 4px;
+  padding-top: 2px;
+}
+.inv-pips i {
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  border: 1px solid rgba(240, 207, 122, 0.55);
+}
+.inv-pips i.on {
+  background: var(--brass-2);
+  border-color: var(--brass-2);
+}
+
+/* ── 목록 ── */
+.inv-list {
+  position: relative;
+  flex: 1;
+  min-height: 110px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 0 0 12px;
+}
+.inv-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 2px 2px;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--inv-brass);
+  letter-spacing: 0.02em;
+}
+.inv-h > i {
+  flex: 1;
+  height: 1px;
+  background: var(--inv-rule-2);
+}
+.inv-h > b {
+  font-family: var(--num);
+  font-size: 13px;
+  color: var(--inv-ink);
+}
+.inv-h.sub {
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+.inv-empty {
+  padding: 10px 4px;
+  font-size: 13px;
+  color: var(--inv-meta);
+  border-bottom: 1px dashed var(--inv-rule);
+}
+
+/* 한 줄: 아이콘 도장 · 이름 · 짧은 정보. 줄 사이는 잉크 점선 */
+.inv-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
+  padding: 7px 6px 7px 4px;
+  text-align: left;
+  border-bottom: 1px dashed var(--inv-rule);
+  transition: background 0.12s, transform 0.08s;
+}
+.inv-row:active {
+  background: rgba(240, 207, 122, 0.1);
+  transform: scale(0.99);
+}
+.inv-row.on {
+  background: rgba(240, 207, 122, 0.08);
+  box-shadow: inset 3px 0 0 var(--brass-2);
+}
+.inv-row.off {
+  opacity: 0.5;
+}
+.inv-row.static:active {
+  background: none;
+  transform: none;
+}
+.inv-row.flash {
+  animation: inv-flash 1.2s ease-out;
+}
+@keyframes inv-flash {
+  0% {
+    background: rgba(240, 207, 122, 0.32);
+  }
+}
+.inv-lead {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  font-family: var(--num);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--inv-dim);
+}
+.inv-row.on .inv-lead {
+  color: var(--brass-2);
+}
+/* 아이콘은 잉크 도장처럼 가는 원 안에 */
+.inv-ic {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--c, #cfc8b8) 45%, transparent);
+  background: radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.35) 70%);
+}
+.inv-ic.empty {
+  border: 1px dashed var(--inv-rule-2);
+  background: none;
+}
+.inv-ic.big {
+  width: 46px;
+  height: 46px;
+}
+.inv-txt {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  /* 긴 이름·한 줄 설명이 칸을 밀어내지 않고 말줄임으로 끝나게 */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+}
+.inv-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--inv-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inv-name.dim {
+  font-weight: 500;
+  color: var(--inv-meta);
+}
+.inv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 9px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--inv-meta);
+}
+.inv-meta b {
+  color: var(--inv-ink);
+  font-weight: 700;
+}
+.inv-meta .rune {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--inv-rune);
+}
+.inv-meta .good {
+  color: #9fe0b0;
+}
+.inv-meta .warn {
+  color: #ffb4a6;
+}
+.inv-meta .delta {
+  color: var(--brass-2);
+  font-weight: 700;
+}
+/* 설명 미리보기는 두 줄까지 (clamp1: 한 줄) */
+.inv-meta .clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  width: 100%;
+}
+.inv-meta .clamp1 {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inv-tag {
+  margin-left: 6px;
+  padding: 0 5px;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  vertical-align: 2px;
+  color: #ffb6c6;
+  border: 1px solid rgba(255, 154, 176, 0.45);
+  border-radius: 3px;
+}
+.inv-right {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--num);
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--inv-ink);
+}
+
+/* ── 자세히: 아래에서 올라오는 낱장. 행동 단추는 늘 맨 아래 ── */
+.inv-detail {
+  flex: none;
+  max-height: 60%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0 -14px calc(-14px - var(--safe-b));
+  padding: 8px 14px calc(12px + var(--safe-b));
+  background:
+    linear-gradient(180deg, rgba(240, 207, 122, 0.05), transparent 40px),
+    linear-gradient(180deg, #251c13, #19130d);
+  border-top: 1px solid rgba(201, 162, 74, 0.6);
+  box-shadow: 0 -14px 28px rgba(0, 0, 0, 0.5);
+  animation: inv-up 0.2s cubic-bezier(0.2, 0.9, 0.2, 1);
+  position: relative;
+}
+/* 낱장 위쪽에 놋쇠 집게 자국 */
+.inv-detail::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  width: 44px;
+  height: 3px;
+  margin-left: -22px;
+  background: var(--inv-brass);
+  border-radius: 0 0 2px 2px;
+}
+@keyframes inv-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+/* 키가 작은 화면: 낱장이 열려 있는 동안은 요약 줄을 접어 목록 자리를 넓힌다 */
+@media (max-height: 720px) {
+  .inv:has(> .inv-detail) > .inv-sum {
+    display: none;
+  }
+  .inv-detail {
+    max-height: 58%;
+  }
+}
+.inv-d-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.inv-d-title {
+  flex: 1;
+  min-width: 0;
+}
+.inv-d-title .t {
+  font-family: var(--serif);
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--inv-ink);
+}
+.inv-d-title .s {
+  font-size: 12px;
+  color: var(--inv-meta);
+}
+.inv-x {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-right: -8px;
+  display: grid;
+  place-items: center;
+  color: var(--inv-meta);
+}
+.inv-x:active {
+  color: var(--inv-ink);
+  transform: scale(0.92);
+}
+.inv-d-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 6px 0 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #cfc7b6;
+}
+.inv-d-body .kw-list {
+  margin-top: 8px;
+}
+.inv-desc {
+  margin: 4px 0 6px;
+  white-space: pre-line;
+}
+.inv-small {
+  margin: 6px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--inv-meta);
+}
+.inv-small.eld {
+  color: #8fe9cb;
+}
+/* 스킬이 만드는 것·읽는 것 한 줄 (Character.tsx SkillDetail) */
+.inv-kw b {
+  font-weight: 700;
+  color: var(--inv-ink);
+}
+/* 세 칸짜리 장부 줄 (행동력 · 재사용 대기 · 각인 등) */
+.inv-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 6px 0 4px;
+  border-top: 1px solid var(--inv-rule);
+  border-bottom: 1px solid var(--inv-rule);
+}
+.inv-facts > div {
+  min-width: 0;
+  padding: 5px 7px;
+  border-left: 1px solid var(--inv-rule);
+}
+.inv-facts > div:first-child {
+  border-left: none;
+  padding-left: 2px;
+}
+.inv-facts .k {
+  display: block;
+  font-size: 11px;
+  color: var(--inv-meta);
+}
+.inv-facts .v {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--inv-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inv-facts .v.rune {
+  color: var(--inv-rune);
+}
+/* 덧붙은 효과(각인·기본기·패시브)는 왼쪽에 잉크 세로줄 */
+.inv-block {
+  margin: 8px 0 4px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--inv-rule-2);
+  font-size: 13.5px;
+}
+.inv-block > .bt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--inv-ink);
+}
+.inv-block.rune {
+  border-left-color: rgba(201, 156, 255, 0.6);
+}
+.inv-block.rune > .bt {
+  color: var(--inv-rune);
+}
+.inv-block.essence > .bt {
+  color: #ffcf9a;
+}
+.inv-block.cur {
+  border-left-color: rgba(240, 207, 122, 0.55);
+}
+.inv-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 4px 0;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.inv-stats .up {
+  color: #a8f0bc;
+}
+.inv-stats .down {
+  color: #ffb4a6;
+}
+/* 쓰면 바뀌는 것 (소모품 미리보기) */
+.inv-change {
+  margin: 6px 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13.5px;
+}
+.inv-change > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--inv-rule);
+}
+.inv-change .k {
+  color: var(--inv-meta);
+}
+.inv-change .v {
+  font-family: var(--num);
+  font-weight: 800;
+  color: var(--inv-ink);
+}
+.inv-change .v b {
+  color: #a8f0bc;
+}
+.inv-change .v b.down {
+  color: #ffb4a6;
+}
+/* 낱장 안의 고르기 목록 (바꿀 칸 · 새길 각인 · 넣을 스킬) */
+.inv-d-body .inv-row {
+  min-height: 50px;
+}
+
+.inv-d-note {
+  flex: none;
+  padding: 7px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--inv-meta);
+  border-top: 1px dashed var(--inv-rule);
+}
+.inv-d-note.bad {
+  color: #ffbfb2;
+}
+/* 막힌 단추를 누르면 그 이유를 적은 줄이 살짝 흔들린다 */
+.inv-d-note.nudge {
+  animation: inv-nudge 0.38s ease-in-out;
+}
+@keyframes inv-nudge {
+  20% {
+    transform: translateX(-5px);
+    color: #ffd6cc;
+  }
+  45% {
+    transform: translateX(4px);
+  }
+  70% {
+    transform: translateX(-2px);
+  }
+}
+.inv-acts {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+}
+/* 놋쇠 판 단추: 그라데이션 알약 대신 납작한 판 */
+.inv-btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 46px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--inv-rule-2);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--inv-ink);
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition: transform 0.08s, filter 0.12s, opacity 0.15s;
+}
+.inv-btn.main {
+  flex: 1.5;
+  background: #c9a24a;
+  border-color: #ecc979;
+  color: #1c1307;
+  box-shadow: inset 0 1px 0 rgba(255, 244, 210, 0.5), inset 0 -2px 0 rgba(60, 40, 10, 0.35);
+}
+.inv-btn.danger {
+  color: #ffbcae;
+  border-color: rgba(255, 120, 100, 0.5);
+}
+.inv-btn.main.danger {
+  background: #9c3f33;
+  border-color: #d9796a;
+  color: #fff0ea;
+  box-shadow: inset 0 1px 0 rgba(255, 210, 200, 0.35), inset 0 -2px 0 rgba(40, 8, 4, 0.4);
+}
+.inv-btn:active {
+  transform: translateY(1px) scale(0.98);
+  filter: brightness(1.18);
+}
+.inv-btn.off {
+  opacity: 0.38;
+}
+
+/* ── 확인 창 제목은 낱말 중간에서 꺾지 않는다 ('넣\n을까요?' 방지) ── */
+.ask .tip-head .t {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* ── 각인 전후 비교 (확인 창 안) ── */
+.inv-cmp {
+  white-space: normal;
+  display: grid;
+  gap: 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #cfc7b6;
+}
+.inv-cmp .rows {
+  display: grid;
+  border-top: 1px solid var(--inv-rule);
+}
+.inv-cmp .rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--inv-rule);
+}
+.inv-cmp .rows .k {
+  color: var(--inv-meta);
+}
+.inv-cmp .rows .v {
+  font-weight: 700;
+  color: var(--inv-ink);
+  text-align: right;
+}
+.inv-cmp s {
+  color: var(--inv-dim);
+}
+.inv-cmp .up {
+  color: #a8f0bc;
+}
+.inv-cmp .down {
+  color: #ffb4a6;
+}
+.inv-cmp .same {
+  color: var(--inv-meta);
+  font-weight: 500;
+}
+.inv-cmp .h {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--inv-meta);
+  letter-spacing: 0.04em;
+}
+.inv-cmp .h.add {
+  color: var(--inv-rune);
+}
+.inv-cmp .h.out {
+  color: #ffb4a6;
+}
+.inv-cmp .d {
+  padding-left: 10px;
+  border-left: 2px solid var(--inv-rule-2);
+}
+.inv-cmp .d.add {
+  border-left-color: rgba(201, 156, 255, 0.6);
+}
+.inv-cmp .d.out {
+  border-left-color: rgba(255, 140, 120, 0.5);
+}
+.inv-cmp .d b.name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+}
+.inv-cmp .d.add b.name {
+  color: var(--inv-rune);
+}
+
+/* ── 정수 맞바꾸기: 잃는 것 · 얻는 것 ── */
+.inv-trade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin: 6px 0;
+  border-top: 1px solid var(--inv-rule);
+}
+.inv-trade > div {
+  min-width: 0;
+  padding: 6px 8px 6px 0;
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  font-size: 13px;
+}
+.inv-trade > div + div {
+  padding: 6px 0 6px 10px;
+  border-left: 1px solid var(--inv-rule);
+}
+.inv-trade .h {
+  font-size: 12px;
+  font-weight: 700;
+}
+.inv-trade .lose .h {
+  color: #ffb4a6;
+}
+.inv-trade .gain .h {
+  color: #a8f0bc;
+}
+.inv-trade .n {
+  font-family: var(--serif);
+  font-weight: 800;
+  font-size: 14.5px;
+  color: var(--inv-ink);
+}
+.inv-trade .lose .x {
+  color: #ffc9be;
+}
+.inv-trade .gain .x {
+  color: #c4f5d2;
+}
+.inv-intro {
+  flex: none;
+  margin: 8px 2px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #cfc7b6;
+}
+
+/* 계열 각인의 계열 칩 ('검술'): 그 계열 색의 작은 꼬리표 (각인 목록·새기기 비교) */
+.sc-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  vertical-align: 1px;
+  border: 1px solid var(--c);
+  border-radius: 3px 6px 4px 6px;
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 15px;
+  letter-spacing: 0;
+  color: var(--c);
+  white-space: nowrap;
+}
+.inv-d-title .t .sc-chip {
+  vertical-align: 3px;
+}

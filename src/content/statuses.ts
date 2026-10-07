@@ -13,7 +13,7 @@ reg.statuses([
     icon: 'gi:biceps',
     kind: 'buff',
     signed: true,
-    desc: '공격 피해 +{n} — 스킬 한 번에 대상마다 첫 타격에만 (여러 번 때려도 한 번, 광역은 대상마다)',
+    desc: '공격 피해 +{n}. 스킬 한 번에 대상마다 첫 타격에만 붙는다 (여러 번 때려도 한 번)',
     hooks: {
       modDamageOut(_c, s, d) {
         if (d.attack) d.add += s.n;
@@ -119,7 +119,8 @@ reg.statuses([
         }
       },
       onDamageDealt(c, s, d) {
-        if (d.crit && d.type === 'pierce' && d.attack) c.apply(s.unit, 'aim', -1);
+        // 'noaim': 조준을 쓰지 않는 타격 (틈을 사격으로 거둔 치명 등 — 조준은 남는다)
+        if (d.crit && d.type === 'pierce' && d.attack && !d.tags.includes('noaim')) c.apply(s.unit, 'aim', -1);
       },
     },
   },
@@ -220,7 +221,7 @@ reg.statuses([
     name: '사경',
     icon: 'gi:heart-beats',
     kind: 'debuff',
-    desc: '체력 0. 받는 피해의 절반만큼, 그리고 매 턴 정신력이 깎인다. 정신력 0이면 사망. 회복하면 벗어난다.',
+    desc: '체력 0. 매 턴 정신력이 깎이고 피해를 받으면 그 절반만큼 더 깎인다. 정신력 0이면 사망. 회복하면 벗어난다.',
   },
   {
     id: 'weak',
@@ -318,7 +319,7 @@ reg.statuses([
     name: '기절',
     icon: 'gi:knocked-out-stars',
     kind: 'debuff',
-    desc: '다음 행동 {n}회 불가 (수호자는 겹쳐 걸리지 않고, 붕괴 중이거나 기절·붕괴로 행동을 건너뛰면 한 번 행동하기 전까지 기절하지 않는다)',
+    desc: '다음 행동 {n}회 불가. 수호자는 기절이 겹치지 않는다. 붕괴 중이거나 기절·붕괴로 행동을 건너뛴 수호자는 한 번 행동하기 전까지 다시 기절하지 않는다',
   },
   {
     id: 'dread',

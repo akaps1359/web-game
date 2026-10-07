@@ -539,6 +539,63 @@ h2.title {
   }
 }
 
+/* ───────── 실마리 (engine/keywords.ts clueReason): 지금 판과 계열을 넘어 맞물리는 스킬 카드 ─────────
+   카드 아래에 박음질 한 줄과 실 아이콘, 까닭 한 줄. 오른쪽 위 모서리는 실 색으로 살짝 접힌다 */
+.card.clue {
+  position: relative;
+}
+.card.clue:not(.sel):not(.genesis) {
+  border-color: rgba(231, 180, 154, 0.36);
+}
+.card.clue::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 14px;
+  height: 14px;
+  border-top-right-radius: var(--radius);
+  background: linear-gradient(225deg, rgba(231, 180, 154, 0.75) 0 46%, rgba(0, 0, 0, 0.45) 46% 54%, transparent 54%);
+  pointer-events: none;
+}
+.clue-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed rgba(231, 180, 154, 0.3);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #e7b49a;
+}
+.clue-line .ic {
+  margin-top: 1px;
+}
+
+/* 두 계열로 치는 스킬(예전 합기)의 두 계열 칩 (cards.tsx DuoTag): 두 칩이 한 띠로 이어진다 */
+.duo-tag {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: 1px;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 15px;
+}
+.duo-tag i {
+  font-style: normal;
+  padding: 0 5px;
+  border: 1px solid;
+}
+.duo-tag i:first-child {
+  border-right: none;
+  border-radius: 999px 0 0 999px;
+}
+.duo-tag i:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
 .list {
   display: grid;
   gap: 8px;

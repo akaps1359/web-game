@@ -59,7 +59,7 @@ export function SettingsSheet() {
             <button
               class="btn danger"
               onClick={() =>
-                confirmThen({ title: '이번 여정을 포기할까요?', icon: 'gi:broken-skull', body: '되돌릴 수 없다.', ok: '포기한다', danger: true, always: true }, () => {
+                confirmThen({ title: '이번 여정을 포기할까요?', icon: 'gi:broken-skull', body: '되돌릴 수 없어요.', ok: '포기한다', danger: true, always: true }, () => {
                   close();
                   return abandonRun();
                 })
@@ -75,21 +75,21 @@ export function SettingsSheet() {
             class="btn ghost"
             onClick={() =>
               confirmThen(
-                { title: '모든 정보를 해금할까요?', icon: 'gi:book-cover', body: '도감(적·장비·정수·스킬·유물)과 약점, 최고 층, 심연 단계를 전부 연다. 지금 기록은 따로 기억해 두어 되돌릴 수 있다.', ok: '해금' },
+                { title: '모든 정보를 해금할까요?', icon: 'gi:book-cover', body: '도감(적·장비·정수·스킬·유물)과 약점, 최고 층, 심연 단계를 전부 열어요. 지금 기록은 따로 기억해 두어 되돌릴 수 있어요.', ok: '해금' },
                 () => (unlockInfo(), force((x) => x + 1)),
               )
             }
           >
             모든 정보 해금
           </button>
-          <button class="btn ghost" onClick={() => confirmThen({ title: '모든 캐릭터를 해금할까요?', icon: 'gi:padlock-open', body: '지금 기록은 따로 기억해 두어 되돌릴 수 있다.', ok: '해금' }, () => (unlockOrigins(), force((x) => x + 1)))}>
+          <button class="btn ghost" onClick={() => confirmThen({ title: '모든 캐릭터를 해금할까요?', icon: 'gi:padlock-open', body: '지금 기록은 따로 기억해 두어 되돌릴 수 있어요.', ok: '해금' }, () => (unlockOrigins(), force((x) => x + 1)))}>
             캐릭터 해금
           </button>
           <button
             class="btn ghost"
             onClick={() =>
               confirmThen(
-                { title: '지금 기록을 기억할까요?', icon: 'gi:save', body: restore ? '이미 기억해 둔 기록을 지금 기록으로 바꾼다.' : '해금·초기화로 시험해 본 뒤 이 상태로 돌아올 수 있다.', ok: '기억한다' },
+                { title: '지금 기록을 기억할까요?', icon: 'gi:save', body: restore ? '이미 기억해 둔 기록을 지금 기록으로 바꿔요.' : '해금·초기화로 시험해 본 뒤 이 상태로 돌아올 수 있어요.', ok: '기억한다' },
                 () => (remember(), force((x) => x + 1)),
               )
             }
@@ -102,7 +102,7 @@ export function SettingsSheet() {
             onClick={() =>
               restore &&
               confirmThen(
-                { title: '기억한 기록으로 되돌릴까요?', icon: 'gi:backward-time', body: `${when(restore.at)}에 기억한 상태로 돌아간다. 그 뒤에 쌓인 기록(해금·도감·여정 횟수)은 사라진다. 진행 중인 여정과 설정은 그대로.`, ok: '되돌린다', always: true },
+                { title: '기억한 기록으로 되돌릴까요?', icon: 'gi:backward-time', body: `${when(restore.at)}에 기억한 상태로 돌아가요. 그 뒤에 쌓인 기록(해금·도감·여정 횟수)은 사라져요. 진행 중인 여정과 설정은 그대로예요.`, ok: '되돌린다', always: true },
                 () => (restoreMeta(), force((x) => x + 1)),
               )
             }
@@ -117,7 +117,7 @@ export function SettingsSheet() {
                 {
                   title: '모든 기록을 초기화할까요?',
                   icon: 'gi:trash-can',
-                  body: '도감, 해금한 캐릭터, 여정 횟수, 본 도움말이 처음 상태로 돌아간다. 설정(속도·확인 창)은 남는다.' + (restore ? '' : ' 지금 기록은 자동으로 기억해 두어 되돌릴 수 있다.'),
+                  body: '도감, 해금한 캐릭터, 여정 횟수, 본 도움말이 처음 상태로 돌아가요. 설정(속도·확인 창)은 남아요.' + (restore ? '' : ' 지금 기록은 자동으로 기억해 두어 되돌릴 수 있어요.'),
                   ok: '초기화',
                   danger: true,
                   always: true,
@@ -130,7 +130,7 @@ export function SettingsSheet() {
           </button>
         </div>
         <div class="muted" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
-          {restore ? `기억해 둔 기록: ${when(restore.at)} · 여정 ${restore.meta.runs}번 · 도감 ${Object.keys(restore.meta.codex).length}종` : '기억해 둔 기록 없음 — 해금이나 초기화를 하면 그 전 기록을 자동으로 기억한다.'}
+          {restore ? `기억해 둔 기록: ${when(restore.at)} · 여정 ${restore.meta.runs}번 · 도감 ${Object.keys(restore.meta.codex).length}종` : '기억해 둔 기록 없음. 해금이나 초기화를 하면 그 전 기록을 자동으로 기억한다.'}
         </div>
         <div class="muted" style={{ fontSize: 11, lineHeight: 1.6 }}>
           아이콘: game-icons.net (Lorc, Delapouite 외 기여자, CC BY 3.0)

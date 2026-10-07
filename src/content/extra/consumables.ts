@@ -95,8 +95,8 @@ reg.consumables([
     id: 'x-black-candle',
     name: '검은 양초',
     icon: 'gi:candle-flame',
-    rarity: 'rare',
-    // 통찰은 언제나 영구 대가를 치르고 얻는다 (2026-10 개편 — 이벤트의 통찰 +1과 같은 값)
+    // 2026-10 2차: 더는 떨어지지도 팔리지도 않는다 ('special'은 전리품·상점 풀에서 빠진다). 옛 저장의 칸에 남은 것만 쓸 수 있게 정의는 둔다
+    rarity: 'special',
     desc: '통찰 +1, 최대 정신력 -8',
     combat: false,
     target: 'self',

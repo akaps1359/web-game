@@ -19,7 +19,7 @@ export function tollCheck(run: RunState, f: FloorState) {
   if (n <= (f.vars.bells ?? 0)) return;
   f.vars.bells = n;
   const eff = bellsRung(f);
-  if (n <= MAX_BELLS) log(run, `수도원의 종이 울린다 (${n}번째) — 교단 신도들의 힘 +${eff}`);
+  if (n <= MAX_BELLS) log(run, `수도원의 종이 ${n}번째 울린다. 교단 신도들의 힘 +${eff}`);
   else log(run, '종이 또 울린다. 이제는 몇 번째인지 셀 수도 없다');
 }
 
@@ -37,8 +37,8 @@ reg.floors([
     act: 2,
     name: '잿빛 수도원',
     law:
-      '종소리 — 12시간마다 수도원의 종이 울리고, 울릴 때마다 모든 교단 신도의 힘이 1씩 오른다 (최대 4). ' +
-      '잿더미 — 재에 파묻힌 방은 들어가는 데 2시간이 걸린다. 그곳의 전투에선 화염이 강해지고, 재의 것들이 날뛴다.',
+      '종소리: 12시간마다 수도원의 종이 울린다. 울릴 때마다 모든 교단 신도의 힘이 1씩 오른다 (최대 4).\n' +
+      '잿더미: 재에 파묻힌 방은 들어가는 데 2시간이 걸린다. 그곳의 전투에선 화염이 강해지고 재의 것들이 날뛴다.',
     hooks: {
       onCombatStart(c, s) {
         const f = c.run.floor;
@@ -46,7 +46,7 @@ reg.floors([
         const n = bellsRung(f);
         if (n <= 0) return;
         if (s.unit === c.p) {
-          if (c.alive.some((e) => hasTag(e, 'cult'))) c.emit({ t: 'text', text: `종이 ${n}번 울렸다 — 교단 신도 힘 +${n}`, tone: 'eldritch' });
+          if (c.alive.some((e) => hasTag(e, 'cult'))) c.emit({ t: 'text', text: `종이 ${n}번 울렸다. 교단 신도 힘 +${n}`, tone: 'eldritch' });
           return;
         }
         const e = s.unit;
@@ -78,7 +78,7 @@ reg.floors([
       tollCheck(run, f);
       if (f.rooms[f.pos]?.flooded && !f.vars.ashSeen) {
         f.vars.ashSeen = 1;
-        log(run, '무릎까지 쌓인 미지근한 재를 헤치고 나아간다 — 재에 파묻힌 방은 지나는 데 2시간이 걸린다');
+        log(run, '무릎까지 쌓인 미지근한 재를 헤치고 나아간다. 재에 파묻힌 방은 지나는 데 2시간이 걸린다');
       }
     },
     roomAnomaly(_run, f, roomId) {
@@ -92,8 +92,8 @@ reg.floors([
       warnings: [
         '종소리가 재에 덮인 것처럼 뭉개져 들린다…',
         '종이 울리지 않을 때에도 귓속의 종소리가 멎지 않는다',
-        '종탑의 밧줄이 저절로 당겨진다. 누군가 당신의 발걸음을 세고 있다',
-        '종지기가 종탑에서 내려왔다 — 지도에 표시됨',
+        '종탑의 밧줄이 저절로 당겨진다. 누군가 발걸음을 하나하나 세고 있다',
+        '종지기가 종탑에서 내려왔다 (지도에 표시)',
       ],
       progress(_run, f, e) {
         // 종이 울릴 때마다, 종탑의 종을 직접 울렸을 때, 그리고 종이 두 번 울린 뒤 교단 신도를 쓰러뜨릴 때마다

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ENCOUNTERS, ENEMIES, FLOORS } from '../../engine/registry';
-import { lightCost, type Room } from '../../engine/dungeon';
+import { guardianRestHp, lightCost, type Room } from '../../engine/dungeon';
+import { LV, ascAt } from '../../engine/abyss';
 import { FINAL_ACT } from '../../engine/run';
 import { fightGuardian, move, riftEnter, useItem } from '../../state/actions';
 import { store } from '../../state/store';
 import { CONSUMABLES } from '../../engine/registry';
 import { Icon, press, showTip } from '../components';
 import { RunHud, XpBar } from '../Hud';
-import { hours, ROOM_COLOR, ROOM_ICON, ROOM_NAME } from '../text';
+import { hours, josa, ROOM_COLOR, ROOM_ICON, ROOM_NAME } from '../text';
 import { leavePlace } from '../../engine/places';
 import { openShop } from '../../engine/shop';
 import { refresh } from '../../state/actions';
@@ -62,14 +63,14 @@ export function DungeonScreen() {
       if (boss) lines.push({ label: '층 수호자', value: ENEMIES.get(boss.enemies[0].id)?.name ?? '???' });
     }
     const notes: string[] = [];
-    if (r.flooded) notes.push(f.act === 2 ? '재에 파묻힘 — 들어가는 데 2시간' : '침수됨 — 들어가는 데 2시간');
-    if (r.inverted) notes.push('회복 반전 구역 — 이곳의 전투에선 회복이 피해가 된다');
-    if (r.meteor !== undefined && !f.vars['meteor' + r.id]) notes.push(`유성 낙하 지점 — ${r.meteor}시에 떨어진다 (현재 ${f.hours}시)`);
+    if (r.flooded) notes.push(f.act === 2 ? '재에 파묻힘: 들어가는 데 2시간' : '침수됨: 들어가는 데 2시간');
+    if (r.inverted) notes.push('회복 반전 구역: 이곳의 전투에선 회복이 피해가 된다');
+    if (r.meteor !== undefined && !f.vars['meteor' + r.id]) notes.push(`유성 낙하 지점: ${r.meteor}시에 떨어진다 (현재 ${f.hours}시)`);
     if (r.frozen !== undefined && !r.cleared)
       notes.push(
         f.hours < r.frozen
-          ? `얼어붙은 방 — ${r.frozen}시간이 지나기 전엔 적이 얼음에 갇혀 첫 차례를 움직이지 못한다 (지금 ${hours(f.hours)})`
-          : '녹아내린 방 — 깨어난 것들이 굶주려 있다 (적 공격 피해 +25%)',
+          ? `얼어붙은 방: ${r.frozen}시간이 지나기 전엔 적이 얼음에 갇혀 첫 차례를 움직이지 못한다 (지금 ${hours(f.hours)})`
+          : '녹아내린 방: 깨어난 것들이 굶주려 있다 (적 공격 피해 +25%)',
       );
     showTip({
       title: ROOM_NAME[r.type] + (r.rift ? ' · 균열' : ''),
@@ -102,7 +103,7 @@ export function DungeonScreen() {
               title: '심연의 조수',
               icon: 'gi:high-tide',
               color: '#6fb6ea',
-              body: `이동할 때마다 1시간이 흐른다. 12시간마다 조수가 ${(f.vars.tideMul ?? 1) > 1 ? `${f.vars.tideMul} 단계씩` : '한 단계'} 차올라 적이 강해진다. 조수 2단계부터 균열이 열리고, 4단계에는 무언가가 당신을 쫓기 시작한다.\n\n경과 ${hours(f.hours)} · 조수 ${f.tide}단계`,
+              body: `이동할 때마다 1시간이 흐른다. 12시간마다 조수가 ${(f.vars.tideMul ?? 1) > 1 ? `${f.vars.tideMul} 단계씩` : '한 단계'} 차올라 적이 강해진다. 조수 2단계부터 균열이 열리고, 4단계에는 무언가가 당신을 쫓기 시작한다.\n\n경과 ${hours(f.hours)} · 조수 ${f.tide}단계${f.vars.tideBase ? `\n지난 층에서 물러가지 않은 조수 ${f.vars.tideBase}단계 (심연 「물러나지 않는 조수」)` : ''}`,
             })
           }
         >
@@ -120,7 +121,7 @@ export function DungeonScreen() {
             title: `등불 · ${lightName}`,
             icon: 'gi:old-lantern',
             color: lightColor,
-            body: `이동할 때마다 ${lightCost(run)} 줄어든다.\n밝음(75+): 이웃 방이 모두 보인다.\n희미함(25+): 일부만 보인다.\n어둠: 아무것도 보이지 않고, 이동마다 정신력 -2, 기습 위험. 대신 전리품이 늘어난다.`,
+            body: `이동할 때마다 ${lightCost(run)} 줄어든다.\n밝음(75+): 이웃 방이 모두 보인다.\n희미함(25+): 일부만 보인다.\n어둠: 아무것도 보이지 않고, 이동마다 정신력 -2, 기습 위험. 대신 전리품이 늘어난다.${ascAt(run, LV.ambush) ? '\n심연 「어둠 속의 것들」: 기습당하면 적이 먼저 움직인다.' : ''}`,
           })
         }
       >
@@ -184,6 +185,12 @@ function showLegend() {
   });
 }
 
+/** 빈 목록이면 undefined (확인 창이 빈 줄을 그리지 않게) */
+function nonEmpty<T>(list: T[]): T[] | undefined {
+  return list.length ? list : undefined;
+}
+
+
 function roomDesc(r: Room): string {
   switch (r.type) {
     case 'combat':
@@ -231,20 +238,20 @@ function MoveConfirm({ id, onCancel, onConfirm }: { id: number; onCancel: () => 
   if (known && !r.cleared && r.type === 'elite') lines.push('강력한 존재가 지키고 있다');
   if (r.type === 'lord' && !r.cleared) lines.push('계층군주가 기다린다');
   if (r.type === 'portal') lines.push('층 수호자에게 도전하려면 들어간 뒤 따로 결정한다');
-  if (r.flooded) lines.push(f.act === 2 ? '재에 파묻힌 방 — 2시간 걸린다' : '침수된 방 — 2시간 걸린다');
+  if (r.flooded) lines.push(f.act === 2 ? '재에 파묻힌 방: 2시간 걸린다' : '침수된 방: 2시간 걸린다');
   if (r.inverted && known) lines.push('회복 반전 구역');
   if (r.meteor !== undefined && !f.vars['meteor' + r.id]) lines.push(`유성 낙하 지점 (${r.meteor}시 예정, 지금 ${f.hours}시)`);
   if (r.frozen !== undefined && !r.cleared)
-    lines.push(f.hours < r.frozen ? '얼어붙은 방 — 적이 아직 얼음에 갇혀 있다' : '녹아내린 방 — 굶주린 것들이 깨어났다 (적 공격 피해 +25%)');
-  if (cold > 0) lines.push(`혹한 — 등불이 ${cold} 더 닳는다`);
-  if (after < 25) lines.push('어둠 속 이동 — 정신력 -2, 기습 위험');
+    lines.push(f.hours < r.frozen ? '얼어붙은 방: 적이 아직 얼음에 갇혀 있다' : '녹아내린 방: 굶주린 것들이 깨어났다 (적 공격 피해 +25%)');
+  if (cold > 0) lines.push(`혹한: 등불이 ${cold} 더 닳는다`);
+  if (after < 25) lines.push(ascAt(run, LV.ambush) ? '어둠 속 이동: 정신력 -2, 기습 위험 (기습당하면 적이 먼저 움직인다)' : '어둠 속 이동: 정신력 -2, 기습 위험');
   const danger = known && !r.cleared && (r.type === 'elite' || r.type === 'lord');
   return (
     <div class="room-panel panel" style={{ borderColor: 'var(--brass)' }}>
       <div class="room-head">
         <Icon name={r.rift ? 'gi:magic-portal' : known ? ROOM_ICON[r.type] : 'gi:help'} size={18} color={known ? ROOM_COLOR[r.type] : '#8a8f96'} />
         <span class="serif" style={{ fontWeight: 800 }}>
-          {name}(으)로 이동할까요?
+          {name}{josa(name, '으로')} 이동할까요?
         </span>
       </div>
       <div style={{ fontSize: 12.5, color: 'var(--ink-2)', display: 'grid', gap: 2 }}>
@@ -276,7 +283,7 @@ function RoomPanel() {
   let action = null;
   if (here.rift) {
     action = (
-      <button class="btn eldritch wide" onClick={() => confirmThen({ title: '균열에 들어갈까요?', icon: 'gi:magic-portal', color: 'var(--eldritch)', body: '균열 속 전투를 연달아 치르고, 균열 수호자를 쓰러뜨려야 나올 수 있다.', ok: '들어간다', danger: true }, riftEnter)}>
+      <button class="btn eldritch wide" onClick={() => confirmThen({ title: '균열에 들어갈까요?', icon: 'gi:magic-portal', color: 'var(--eldritch)', body: '균열 속 전투를 연달아 치르고 균열 수호자를 쓰러뜨려야 나올 수 있어요.', ok: '들어간다', danger: true }, riftEnter)}>
         <Icon name="gi:magic-portal" size={18} />
         균열에 들어간다 (수호자를 쓰러뜨려야 나올 수 있다)
       </button>
@@ -292,8 +299,12 @@ function RoomPanel() {
             {
               title: `「${name}」에게 도전할까요?`,
               icon: 'gi:dungeon-gate',
-              body: `${f.act >= FINAL_ACT ? '마지막 싸움이다. 준비가 되었는지 확인하라.' : '층 수호자와 싸운다. 이기면 거점으로 간다.'}\n\n비석 앞에서 숨을 고른다 — 체력을 모두 채운 채 싸운다 (정신력은 그대로). 수호자의 공격은 그만큼 매섭다.`,
-              lines: run.player.hp < run.player.maxHp ? [{ label: '숨 고르기', value: `체력 ${run.player.hp} → ${run.player.maxHp}`, color: 'var(--good)' }] : undefined,
+              body: `${f.act >= FINAL_ACT ? '마지막 싸움이에요. 준비가 되었는지 확인하세요.' : '층 수호자와 싸워요. 이기면 거점으로 가요.'}\n\n비석 앞에서 숨을 고르고 체력을 모두 채운 채 싸워요. 정신력은 그대로예요. 수호자의 공격은 그만큼 매서워요.`,
+              lines: nonEmpty([
+                ...(run.player.hp < guardianRestHp(run) ? [{ label: '숨 고르기', value: `체력 ${run.player.hp} → ${guardianRestHp(run)}`, color: 'var(--good)' }] : []),
+                // 심연 「두 번째 모습」: 별의 태아 말고는 쓰러지면 한 번 다시 일어선다
+                ...(ascAt(run, LV.rise) && f.act < FINAL_ACT ? [{ label: '두 번째 모습', value: '쓰러지면 한 번 다시 일어서요', color: 'var(--eldritch)' }] : []),
+              ]),
               ok: '도전한다',
               danger: true,
             },
@@ -307,7 +318,7 @@ function RoomPanel() {
     );
   } else if (here.type === 'lord' && !here.cleared) {
     action = (
-      <button class="btn danger wide" onClick={() => confirmThen({ title: '계층군주에게 도전할까요?', icon: 'gi:crowned-skull', body: '이 층에서 가장 강한 존재다.', ok: '도전한다', danger: true }, fightGuardian)}>
+      <button class="btn danger wide" onClick={() => confirmThen({ title: '계층군주에게 도전할까요?', icon: 'gi:crowned-skull', body: '이 층에서 가장 강한 존재예요.', ok: '도전한다', danger: true }, fightGuardian)}>
         <Icon name="gi:crowned-skull" size={18} />
         계층군주에게 도전
       </button>

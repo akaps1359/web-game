@@ -1,4 +1,5 @@
 import { FLOORS, ORIGINS } from '../../engine/registry';
+import { MAX_ASC } from '../../engine/abyss';
 import { toTitle } from '../../state/actions';
 import { store } from '../../state/store';
 import { Icon } from '../components';
@@ -11,6 +12,7 @@ export function EndScreen() {
   const mins = Math.max(1, Math.round((st.playMs ? st.playMs : Date.now() - st.startedAt) / 60000));
   const rows: [string, string][] = [
     ['출신', ORIGINS.get(run.origin)?.name ?? ''],
+    ['심연', `${run.asc ?? 0}단계`],
     ['도달', `${run.act}층${FLOORS.get(run.act) ? ` · ${FLOORS.get(run.act)!.name}` : ''}`],
     ['레벨', String(run.player.level)],
     ['처치', `${st.kills}`],
@@ -41,6 +43,11 @@ export function EndScreen() {
             </div>
           ))}
         </div>
+        {won && (run.asc ?? 0) < MAX_ASC && (
+          <div style={{ fontSize: 13, textAlign: 'center', color: 'var(--eldritch)' }}>
+            심연 {(run.asc ?? 0) + 1}단계가 열렸다
+          </div>
+        )}
         <div class="muted" style={{ fontSize: 12, textAlign: 'center' }}>
           알아낸 약점과 만난 존재는 도감에 기록되었다.
         </div>

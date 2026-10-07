@@ -15,6 +15,8 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'mark'],
+    makes: ['mark'],
+    reads: [],
     vals: { dmg: [4, 5], mark: [2, 3] },
     desc: '{D:dmg} 비전 피해, 인장 {mark}',
     run: (c, u, t) => {
@@ -34,6 +36,8 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack', 'mark', 'detonate'],
+    makes: [],
+    reads: ['mark'],
     vals: { base: [7, 9], per: [5, 7] },
     desc: '대상의 인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해',
     run: (c, u, t) => {
@@ -53,6 +57,8 @@ reg.skills([
     target: 'single',
     type: 'arcane',
     tags: ['attack'],
+    makes: [],
+    reads: [],
     vals: { dmg: [10, 13] },
     desc: '{D:dmg} 비전 피해',
     run: (c, u, t) => void hit(c, u, t),
@@ -68,6 +74,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['barrier'],
+    makes: ['barrier'],
+    reads: [],
     vals: { barrier: [7, 10] },
     desc: '보호막 {barrier} (턴이 지나도 유지)',
     run: (c, u) => void c.apply(c.p, 'barrier', Math.floor(u.v('barrier') * u.power), c.p),
@@ -83,6 +91,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['buff', 'ritual'],
+    makes: [],
+    reads: [],
     vals: { n: 1 },
     desc: '의식 {n}: 매 턴 종료 시 힘 +{n}. 전투당 1회',
     run: (c, u) => void c.apply(c.p, 'ritual', u.v('n'), c.p),
@@ -99,6 +109,8 @@ reg.skills([
     target: 'all',
     type: 'arcane',
     tags: ['attack', 'mark', 'aoe'],
+    makes: ['mark'],
+    reads: [],
     vals: { dmg: 3, mark: [1, 2] },
     desc: '적 전체에 {D:dmg} 비전 피해, 인장 {mark}',
     run: (c, u, t) => {
@@ -118,6 +130,8 @@ reg.skills([
     target: 'all',
     type: 'arcane',
     tags: ['attack', 'mark', 'detonate', 'aoe'],
+    makes: [],
+    reads: ['mark'],
     vals: { per: [6, 8] },
     desc: '모든 적의 인장을 터뜨려 인장당 {per} 비전 피해',
     run: (c, u) => {
@@ -136,12 +150,16 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     tags: ['debuff'],
-    vals: { weak: 2, vuln: [1, 2] },
-    desc: '약화 {weak}, 취약 {vuln}',
+    makes: ['expose', 'doom'],
+    reads: [],
+    // 파멸의 2차 생산 (상처의 문법): 비술이 가끔, 약하게 파멸을 건다
+    vals: { weak: 2, vuln: [1, 2], doom: [5, 8] },
+    desc: '약화 {weak}, 취약 {vuln}, 파멸 {doom}',
     run: (c, u, t) => {
       if (!t) return;
       c.apply(t, 'weak', u.v('weak'), c.p);
       c.apply(t, 'vuln', u.v('vuln'), c.p);
+      if (!t.dead && t.hp > 0) c.apply(t, 'doom', u.v('doom'), c.p);
     },
   }),
 ]);

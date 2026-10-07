@@ -145,11 +145,11 @@ reg.equips([
       onTurnStart(c, s) {
         if (c.s.turn === 1 && s.n > 0) {
           c.s.ap += s.n;
-          c.emit({ t: 'text', uid: 'p', text: `째깍 — 행동력 +${s.n}`, tone: 'good' });
+          c.emit({ t: 'text', uid: 'p', text: `째깍 (행동력 +${s.n})`, tone: 'good' });
         }
         if (c.s.turn % 3 === 0) {
           c.s.ap += 1;
-          c.emit({ t: 'text', uid: 'p', text: '째깍 — 행동력 +1', tone: 'good' });
+          c.emit({ t: 'text', uid: 'p', text: '째깍 (행동력 +1)', tone: 'good' });
         }
       },
     },
@@ -169,12 +169,12 @@ reg.equips([
     icon: 'gi:ammo-box',
     slot: 'trinket',
     rarity: 'common',
-    desc: '최대 탄약 +2 (강화마다 +1). 전투 시작 시 조준 1',
+    desc: '최대 탄약 +2 (강화마다 +1)',
+    // 2026-10 최종 밸런스: '전투 시작 시 조준 1'을 뺐다. 군인이 전투마다 첫 사격을 치명(2배)으로 열어 출신 가운데 혼자 높았다 (봇 승률 군인 69 → 62%)
     hooks: {
       onCombatStart(c, s) {
         c.s.maxAmmo += 2 + s.n;
         c.s.ammo = c.s.maxAmmo;
-        c.apply(c.p, 'aim', 1, c.p);
       },
     },
   },
@@ -184,14 +184,15 @@ reg.equips([
     icon: 'gi:stone-block',
     slot: 'trinket',
     rarity: 'common',
-    desc: '참격 공격 피해 +1 (강화마다 +1). 전투에서 이기면 칼을 갈며 마음을 가다듬는다 — 정신력 +2',
+    desc: '참격 공격 피해 +1 (강화마다 +1). 전투에서 이기면 칼을 갈며 마음을 가다듬는다. 정신력 +1',
     hooks: {
       modDamageOut(_c, s, d) {
         if (d.attack && d.type === 'slash') d.add += 1 + s.n;
       },
-      // 정신력을 되찾을 길이 없던 사냥꾼의 버팀목 (군인은 결의, 학자는 로브·아편팅크가 있다)
+      // 정신력을 되찾을 길이 없던 사냥꾼의 버팀목 (군인은 결의, 학자는 로브·아편팅크가 있다).
+      // 2026-10 2차: +2는 판당 60이 넘어 출신 가운데 가장 큰 회복이었다 → +1
       onCombatEnd(c, _s, won) {
-        if (won) c.gainSanity(2);
+        if (won) c.gainSanity(1);
       },
     },
   },

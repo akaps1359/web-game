@@ -3,16 +3,19 @@ import '../src/content';
 import {
   DISGUISE_REVEAL,
   HIDDEN_REVEAL,
+  ACT_SAN_MULT,
   INSIGHT_WEAK,
   INSIGHT_WEAK_CAP,
+  MAX_MADNESS,
+  WEAK_BONUS,
   shownIntentOf,
   type Combat,
 } from '../src/engine/combat';
-import { ENEMIES, EVENTS, MADNESS } from '../src/engine/registry';
-import { absorbEssence, eldritchInsight, learnSkill, newRun, removeEssence, startCombat, type RunState } from '../src/engine/run';
+import { CONSUMABLES, ENEMIES, EQUIPS, EVENTS, MADNESS, SKILLS } from '../src/engine/registry';
+import { absorbEssence, gainRelic, learnSkill, newRun, removeEssence, rollConsumable, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
 import { chooseEvent, eventView, startEvent } from '../src/engine/events';
-import { INN_SANITY, inn } from '../src/engine/places';
+import { INN_SANITY, MEDITATE_SANITY, PRAY_SANITY, inn } from '../src/engine/places';
 import type { Intent } from '../src/engine/types';
 import { INSIGHT_PRICE } from '../src/content/eventkit';
 import { DARK_REVEAL, LIAR_REVEAL } from '../src/content/act4/patterns';
@@ -21,7 +24,7 @@ import { FALSE_DOOR_SIGHT } from '../src/content/act5/enemies';
 import { INSIGHT_STEPS } from '../src/ui/text';
 
 /**
- * 통찰 (2026-10 개편): 얻기 매우 어렵고 — 수호자의 이계 정수, 영구 대가를 치르는 선택만 — 1점마다 보이는 것이 늘어난다.
+ * 통찰 (2026-10 개편, 2차): 대가 없이 들어오지 않는다 — 영구 대가를 치르는 선택·금기·수호자 유물만. 1점마다 보이는 것이 늘어난다.
  */
 
 /** 유물·장비·층의 법칙이 섞이지 않는 깨끗한 판 */
@@ -43,53 +46,38 @@ function fight(insight: number, enc = 'a1-cult', knownWeak: Record<string, strin
   return c;
 }
 
-describe('이계 정수: 흡수만으로는 통찰을 주지 않는다 — 수호자의 것만 +1', () => {
-  it('보통 이계 정수는 최대 정신력 -5만, 수호자(보스)의 이계 정수는 통찰 +1도', () => {
+describe('이계 정수: 통찰을 주지 않는다 (수호자의 것도)', () => {
+  it('보통이든 수호자(보스)의 것이든 최대 정신력 -5만', () => {
     const run = clean();
     const san = run.player.maxSanity;
     expect(absorbEssence(run, { id: 'lurker', color: 0 })).toBeNull();
-    expect(run.player.insight).toBe(0);
-    expect(run.player.maxSanity).toBe(san - 5);
     expect(absorbEssence(run, { id: 'fisherman', color: 0, guardian: true }, null)).toBeNull();
-    expect(run.player.insight).toBe(1);
-    expect(run.player.maxSanity).toBe(san - 10);
-  });
-
-  it('균열 수호자(정예)의 이계 정수는 수호자 정수여도 통찰을 주지 않는다', () => {
-    expect(ENEMIES.get('wraith')!.tier).toBe('elite');
-    const run = clean();
-    expect(absorbEssence(run, { id: 'wraith', color: 0, guardian: true }, null)).toBeNull();
+    expect(absorbEssence(run, { id: 'ash-buried', color: 0, guardian: true }, null)).toBeNull();
     expect(run.player.insight).toBe(0);
-    expect(eldritchInsight({ id: 'wraith', guardian: true })).toBe(0);
-    // 이계가 아닌 수호자 정수도 주지 않는다
-    expect(eldritchInsight({ id: 'queen', guardian: true })).toBe(0);
+    expect(run.player.maxSanity).toBe(san - 15);
   });
 
-  it('보통판을 수호자판으로 바꿔 흡수하면 그때 통찰 +1 (최대 정신력 대가는 한 번만)', () => {
+  it('보통판을 수호자판으로 바꿔 흡수해도 대가는 한 번, 통찰은 없다', () => {
     const run = clean();
     const san = run.player.maxSanity;
     expect(absorbEssence(run, { id: 'fisherman', color: 0 })).toBeNull();
-    expect(run.player.insight).toBe(0);
     expect(absorbEssence(run, { id: 'fisherman', color: 0, guardian: true }, null)).toBeNull();
-    expect(run.player.insight).toBe(1);
+    expect(run.player.insight).toBe(0);
     expect(run.player.maxSanity).toBe(san - 5);
   });
 
-  it('돈을 내고 지우면 흔적이 짝 맞게 사라진다 (통찰은 얻은 만큼만)', () => {
+  it('돈을 내고 지우면 최대 정신력을 돌려받고, 다른 길로 얻은 통찰은 그대로', () => {
     const run = clean();
     run.player.gold = 9999;
     const san = run.player.maxSanity;
-    absorbEssence(run, { id: 'lurker', color: 0 });
     absorbEssence(run, { id: 'fisherman', color: 0, guardian: true }, null);
-    run.player.insight += 2; // 다른 길로 얻은 통찰은 건드리지 않는다
-    expect(removeEssence(run, run.essences.find((e) => e.id === 'lurker')!.uid)).toBeNull();
-    expect(run.player.insight).toBe(3);
-    expect(removeEssence(run, run.essences.find((e) => e.id === 'fisherman')!.uid)).toBeNull();
+    run.player.insight = 2;
+    expect(removeEssence(run, run.essences[0].uid)).toBeNull();
     expect(run.player.insight).toBe(2);
     expect(run.player.maxSanity).toBe(san);
   });
 
-  it('보통 정수에는 통찰 스탯이 없다 (수호자의 이계 정수가 통찰의 몫)', async () => {
+  it('정수에는 통찰 스탯이 없다', async () => {
     const { ESSENCES } = await import('../src/engine/registry');
     for (const es of ESSENCES.values()) expect(es.stats.insight ?? 0, es.id).toBe(0);
   });
@@ -157,7 +145,7 @@ describe('통찰 3: 숨겨진·거짓 의도 / 4: 4층의 어둠', () => {
   });
 });
 
-describe('통찰: 약점 공격 피해 +6%/통찰 (8까지)', () => {
+describe('약점 공격 피해: 누구나 +25%, 통찰 1당 +6% 더 (8까지)', () => {
   function target(insight: number) {
     const c = fight(insight);
     c.p.str = 0;
@@ -177,13 +165,14 @@ describe('통찰: 약점 공격 피해 +6%/통찰 (8까지)', () => {
   };
 
   it('약점을 찌르는 내 공격만 강해진다', () => {
+    expect(WEAK_BONUS).toBe(0.25);
     expect(INSIGHT_WEAK).toBe(0.06);
     expect(INSIGHT_WEAK_CAP).toBe(8);
-    expect(hitFor(0)).toBe(100);
-    expect(hitFor(1)).toBe(106);
-    expect(hitFor(5)).toBe(130);
-    expect(hitFor(8)).toBe(148);
-    expect(hitFor(12)).toBe(148); // 8에서 멈춘다
+    expect(hitFor(0)).toBe(125);
+    expect(hitFor(1)).toBe(131);
+    expect(hitFor(5)).toBe(155);
+    expect(hitFor(8)).toBe(173);
+    expect(hitFor(12)).toBe(173); // 8에서 멈춘다
     expect(hitFor(5, 'slash')).toBe(100); // 약점이 아니면 그대로
     expect(hitFor(5, 'fire', false)).toBe(100); // 공격이 아닌 피해는 그대로
   });
@@ -201,7 +190,7 @@ describe('통찰: 약점 공격 피해 +6%/통찰 (8까지)', () => {
     const { c, e } = target(5);
     expect(c.preview(c.p, e, 100, 'fire')).toBe(100);
     e.known = ['fire'];
-    expect(c.preview(c.p, e, 100, 'fire')).toBe(130);
+    expect(c.preview(c.p, e, 100, 'fire')).toBe(155);
   });
 });
 
@@ -214,25 +203,25 @@ describe('금기 「심연 응시」: 영구 대가, 판 전체 상한', () => {
     return { run, uid: s.uid };
   }
 
-  it('최대 정신력 -4, 통찰 +1 — 전투당 한 번', () => {
+  it('최대 정신력 -8, 통찰 +1 — 전투당 한 번', () => {
     const { run, uid } = gazer();
     const c = startCombat(run, 'a1-cult', { anomaly: null });
     expect(c.useSkill(uid)).toBeNull();
     expect(run.player.insight).toBe(1);
-    expect(run.player.maxSanity).toBe(96);
+    expect(run.player.maxSanity).toBe(92);
     expect(run.gazed).toBe(1);
     expect(c.blockReason(uid)).not.toBeNull();
   });
 
-  it('이 기술로 얻는 통찰은 판 전체에서 3까지 — 기술을 다시 배워도 이어진다', () => {
+  it('이 기술로 얻는 통찰은 판 전체에서 2까지 — 기술을 다시 배워도 이어진다', () => {
     const { run, uid } = gazer();
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       const c = startCombat(run, 'a1-cult', { anomaly: null });
       expect(c.useSkill(uid)).toBeNull();
       run.combat = null;
     }
-    expect(run.player.insight).toBe(3);
-    expect(run.player.maxSanity).toBe(88);
+    expect(run.player.insight).toBe(2);
+    expect(run.player.maxSanity).toBe(84);
     run.skills = [];
     const again = learnSkill(run, 'gaze-abyss')!;
     run.slots = [again.uid];
@@ -242,7 +231,7 @@ describe('금기 「심연 응시」: 영구 대가, 판 전체 상한', () => {
 
   it('내어 줄 정신이 없으면 쓸 수 없다 (최대 정신력 10 밑으로는 깎지 않는다)', () => {
     const { run, uid } = gazer();
-    run.player.maxSanity = run.player.sanity = 12;
+    run.player.maxSanity = run.player.sanity = 17;
     const c = startCombat(run, 'a1-cult', { anomaly: null });
     expect(c.blockReason(uid)).toBe('더 내어 줄 정신이 없다');
   });
@@ -345,7 +334,7 @@ describe('이벤트: 통찰은 영구 대가를 치르고, 막마다 많아야 �
     expect(run.player.insight).toBe(1);
     expect(negMad(run)).toBe(1);
     const deep = richRun(4, 3);
-    deep.madness = [...MADNESS.values()].filter((m) => !m.virtue).slice(0, 3).map((m) => m.id);
+    deep.madness = [...MADNESS.values()].filter((m) => !m.virtue).slice(0, MAX_MADNESS - 1).map((m) => m.id);
     startEvent(deep, 'a3-far-peaks');
     expect(eventView(deep)!.choices[idx].disabled).toBeTruthy();
   });
@@ -374,5 +363,50 @@ describe('이벤트: 통찰은 영구 대가를 치르고, 막마다 많아야 �
     expect(chooseEvent(again, idx)).toBeNull();
     expect(again.player.sanity).toBe(s2);
     expect(again.event!.result).toContain('이미 아는 것들뿐이었다');
+  });
+});
+
+describe('경제 지표 (2026-10 2차): 정신력 회복은 줄이고, 통찰 물건은 하나만', () => {
+  it('쉬는 곳의 회복: 명상 15, 기도 6, 여관 최대치의 75%까지', () => {
+    expect(MEDITATE_SANITY).toBe(15);
+    expect(PRAY_SANITY).toBe(6);
+    expect(INN_SANITY).toBe(0.75);
+    const run = clean();
+    run.screen = 'haven';
+    run.innUsed = false;
+    run.player.maxSanity = 100;
+    run.player.sanity = 5;
+    expect(inn(run)).toBeNull();
+    expect(run.player.sanity).toBe(75);
+  });
+
+  it('붕괴 압박: 적 정신 공격 배율과 광기 한도', () => {
+    expect(ACT_SAN_MULT).toEqual([1, 1, 1.05, 1.05, 0.9, 0.85]);
+    expect(MAX_MADNESS).toBe(5);
+  });
+
+  it('숫돌은 이기면 정신력 +1', () => {
+    expect(EQUIPS.get('whetstone')!.desc).toContain('정신력 +1');
+  });
+
+  it('검은 양초는 전리품·상점에 나오지 않는다 (옛 저장을 위해 정의만 남는다)', () => {
+    expect(CONSUMABLES.get('x-black-candle')!.rarity).toBe('special');
+    const run = clean();
+    for (let i = 0; i < 400; i++) expect(rollConsumable(run)).not.toBe('x-black-candle');
+  });
+
+  it('찢긴 금서 페이지는 통찰 대신 아직 배우지 않은 금기 스킬 하나', () => {
+    const run = clean();
+    const before = run.skills.length;
+    gainRelic(run, 'forbidden-page');
+    expect(run.player.insight).toBe(0);
+    expect(run.skills.length).toBe(before + 1);
+    expect(SKILLS.get(run.skills[run.skills.length - 1].id)!.school).toBe('forbidden');
+  });
+
+  it('각성: 계시는 통찰 +1', () => {
+    const run = clean();
+    MADNESS.get('revelation')!.onGain!(run);
+    expect(run.player.insight).toBe(1);
   });
 });

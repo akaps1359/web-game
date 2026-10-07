@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { reg, ENEMIES } from '../../engine/registry';
 import { isEnemy, lvlVal } from '../../engine/combat';
 import { DMG_TYPES, type PlayerState, type SkillDef } from '../../engine/types';
@@ -213,12 +214,12 @@ reg.skills([
     target: 'single',
     tags: ['debuff', 'block'],
     vals: { blk: [6, 8] },
-    desc: '대상의 방어도를 모두 빼앗아 내 방어도로 삼고, 추가로 방어도 {B:blk}',
+    desc: '대상의 방어도를 모두 빼앗아 내 방어도로 삼는다. 추가로 방어도 {B:blk}',
     run: (c, u, t) => {
       const n = t && !t.dead ? t.block : 0;
       if (t && n > 0) {
         t.block = 0;
-        c.emit({ t: 'text', uid: t.uid, text: `방어도 ${n}을(를) 빼앗았다`, tone: 'good' });
+        c.emit({ t: 'text', uid: t.uid, text: `방어도 ${n}${josa(n, '을')} 빼앗았다`, tone: 'good' });
         c.gainBlock(c.p, n);
       }
       guard(c, u);

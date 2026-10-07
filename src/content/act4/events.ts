@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { ESSENCES, MADNESS, reg } from '../../engine/registry';
 import { finish } from '../../engine/events';
 import { advanceTime } from '../../engine/dungeon';
@@ -22,7 +23,7 @@ import { INSIGHT_PRICE, floorFoes, learnWeak, weakNote } from '../eventkit';
 function sanity(run: RunState, n: number): string {
   const r = loseSanityRun(run, n);
   if (r.fatal) return ' 정신이 완전히 무너졌다.';
-  if (r.madness) return ` 정신이 무너졌다 — ${MADNESS.get(r.madness)?.name ?? '광기'}.`;
+  if (r.madness) return ` 정신이 무너졌다. (${MADNESS.get(r.madness)?.name ?? '광기'})`;
   return '';
 }
 
@@ -62,7 +63,7 @@ reg.events([
     acts: [4],
     stages: {
       start: (run) => ({
-        text: '무너진 천문대. 놋쇠 망원경이 하늘이 아니라 발밑의 심연을 향해 있다. 렌즈 너머에서 무언가가 이쪽을 들여다보고 있다.',
+        text: '무너진 천문대. 놋쇠 망원경이 하늘이 아니라 발밑의 심연을 향해 있다. 렌즈 너머에서 무언가가 이쪽을 들여다본다.',
         choices: [
           {
             label: '렌즈를 들여다본다',
@@ -81,7 +82,7 @@ reg.events([
                 room.meteor = (room.meteor ?? 0) + 6;
                 if (r.floor) delete r.floor.vars['meteorWarn' + room.id];
               }
-              finish(e, '망원경의 눈금을 돌리자 하늘의 불덩이들이 머뭇거렸다. 별들이 당신의 계산을 따른다는 사실이 더 두렵다.' + sanity(r, 6));
+              finish(e, '망원경의 눈금을 돌리자 하늘의 불덩이들이 머뭇거렸다. 별들이 그 계산대로 움직였다. 그게 더 두렵다.' + sanity(r, 6));
             },
           },
           {
@@ -109,7 +110,7 @@ reg.events([
               r.player.maxHp += 8;
               r.player.hp += 8;
               cutMaxSanity(r, 8);
-              finish(e, '손바닥이 타들어 갔지만 열기는 곧 혈관으로 스며들었다. 무언가가 당신 안에서 자리를 잡았다. (최대 체력 +8, 최대 정신력 -8)');
+              finish(e, '손바닥이 타들어 갔지만 열기는 곧 혈관으로 스며들었다. 그 열이 가슴 안쪽에 자리를 잡았다. (최대 체력 +8, 최대 정신력 -8)');
             },
           },
           {
@@ -129,13 +130,13 @@ reg.events([
               const names = learnWeak(r, floorFoes(r));
               finish(
                 e,
-                '눈꺼풀이 열렸다. 그 안에는 별이 태어나기 전의 어둠이 있었고, 이 궁정의 것들이 그 어둠의 어느 틈에서 기어 나왔는지가 보였다.' +
+                '눈꺼풀이 열렸다. 그 안에는 별이 태어나기 전의 어둠이 있었다. 이 궁정의 것들이 그 어둠의 어느 틈에서 기어 나왔는지 보였다.' +
                   weakNote(names) +
                   (names.length ? sanity(r, 12) : ''),
               );
             },
           },
-          { label: '지나친다', go: (_r, e) => finish(e, '등 뒤에서 무언가가 계속 깜빡였다.') },
+          { label: '지나친다', go: (_r, e) => finish(e, '등 뒤에서 무늬가 계속 깜빡였다.') },
         ],
       }),
     },
@@ -147,7 +148,7 @@ reg.events([
     acts: [4],
     stages: {
       start: (run) => ({
-        text: '가면을 쓴 궁정인들이 끝없는 연회를 벌이고 있다. 단조로운 피리 소리에 맞춰 춤추던 이들이 당신에게 빈자리를 권한다. 접시 위의 음식이 아직 꿈틀거린다.',
+        text: '가면을 쓴 궁정인들이 끝없는 연회를 벌이고 있다. 단조로운 피리 소리에 맞춰 춤추던 이들이 빈자리를 권한다. 접시 위의 음식이 아직 꿈틀거린다.',
         choices: [
           {
             label: '춤에 끼어든다',
@@ -165,7 +166,7 @@ reg.events([
             go: (r, e) => {
               const n = healRun(r, 30);
               cutMaxSanity(r, 6);
-              finish(e, `씹을 때마다 무언가가 비명을 질렀다. 배는 불렀다. (체력 +${n}, 최대 정신력 -6)`);
+              finish(e, `씹을 때마다 이 사이에서 작은 비명이 새어 나왔다. 배는 불렀다. (체력 +${n}, 최대 정신력 -6)`);
             },
           },
           {
@@ -193,7 +194,7 @@ reg.events([
             go: (r, e) => {
               r.player.str += 1;
               cutMaxHp(r, 12);
-              finish(e, '앉는 순간 우주가 당신을 중심으로 돌기 시작했다. 일어섰을 때 무언가를 두고 왔다. (힘 +1, 최대 체력 -12)' + sanity(r, 10));
+              finish(e, '앉는 순간 우주가 당신을 중심으로 돌기 시작했다. 일어서고 보니 옥좌에 살점 한 조각이 남아 있었다. (힘 +1, 최대 체력 -12)' + sanity(r, 10));
             },
           },
           {
@@ -207,7 +208,7 @@ reg.events([
           {
             label: '피리꾼들을 쫓아낸다',
             hint: '전투',
-            go: (_r, e) => finish(e, '피리 소리가 뚝 끊겼다. 형체 없는 것들이 당신을 향해 흘러온다!', { fight: 'a4-pipers' }),
+            go: (_r, e) => finish(e, '피리 소리가 뚝 끊겼다. 형체 없는 것들이 흘러온다!', { fight: 'a4-pipers' }),
           },
           { label: '떠난다', go: (_r, e) => finish(e, '옥좌는 여전히 기다린다. 언제까지나.') },
         ],
@@ -224,7 +225,7 @@ reg.events([
         text: '원뿔 모양의 존재들이 남긴 거대한 서고. 책마다 아직 일어나지 않은 일들이 적혀 있다. 한 권의 표지에 당신의 이름이 있다.',
         choices: [
           {
-            label: '당신의 미래를 읽는다',
+            label: '이름이 적힌 책을 펼친다',
             hint: '금기 스킬 1개, 정신력 -12',
             go: (r, e) => {
               const [id] = rollForbidden(r, 1);
@@ -240,7 +241,7 @@ reg.events([
               const s = rng(r, 'event').pick(upgradable(r));
               upgradeSkill(r, s.uid);
               advanceTime(r, 6);
-              finish(e, '당신이 치른 모든 싸움이 다른 이의 필체로 적혀 있었다. 읽고 나니 시간이 한참 지나 있었다. (스킬 강화, 6시간 경과)');
+              finish(e, '그동안 치른 모든 싸움이 낯선 필체로 적혀 있었다. 다 읽고 나니 시간이 한참 흘러 있었다. (스킬 강화, 6시간 경과)');
             },
           },
           {
@@ -249,7 +250,7 @@ reg.events([
             disabled: run.player.insight < 1 && '태워 없앨 앎이 없다',
             go: (r, e) => {
               r.player.insight -= 1;
-              finish(e, `불길 속에서 당신의 이름이 지워졌다. 조금 덜 알게 되었고, 조금 편해졌다. (통찰 -1, 정신력 +${gainSanityRun(r, 12)})`);
+              finish(e, `불길 속에서 표지의 이름이 지워졌다. 조금 덜 알게 되었고 그만큼 편해졌다. (통찰 -1, 정신력 +${gainSanityRun(r, 12)})`);
             },
           },
         ],
@@ -282,7 +283,7 @@ reg.events([
               cutMaxHp(r, INSIGHT_PRICE.maxHp);
               finish(
                 e,
-                `마지막 기계가 켜졌을 때 당신은 별 너머의 텅 빈 왕좌를 보았다. 천막을 나설 때 그림자가 반 박자 늦게 따라왔다. 무대 위에 무언가를 한 조각 두고 왔다. (통찰 +1, 최대 체력 -${INSIGHT_PRICE.maxHp})`,
+                `마지막 기계가 켜졌을 때 별 너머의 텅 빈 왕좌가 보였다. 천막을 나설 때 그림자가 반 박자 늦게 따라왔다. 무대 위에 무언가를 한 조각 두고 왔다. (통찰 +1, 최대 체력 -${INSIGHT_PRICE.maxHp})`,
               );
             },
           },
@@ -314,7 +315,7 @@ reg.events([
                 r.player.maxHp += 12;
                 r.player.hp += 12;
                 r.player.will -= 1;
-                finish(e, '숨을 들이쉴 때마다 이끼가 폐 속으로 번졌다. 몸은 단단해졌지만, 생각 몇 개가 뿌리째 뽑혀 나갔다. (최대 체력 +12, 의지 -1)');
+                finish(e, '숨을 들이쉴 때마다 이끼가 폐 속으로 번졌다. 몸은 단단해졌지만 생각 몇 개가 뿌리째 뽑혀 나갔다. (최대 체력 +12, 의지 -1)');
               },
             },
             {
@@ -325,7 +326,7 @@ reg.events([
                 const es = rng(r, 'event').pick(offer);
                 const name = ESSENCES.get(es.id)?.name ?? '정수';
                 removeEssence(r, es.uid, true);
-                finish(e, `${name}이(가) 몸에서 뜯겨 나와 나무뿌리 속으로 사라졌다. 숲이 답례를 내밀었다.`, { loot: relicLoot(r, 'boss') });
+                finish(e, `${name}${josa(name, '이')} 몸에서 뜯겨 나와 나무뿌리 속으로 사라졌다. 숲이 답례를 내밀었다.`, { loot: relicLoot(r, 'boss') });
               },
             },
             {
@@ -359,7 +360,7 @@ reg.events([
                 f.tide = Math.floor(f.hours / 12) * (f.vars.tideMul ?? 1);
               }
               cutMaxSanity(r, 8);
-              finish(e, '모래가 방향을 바꾸자 조수가 물러났다. 당신의 기억 몇 조각도 함께 거꾸로 흘러갔다. (조수가 물러났다, 최대 정신력 -8)');
+              finish(e, '모래가 방향을 바꾸자 차오르던 조수가 빠져나갔다. 기억 몇 조각도 함께 거꾸로 흘러갔다. (조수 -2, 최대 정신력 -8)');
             },
           },
           {
@@ -369,7 +370,7 @@ reg.events([
               const h = healRun(r, r.player.maxHp);
               const s = gainSanityRun(r, r.player.maxSanity);
               advanceTime(r, 12);
-              finish(e, `모래는 따뜻했다. 눈을 떴을 때 상처는 아물어 있었고, 너무 많은 시간이 지나 있었다. (체력 +${h}, 정신력 +${s}, 12시간 경과)`);
+              finish(e, `모래는 따뜻했다. 눈을 떴을 때 상처는 아물어 있었다. 시간도 너무 많이 지나 있었다. (체력 +${h}, 정신력 +${s}, 12시간 경과)`);
             },
           },
           {
@@ -401,7 +402,7 @@ reg.events([
               const room = rng(r, 'event').pick(pendingMeteors(r));
               delete room.meteor;
               const n = hurtRun(r, 10);
-              finish(e, `돌 하나를 붙잡아 궤도 밖으로 끌어냈다. 팔이 부러질 듯 아팠지만, 하늘의 불덩이 하나가 빛을 잃었다. (체력 -${n}, 유성 하나 소멸)`);
+              finish(e, `돌 하나를 붙잡아 궤도 밖으로 끌어냈다. 팔이 부러질 듯 아팠지만 하늘의 불덩이 하나가 빛을 잃었다. (체력 -${n}, 유성 하나 소멸)`);
             },
           },
           {
@@ -411,9 +412,9 @@ reg.events([
               if (rng(r, 'event').chance(0.5)) {
                 r.player.maxHp += 6;
                 r.player.hp += 6;
-                finish(e, `손끝에 따뜻한 무언가가 닿았다. 그것은 손을 꼭 쥐었다가 놓아주었다. (최대 체력 +6, 체력 +${healRun(r, 20)})`);
+                finish(e, `손끝에 따뜻한 무언가가 닿더니 손을 꼭 쥐었다가 놓아주었다. (최대 체력 +6, 체력 +${healRun(r, 20)})`);
               } else {
-                finish(e, '손이 닿은 곳에는 아무것도 없었다. 그 아무것도 없음이 팔을 타고 기어올랐다.' + sanity(r, 14));
+                finish(e, '손이 닿은 곳에는 아무것도 없었다. 그 빈자리가 팔을 타고 기어올랐다.' + sanity(r, 14));
               }
             },
           },
@@ -427,7 +428,7 @@ reg.events([
               finish(e, '돌은 금덩이처럼 무거웠다. 머리 위 어딘가에서 궤도가 일그러지는 소리가 났다. (골드 +45)');
             },
           },
-          { label: '지나친다', go: (_r, e) => finish(e, '돌들은 당신이 없었던 것처럼 계속 돌았다.') },
+          { label: '지나친다', go: (_r, e) => finish(e, '돌들은 아무도 다녀가지 않았다는 듯 계속 돌았다.') },
         ],
       }),
     },

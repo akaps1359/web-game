@@ -9,6 +9,7 @@ import {
   MADNESS,
   PERKS,
   RELICS,
+  RULES,
   RUNES,
   SKILLS,
   STATUSES,
@@ -31,29 +32,38 @@ import type {
   IntentKind,
   MoveDef,
   OwnedSkill,
+  School,
   SkillDef,
   SkillUse,
   Unit,
 } from './types';
 import type { RunState } from './run';
+import { abyssDmgMult, abyssHpMult, abyssRise, abyssSources } from './abyss';
 
 // ───────────── 통찰 ─────────────
-// 얻기 어렵고(수호자의 이계 정수·영구 대가를 치르는 선택), 1점마다 보이는 것이 늘어난다.
+// 대가 없이 들어오지 않는다(영구 대가를 치르는 선택·금기·수호자 유물). 1점마다 보이는 것이 늘어난다.
 //   1: 전투를 시작할 때 적마다 아직 모르는 약점 하나 / 2: 약점 전부 / 3: 숨겨진·거짓 의도 / 4: 4층의 어둠·5층의 환영
 //   5: 가장 깊은 속임수(검은 파라오의 자비·꿈의 문지기의 문). 문턱은 콘텐츠 상수 — 설명은 ui/text.ts의 INSIGHT_STEPS
-//   그리고 1점마다 약점 공격 피해 +6% (8까지). 대가는 받는 정신 피해 +5%/통찰 (6에서 멈춘다)
+//   약점 공격 피해는 누구나 +25%, 통찰 1점마다 +6% 더 (8까지). 대가는 받는 정신 피해 +5%/통찰 (6에서 멈춘다)
 
 /** 거짓 의도(disguise)를 간파하는 통찰 — 의도마다 reveal로 따로 정할 수 있다 */
 export const DISGUISE_REVEAL = 3;
 /** 숨겨진 의도(???)가 보이는 통찰 */
 export const HIDDEN_REVEAL = 3;
-/** 통찰 1당 약점 공격 피해 배율 / 그 상한 통찰 */
+/**
+ * 약점으로 맞힌 내 공격의 피해 보너스 (통찰과 상관없이).
+ * 2026-10 2차: 대가 없는 통찰(수호자 이계 정수)을 뺀 몫을 메운다.
+ * 작업 트리 시뮬(두 시드 묶음 × 출신 셋 × 80판, 틈 개편 포함): 0.1 → 55.5%, 0.18 → 55.5%, 0.25 → 56%.
+ * 0.1이면 시작 덱으로 2층 정예를 못 넘는 출신이 생겨(출신 공정성 테스트) 0.25
+ */
+export const WEAK_BONUS = 0.25;
+/** 통찰 1당 약점 공격 피해 보너스 / 그 상한 통찰 */
 export const INSIGHT_WEAK = 0.06;
 export const INSIGHT_WEAK_CAP = 8;
 
-/** 통찰이 주는 약점 공격 피해 배율 */
-export function insightWeakMult(insight: number): number {
-  return 1 + INSIGHT_WEAK * Math.max(0, Math.min(INSIGHT_WEAK_CAP, insight));
+/** 약점 공격 피해 배율: 1 + 25% + 통찰×6% (통찰은 8까지) */
+export function weakMult(insight: number): number {
+  return 1 + WEAK_BONUS + INSIGHT_WEAK * Math.max(0, Math.min(INSIGHT_WEAK_CAP, insight));
 }
 
 /** 보이는 의도: 속임수 의도(disguise)는 통찰이 reveal(기본 DISGUISE_REVEAL) 미만이면 가짜 모습으로. 속은 의도는 move가 '_disguise' */
@@ -152,6 +162,10 @@ export type CombatEvent = (
   | { t: 'fx'; name: string; src?: string; tgt?: string }
   /** 화면 연출 (게임 규칙과 무관). content/lib.ts의 cine()으로 낸다 */
   | { t: 'cine'; name: CineName; uid?: string; text?: string; n?: number }
+  /** 틈이 열렸다 (content/gap.ts). school: 틈의 색 · big: 붕괴로 열린 큰 틈(보너스 2배) · turns: 남은 내 턴 */
+  | { t: 'gap-open'; uid: string; school: School; big: boolean; turns: number }
+  /** 틈을 거뒀다 (content/gap.ts). school: 거둔 계열 · from: 틈의 색 */
+  | { t: 'gap-harvest'; uid: string; school: School; from: School; big: boolean }
   | { t: 'victory' }
   | { t: 'defeat'; reason: 'hp' | 'madness' | 'doom' }
 ) & { snap?: Snap };
@@ -200,12 +214,16 @@ export const ACT_DMG_MULT = [1, 1, 1.1, 1.3, 1.5, 1.4];
  */
 export const ELITE_DMG_MULT = [1, 1, 1, 1.25, 1.35, 1.35];
 export const BOSS_DMG_MULT = [1, 1, 1.15, 1.3, 1.35, 1.2];
-/** 층별 적 정신 공격 배율 */
-export const ACT_SAN_MULT = [1, 1, 1, 0.75, 0.7, 0.8];
+/**
+ * 층별 적 정신 공격 배율.
+ * 2026-10 2차: 정신 붕괴를 한 번도 겪지 않는 판이 많았다 → 2~5층을 올렸다 ([1,1,1,0.75,0.7,0.8] → 아래)
+ */
+export const ACT_SAN_MULT = [1, 1, 1.05, 1.05, 0.9, 0.85];
 
 /** 붕괴(정신력 0) 뒤 정신력이 이 값으로 돌아온다 — 최대 정신력이 이보다 낮으면 최대 정신력까지만 */
 export const BREAKDOWN_RESET = 60;
-export const MAX_MADNESS = 4;
+/** 나쁜 광기가 이만큼 쌓이면 완전히 미쳐 끝난다 (2026-10 2차: 붕괴가 잦아진 만큼 4 → 5) */
+export const MAX_MADNESS = 5;
 
 export function isEnemy(u: Unit | null | undefined): u is EnemyUnit {
   return !!u && u.uid !== 'p';
@@ -228,7 +246,7 @@ export class Combat {
   private hookDepth = 0;
 
   constructor(run: RunState) {
-    if (!run.combat) throw new Error('진행 중인 전투가 없습니다');
+    if (!run.combat) throw new Error('진행 중인 전투가 없다');
     this.run = run;
     this.s = run.combat;
     this.rng = new Rng(run.rng, 'combat');
@@ -236,7 +254,8 @@ export class Combat {
 
   // ── 생성 ──
 
-  static begin(run: RunState, enc: EncounterDef): Combat {
+  /** firstStrike: 내 첫 턴 전에 적의 차례가 한 번 온다 — 그때 띄울 글 (심연 「어둠 속의 것들」: 어둠 속 기습) */
+  static begin(run: RunState, enc: EncounterDef, opts: { firstStrike?: string } = {}): Combat {
     run.combat = {
       enc: enc.id,
       kind: enc.kind,
@@ -277,6 +296,11 @@ export class Combat {
     }
     // 시작할 때 불려 나온 하수인(onSpawn 등)은 이미 의도를 정했다 — 두 번 정하면 순서가 한 칸 밀린다
     for (const e of c.alive) if (!e.intent) c.planIntent(e);
+    if (opts.firstStrike && !c.over) {
+      c.firstStrike(opts.firstStrike);
+      // 먼저 덮쳐 온 적에게 쓰러졌으면 (사경도 없이 끝났으면) 내 턴은 오지 않는다
+      if (c.over) return c;
+    }
     c.startPlayerTurn();
     return c;
   }
@@ -401,6 +425,10 @@ export class Combat {
     }
     const law = FLOORS.get(run.act)?.hooks;
     if (law && run.floor) yield [law, { kind: 'anomaly', id: `law${run.act}`, unit: owner === 'all' ? p : owner, n: run.floor.tide }];
+    // 심연 단계의 특별한 규칙 (engine/abyss.ts · content/abyss.ts)
+    yield* abyssSources(run, owner, p);
+    // 공용 규칙 (틈 등, registry RULES): 모든 전투에 늘 걸린다. 다른 훅들보다 뒤에
+    for (const r of RULES.values()) yield [r.hooks, { kind: 'anomaly', id: r.id, unit: owner === 'all' ? p : owner, n: 1 }];
   }
 
   fire<K extends keyof Hooks>(owner: Unit | 'all', key: K, ...args: unknown[]) {
@@ -478,7 +506,8 @@ export class Combat {
           d.mult *= ACT_DMG_MULT[act] ?? 1;
           if (this.s.kind === 'elite') d.mult *= ELITE_DMG_MULT[act] ?? 1;
           else if (this.s.kind === 'boss') d.mult *= BOSS_DMG_MULT[act] ?? 1;
-          if (this.run.asc >= 1) d.mult *= 1.1;
+          // 심연 단계 (「굶주린 것들」 모든 전투, 「사나운 수호자」 수호자 전투)
+          d.mult *= abyssDmgMult(this.run, this.s.kind);
         }
         this.fire(d.src, 'modDamageOut', d);
         for (const [h, self] of this.runeHooks(d.skill)) h.modDamageOut?.(this, self, d);
@@ -492,9 +521,9 @@ export class Combat {
           if (d.tgt.broken > 0) d.mult *= 1.5;
           const r = d.tgt.resist[d.type];
           if (r !== undefined) d.mult *= r;
-          // 통찰: 약점을 찌르는 내 공격 피해 +6%/통찰 — 미리보기에는 알아낸 약점만 (모르는 약점을 숫자로 흘리지 않게)
+          // 약점: 약점을 찌르는 내 공격 피해 +25%, 통찰 1당 +6% 더 — 미리보기에는 알아낸 약점만 (모르는 약점을 숫자로 흘리지 않게)
           if (d.src === this.p && d.attack && d.tgt.weak.includes(d.type) && (!this.previewing || d.tgt.known.includes(d.type))) {
-            d.mult *= insightWeakMult(this.p.insight);
+            d.mult *= weakMult(this.p.insight);
           }
         }
       }
@@ -612,7 +641,7 @@ export class Combat {
     this.p.hp = 0;
     this.p.st.dying = 1;
     this.emit({ t: 'status', uid: 'p', id: 'dying', n: 1 });
-    this.emit({ t: 'text', uid: 'p', text: '사경 — 정신력으로 버틴다', tone: 'bad' });
+    this.emit({ t: 'text', uid: 'p', text: '사경: 정신력으로 버틴다', tone: 'bad' });
     this.run.stats.dyingCount++;
   }
 
@@ -651,6 +680,11 @@ export class Combat {
     t.block = 0;
     if (d) d.killed = true;
     this.emit({ t: 'death', uid: t.uid });
+    // 심연 「두 번째 모습」: 특성의 죽음 처리(하수인 정리·기믹 해제)보다 먼저 — 다시 일어서면 아직 쓰러진 것이 아니다
+    if (abyssRise(this, t)) {
+      if (d) d.killed = false;
+      return;
+    }
     // 자기 사망 특성 (부활 등)
     for (const id of ENEMIES.get(t.def)?.traits ?? []) {
       TRAITS.get(id)?.hooks.onDeath?.(this, { kind: 'trait', id, unit: t, n: 1 }, d);
@@ -897,10 +931,10 @@ export class Combat {
     let r: 0 | 1 = row ?? def.row ?? 0;
     if (this.row(r).length >= MAX_ROW) r = r === 0 ? 1 : 0;
     if (this.row(r).length >= MAX_ROW) return null;
-    const asc = this.run.asc;
     const tide = this.run.floor?.tide ?? 0;
     const hpMul =
-      (1 + (asc >= 7 ? 0.1 : 0) + (asc >= 15 && def.tier !== 'normal' ? 0.1 : 0)) *
+      // 심연 단계 (「질긴 것들」 모든 적, 「완고한 것들」 정예·수호자)
+      abyssHpMult(this.run, def.tier) *
       (1 + 0.08 * tide) *
       (ACT_HP_MULT[Math.min(5, def.act)] ?? 1) *
       (def.tier === 'boss' ? BOSS_HP_MULT.value : 1);
@@ -1019,8 +1053,8 @@ export class Combat {
 
   /** 사용 불가 사유 */
   blockReason(ref: string): string | null {
-    if (this.s.phase !== 'player') return '내 턴이 아닙니다';
-    if (this.s.choice) return '먼저 선택지를 고르세요';
+    if (this.s.phase !== 'player') return '내 턴이 아니다';
+    if (this.s.choice) return '선택지부터 골라야 한다';
     const info = this.skillInfo(ref);
     if (!info) return '사용할 수 없는 스킬';
     if ((this.s.cd[info.owned.uid] ?? 0) > 0) return `재사용 대기 ${this.s.cd[info.owned.uid]}턴`;
@@ -1041,9 +1075,9 @@ export class Combat {
       target = valid.find((e) => e.uid === targetUid) ?? null;
       if (!target) {
         if (valid.length === 1 || !targetUid) target = valid[0] ?? null;
-        else return '대상을 선택하세요';
+        else return '대상을 골라야 한다';
       }
-      if (!target) return '대상이 없습니다';
+      if (!target) return '대상이 없다';
     }
     this.s.ap -= this.costOf(info);
     const cd = this.cdOf(info);
@@ -1117,15 +1151,15 @@ export class Combat {
   // ── 소모품 ──
 
   useConsumable(idx: number, targetUid?: string | null): string | null {
-    if (this.s.phase !== 'player') return '내 턴이 아닙니다';
-    if (this.s.choice) return '먼저 선택지를 고르세요';
+    if (this.s.phase !== 'player') return '내 턴이 아니다';
+    if (this.s.choice) return '선택지부터 골라야 한다';
     const id = this.run.consumables[idx];
     if (!id) return '빈 칸';
     const def = need(CONSUMABLES, id, '소모품');
     let target: Unit | null = null;
     if (def.target === 'single') {
       target = this.enemy(targetUid) ?? this.alive[0] ?? null;
-      if (!target) return '대상이 없습니다';
+      if (!target) return '대상이 없다';
     }
     this.run.consumables[idx] = null;
     this.emit({ t: 'text', text: def.name, tone: 'info' });
@@ -1192,8 +1226,8 @@ export class Combat {
   }
 
   endTurn(): string | null {
-    if (this.s.phase !== 'player') return '내 턴이 아닙니다';
-    if (this.s.choice) return '먼저 선택지를 고르세요';
+    if (this.s.phase !== 'player') return '내 턴이 아니다';
+    if (this.s.choice) return '선택지부터 골라야 한다';
     const p = this.p;
     this.fire(p, 'onTurnEnd');
     if (this.checkEnd()) return null;
@@ -1202,6 +1236,16 @@ export class Combat {
 
     this.s.phase = 'enemy';
     this.emit({ t: 'turn', side: 'enemy', turn: this.s.turn });
+    if (this.enemyRound()) return null;
+    // 라운드 종료: 플레이어의 지속형 효과 감소
+    this.decay(p);
+    for (const e of this.alive) if (e.broken !== 2) this.planIntent(e);
+    this.startPlayerTurn();
+    return null;
+  }
+
+  /** 적의 차례: 전열부터 한 명씩 행동한다. 전투가 끝났으면 true */
+  private enemyRound(): boolean {
     const order = [...this.row(0), ...this.row(1)];
     for (const e of order) {
       if (e.dead) continue;
@@ -1211,7 +1255,7 @@ export class Combat {
       } else e.block = 0;
       this.tickStatuses(e, 'start');
       this.fire(e, 'onUnitTurnStart');
-      if (this.checkEnd()) return null;
+      if (this.checkEnd()) return true;
       if (e.dead) continue;
       // 수호자는 행동을 건너뛰면(붕괴·기절) 한 번 행동하기 전까지 기절하지 않는다 (붕괴와 기절을 번갈아 영원히 묶는 것 방지)
       const boss = this.defOf(e).tier === 'boss';
@@ -1237,20 +1281,29 @@ export class Combat {
           this.act(e);
         }
       }
-      if (this.checkEnd()) return null;
+      if (this.checkEnd()) return true;
       if (!e.dead) {
         this.tickStatuses(e, 'end');
         this.fire(e, 'onUnitTurnEnd');
         this.decay(e);
       }
       this.fixRows();
-      if (this.checkEnd()) return null;
+      if (this.checkEnd()) return true;
     }
-    // 라운드 종료: 플레이어의 지속형 효과 감소
-    this.decay(p);
+    return false;
+  }
+
+  /**
+   * 적이 먼저 움직인다 (심연 「어둠 속의 것들」: 어둠 속 기습): 내 첫 턴이 오기 전에 적의 차례가 한 번 온다.
+   * 내가 아무것도 하지 못한 한 라운드가 먼저 지나간 것과 같다 (라운드 끝의 지속 감소까지).
+   */
+  private firstStrike(text: string) {
+    this.s.phase = 'enemy';
+    this.emit({ t: 'text', text, tone: 'bad' });
+    this.emit({ t: 'turn', side: 'enemy', turn: 0 });
+    if (this.enemyRound()) return;
+    this.decay(this.p);
     for (const e of this.alive) if (e.broken !== 2) this.planIntent(e);
-    this.startPlayerTurn();
-    return null;
   }
 
   moveDef(e: EnemyUnit, id: string): MoveDef {
@@ -1369,8 +1422,8 @@ export class Combat {
   /** 걸린 선택지를 고른다 — 모든 훅 소유자의 onChoice가 불린다 */
   choose(option: string): string | null {
     const ch = this.s.choice;
-    if (!ch) return '고를 것이 없습니다';
-    if (this.s.phase !== 'player' || this.over) return '내 턴이 아닙니다';
+    if (!ch) return '고를 것이 없다';
+    if (this.s.phase !== 'player' || this.over) return '내 턴이 아니다';
     const o = ch.options.find((x) => x.id === option);
     if (!o) return '없는 선택지';
     this.s.choice = null;

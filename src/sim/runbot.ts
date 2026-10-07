@@ -24,7 +24,9 @@ import { endRun, winRun } from '../engine/run';
 import { isGenesisLoot, type LootItem } from '../engine/run';
 import { ORIGINS } from '../engine/registry';
 import { autoTurn } from './bot';
-import type { Rarity } from '../engine/types';
+import { clueLinks, isBridge } from '../engine/keywords';
+import type { OwnedSkill, Rarity, School } from '../engine/types';
+import { gapStats } from '../content/gap';
 
 export interface CombatLog {
   act: number;
@@ -35,6 +37,8 @@ export interface CombatLog {
   sanityLost: number;
   won: boolean;
   dealt: number;
+  /** 틈 (content/gap.ts): 연 횟수(큰 틈) · 거둔 횟수(큰 틈) · 같은 계열로 쳐서 거두지 못한 횟수 · 출신 밖 계열로 거둔 횟수 */
+  gap?: { open: number; bigOpen: number; harvest: number; bigHarvest: number; same: number; off: number };
 }
 
 export interface SimResult {
@@ -50,64 +54,123 @@ export interface SimResult {
   rooms: number;
   hours: number;
   combats: CombatLog[];
-  /** 합기: 보상 선택지에 나온 수 · 상점에 나온 수 · 이 판에서 얻은 합기 (얻은 순서) */
-  duoOffered: number;
-  duoShop: number;
-  duos: string[];
+  /** 실마리 보상: 보상 선택지에 나온 실마리 스킬 수 · 그중 고른 수 · 상점에서 산 실마리 스킬 수 */
+  clueOffered: number;
+  clueTaken: number;
+  clueBought: number;
   /** 이 판에서 얻은 창세 (없으면 undefined) */
   genesis?: string;
+  /** 판 끝 장착 스킬: 계열 스킬 수 · 서로 다른 계열 수 · 출신 밖 계열 스킬 수 · 계열을 잇는 기술 수 (정수 기술·공용 스킬은 빼고 센다) */
+  endSkills: number;
+  endSchools: number;
+  endOffOrigin: number;
+  endBridges: number;
   /** 막 시작 시점의 상태 */
   actStart: { act: number; hp: number; maxHp: number; level: number; sanity: number; str: number; dex: number; ap: number; relics: number; essences: number; skills: number; upgrades: number; insight: number; relicIds: string[] }[];
 }
 
 const RANK: Record<Rarity, number> = { basic: 0, common: 1, uncommon: 2, rare: 3, forbidden: 3, boss: 4, special: 4, genesis: 5 };
 
-/** 합기(두 계열을 엮은 스킬)인가 */
-const isDuo = (id: string) => !!SKILLS.get(id)?.duo;
+/** 이 스킬이 지금 판(가진 스킬·무기·각인)과 계열을 넘어 맞물리는 키워드 수 (실마리 — engine/keywords.ts) */
+function clueCount(run: RunState, id: string): number {
+  const def = SKILLS.get(id);
+  return def ? new Set(clueLinks(run, def).map((l) => `${l.dir}:${l.kw}`)).size : 0;
+}
 
-/** 봇의 합기 처리: take 보상에서 고른다 · shop 상점에서 산다 · swap 빈 칸이 없으면 가장 약한 스킬과 바꿔 낀다 */
-export const botDuo = { take: true, shop: true, swap: true };
+/**
+ * 봇의 실마리 처리: take 보상에서 실마리 스킬을 먼저 고른다 · shop 상점에서 실마리 스킬 하나를 먼저 산다 · swap 빈 칸이 없으면 더 약한 스킬과 바꿔 낀다.
+ * weight: 맞물리는 키워드 하나(최대 둘)의 점수. 등급 한 단계가 10점이다.
+ * 5였을 때는 맞물림 둘이 등급 한 단계와 같아, 봇이 더 센 스킬(학자의 인장 → 인장 폭발 같은 출신의 뼈대)을 버리고
+ * 약한 글루로 칸을 채웠다. 3으로 낮추자 세 출신 모두 올랐다 (2026-10 최종 밸런스: 학자 +4%p, 판 끝 출신 밖 스킬 46 → 43%)
+ */
+export const botClue = { take: true, shop: true, swap: true, weight: 3 };
 
 /** 탄약을 채우는 스킬 (재장전·엄폐 재장전) / 탄약을 쓰는 사격 스킬 */
 const refills = (id: string) => !!SKILLS.get(id)?.tags.includes('ammo') && !SKILLS.get(id)?.tags.includes('gun');
 const shoots = (id: string) => !!SKILLS.get(id)?.tags.includes('gun');
 
-/**
- * 장착하지 못한 합기를 끼운다 — 빈 칸이 없으면 가장 약한 장착 스킬과 바꾼다.
- * 약한 순서: 등급이 낮고, 강화하지 않았고, 장착한 합기들이 거둘 상태를 쌓는 계열(짝)이 아닌 것.
- * 합기·정수 기술은 빼지 않고, 사격 스킬이 남아 있으면 하나뿐인 재장전도 빼지 않는다
- */
-function equipDuos(run: RunState) {
-  for (const s of run.skills) {
-    const def = SKILLS.get(s.id);
-    if (!def?.duo || run.slots.includes(s.uid)) continue;
-    const empty = run.slots.indexOf(null);
-    if (empty >= 0) {
-      run.slots[empty] = s.uid;
-      continue;
-    }
-    if (!botDuo.swap) continue;
-    const partners = new Set<string>(def.duo);
-    for (const uid of run.slots) {
-      const d = SKILLS.get(run.skills.find((x) => x.uid === uid)?.id ?? '');
-      for (const sc of d?.duo ?? []) partners.add(sc);
-    }
-    const equipped = [...run.slots.map((uid) => run.skills.find((x) => x.uid === uid)?.id ?? ''), s.id];
-    const lastRefill = equipped.filter(refills).length <= 1 && equipped.some(shoots);
-    let worst = -1;
-    let worstScore = Infinity;
-    run.slots.forEach((uid, i) => {
-      const o = run.skills.find((x) => x.uid === uid);
-      const d = o && SKILLS.get(o.id);
-      if (!o || !d || d.duo || o.from || (lastRefill && refills(o.id))) return;
-      const score = RANK[d.rarity] * 10 + o.lvl * 4 + (partners.has(d.school) ? 5 : 0);
-      if (score < worstScore) {
-        worstScore = score;
-        worst = i;
-      }
-    });
-    if (worst >= 0) equipSkill(run, worst, s.uid);
+/** 봇이 보는 장착 스킬의 값: 등급, 강화, 지금 판과 맞물리는 정도 */
+const keepScore = (run: RunState, o: OwnedSkill) => {
+  const d = SKILLS.get(o.id);
+  const n = clueCount(run, o.id);
+  // 남의 키워드를 읽는 스킬인데 지금 판에 그것을 만드는 것이 없으면 등급 한 단계 넘게 덜 친다 (읽을 게 없다)
+  return RANK[d?.rarity ?? 'basic'] * 10 + o.lvl * 4 + Math.min(n, 2) * botClue.weight - (d && isBridge(d) && n === 0 ? 15 : 0);
+};
+
+/** 가장 약한 장착 스킬의 값 (바꿔 낄 수 있는 것 중에서, 빈 칸이 있으면 -1) */
+function worstKeep(run: RunState): number {
+  if (run.slots.includes(null)) return -1;
+  let worst = Infinity;
+  for (const uid of run.slots) {
+    const o = run.skills.find((x) => x.uid === uid);
+    const d = o && SKILLS.get(o.id);
+    if (!o || !d || o.from || d.rarity === 'genesis') continue;
+    worst = Math.min(worst, keepScore(run, o));
   }
+  return worst;
+}
+
+/** 빈 칸이 없을 때 바꿔 낄 만한가: 가장 약한 장착 스킬보다 이만큼 나아야 한다 (등급 한 단계 — 강화 보상을 버릴 값) */
+const SWAP_MARGIN = 10;
+const scoreOf = (run: RunState, id: string) => keepScore(run, { uid: '', id, lvl: 0, runes: [] });
+
+/** 빈 칸이 있을 때 고를 스킬: 등급과 실마리 점수가 가장 높은 것 (없으면 -1) */
+function skillPick(run: RunState, choice: { kind: string; id: string }[]): number {
+  let best = -1;
+  let bestS = -Infinity;
+  choice.forEach((it, i) => {
+    if (it.kind !== 'skill') return;
+    const sc = botClue.take ? scoreOf(run, it.id) : -i;
+    if (sc > bestS) {
+      bestS = sc;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/** 빈 칸이 없을 때: 실마리 스킬 가운데 가장 약한 장착 스킬보다 확실히 나은 것 (없으면 -1 — 강화 등 다른 보상을 고른다) */
+function cluePick(run: RunState, choice: { kind: string; id: string }[]): number {
+  let best = -1;
+  let bestS = worstKeep(run) + SWAP_MARGIN - 1;
+  choice.forEach((it, i) => {
+    if (it.kind !== 'skill' || clueCount(run, it.id) <= 0) return;
+    const sc = scoreOf(run, it.id);
+    if (sc > bestS) {
+      bestS = sc;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/**
+ * 새로 얻은 실마리 스킬을 끼운다. 빈 칸이 없으면 가장 약한 장착 스킬보다 나을 때만 바꾼다.
+ * 약한 순서: 등급이 낮고, 강화하지 않았고, 지금 판과 맞물리지 않는 것. 정수 기술·창세는 빼지 않고, 사격 스킬이 남아 있으면 하나뿐인 재장전도 빼지 않는다
+ */
+function equipClue(run: RunState, s: OwnedSkill | undefined) {
+  if (!s || run.slots.includes(s.uid)) return;
+  const empty = run.slots.indexOf(null);
+  if (empty >= 0) {
+    run.slots[empty] = s.uid;
+    return;
+  }
+  if (!botClue.swap) return;
+  const equipped = [...run.slots.map((uid) => run.skills.find((x) => x.uid === uid)?.id ?? ''), s.id];
+  const lastRefill = equipped.filter(refills).length <= 1 && equipped.some(shoots);
+  let worst = -1;
+  let worstScore = Infinity;
+  run.slots.forEach((uid, i) => {
+    const o = run.skills.find((x) => x.uid === uid);
+    const d = o && SKILLS.get(o.id);
+    if (!o || !d || o.from || d.rarity === 'genesis' || (lastRefill && refills(o.id))) return;
+    const score = keepScore(run, o);
+    if (score < worstScore) {
+      worstScore = score;
+      worst = i;
+    }
+  });
+  if (worst >= 0 && keepScore(run, s) >= worstScore + SWAP_MARGIN) equipSkill(run, worst, s.uid);
 }
 
 /** 창세 선택지(계층군주 보상)에서 고를 것: 출신 계열의 스킬 → 무기·방어구 → 장신구 → 아무 스킬. 없으면 -1 */
@@ -139,7 +202,7 @@ function equipGenesis(run: RunState) {
     run.slots.forEach((uid, i) => {
       const o = run.skills.find((x) => x.uid === uid);
       const d = o && SKILLS.get(o.id);
-      if (!o || !d || d.duo || o.from) return;
+      if (!o || !d || o.from) return;
       const score = RANK[d.rarity] * 10 + o.lvl * 4;
       if (score < worstScore) {
         worstScore = score;
@@ -275,6 +338,9 @@ function inscribeAll(run: RunState) {
  */
 export const botEssence: { mode: 'skill' | 'core' | 'auto' } = { mode: 'auto' };
 
+/** 봇이 도전하는 심연 단계 (밸런스 시뮬레이션의 SIM_ASC) */
+export const botAsc = { value: 0 };
+
 function pickFor(run: RunState, drop: { id: string; color: number; guardian?: boolean }, replace: string | null = null): string | null {
   if (!drop.guardian || botEssence.mode === 'core') return null;
   const old = replace ? run.essences.find((e) => e.uid === replace) : null;
@@ -309,7 +375,7 @@ function replaceFor(run: RunState, drop: { id: string; color: number; guardian?:
 
 function handleReward(run: RunState, res: SimResult) {
   const rw = run.reward!;
-  res.duoOffered += rw.choice?.filter((c) => c.kind === 'skill' && isDuo(c.id)).length ?? 0;
+  res.clueOffered += rw.choice?.filter((c) => c.kind === 'skill' && clueCount(run, c.id) > 0).length ?? 0;
   for (const it of rw.items) {
     if (it.kind === 'essence') {
       const drop = { id: it.id, color: it.color ?? 0, guardian: it.guardian };
@@ -332,9 +398,10 @@ function handleReward(run: RunState, res: SimResult) {
     let idx = rw.choice.findIndex((c) => c.kind === 'relic');
     // 창세는 무엇보다 먼저 (빈 칸이 없으면 가장 약한 스킬과 바꿔 낀다 — equipGenesis)
     if (idx < 0) idx = genesisPick(run, rw.choice);
-    // 합기는 빈 칸이 없어도 고른다 (가장 약한 스킬과 바꿔 낀다)
-    if (idx < 0 && botDuo.take) idx = rw.choice.findIndex((c) => c.kind === 'skill' && isDuo(c.id));
-    if (idx < 0 && emptySlot) idx = rw.choice.findIndex((c) => c.kind === 'skill');
+    // 빈 칸이 있으면 등급·실마리 점수가 가장 높은 스킬, 없으면 확실히 나은 실마리 스킬만 (더 약한 스킬과 바꿔 낀다 — equipClue)
+    let clue = -1;
+    if (idx < 0 && emptySlot) idx = skillPick(run, rw.choice);
+    if (idx < 0 && botClue.take) idx = clue = cluePick(run, rw.choice);
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'upgrade');
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'equip');
     if (idx < 0) idx = 0;
@@ -342,9 +409,14 @@ function handleReward(run: RunState, res: SimResult) {
     if (it.kind === 'upgrade') {
       const s = run.skills.find((x) => run.slots.includes(x.uid) && canUpgradeSkill(run, x)) ?? run.skills.find((x) => canUpgradeSkill(run, x));
       if (s) chooseLoot(run, idx, s.uid);
-    } else chooseLoot(run, idx);
+    } else {
+      const wasClue = it.kind === 'skill' && clueCount(run, it.id) > 0;
+      if (!chooseLoot(run, idx)) {
+        if (wasClue) res.clueTaken++;
+        if (idx === clue) equipClue(run, run.skills.find((x) => x.id === it.id));
+      }
+    }
   }
-  equipDuos(run);
   // 더 좋은 장비 장착
   for (const it of [...run.bag]) {
     const def = EQUIPS.get(it.id)!;
@@ -369,7 +441,7 @@ function snapStart(run: RunState) {
 
 /** onStep: 매 걸음마다 불린다 (밸런스 실험용 — 예: 몇 층에서 창세를 쥐여 주고 비교) */
 export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, onStep?: (run: RunState) => void): SimResult {
-  const run = newRun({ seed, origin });
+  const run = newRun({ seed, origin, asc: botAsc.value });
   const res: SimResult = {
     seed,
     origin,
@@ -383,9 +455,13 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
     rooms: 0,
     hours: 0,
     combats: [],
-    duoOffered: 0,
-    duoShop: 0,
-    duos: [],
+    clueOffered: 0,
+    clueTaken: 0,
+    clueBought: 0,
+    endSkills: 0,
+    endSchools: 0,
+    endOffOrigin: 0,
+    endBridges: 0,
     actStart: [snapStart(run)],
   };
   let lastAct = 1;
@@ -405,6 +481,8 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
         let n = 0;
         while (!c.over && n++ < 120) autoTurn(c);
         if (!c.over) c.s.phase = 'defeat';
+        const gs = gapStats(c.s);
+        const mine = ORIGINS.get(origin)?.schools ?? [];
         res.combats.push({
           act: run.act,
           enc: c.s.enc,
@@ -414,6 +492,14 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
           sanityLost: run.stats.sanityLost - san0,
           won: c.s.phase === 'victory',
           dealt: run.stats.dmgDealt - dealt0,
+          gap: {
+            open: gs.open,
+            bigOpen: gs.bigOpen,
+            harvest: gs.harvest,
+            bigHarvest: gs.bigHarvest,
+            same: gs.same,
+            off: Object.entries(gs.by).reduce((sum, [sc, k]) => sum + (mine.includes(sc as School) ? 0 : (k ?? 0)), 0),
+          },
         });
         finishCombat(run);
         break;
@@ -448,12 +534,13 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
       }
       case 'merchant': {
         const shop = run.shop!;
-        res.duoShop += shop.items.filter((it) => it.kind === 'skill' && isDuo(it.id)).length;
-        // 합기가 있으면 먼저 산다 (빈 칸이 없으면 가장 약한 스킬과 바꿔 낀다)
-        shop.items.forEach((it, i) => {
-          if (botDuo.shop && it.kind === 'skill' && isDuo(it.id) && !it.sold && run.player.gold >= priceOf(run, it)) buy(run, i);
-        });
-        equipDuos(run);
+        // 실마리 스킬이 있으면 하나를 먼저 산다 (빈 칸이 없으면 확실히 나은 것만 사서 더 약한 스킬과 바꿔 낀다)
+        const ci = botClue.shop ? cluePick(run, shop.items.filter((it) => !it.sold)) : -1;
+        const cit = ci >= 0 ? shop.items.filter((it) => !it.sold)[ci] : null;
+        if (cit && run.player.gold >= priceOf(run, cit) && !buy(run, shop.items.indexOf(cit))) {
+          res.clueBought++;
+          equipClue(run, run.skills.find((x) => x.id === cit.id));
+        }
         shop.items.forEach((it, i) => {
           if (it.kind === 'relic' && !it.sold && run.player.gold >= priceOf(run, it)) buy(run, i);
         });
@@ -483,8 +570,6 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
         break;
       }
       case 'dungeon': {
-        // 이벤트 등에서 얻은 합기도 낀다
-        equipDuos(run);
         const f = run.floor!;
         const here = f.rooms[f.pos];
         // 들어갈 수 없는 균열이면(균열 수호자가 없는 층 등) 그냥 지나간다
@@ -526,9 +611,22 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
   res.relics = run.relics.length;
   res.rooms = run.stats.rooms;
   res.hours = run.stats.hours;
-  res.duos = run.skills.filter((s) => isDuo(s.id)).map((s) => s.id);
   res.genesis = run.genesis;
+  Object.assign(res, endMix(run));
   return res;
+}
+
+/** 판 끝 장착 스킬의 계열 섞임 (정수 기술·공용 스킬은 빼고 센다) */
+function endMix(run: RunState): Pick<SimResult, 'endSkills' | 'endSchools' | 'endOffOrigin' | 'endBridges'> {
+  const mine = ORIGINS.get(run.origin)?.schools ?? [];
+  const defs = run.slots.map((uid) => SKILLS.get(run.skills.find((s) => s.uid === uid)?.id ?? '')).filter((d) => !!d && d.school !== 'essence' && d.school !== 'neutral');
+  const schools = defs.map((d) => d!.school as School);
+  return {
+    endSkills: schools.length,
+    endSchools: new Set(schools).size,
+    endOffOrigin: schools.filter((sc) => !mine.includes(sc)).length,
+    endBridges: defs.filter((d) => isBridge(d!)).length,
+  };
 }
 
 /** 여러 판 요약 */
@@ -569,11 +667,15 @@ export function summarize(results: SimResult[]): string {
   lines.push(`  평균 레벨 ${avgLv.toFixed(1)} · 방 ${avgRooms.toFixed(0)} · 전투 ${avgCombats.toFixed(0)} · 정수 ${(results.reduce((s, r) => s + r.essences, 0) / n).toFixed(1)}`);
   {
     const per = (f: (r: SimResult) => number) => (results.reduce((s, r) => s + f(r), 0) / n).toFixed(1);
-    const anyDuo = results.filter((r) => r.duos.length).length;
-    lines.push(`  합기: 판당 보상 선택지에 ${per((r) => r.duoOffered)}번 · 상점에 ${per((r) => r.duoShop)}번 · 얻음 ${per((r) => r.duos.length)}개 · 하나라도 얻은 판 ${((anyDuo / n) * 100).toFixed(0)}% · 얻은 판 승률 ${anyDuo ? ((results.filter((r) => r.duos.length && r.won).length / anyDuo) * 100).toFixed(0) : '-'}%`);
-    const got = new Map<string, number>();
-    for (const r of results) for (const id of r.duos) got.set(id, (got.get(id) ?? 0) + 1);
-    if (got.size) lines.push('    ' + [...got.entries()].sort((a, b) => b[1] - a[1]).map(([id, k]) => `${SKILLS.get(id)?.name ?? id}×${k}`).join(', '));
+    lines.push(`  실마리: 판당 보상 선택지에 ${per((r) => r.clueOffered)}번 · 고름 ${per((r) => r.clueTaken)} · 상점에서 삼 ${per((r) => r.clueBought)}`);
+  }
+  {
+    // 계열 섞임: 판 끝 장착 스킬의 계열 수 분포와 출신 밖 계열 스킬 비율 (정수 기술·공용 스킬 제외)
+    const dist = [1, 2, 3, 4].map((k) => results.filter((r) => (k < 4 ? r.endSchools === k : r.endSchools >= 4)).length);
+    const skills = results.reduce((s, r) => s + r.endSkills, 0);
+    const off = results.reduce((s, r) => s + r.endOffOrigin, 0);
+    const bridges = results.reduce((s, r) => s + r.endBridges, 0);
+    lines.push(`  계열 섞임(판 끝 장착): 계열 1/2/3/4+ = ${dist.map((x) => `${((x / n) * 100).toFixed(0)}%`).join('/')} · 평균 ${(results.reduce((s, r) => s + r.endSchools, 0) / n).toFixed(2)}계열 · 출신 밖 스킬 ${skills ? ((off / skills) * 100).toFixed(0) : '-'}% · 계열을 잇는 기술 ${skills ? ((bridges / skills) * 100).toFixed(0) : '-'}%`);
   }
   {
     // 창세 (판마다 하나): 얻은 판의 비율·승률과 무엇을 얻었는지
@@ -584,6 +686,17 @@ export function summarize(results: SimResult[]): string {
       names.set(name, (names.get(name) ?? 0) + 1);
     }
     lines.push(`  창세: 얻은 판 ${((got.length / n) * 100).toFixed(0)}% · 얻은 판 승률 ${got.length ? ((got.filter((r) => r.won).length / got.length) * 100).toFixed(0) : '-'}%${names.size ? ` · ${[...names.entries()].map(([k, v]) => `${k}×${v}`).join(', ')}` : ''}`);
+  }
+  {
+    // 틈 (content/gap.ts): 전투당 열기·거두기, 이종 거두기 비율(틈이 열린 적을 다른 계열로 친 비율 — 같은 계열은 거두지 못한다), 출신 밖 계열로 거둔 비율
+    type K = keyof NonNullable<CombatLog['gap']>;
+    const logs = results.flatMap((r) => r.combats).filter((c) => c.gap);
+    const sum = (k: K, l = logs) => l.reduce((s, c) => s + c.gap![k], 0);
+    const per = (k: K, l = logs) => (sum(k, l) / Math.max(1, l.length)).toFixed(2);
+    const pct = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(0)}%` : '-');
+    const h = sum('harvest');
+    lines.push(`  틈: 전투당 열기 ${per('open')} · 큰 틈 ${per('bigOpen')} · 거두기 ${per('harvest')}(큰 틈 ${per('bigHarvest')}) · 이종 거두기 비율 ${pct(h, h + sum('same'))} · 출신 밖 계열로 거둠 ${pct(sum('off'), h)}`);
+    lines.push(`    층별 전투당 거두기: ${[1, 2, 3, 4, 5].map((a) => `${a}층 ${per('harvest', logs.filter((c) => c.act === a))}`).join(' · ')}`);
   }
   for (const a of [2, 3, 4, 5]) {
     const st = results.flatMap((r) => r.actStart.filter((x) => x.act === a));

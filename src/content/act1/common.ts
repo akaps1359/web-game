@@ -1,3 +1,4 @@
+import { josa } from '../../engine/josa';
 import { reg, SKILLS } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import type { EnemyUnit } from '../../engine/types';
@@ -152,7 +153,7 @@ export function hookSkill(c: Combat, e: EnemyUnit): boolean {
   e.mem.hook = 1;
   c.s.cd[pick.uid] = 99;
   setPlayerSt(c, HOOKED, 1);
-  c.emit({ t: 'text', uid: 'p', text: `「${skillName(c, pick.uid)}」이(가) 낚싯바늘에 걸렸다`, tone: 'bad' });
+  c.emit({ t: 'text', uid: 'p', text: `「${skillName(c, pick.uid)}」${josa(skillName(c, pick.uid), '이')} 낚싯바늘에 걸렸다`, tone: 'bad' });
   return true;
 }
 
@@ -210,7 +211,7 @@ function keepHeld(c: Combat) {
 export function cutLine(c: Combat, e: EnemyUnit, why: string) {
   if (!e.mem.hook) return;
   c.emit({ t: 'text', uid: e.uid, text: why, tone: 'good' });
-  releaseSkill(c, e, (n) => `「${n}」을(를) 되찾았다`);
+  releaseSkill(c, e, (n) => `「${n}」${josa(n, '을')} 되찾았다`);
 }
 
 /** 심연의 노래에 홀린다: 다음 내 턴 행동력 -CHARM_AP (결계로 막을 수 있다) */
@@ -260,7 +261,7 @@ export function tideObjective(c: Combat, cap: EnemyUnit) {
   const need = Math.max(0, BAIL_DMG - (cap.mem.bail ?? 0));
   const drowned = c.alive.filter((x) => x.def === 'drowned').map((x) => x.uid);
   setObjective(c, {
-    text: `물을 빼라 — 선장에게 피해 ${need}${drowned.length ? ' 또는 익사체 처치' : ''} · 1턴 남음`,
+    text: `물을 빼라: 선장에게 피해 ${need}${drowned.length ? ' 또는 익사체 처치' : ''} · 1턴 남음`,
     hit: { uid: cap.uid, need },
     ...(drowned.length ? { kill: drowned } : {}),
     fail: tideFail(c),
@@ -272,10 +273,10 @@ export function callTide(c: Combat, cap: EnemyUnit) {
   cap.mem.tide = 1;
   c.s.vars[TIDE] = 1;
   tideObjective(c, cap);
-  c.emit({ t: 'text', uid: cap.uid, text: '만조가 몰려온다 — 물을 빼지 못하면 물에 잠긴다', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: cap.uid, text: '만조가 몰려온다. 물을 빼지 못하면 잠긴다', tone: 'eldritch' });
   if (!c.s.vars['a1-tideSeen']) {
     c.s.vars['a1-tideSeen'] = 1;
-    cine(c, 'whisper', { text: '숨을 참아라. 지금은 {time}. 다음 물결이 오면, 너는 잠긴다.' });
+    cine(c, 'whisper', { text: '숨을 참아라. 지금은 {time}. 다음 물결이 오면 너는 잠긴다.' });
   }
 }
 
@@ -289,7 +290,7 @@ export function cancelTide(c: Combat) {
   cap.mem.tide = 0;
   cap.mem.tideAt = c.s.turn;
   if (cap.dead) return;
-  c.emit({ t: 'text', uid: cap.uid, text: '물이 빠졌다 — 만조가 물러간다', tone: 'good' });
+  c.emit({ t: 'text', uid: cap.uid, text: '물이 빠지자 만조가 물러간다', tone: 'good' });
   // 붕괴로 멈췄으면 그대로 둔다. 적의 차례 중이면 만조 행동이 헛돌며 끝난다
   if (c.s.phase === 'player' && cap.broken !== 2) c.planIntent(cap);
 }
@@ -341,8 +342,14 @@ export function riseWater(c: Combat, e: EnemyUnit) {
 /** 판결을 내린다: 집행자의 다음 차례가 오기 전까지 (내 턴의 피해 + 그 차례에 터지는 지속 피해) VERDICT_DMG를 채우지 못하면 유죄 */
 export function sentence(c: Combat, e: EnemyUnit) {
   setPlayerSt(c, TRIAL, VERDICT_DMG);
+  trialObjective(c, e, VERDICT_DMG);
   e.mem.verdictAt = c.s.turn;
-  c.emit({ t: 'text', uid: e.uid, text: `판결 — 피해 ${VERDICT_DMG}로 무죄를 증명하라`, tone: 'eldritch' });
+  c.emit({ t: 'text', uid: e.uid, text: `판결: 피해 ${VERDICT_DMG}로 무죄를 증명하라`, tone: 'eldritch' });
+}
+
+/** 목표 띠: 무죄를 증명하는 법 (남은 피해는 집행자가 맞을 때마다 줄어든다). 봇도 이 띠를 보고 집행자를 친다 */
+function trialObjective(c: Combat, e: EnemyUnit, need: number) {
+  setObjective(c, { text: `무죄를 증명하라: 집행자에게 피해 ${need}`, hit: { uid: e.uid, need }, fail: `유죄: 정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}` });
 }
 
 /** 판결 중 집행자가 맞은 피해를 센다 (방어도에 막힌 몫 포함, 내 턴의 피해와 지속 피해). 다 채우면 무죄 */
@@ -352,10 +359,12 @@ export function plead(c: Combat, e: EnemyUnit, amount: number, dot = false) {
   const rest = left - amount;
   if (rest > 0) {
     setPlayerSt(c, TRIAL, rest);
+    trialObjective(c, e, rest);
     return;
   }
   setPlayerSt(c, TRIAL, 0);
-  c.emit({ t: 'text', uid: e.uid, text: '무죄 — 판결이 뒤집혔다', tone: 'good' });
+  if (c.s.obj?.hit?.uid === e.uid) setObjective(c, null);
+  c.emit({ t: 'text', uid: e.uid, text: '무죄. 판결이 뒤집혔다', tone: 'good' });
   if (!e.dead) chipPoise(c, e, ACQUIT_POISE);
 }
 
@@ -363,6 +372,7 @@ export function plead(c: Combat, e: EnemyUnit, amount: number, dot = false) {
 export function judge(c: Combat) {
   if ((c.p.st[TRIAL] ?? 0) <= 0 || c.over) return;
   setPlayerSt(c, TRIAL, 0);
+  setObjective(c, null);
   c.emit({ t: 'text', uid: 'p', text: '유죄', tone: 'bad' });
   cine(c, 'scrawl', { text: '유죄' });
   c.loseSanity(GUILTY_SAN, true);
@@ -413,11 +423,11 @@ reg.statuses([
     name: '눈부심',
     icon: 'gi:blindfold',
     kind: 'debuff',
-    desc: '섬광에 눈이 멀었다 — 이번 턴 적의 의도가 보이지 않는다 (힘을 모은 큰 공격은 보인다). 등명기를 깨면 걷힌다 — 후열이어도 근접으로 닿는다',
+    desc: '섬광에 눈이 멀었다. 이번 턴 적의 의도가 보이지 않는다 (힘을 모은 큰 공격만 보인다). 등명기를 깨면 걷힌다. 등명기는 후열에 있어도 근접으로 닿는다',
     tickStart(c, u) {
       if (isEnemy(u)) return;
       veil(c);
-      c.emit({ t: 'text', uid: 'p', text: '눈앞이 하얗다 — 아무것도 보이지 않는다', tone: 'bad' });
+      c.emit({ t: 'text', uid: 'p', text: '눈앞이 하얗다. 아무것도 보이지 않는다', tone: 'bad' });
     },
     tickEnd(c, u) {
       if (isEnemy(u)) {
@@ -432,7 +442,7 @@ reg.statuses([
         if (s.unit !== c.p || !isEnemy(victim) || victim.def !== 'lamp') return;
         unveil(c);
         setPlayerSt(c, DAZZLE, 0);
-        c.emit({ t: 'text', uid: 'p', text: '등명기가 깨졌다 — 눈앞이 걷힌다', tone: 'good' });
+        c.emit({ t: 'text', uid: 'p', text: '등명기가 깨지자 눈앞이 걷힌다', tone: 'good' });
       },
     },
   },
@@ -441,13 +451,13 @@ reg.statuses([
     name: '낚싯바늘',
     icon: 'gi:fishing-hook',
     kind: 'debuff',
-    desc: '기술 하나가 낚싯바늘에 걸려 쓸 수 없다. 팽팽한 낚싯줄을 끊거나(쓰러뜨리거나) 어부를 붕괴시키면 되찾는다 — 못 끊으면 낚싯줄의 두 번째 차례에 낚아 간다',
+    desc: '기술 하나가 낚싯바늘에 걸려 쓸 수 없다. 팽팽한 낚싯줄을 쓰러뜨려 끊거나 어부를 붕괴시키면 되찾는다. 끊지 못하면 낚싯줄의 두 번째 차례에 낚아 간다',
     tickStart(c, u) {
       if (!isEnemy(u)) keepHeld(c);
     },
     hooks: {
       onBreak(c, s, victim) {
-        if (s.unit === c.p && victim.mem.hook) cutLine(c, victim, '붕괴 — 낚싯줄이 끊어졌다');
+        if (s.unit === c.p && victim.mem.hook) cutLine(c, victim, '붕괴로 낚싯줄이 끊어졌다');
       },
     },
   },
@@ -456,7 +466,7 @@ reg.statuses([
     name: '낚인 기술',
     icon: 'gi:fishing-pole',
     kind: 'debuff',
-    desc: '어부가 기술 하나를 낚아 갔다 — 어부가 본모습을 드러내거나 쓰러지면 되찾는다',
+    desc: '어부가 기술 하나를 낚아 갔다. 어부가 본모습을 드러내거나 쓰러지면 되찾는다',
     tickStart(c, u) {
       if (!isEnemy(u)) keepHeld(c);
     },
@@ -466,7 +476,7 @@ reg.statuses([
     name: '매혹',
     icon: 'gi:musical-notes',
     kind: 'debuff',
-    desc: '심연의 노래에 홀렸다 — 내 턴이 시작될 때 행동력 -{n}',
+    desc: '심연의 노래에 홀렸다. 내 턴이 시작될 때 행동력 -{n}',
     tickStart(c, u, n) {
       if (isEnemy(u)) return;
       c.s.ap = Math.max(1, c.s.ap - n);
@@ -479,7 +489,7 @@ reg.statuses([
     name: '헐떡임',
     icon: 'gi:drowning',
     kind: 'debuff',
-    desc: '만조에 잠겼다 나왔다 — 내 턴이 시작될 때 행동력 -{n}',
+    desc: '만조에 잠겼다 나왔다. 내 턴이 시작될 때 행동력 -{n}',
     tickStart(c, u, n) {
       if (isEnemy(u)) return;
       c.s.ap = Math.max(1, c.s.ap - n);
@@ -492,7 +502,7 @@ reg.statuses([
     name: '침수',
     icon: 'gi:drowning',
     kind: 'debuff',
-    desc: `물이 {n}/${WATER_MAX}까지 찼다. 선장이 행동할 때마다 1 차오르고, ${WATER_MAX}이면 숨이 막혀 내 턴이 시작될 때 행동력 -1 — 그리고 선장이 「만조」를 부른다 (다음 선장 차례까지 물을 빼지 못하면 물에 잠겨 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해·다음 턴 행동력 -${TIDE_AP}. 그 턴엔 숨을 참아 행동력이 줄지 않는다). 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 (선장 차례에 터지는 출혈·독·화상도 센다) 익사체를 쓰러뜨리면 1, 선장을 붕괴시키면 모두 빠진다`,
+    desc: `물이 {n}/${WATER_MAX}까지 찼다. 선장이 행동할 때마다 1씩 차오른다. ${WATER_MAX}이 되면 숨이 막혀 내 턴이 시작될 때 행동력 -1, 선장은 「만조」를 부른다. 다음 선장 차례까지 물을 빼지 못하면 물에 잠겨 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해, 다음 턴 행동력 -${TIDE_AP} (만조가 몰려오는 턴엔 숨을 참아 행동력이 줄지 않는다). 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 익사체를 쓰러뜨리면 1, 선장을 붕괴시키면 모두 빠진다. 선장 차례에 터지는 출혈·독·화상도 센다`,
     tickStart(c, u, n) {
       // 만조가 몰려오는 턴엔 숨을 참는다 (만조를 막을 행동력은 남겨 둔다)
       if (isEnemy(u) || n < WATER_MAX || c.s.vars[TIDE]) return;
@@ -509,7 +519,7 @@ reg.statuses([
         if (s.unit !== c.p || !isEnemy(victim) || waterLevel(c) <= 0) return;
         if (victim.def === 'captain') {
           setWater(c, 0);
-          c.emit({ t: 'text', uid: 'p', text: '배의 저주가 풀렸다 — 물이 빠진다', tone: 'good' });
+          c.emit({ t: 'text', uid: 'p', text: '배의 저주가 풀려 물이 빠진다', tone: 'good' });
         } else if (victim.def === 'drowned') {
           setWater(c, waterLevel(c) - 1);
           c.emit({ t: 'text', uid: 'p', text: '익사체가 쓰러지며 물이 빠진다', tone: 'good' });
@@ -522,12 +532,13 @@ reg.statuses([
     name: '판결',
     icon: 'gi:banging-gavel',
     kind: 'debuff',
-    desc: `집행자의 차례가 오기 전까지 집행자에게 피해를 {n} 더 주지 못하면 유죄 — 정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}. 다 채우면 무죄 — 집행자 버팀 -${ACQUIT_POISE} (방어도에 막힌 피해, 집행자 차례에 터지는 출혈·독·화상도 센다)`,
+    desc: `집행자의 차례가 오기 전까지 집행자에게 피해를 {n} 더 주지 못하면 유죄: 정신력 -${GUILTY_SAN}, 취약 ${GUILTY_VULN}. 다 채우면 무죄: 집행자 버팀 -${ACQUIT_POISE}. 방어도에 막힌 피해와 집행자 차례에 터지는 출혈·독·화상도 센다`,
     hooks: {
       onAnyDeath(c, s, victim) {
         if (s.unit !== c.p || !isEnemy(victim) || victim.def !== 'enforcer') return;
         setPlayerSt(c, TRIAL, 0);
-        c.emit({ t: 'text', uid: 'p', text: '재판관이 쓰러졌다 — 판결은 무효다', tone: 'good' });
+        if (c.s.obj?.hit?.uid === victim.uid) setObjective(c, null);
+        c.emit({ t: 'text', uid: 'p', text: '재판관이 쓰러졌다. 판결은 무효다', tone: 'good' });
       },
     },
   },
@@ -536,7 +547,7 @@ reg.statuses([
     name: '무기 물림',
     icon: 'gi:pincers',
     kind: 'debuff',
-    desc: `거대 게의 집게가 무기를 물고 있다 — 무기 기본 공격을 쓸 수 없다. ${CLAMP_TURNS}턴 뒤에 놓는다 (게를 붕괴시키거나 쓰러뜨리면 곧바로)`,
+    desc: `거대 게의 집게가 무기를 물고 있어 무기 기본 공격을 쓸 수 없다. ${CLAMP_TURNS}턴 뒤에 놓는다. 게를 붕괴시키거나 쓰러뜨리면 곧바로 놓는다`,
     tickStart(c, u) {
       if (isEnemy(u)) return;
       // 대기를 되돌리는 기술로 잠깐 빼내도, 게가 물고 있는 한 다시 문다
@@ -545,7 +556,7 @@ reg.statuses([
     },
     hooks: {
       onBreak(c, s, victim) {
-        if (s.unit === c.p && victim.mem.clamp) freeWeapon(c, '붕괴 — 집게가 무기를 놓았다');
+        if (s.unit === c.p && victim.mem.clamp) freeWeapon(c, '붕괴로 집게가 무기를 놓았다');
       },
       onAnyDeath(c, s, victim) {
         if (s.unit === c.p && isEnemy(victim) && victim.mem.clamp) freeWeapon(c, '집게가 무기를 놓았다');
@@ -557,6 +568,6 @@ reg.statuses([
     name: '손자국',
     icon: 'gi:open-palm',
     kind: 'debuff',
-    desc: `유리에 남은 망령의 손자국 {n}개 — '바다 무덤으로'의 손이 그만큼 늘어난다 (최대 ${HANDPRINT_MAX}). 끌어내리면 사라진다`,
+    desc: `유리에 남은 망령의 손자국 {n}개. '바다 무덤으로'의 손이 그만큼 늘어난다 (최대 ${HANDPRINT_MAX}). 끌어내리면 사라진다`,
   },
 ]);

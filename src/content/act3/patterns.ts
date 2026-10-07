@@ -59,7 +59,7 @@ export function throwBack(c: Combat, e: EnemyUnit) {
     // 처음 흉내 낼 때만 가짜 시스템 창 — 그 뒤로는 화면이 일그러지기만 한다
     if (e.mem.copies === 1) cine(c, 'sysmsg', { text: `「${name}」의 복제가 완료되었습니다.` });
     else cine(c, 'glitch', { n: 2, uid: e.uid });
-    c.emit({ t: 'text', uid: e.uid, text: `「${name}」 — 테켈리-리!`, tone: 'eldritch' });
+    c.emit({ t: 'text', uid: e.uid, text: `「${name}」… 테켈리-리!`, tone: 'eldritch' });
     if (kind === 1) {
       const dmg = Math.ceil((v[MIM.val] ?? 0) * MIMIC_RATE);
       const type = TYPES[v[MIM.type] ?? 2] ?? 'blunt';
@@ -67,7 +67,7 @@ export function throwBack(c: Combat, e: EnemyUnit) {
     } else c.gainBlock(e, v[MIM.val] ?? 0);
     return;
   }
-  c.emit({ t: 'text', uid: e.uid, text: '흉내 낼 것을 찾지 못했다 — 테켈리-리!', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: e.uid, text: '흉내 낼 것이 없다. 테켈리-리!', tone: 'eldritch' });
   c.horror(e, MIMIC_SCREAM);
 }
 
@@ -161,7 +161,7 @@ export function huntReady(c: Combat, king: EnemyUnit): boolean {
 function huntObjective(c: Combat, king: EnemyUnit) {
   const need = Math.max(0, HUNT_DMG - (king.mem.huntDmg ?? 0));
   setObjective(c, {
-    text: `사냥을 끊어라 — 왕에게 피해 ${need} · 방어도 ${PLASTER}로 턴 종료 · 붕괴 (1턴 남음)`,
+    text: `사냥을 끊어라: 왕에게 피해 ${need} · 방어도 ${PLASTER}로 턴 종료 · 붕괴 (1턴 남음)`,
     hit: { uid: king.uid, need },
     block: PLASTER,
     break: king.uid,
@@ -174,7 +174,7 @@ export function callHunt(c: Combat, king: EnemyUnit) {
   king.mem.hunt = 1;
   king.mem.huntDmg = 0;
   huntObjective(c, king);
-  c.emit({ t: 'text', uid: king.uid, text: '모든 모서리가 열렸다 — 사냥개들이 당신의 냄새를 맡았다', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: king.uid, text: '모든 모서리가 열리자 사냥개들이 냄새를 맡았다', tone: 'eldritch' });
   if (!c.s.vars['a3-huntSeen']) {
     c.s.vars['a3-huntSeen'] = 1;
     cine(c, 'sysmsg', { text: '경고: 화면의 모서리 세 곳이 모두 열려 있습니다.' });
@@ -244,7 +244,7 @@ export function reveal(c: Combat, e: EnemyUnit) {
   c.apply(e, REVEALED, REVEAL_TURNS, e);
   setUi(c, 'ui:eye', 1);
   setUi(c, 'ui:dark', DIM_REVEAL);
-  c.emit({ t: 'text', uid: e.uid, text: '형체가 드러났다 — 보면 보인다', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: e.uid, text: '형체가 드러났다. 보면 보인다', tone: 'eldritch' });
 }
 
 /** 다시 보랏빛 증기에 가려진다 (드러난 모습·어두워진 화면 정리) */
@@ -311,7 +311,7 @@ export function broodHurt(c: Combat, n: number) {
 function hatch(c: Combat) {
   c.clear(c.p, EGGS);
   cine(c, 'swarm');
-  c.emit({ t: 'text', uid: 'p', text: '알이 부화했다 — 살을 찢고 새끼들이 기어 나온다', tone: 'bad' });
+  c.emit({ t: 'text', uid: 'p', text: '알이 부화해 새끼들이 살을 찢고 기어 나온다', tone: 'bad' });
   c.loseHp(c.p, HATCH_DMG, 'a3-hatch');
   for (let i = 0; i < HATCH_N && !c.over; i++) c.spawn('leng-spiderling', 0);
 }
@@ -402,7 +402,7 @@ function fullObjective(c: Combat, e: EnemyUnit) {
   const need = Math.max(0, FULL_DMG - (e.mem.fullDmg ?? 0));
   const left = (e.mem.fullStage ?? 1) >= 2 ? 1 : 2;
   setObjective(c, {
-    text: `완전 해부를 막아라 — 해부학자에게 피해 ${need} · 방어도 ${FULL_BLOCK}로 턴 종료 · 회복 · 붕괴 (${left}턴 남음)`,
+    text: `완전 해부를 막아라: 해부학자에게 피해 ${need} · 방어도 ${FULL_BLOCK}로 턴 종료 · 회복 · 붕괴 (${left}턴 남음)`,
     hit: { uid: e.uid, need },
     block: FULL_BLOCK,
     break: e.uid,
@@ -417,7 +417,7 @@ export function declareFull(c: Combat, e: EnemyUnit) {
   e.mem.fullDmg = 0;
   e.mem.fulls = (e.mem.fulls ?? 0) + 1;
   fullObjective(c, e);
-  c.emit({ t: 'text', uid: e.uid, text: '절개선이 모두 그어졌다 — 완전 해부를 준비한다', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: e.uid, text: '절개선이 모두 그어졌다. 완전 해부를 준비한다', tone: 'eldritch' });
   if (!c.s.vars['a3-fullSeen']) {
     c.s.vars['a3-fullSeen'] = 1;
     cine(c, 'whisper', { text: '움직이지 마라.\n전부 열어 보고 싶다.' });
@@ -429,7 +429,7 @@ export function layOnTable(c: Combat, e: EnemyUnit) {
   if (!e.mem.full) return;
   e.mem.fullStage = 2;
   fullObjective(c, e);
-  c.emit({ t: 'text', uid: e.uid, text: '해부대가 펼쳐졌다 — 메스가 절개선을 따라 내려온다', tone: 'bad' });
+  c.emit({ t: 'text', uid: e.uid, text: '해부대가 펼쳐지고 메스가 절개선을 따라 내려온다', tone: 'bad' });
 }
 
 /** 완전 해부를 막았다: 목표를 지우고 절개선이 아문다. 해부학자는 다시 의도를 정한다 (내 턴이 끝날 때 막았다면 그 차례는 메스를 거둔다) */
@@ -470,7 +470,7 @@ export function resolveFull(c: Combat, e: EnemyUnit) {
     return;
   }
   if (execute(c, e, FULL)) return;
-  closeIncisions(c, '결계가 메스를 막았다 — 절개선이 아물었다');
+  closeIncisions(c, '결계가 메스를 막아 절개선이 아물었다');
 }
 
 // ───────────── 시간에 얼어붙은 탐사대장: 멈춘 시간 ─────────────
@@ -492,7 +492,7 @@ function resumeTime(c: Combat) {
   const n = c.p.st[WOUNDS] ?? 0;
   c.clear(c.p, STOPPED);
   c.clear(c.p, WOUNDS);
-  c.emit({ t: 'text', uid: 'p', text: n > 0 ? '시간이 다시 흐른다 — 멈춰 있던 상처가 한꺼번에 터진다' : '시간이 다시 흐른다', tone: n > 0 ? 'bad' : 'info' });
+  c.emit({ t: 'text', uid: 'p', text: n > 0 ? '시간이 다시 흐르며 멈춰 있던 상처가 한꺼번에 터진다' : '시간이 다시 흐른다', tone: n > 0 ? 'bad' : 'info' });
   if (n <= 0 || c.over) return;
   cine(c, 'crack', { n: 2 });
   c.damage({ src: alive(c, 'frozen-leader') ?? null, tgt: c.p, base: n, type: 'blunt', tags: ['a3-wounds'] });
@@ -516,7 +516,7 @@ reg.statuses([
     icon: 'gi:echo-ripples',
     kind: 'buff',
     hidden: true,
-    desc: '쇼고스가 당신이 쓰는 기술을 듣고 있다',
+    desc: '쇼고스가 내가 쓰는 기술을 듣고 있다',
     hooks: {
       beforeSkill(c, s, u) {
         if (s.unit !== c.p || u.echo) return;
@@ -545,7 +545,7 @@ reg.statuses([
     name: '열린 각',
     icon: 'gi:cracked-glass',
     kind: 'debuff',
-    desc: `화면에 날카로운 각 {n}개가 열려 있다 — 내 턴이 끝날 때 방어도가 ${PLASTER} 이상이면 회반죽으로 각 하나를 메우고, 남은 각마다 모서리에서 이빨이 튀어나와 ${ANGLE_BITE} 피해 (방어도가 먼저 막는다). 각도의 왕을 붕괴시키면 모든 각이 닫힌다. 세 각이 모두 열리면 「${HUNT}」이 온다`,
+    desc: `화면에 날카로운 각 {n}개가 열려 있다. 내 턴이 끝날 때 방어도가 ${PLASTER} 이상이면 회반죽으로 각 하나를 메운다. 남은 각마다 모서리에서 이빨이 튀어나와 ${ANGLE_BITE} 피해 (방어도가 먼저 막는다). 각도의 왕을 붕괴시키면 모든 각이 닫힌다. 세 각이 모두 열리면 「${HUNT}」이 온다`,
     hooks: {
       onTurnEnd(c, s) {
         if (s.unit !== c.p) return;
@@ -564,7 +564,7 @@ reg.statuses([
         for (let i = 0; i < n && !c.over; i++) c.damage({ src: king ?? null, tgt: c.p, base: ANGLE_BITE, type: 'slash', tags: ['a3-angle'] });
       },
       onBreak(c, s, victim) {
-        if (s.unit === c.p && victim.def === 'angle-king') closeAngles(c, '각도의 왕이 무너졌다 — 열린 각이 모두 닫혔다');
+        if (s.unit === c.p && victim.def === 'angle-king') closeAngles(c, '각도의 왕이 무너져 열린 각이 모두 닫혔다');
       },
       onAnyDeath(c, s, victim) {
         if (s.unit === c.p && isEnemy(victim) && victim.def === 'angle-king') closeAngles(c, '열린 각이 모두 닫혔다');
@@ -576,7 +576,7 @@ reg.statuses([
     name: '드러난 모습',
     icon: 'gi:eye-target',
     kind: 'debuff',
-    desc: `증기가 걷혀 형체가 드러났다 — 받는 피해 +${Math.round((REVEAL_MULT - 1) * 100)}%. 대신 이것을 공격하는 기술을 쓸 때마다 그것을 보게 된다: 정신 피해 ${LOOK_SAN} (방어도로 막을 수 없다). 당신의 턴 {n}번 동안`,
+    desc: `증기가 걷혀 형체가 드러났다. 내 턴 {n}번 동안 받는 피해 +${Math.round((REVEAL_MULT - 1) * 100)}%. 대신 이것을 공격하는 기술을 쓸 때마다 그 모습을 본다: 정신 피해 ${LOOK_SAN} (방어도로 막을 수 없다)`,
     hooks: {
       modDamageIn(_c, s, d) {
         if (isEnemy(s.unit)) d.mult *= REVEAL_MULT;
@@ -608,7 +608,7 @@ reg.statuses([
     name: '멈춘 칼날',
     icon: 'gi:thrown-knife',
     kind: 'debuff',
-    desc: `멈춘 시간 속에서 칼날 {n}개가 당신을 겨누고 있다 — 깨어난 원로를 때리는 기술을 쓸 때마다 하나를 쳐낸다. 내 턴이 끝나면 시간이 다시 흘러 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다)`,
+    desc: `멈춘 시간 속에서 칼날 {n}개가 이쪽을 겨누고 있다. 깨어난 원로를 때리는 기술을 쓸 때마다 하나를 쳐낸다. 내 턴이 끝나면 시간이 다시 흘러 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다)`,
     hooks: {
       onDamageDealt(c, s, d) {
         if (s.unit !== c.p || d.src !== c.p || !d.skill || !isEnemy(d.tgt) || d.tgt.def !== 'awakened-elder' || d.amount <= 0) return;
@@ -636,7 +636,7 @@ reg.statuses([
     name: '몸속의 알',
     icon: 'gi:egg-clutch',
     kind: 'debuff',
-    desc: `살 속에 거미알이 심겼다 — 내 턴이 {n}번 더 끝나면 부화해 새끼 거미 ${HATCH_N}마리가 살을 찢고 나온다 (피해 ${HATCH_DMG}, 방어도 무시). 알은 어미와 이어져 있어 그 사이 렝의 대거미에게 피해 ${EGG_LINK_DMG}을 주면(출혈·독·화상 포함) 함께 죽는다. 체력을 회복하거나, 화염 기술을 쓰거나, 화염에 닿거나, 어미를 쓰러뜨려도 알이 죽는다`,
+    desc: `살 속에 거미알이 심겼다. 내 턴이 {n}번 더 끝나면 부화해 새끼 거미 ${HATCH_N}마리가 살을 찢고 나온다 (피해 ${HATCH_DMG}, 방어도 무시). 알은 어미와 이어져 있다. 그 사이 렝의 대거미에게 피해 ${EGG_LINK_DMG}을 주면 알이 함께 죽는다 (출혈·독·화상 포함). 체력을 회복하거나 화염 기술을 쓰거나 화염에 닿아도 알이 죽는다. 어미를 쓰러뜨려도 마찬가지다`,
     hooks: {
       afterSkill(c, s, u) {
         if (s.unit === c.p && (u.type ?? u.def.type) === 'fire') killEggs(c, '불길에 알이 타 죽었다');
@@ -666,7 +666,7 @@ reg.statuses([
     name: '하늘에 매달림',
     icon: 'gi:feathered-wing',
     kind: 'debuff',
-    desc: `샨탁의 발톱에 매달려 하늘 높이 들렸다 — 샨탁을 공격으로 {n}번 더 맞히면 발톱에서 빠져나온다 (여러 번 때리는 기술은 그만큼 센다, 회피당한 공격은 세지 않는다). 빠져나오지 못하면 내 턴이 끝날 때 떨어진다: 피해 ${FALL_DMG} (방어도가 먼저 막는다), 다음 턴 행동력 -1`,
+    desc: `샨탁의 발톱에 매달려 하늘 높이 들렸다. 샨탁을 공격으로 {n}번 더 맞히면 빠져나온다. 여러 번 때리는 기술은 맞힌 만큼 센다. 회피당한 공격은 세지 않는다. 빠져나오지 못하면 내 턴이 끝날 때 떨어진다: 피해 ${FALL_DMG} (방어도가 먼저 막는다), 다음 턴 행동력 -1`,
     hooks: {
       onDamageDealt(c, s, d) {
         if (s.unit !== c.p || d.src !== c.p || !d.attack || !isEnemy(d.tgt) || d.tgt.def !== 'shantak' || d.amount <= 0) return;
@@ -701,7 +701,7 @@ reg.statuses([
     name: '절개선',
     icon: 'gi:stitched-wound',
     kind: 'debuff',
-    desc: `해부학자가 그어 둔 절개선 {n}개 — 「생체 해부」가 절개선 하나마다 ${CUT_DMG} 피해를 더 주고(최대 ${MAX_INCISION}개), 그때 절개선이 모두 벌어져 사라진다. ${MAX_INCISION}개가 다 그어진 채로 해부대를 펼치면 「${FULL}」이 온다. 체력을 회복하면 모두 아문다`,
+    desc: `해부학자가 그어 둔 절개선 {n}개. 「생체 해부」의 피해가 절개선마다 +${CUT_DMG} (최대 ${MAX_INCISION}개). 생체 해부가 끝나면 절개선은 모두 벌어져 사라진다. ${MAX_INCISION}개가 다 그어진 채로 해부대를 펼치면 「${FULL}」가 온다. 체력을 회복하면 모두 아문다`,
     hooks: {
       modHeal(c, s, amount) {
         if (c && !c.previewing && s.unit === c.p && amount > 0) {
@@ -721,7 +721,7 @@ reg.statuses([
     name: '멈춘 시간',
     icon: 'gi:stopwatch',
     kind: 'debuff',
-    desc: '시간이 멈췄다 — 적의 공격 피해가 들어오지 않고 「멈춘 상처」로 쌓인다. 내 턴이 {n}번 더 끝나면 시간이 다시 흘러 쌓인 상처가 한꺼번에 터진다 (방어도가 먼저 막는다). 탐사대장을 붕괴시키거나 쓰러뜨리면 멈춘 시계가 부서져 쌓인 상처가 사라진다',
+    desc: '시간이 멈췄다. 적의 공격 피해가 들어오지 않고 「멈춘 상처」로 쌓인다. 내 턴이 {n}번 더 끝나면 시간이 다시 흘러 쌓인 상처가 한꺼번에 터진다 (방어도가 먼저 막는다). 탐사대장을 붕괴시키거나 쓰러뜨리면 멈춘 시계가 부서져 쌓인 상처가 사라진다',
     hooks: {
       // 미리보기에도 0으로 보인다 (지금은 들어오지 않는다) — 상태는 바꾸지 않는다
       modDamageIn(c, s, d) {
@@ -740,10 +740,10 @@ reg.statuses([
         else resumeTime(c);
       },
       onBreak(c, s, victim) {
-        if (s.unit === c.p && victim.def === 'frozen-leader') shatterClock(c, '멈춘 시계가 부서졌다 — 쌓인 상처가 흩어진다');
+        if (s.unit === c.p && victim.def === 'frozen-leader') shatterClock(c, '멈춘 시계가 부서져 쌓인 상처가 흩어진다');
       },
       onAnyDeath(c, s, victim) {
-        if (s.unit === c.p && isEnemy(victim) && victim.def === 'frozen-leader') shatterClock(c, '시계의 주인이 쓰러졌다 — 쌓인 상처가 흩어진다');
+        if (s.unit === c.p && isEnemy(victim) && victim.def === 'frozen-leader') shatterClock(c, '시계의 주인이 쓰러져 쌓인 상처가 흩어진다');
       },
     },
     tickEnd(c, u) {
@@ -755,7 +755,7 @@ reg.statuses([
     name: '멈춘 상처',
     icon: 'gi:time-trap',
     kind: 'debuff',
-    desc: '멈춘 시간 속에 쌓인 피해 {n} — 시간이 다시 흐르면 한꺼번에 터진다 (방어도가 먼저 막는다). 탐사대장을 붕괴시키면 사라진다',
+    desc: '멈춘 시간 속에 쌓인 피해 {n}. 시간이 다시 흐르면 한꺼번에 터진다 (방어도가 먼저 막는다). 탐사대장을 붕괴시키면 사라진다',
     tickEnd(c, u) {
       // 멈춘 시간 없이 남은 상처는 없다 (적에게 붙거나 홀로 남으면 지운다)
       if (isEnemy(u) || (u.st[STOPPED] ?? 0) <= 0) c.clear(u, WOUNDS);

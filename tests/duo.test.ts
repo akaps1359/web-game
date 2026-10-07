@@ -3,14 +3,17 @@ import { icons } from '@iconify-json/game-icons';
 import '../src/content';
 import type { Combat } from '../src/engine/combat';
 import { ESSENCES, RELICS, RUNES, SKILLS, STATUSES } from '../src/engine/registry';
-import { DUO_WEIGHT, duoReady, duoSchools, gainRelic, learnSkill, newRun, rollForbidden, rollSkills, startCombat, type RunState } from '../src/engine/run';
+import { gainRelic, learnSkill, newRun, ownedSchools, rollForbidden, rollSkills, startCombat, type RunState } from '../src/engine/run';
+import { isBridge } from '../src/engine/keywords';
 import { openShop } from '../src/engine/shop';
 import type { School, SkillDef } from '../src/engine/types';
 import { codexSkills } from '../src/state/meta';
 import { autoTurn } from '../src/sim/bot';
 
 const SCHOOLS: School[] = ['blade', 'firearm', 'occult', 'alchemy', 'resolve', 'forbidden'];
+/** 예전 합기 15종 — 이제 조건 없이 각자 계열 풀로 내려간 '계열을 잇는' 스킬 (두 계열 짝은 SkillDef.duo에 남았다) */
 const DUOS = [...SKILLS.values()].filter((d) => d.duo);
+const PAIR = (id: string) => SKILLS.get(id)!.duo!;
 const duo = (id: string) => SKILLS.get(id)!;
 
 /** 합기 하나만 든 깨끗한 주인공으로 「깡패(전열) + 입문자 둘(후열)」 전투 (유물·장비·약점·저항·층의 법칙 없음) */
@@ -49,30 +52,37 @@ function withSkills(ids: string[], origin = 'soldier'): RunState {
   return run;
 }
 
-describe('합기: 정의', () => {
-  it('6계열의 모든 짝마다 하나씩, 15종', () => {
+describe('예전 합기: 정의', () => {
+  it('6계열의 모든 짝마다 하나씩, 15종이 남아 있다 (계열 판정은 두 계열로)', () => {
     expect(DUOS.length).toBe(15);
     const pairs = new Set(DUOS.map((d) => [...d.duo!].sort().join('+')));
     expect(pairs.size).toBe(15);
     for (let i = 0; i < SCHOOLS.length; i++) for (let j = i + 1; j < SCHOOLS.length; j++) expect(pairs.has([SCHOOLS[i], SCHOOLS[j]].sort().join('+')), `${SCHOOLS[i]}×${SCHOOLS[j]}`).toBe(true);
   });
 
-  it('희귀 등급이고, 계열(시전 연출)은 두 계열 중 하나, 아이콘은 game-icons에 있다', () => {
+  it('합기 조건은 사라졌다: 계열은 짝 중 하나, 등급은 그 계열 풀의 고급·희귀(금기 계열은 금기)', () => {
     for (const d of DUOS) {
-      expect(d.rarity, d.id).toBe('rare');
-      expect(d.duo![0] === d.duo![1], d.id).toBe(false);
-      expect(d.duo!.includes(d.school), d.id).toBe(true);
+      expect(PAIR(d.id).includes(d.school), d.id).toBe(true);
+      if (d.school === 'forbidden') expect(d.rarity, d.id).toBe('forbidden');
+      else expect(['uncommon', 'rare'], d.id).toContain(d.rarity);
       expect(d.pool, d.id).not.toBe(false);
       expect(d.icon.startsWith('gi:') && !!icons.icons[d.icon.slice(3)], `${d.id}: ${d.icon}`).toBe(true);
       for (const m of d.desc.matchAll(/\{(?:[DB]:)?([a-zA-Z]+)\}/g)) expect(d.vals[m[1]] !== undefined, `${d.id}: ${m[1]}`).toBe(true);
     }
   });
 
-  it('도감의 스킬 목록에 들어간다', () => {
-    expect(codexSkills().filter((d) => d.duo).length).toBe(15);
+  it('남의 계열을 읽거나(글루) 남의 계열 키워드를 만든다 (2차 생산)', () => {
+    for (const d of DUOS) expect(isBridge(d) || (d.makes ?? []).length > 0, d.id).toBe(true);
+    // 대부분은 남의 키워드를 읽는 글루다
+    expect(DUOS.filter(isBridge).length).toBeGreaterThanOrEqual(11);
   });
 
-  it('행동력을 주거나 재사용 대기를 되돌리는 합기는 없다', () => {
+  it('도감의 스킬 목록에 들어간다', () => {
+    const ids = new Set(codexSkills().map((d) => d.id));
+    for (const d of DUOS) expect(ids.has(d.id), d.id).toBe(true);
+  });
+
+  it('행동력을 주거나 재사용 대기를 되돌리지 않는다', () => {
     for (const d of DUOS) {
       expect(d.tags.includes('energy') || d.tags.includes('refresh'), d.id).toBe(false);
       expect(/s\.ap\s*\+=|s\.cd\[|delete c\.s\.cd/.test(d.run.toString()), d.id).toBe(false);
@@ -81,7 +91,7 @@ describe('합기: 정의', () => {
   });
 });
 
-describe('합기: 효과', () => {
+describe('예전 합기: 효과', () => {
   it('총검 난무 (검술×사격): 앞서 쓴 스킬 수만큼 탄약으로 쏘고, 첫 발에 조준이 실린다', () => {
     const c = arena('duo-bayonet');
     c.s.used = 2;
@@ -300,35 +310,25 @@ describe('합기: 효과', () => {
   });
 });
 
-describe('합기: 조건과 보상', () => {
-  it('두 계열의 스킬을 하나씩 가지고 있어야 조건이 된다', () => {
-    const run = withSkills(['aimed-shot', 'shield-bash']);
-    expect([...duoSchools(run)].sort()).toEqual(['firearm', 'resolve']);
-    expect(duoReady(run, duo('duo-cover-snipe'))).toBe(true);
-    expect(duoReady(run, duo('duo-bayonet'))).toBe(false);
-    expect(duoReady(run, duo('duo-sigil-bulwark'))).toBe(false);
-  });
-
-  it('기본 공격·정수 기술·공용 스킬·다른 합기는 세지 않는다', () => {
+describe('예전 합기: 조건 없이 각자 계열 풀에', () => {
+  it('가진 계열은 기본 공격·정수 기술·공용 스킬을 세지 않는다', () => {
     const essSkill = [...ESSENCES.values()][0].actives[0];
     expect(SKILLS.get(essSkill)!.school).toBe('essence');
-    // 사브르 베기(검술 기본기)·정수 기술·공용·합기(검술×사격)
     const run = withSkills(['aimed-shot', 'w-saber', essSkill, 'shove', 'duo-bayonet']);
-    expect([...duoSchools(run)]).toEqual(['firearm']);
-    expect(duoReady(run, duo('duo-bayonet'))).toBe(false);
-    run.skills.push({ uid: 'x', id: 'serrate', lvl: 0, runes: [] });
-    expect(duoReady(run, duo('duo-bayonet'))).toBe(true);
+    expect([...ownedSchools(run)].sort()).toEqual(['blade', 'firearm']);
   });
 
-  it('보상·상점에는 조건을 채운 합기만, 이미 배운 합기는 다시 나오지 않는다', () => {
-    const run = withSkills(['aimed-shot', 'shield-bash', 'sigil']);
+  it('두 계열의 스킬을 갖고 있지 않아도 보상·상점에 나온다 (금기 계열은 빼고), 이미 배운 것은 다시 나오지 않는다', () => {
+    // 사격 스킬만 가진 판에도 검술·비술·연금·결의 쪽 예전 합기가 나온다
+    const run = withSkills(['aimed-shot']);
     const seen = new Set<string>();
-    for (let i = 0; i < 400; i++) {
+    for (let i = 0; i < 800; i++) {
       run.rng.loot = i * 7919 + 1;
-      for (const id of rollSkills(run, 3, i % 2 ? 'elite' : 'shop')) if (SKILLS.get(id)!.duo) seen.add(id);
+      for (const id of rollSkills(run, 3, i % 2 ? 'elite' : 'boss')) if (SKILLS.get(id)?.duo) seen.add(id);
     }
-    // 사격·결의·비술 → 사격×결의, 사격×비술, 비술×결의만
-    expect([...seen].sort()).toEqual(['duo-cover-snipe', 'duo-sigil-bulwark', 'duo-sigil-round']);
+    const normal = DUOS.filter((d) => d.school !== 'forbidden').map((d) => d.id);
+    for (const id of normal) expect(seen.has(id), id).toBe(true);
+    for (const d of DUOS.filter((x) => x.school === 'forbidden')) expect(seen.has(d.id), d.id).toBe(false);
     run.skills.push({ uid: 'd', id: 'duo-cover-snipe', lvl: 0, runes: [] });
     for (let i = 0; i < 200; i++) {
       run.rng.loot = i * 104729 + 5;
@@ -336,37 +336,15 @@ describe('합기: 조건과 보상', () => {
     }
   });
 
-  it('조건이 없으면 합기는 나오지 않는다', () => {
-    const run = withSkills(['aimed-shot', 'reload', 'shove']);
-    for (let i = 0; i < 300; i++) {
-      run.rng.loot = i * 31 + 7;
-      for (const id of rollSkills(run, 3, 'boss')) expect(SKILLS.get(id)!.duo, id).toBeUndefined();
-    }
-  });
-
-  it('금기 스킬을 가지고 있으면 금기가 낀 합기도 나오지만, 금기의 길(금기 보상)로는 합기가 나오지 않는다', () => {
-    const run = withSkills(['aimed-shot', 'shield-bash', 'whisper-void']);
+  it('금기 계열의 예전 합기(피의 제물·심연의 낙인·역병 촉수)는 금기 스킬을 가진 판의 보통 보상에서 나오고, 금기의 길로는 나오지 않는다', () => {
+    const run = withSkills(['aimed-shot', 'whisper-void']);
     const seen = new Set<string>();
-    for (let i = 0; i < 400; i++) {
+    for (let i = 0; i < 600; i++) {
       run.rng.loot = i * 7919 + 3;
-      for (const id of rollSkills(run, 3, 'elite')) {
-        const d = SKILLS.get(id)!;
-        if (d.duo) seen.add(id);
-        else expect(d.school, id).not.toBe('forbidden');
-      }
+      for (const id of rollSkills(run, 3, 'elite')) seen.add(id);
       for (const id of rollForbidden(run, 3)) expect(SKILLS.get(id)!.duo, id).toBeUndefined();
     }
-    expect(seen.has('duo-mad-aim')).toBe(true);
-    expect(seen.has('duo-zealot-shield')).toBe(true);
-  });
-
-  it('출신 시작 스킬만으로 그 출신의 합기가 조건을 채운다', () => {
-    const cases: [string, string][] = [
-      ['soldier', 'duo-cover-snipe'],
-      ['hunter', 'duo-venom-blood'],
-      ['occultist', 'duo-abyss-brand'],
-    ];
-    for (const [origin, id] of cases) expect(duoReady(newRun({ seed: 1, origin }), duo(id)), origin).toBe(true);
+    for (const d of DUOS.filter((x) => x.school === 'forbidden')) expect(seen.has(d.id), d.id).toBe(true);
   });
 
   it('상점에도 나온다', () => {
@@ -378,11 +356,6 @@ describe('합기: 조건과 보상', () => {
     }
     expect(found).toBe(true);
   });
-
-  it('가중치는 희귀 스킬의 2~3배', () => {
-    expect(DUO_WEIGHT.value).toBeGreaterThanOrEqual(2);
-    expect(DUO_WEIGHT.value).toBeLessThanOrEqual(3);
-  });
 });
 
 /** 합기마다 그 합기가 거둘 상태를 쌓는 덱 (출신 시작 스킬 + 짝 계열 스킬 하나) */
@@ -390,7 +363,8 @@ const DECKS: Record<string, [string, string[]]> = {
   'duo-bayonet': ['soldier', ['quick-cut']],
   'duo-blood-sigil': ['hunter', ['sigil']],
   'duo-venom-blood': ['hunter', []],
-  'duo-blood-riposte': ['soldier', ['serrate']],
+  // 틈(2026-10) 뒤로 방패 강타가 사격 틈을 거둬 방어도를 채우므로, 톱날 베기 덱에서는 봇이 피의 응수를 쓸 일이 없어졌다 (검술은 마무리 일격으로)
+  'duo-blood-riposte': ['soldier', ['finisher']],
   'duo-blood-offering': ['hunter', ['whisper-void']],
   'duo-sigil-round': ['soldier', ['sigil']],
   'duo-neurotoxin': ['soldier', ['poison-dart']],
@@ -404,7 +378,7 @@ const DECKS: Record<string, [string, string[]]> = {
   'duo-zealot-shield': ['soldier', ['whisper-void']],
 };
 
-describe('합기: 봇', () => {
+describe('예전 합기: 봇', () => {
   it('덱이 다 있다', () => {
     expect(Object.keys(DECKS).sort()).toEqual(DUOS.map((d) => d.id).sort());
   });
@@ -414,7 +388,6 @@ describe('합기: 봇', () => {
       const run = newRun({ seed: 77, origin });
       for (const x of [...extra, id]) learnSkill(run, x);
       run.slots = run.skills.map((s) => s.uid);
-      expect(duoReady(run, duo(id)), '조건').toBe(true);
       let used = 0;
       for (const enc of ['a1-cult', 'a1-hook', 'a1-dogs3', 'a1-smugglers']) {
         const c = startCombat(run, enc);
@@ -433,7 +406,7 @@ describe('합기: 봇', () => {
   }
 });
 
-describe('합기: 무한 고리 없음', () => {
+describe('예전 합기: 무한 고리 없음', () => {
   const LIMIT = 12;
   /** 한 턴에 몇 번 쓸 수 있는가 (적은 죽지 않게) */
   function usesInOneTurn(ids: { id: string; lvl: number; rune?: string | null }[], relic: string | null = null, ap?: number): number {

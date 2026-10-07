@@ -15,6 +15,8 @@ reg.skills([
     target: 'single',
     type: 'fire',
     tags: ['attack', 'burn'],
+    makes: ['burn'],
+    reads: [],
     vals: { dmg: [4, 5], burn: [3, 4] },
     desc: '{D:dmg} 화염 피해, 화상 {burn}',
     run: (c, u, t) => {
@@ -34,6 +36,8 @@ reg.skills([
     target: 'single',
     type: 'pierce',
     tags: ['attack', 'poison'],
+    makes: ['poison'],
+    reads: [],
     vals: { dmg: 2, poison: [4, 6] },
     desc: '{D:dmg} 관통 피해, 독 {poison}',
     run: (c, u, t) => {
@@ -52,6 +56,8 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     tags: ['poison'],
+    makes: ['poison'],
+    reads: ['poison'],
     vals: { mul: [2, 3] },
     desc: '대상의 독을 {mul}배로',
     run: (c, u, t) => {
@@ -74,11 +80,14 @@ reg.skills([
     target: 'front',
     type: 'fire',
     tags: ['attack', 'aoe', 'debuff'],
+    makes: [],
+    reads: ['expose'],
     vals: { dmg: [4, 6], corrode: [1, 2] },
-    desc: '전열의 모든 적에게 {D:dmg} 화염 피해, 부식 {corrode}',
+    desc: '전열의 모든 적에게 {D:dmg} 화염 피해, 부식 {corrode}. 약화나 취약 상태인 적은 부식 2배',
     run: (c, u, t) => {
       const units = new Set(hit(c, u, t).map((d) => d.tgt));
-      for (const e of units) if (e.hp > 0) c.apply(e, 'corrode', u.v('corrode'), c.p);
+      // 남이 건 약화·취약을 읽는다 (상처의 문법 — 공용 키워드)
+      for (const e of units) if (e.hp > 0) c.apply(e, 'corrode', u.v('corrode') * ((e.st.weak ?? 0) > 0 || (e.st.vuln ?? 0) > 0 ? 2 : 1), c.p);
     },
   }),
   skill({
@@ -92,6 +101,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['block', 'debuff'],
+    makes: ['block', 'expose'],
+    reads: [],
     vals: { blk: [6, 8], weak: 1 },
     desc: '방어도 {B:blk}, 적 전체 약화 {weak}',
     run: (c, u) => {
@@ -110,6 +121,8 @@ reg.skills([
     range: 'self',
     target: 'self',
     tags: ['heal', 'energy'],
+    makes: [],
+    reads: [],
     vals: { heal: [4, 6] },
     desc: '체력 {heal} 회복, 다음 턴 행동력 +1',
     run: (c, u) => {
@@ -129,6 +142,8 @@ reg.skills([
     target: 'all',
     type: 'fire',
     tags: ['attack', 'aoe', 'burn'],
+    makes: [],
+    reads: ['burn'],
     vals: { dmg: [6, 8] },
     desc: '적 전체에 {D:dmg} 화염 피해. 화상 중인 적은 화상 수치만큼 추가 피해',
     run: (c, u) => {
@@ -150,9 +165,11 @@ reg.skills([
     range: 'ranged',
     target: 'single',
     tags: ['attack', 'poison', 'burn'],
+    makes: [],
+    reads: ['poison', 'burn'],
     type: 'fire',
     vals: { pct: [100, 150] },
-    desc: '대상의 (독 + 화상) × {pct}%만큼 즉시 화염 피해 (독·화상은 남는다)',
+    desc: '대상의 독과 화상을 더한 값의 {pct}%만큼 즉시 화염 피해. 독·화상은 남는다',
     run: (c, u, t) => {
       if (!t) return;
       const n = Math.floor((((t.st.poison ?? 0) + (t.st.burn ?? 0)) * u.v('pct') * u.power) / 100);

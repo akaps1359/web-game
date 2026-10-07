@@ -152,7 +152,7 @@ reg.skills([
     target: 'self',
     tags: ['heal', 'refresh'],
     vals: { heal: [10, 14] },
-    desc: '체력 {heal} 회복. 재사용 대기 중인 다른 스킬 하나의 대기 시간을 초기화 (전투당 1회 스킬·대기를 되돌리는 스킬 제외)',
+    desc: '체력 {heal} 회복. 재사용 대기 중인 다른 스킬 하나를 바로 쓸 수 있게 한다 (전투당 1회 스킬과 대기를 되돌리는 스킬은 제외)',
     run: (c, u) => {
       c.heal(c.p, u.v('heal'));
       // 대기를 되돌리는 기술(임기응변 등)끼리 서로 되돌리면 한 턴에 끝없이 쓰는 고리가 된다
@@ -304,7 +304,7 @@ reg.skills([
     target: 'single',
     tags: ['debuff'],
     vals: { corrode: [2, 3] },
-    desc: '부식 {corrode} — 대상이 받는 공격 피해 +{corrode} (전투 내내)',
+    desc: '부식 {corrode} (대상이 받는 공격 피해 +{corrode}, 전투 내내)',
     run: (c, u, t) => void (t && c.apply(t, 'corrode', u.v('corrode'), c.p)),
   }),
   // 비야키
@@ -438,7 +438,7 @@ reg.skills([
     target: 'single',
     tags: ['attack', 'poise'],
     vals: { dmg: [5, 7], poise: [2, 3] },
-    desc: '대상의 약점을 모두 드러내고, 그 약점 중 한 속성으로 {D:dmg} 피해 (약점이 없으면 타격). 버팀 추가 -{poise}',
+    desc: '대상의 약점을 모두 드러내고 그중 한 속성으로 {D:dmg} 피해 (약점이 없으면 타격). 버팀 추가 -{poise}',
     run: (c, u, t) => {
       if (!t) return;
       for (const w of t.weak) {

@@ -92,7 +92,7 @@ export function foldForward(c: Combat, e: EnemyUnit) {
   if (front.length >= MAX_ROW) c.moveRow(front[front.length - 1], 1);
   if (!c.moveRow(e, 0)) return;
   setUi(c, 'ui:tilt', FOLD_TILT);
-  c.emit({ t: 'text', uid: e.uid, text: '차원이 접혀 문이 코앞으로 쏟아진다 — 근접 공격이 닿는다', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: e.uid, text: '차원이 접혀 문이 코앞으로 쏟아진다. 근접 공격이 닿는다', tone: 'eldritch' });
   // 제4의 벽: 기울어진 화면을 기기 탓으로 돌린다 (처음 한 번)
   if (once(c, 'a4-fold')) cine(c, 'sysmsg', { uid: e.uid, text: '화면 회전 잠금이 해제되었습니다.' });
 }
@@ -139,7 +139,7 @@ export function issueCommand(c: Combat, e: EnemyUnit): boolean {
   const i = c.rng.pick(pool);
   if (c.apply(c.p, COMMAND, i + 1, e) <= 0) return false;
   const name = skillName(c, c.run.slots[i]!);
-  c.emit({ t: 'text', uid: e.uid, text: `왕의 명령 — 「${name}」${eul(name)} 써라`, tone: 'eldritch' });
+  c.emit({ t: 'text', uid: e.uid, text: `왕의 명령: 「${name}」${eul(name)} 써라`, tone: 'eldritch' });
   // 제4의 벽: 게임의 도움말이 파라오의 명령을 대신 전한다 (처음 한 번)
   if (once(c, 'a4-cmd-tip')) cine(c, 'sysmsg', { uid: e.uid, text: `도움말: 지금은 「${name}」${eul(name)} 쓰는 것이 좋습니다.` });
   return true;
@@ -168,7 +168,7 @@ export function judgeCommand(c: Combat, e: EnemyUnit) {
     return;
   }
   setSt(c, c.p, COMMAND, 0);
-  c.emit({ t: 'text', uid: e.uid, text: '불복 — 왕이 노한다', tone: 'bad' });
+  c.emit({ t: 'text', uid: e.uid, text: '명령을 어겼다. 왕이 노한다', tone: 'bad' });
   c.horror(e, DEFY_SAN);
   if (c.over || e.dead) return;
   c.apply(c.p, 'dread', 2, e);
@@ -216,7 +216,7 @@ export function chooseGlyphs(c: Combat): DmgType[] {
 }
 
 function glyphText(types: DmgType[], turns: number): string {
-  return `상형문자: ${types.map((t) => TYPE_NAME[t]).join(' → ')} — ${turns > 0 ? `${turns}턴 남음` : '심판이 내린다'}`;
+  return `상형문자: ${types.map((t) => TYPE_NAME[t]).join(' → ')} (${turns > 0 ? `${turns}턴 남음` : '심판이 내린다'})`;
 }
 
 /** 새길 수 있는가: 둘째 턴이 끝난 뒤 계획할 때부터(새기는 것은 셋째 턴), 별의 심판이 걸려 있지 않을 때, 지난 심판 뒤 GLYPH_GAP턴, 전투마다 GLYPH_MAX번 */
@@ -262,7 +262,7 @@ function eraseGlyph(c: Combat, e: EnemyUnit) {
     return;
   }
   endGlyphs(c, e);
-  c.emit({ t: 'text', uid: e.uid, text: '상형문자가 모두 지워졌다 — 심판이 흩어진다', tone: 'good' });
+  c.emit({ t: 'text', uid: e.uid, text: '상형문자가 모두 지워졌다. 심판이 흩어진다', tone: 'good' });
   if (e.broken === 0 && e.maxPoise > 0) {
     e.poise = Math.max(0, e.poise - GLYPH_STAGGER);
     if (e.poise === 0) c.breakEnemy(e);
@@ -278,7 +278,7 @@ export function judge(c: Combat, e: EnemyUnit) {
     return;
   }
   if ((e.mem.glyphTurns ?? 0) > 0) {
-    c.emit({ t: 'text', uid: e.uid, text: '모래시계가 흐른다 — 심판이 다가온다', tone: 'eldritch' });
+    c.emit({ t: 'text', uid: e.uid, text: '모래시계가 흐른다. 심판이 다가온다', tone: 'eldritch' });
     return;
   }
   endGlyphs(c, e);
@@ -328,7 +328,7 @@ export function overturn(c: Combat, e: EnemyUnit) {
 export function callStar(c: Combat, e: EnemyUnit) {
   if ((c.p.st[STARFALL] ?? 0) > 0) return;
   if (c.apply(c.p, STARFALL, STAR_TURNS, e) <= 0) return;
-  c.emit({ t: 'text', uid: 'p', text: `하늘에서 별 하나가 끌려 내려온다 — 내 턴이 ${STAR_TURNS}번 끝나면 전열에 떨어진다`, tone: 'eldritch' });
+  c.emit({ t: 'text', uid: 'p', text: `하늘에서 별 하나가 끌려 내려온다. 내 턴이 ${STAR_TURNS}번 끝나면 전열에 떨어진다`, tone: 'eldritch' });
 }
 
 function scatterStar(c: Combat, text: string) {
@@ -406,7 +406,7 @@ export function addDark(c: Combat, src: EnemyUnit, n: number) {
   c.emit({
     t: 'text',
     uid: 'p',
-    text: now >= DARK_MAX ? '빛이 거의 남지 않았다 — 일식이 온다' : now >= 2 ? '어둠 속에서 아무것도 보이지 않는다' : '빛이 먹혀 든다',
+    text: now >= DARK_MAX ? '빛이 거의 남지 않았다. 일식이 온다' : now >= 2 ? '어둠 속에서 아무것도 보이지 않는다' : '빛이 먹혀 든다',
     tone: 'eldritch',
   });
   if (now >= 2) shroud(c);
@@ -490,7 +490,7 @@ export function bodySwap(c: Combat, e: EnemyUnit) {
   }
   const take = Math.max(1, Math.round(gap * c.p.maxHp));
   const give = Math.max(1, Math.round(gap * e.maxHp));
-  c.emit({ t: 'text', uid: 'p', text: '몸이 뒤바뀌었다 — 상처가 당신에게 넘어온다', tone: 'eldritch' });
+  c.emit({ t: 'text', uid: 'p', text: '몸이 뒤바뀌었다. 상처가 고스란히 넘어온다', tone: 'eldritch' });
   c.loseHp(c.p, take, 'a4-bodyswap');
   if (!c.over && !e.dead) c.heal(e, give);
 }
@@ -532,7 +532,7 @@ reg.statuses([
     name: '심판의 상형문자',
     icon: 'gi:eye-of-horus',
     kind: 'debuff',
-    desc: `검은 파라오가 새긴 상형문자 {n}개 — 위 띠에 적힌 속성으로 파라오를 차례대로 맞히면 앞에서부터 하나씩 지워진다 (틀린 속성은 아무 일도 없다). 기한 안에 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사 (결계가 한 번 막는다). 파라오를 붕괴시키거나 기절시켜도 지워진다`,
+    desc: `검은 파라오가 새긴 상형문자 {n}개. 위 띠에 적힌 속성으로 파라오를 차례대로 맞히면 앞에서부터 하나씩 지워진다 (틀린 속성은 아무 일도 없다). 기한 안에 모두 지우지 못하면 「${JUDGMENT}」: 사경 없이 즉사 (결계가 한 번 막는다). 파라오를 붕괴시키거나 기절시켜도 지워진다`,
     hooks: {
       onDamageDealt(c, s, d) {
         if (s.unit !== c.p || d.src !== c.p || !d.attack || d.amount <= 0 || !isEnemy(d.tgt) || d.tgt.def !== PHARAOH) return;
@@ -547,18 +547,18 @@ reg.statuses([
         e.mem.glyphTurns = Math.max(0, (e.mem.glyphTurns ?? 0) - 1);
         const types = c.s.obj?.types ?? [];
         if (types.length) setObjective(c, { text: glyphText(types, e.mem.glyphTurns), types, lethal: true });
-        if (e.mem.glyphTurns === 0) c.emit({ t: 'text', uid: e.uid, text: '모래가 다 떨어졌다 — 신들의 심판이 내린다', tone: 'bad' });
+        if (e.mem.glyphTurns === 0) c.emit({ t: 'text', uid: e.uid, text: '모래가 다 떨어졌다. 신들의 심판이 내린다', tone: 'bad' });
       },
       onBreak(c, s, victim) {
         if (s.unit !== c.p || victim.def !== PHARAOH || !victim.mem.glyphs) return;
         endGlyphs(c, victim);
-        c.emit({ t: 'text', uid: victim.uid, text: '붕괴 — 상형문자가 무너졌다', tone: 'good' });
+        c.emit({ t: 'text', uid: victim.uid, text: '붕괴하자 상형문자도 무너졌다', tone: 'good' });
       },
       // 기절시키면 읊던 심판이 끊긴다 (수호자 기절 규칙에 막혀 기절하지 않으면 그대로)
       onApplied(c, s, target, id) {
         if (s.unit !== c.p || id !== 'stun' || !isEnemy(target) || target.def !== PHARAOH || !target.mem.glyphs) return;
         endGlyphs(c, target);
-        c.emit({ t: 'text', uid: target.uid, text: '기절 — 읊던 심판이 끊겼다', tone: 'good' });
+        c.emit({ t: 'text', uid: target.uid, text: '기절해 읊던 심판이 끊겼다', tone: 'good' });
         if (target.broken !== 2 && target.intent?.move === 'judgment') c.planIntent(target);
       },
       onAnyDeath(c, s, victim) {
@@ -571,7 +571,7 @@ reg.statuses([
     name: '왕의 명령',
     icon: 'gi:pointing',
     kind: 'debuff',
-    desc: `검은 파라오가 {n}번째 칸의 기술을 지목했다 — 이번 턴 그 기술을 쓰면 왕이 흡족해한다. 쓰지 않으면 파라오의 차례에 정신 피해 ${DEFY_SAN}, 공포 2, 파라오 힘 +${DEFY_STR}`,
+    desc: `검은 파라오가 {n}번째 칸의 기술을 지목했다. 이번 턴에 그 기술을 쓰면 왕이 흡족해한다. 쓰지 않으면 파라오의 차례에 정신 피해 ${DEFY_SAN}, 공포 2, 파라오 힘 +${DEFY_STR}`,
     hooks: {
       onTurnStart(c, s) {
         if (s.unit !== c.p) return;
@@ -593,7 +593,7 @@ reg.statuses([
     name: '흔들리는 대지',
     icon: 'gi:earth-crack',
     kind: 'buff',
-    desc: '체력을 {n} 더 잃으면 고통에 몸부림치며 대지를 뒤집는다 — 다음 행동이 「대지를 뒤집는다」로 바뀐다',
+    desc: '체력을 {n} 더 잃으면 고통에 몸부림치며 다음 행동이 「대지를 뒤집는다」로 바뀐다',
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -607,7 +607,7 @@ reg.statuses([
         e.mem.overturn = 1;
         // 내 턴에 무너뜨렸다면 군주가 하려던 행동은 다음 차례로 미뤄진다 (사라지지 않는다)
         if (c.s.phase === 'player') e.mem.postpone = 1;
-        c.emit({ t: 'text', uid: e.uid, text: '고통에 몸부림친다 — 대지를 뒤집으려 한다', tone: 'eldritch' });
+        c.emit({ t: 'text', uid: e.uid, text: '고통에 몸부림친다. 대지를 뒤집으려 한다', tone: 'eldritch' });
         if (e.broken !== 2) c.planIntent(e);
       },
     },
@@ -617,7 +617,7 @@ reg.statuses([
     name: '떨어지는 별',
     icon: 'gi:meteor-impact',
     kind: 'debuff',
-    desc: `별의 자손 군주가 끌어내린 별 — 내 턴이 {n}번 더 끝나면 전열에 떨어진다: 전열의 적은 저마다 최대 체력의 ${Math.round(STAR_PCT * 100)}%(최소 ${STAR_MIN}) 피해(방어도 무시), 당신은 ${STAR_DMG} 피해(방어도가 먼저 막는다). 전열이 비면 뒤에 숨은 군주가 끌려 나온다. 군주를 붕괴시키거나 쓰러뜨리면 별이 흩어진다`,
+    desc: `별의 자손 군주가 끌어내린 별. 내 턴이 {n}번 더 끝나면 전열에 떨어진다. 전열의 적은 저마다 방어도를 무시하고 최대 체력의 ${Math.round(STAR_PCT * 100)}%(최소 ${STAR_MIN}) 피해. 나에게는 피해 ${STAR_DMG} (방어도가 먼저 막는다). 전열이 비면 뒤에 숨은 군주가 끌려 나온다. 군주를 붕괴시키거나 쓰러뜨리면 별이 흩어진다`,
     tickEnd(c, u, n) {
       if (isEnemy(u)) {
         setSt(c, u, STARFALL, 0);
@@ -625,14 +625,14 @@ reg.statuses([
       }
       if (n > 1) {
         setSt(c, u, STARFALL, n - 1);
-        c.emit({ t: 'text', uid: 'p', text: '별이 바로 위에서 타오른다 — 다음 내 턴이 끝나면 전열에 떨어진다', tone: 'bad' });
+        c.emit({ t: 'text', uid: 'p', text: '별이 바로 위에서 타오른다. 다음 내 턴이 끝나면 전열에 떨어진다', tone: 'bad' });
         return;
       }
       starfall(c);
     },
     hooks: {
       onBreak(c, s, victim) {
-        if (s.unit === c.p && victim.def === LORD) scatterStar(c, '붕괴 — 별이 흩어졌다');
+        if (s.unit === c.p && victim.def === LORD) scatterStar(c, '붕괴하자 별이 흩어졌다');
       },
       onAnyDeath(c, s, victim) {
         if (s.unit === c.p && isEnemy(victim) && victim.def === LORD) scatterStar(c, '군주가 쓰러지자 별이 흩어졌다');
@@ -644,7 +644,7 @@ reg.statuses([
     name: '어둠',
     icon: 'gi:night-sky',
     kind: 'debuff',
-    desc: `검은 별이 빛을 먹었다 (최대 ${DARK_MAX}). 2 이상이면 적의 의도가 어둠에 묻힌다 (힘을 모으는 것과 일식은 보인다, 통찰 ${DARK_REVEAL}이면 모두 보인다). ${DARK_MAX}이 되면 검은 별이 일식을 일으킨다. 걷어 내는 법: 검은 별을 화염이나 비전으로 공격 (내 턴마다 한 번), 공허의 눈을 쓰러뜨림, 검은 별을 붕괴시킴 — 저마다 1씩`,
+    desc: `검은 별이 빛을 먹었다 (최대 ${DARK_MAX}). 2 이상이면 적의 의도가 어둠에 묻힌다. 힘을 모으는 것과 일식은 보인다. 통찰 ${DARK_REVEAL}이면 모두 보인다. ${DARK_MAX}이 되면 검은 별이 일식을 일으킨다. 어둠을 1씩 걷어 내는 법: 검은 별을 화염이나 비전으로 공격 (내 턴마다 한 번), 공허의 눈을 쓰러뜨림, 검은 별을 붕괴시킴`,
     hooks: {
       onTurnStart(c, s) {
         if (s.unit !== c.p) return;
@@ -672,7 +672,7 @@ reg.statuses([
     name: '얽힌 뿌리',
     icon: 'gi:tree-roots',
     kind: 'debuff',
-    desc: '검은 뿌리가 발목을 휘감았다 — 내 턴이 시작될 때 행동력 -1 ({n}턴). 화염이나 참격 기술을 쓰거나, 어머니를 공격해 피해를 주면 끊어진다',
+    desc: '검은 뿌리가 발목을 휘감았다. 내 턴이 시작될 때 행동력 -1 ({n}턴). 화염이나 참격 기술을 쓰거나 어머니를 공격해 피해를 주면 끊어진다',
     tickStart(c, u) {
       if (isEnemy(u)) {
         setSt(c, u, ENTANGLE, 0);
@@ -704,7 +704,7 @@ reg.statuses([
     name: '바람 타기',
     icon: 'gi:whirlwind',
     kind: 'buff',
-    desc: '별바람을 타고 떠 있다 — 받는 공격 피해 -50%. 공격을 {n}번 더 맞으면 바람에서 떨어져 붕괴한다. 자기 차례가 오면 바람이 잦아든다',
+    desc: '별바람을 타고 떠 있다. 받는 공격 피해 -50%. 공격을 {n}번 더 맞으면 바람에서 떨어져 붕괴한다. 자기 차례가 오면 바람이 잦아든다',
     hooks: {
       modDamageIn(_c, s, d) {
         if (d.attack && d.tgt === s.unit) d.mult *= 0.5;

@@ -1,7 +1,7 @@
 import type { Combat } from '../engine/combat';
 import type { DmgType, IntentKind, Rarity, School, SkillDef, SkillUse, Unit } from '../engine/types';
 import type { RoomType } from '../engine/dungeon';
-import { DISGUISE_REVEAL, HIDDEN_REVEAL, INSIGHT_WEAK, INSIGHT_WEAK_CAP, lvlVal } from '../engine/combat';
+import { DISGUISE_REVEAL, HIDDEN_REVEAL, INSIGHT_WEAK, INSIGHT_WEAK_CAP, lvlVal, WEAK_BONUS } from '../engine/combat';
 
 export const DMG_NAME: Record<DmgType | 'true', string> = {
   slash: '참격',
@@ -120,6 +120,52 @@ export const INTENT_COLOR: Record<IntentKind, string> = {
   death: '#ff2a3a',
 };
 
+/** 의도 표시의 아이콘 아래 짧은 이름 (범례·자세히 보기에도 쓴다) */
+export const INTENT_NAME: Record<IntentKind, string> = {
+  attack: '공격',
+  charge: '준비',
+  block: '방어',
+  buff: '강화',
+  debuff: '방해',
+  horror: '정신',
+  summon: '소환',
+  advance: '전진',
+  retreat: '후퇴',
+  heal: '회복',
+  flee: '도주',
+  stunned: '붕괴',
+  sleep: '잠',
+  unknown: '???',
+  special: '특수',
+  death: '즉사',
+};
+
+/** 의도 종류의 뜻 (범례·용어집. 시스템 도움말이라 해라체) */
+export const INTENT_MEANING: Record<IntentKind, string> = {
+  attack: '나를 공격한다. 숫자는 내가 받을 피해다.',
+  charge: '힘을 모은다. 다음 적의 차례엔 힘만 모으고 그다음 차례에 크게 공격한다. 그 전에 붕괴시키면 끊긴다.',
+  block: '방어도를 쌓는다. 내 공격이 그만큼 먼저 막힌다.',
+  buff: '자신이나 동료를 강하게 한다.',
+  debuff: '나에게 해로운 상태를 건다.',
+  horror: '정신력을 깎는다. 숫자는 잃을 정신력이다.',
+  summon: '다른 존재를 불러낸다.',
+  advance: '전열로 나온다.',
+  retreat: '후열로 물러난다.',
+  heal: '체력을 회복한다.',
+  flee: '전투에서 달아난다.',
+  stunned: '붕괴하거나 기절해서 다음 차례엔 행동하지 못한다.',
+  sleep: '잠들어 아무것도 하지 않는다.',
+  unknown: '의도가 가려져 보이지 않는다. 통찰이 높으면 보인다.',
+  special: '이 적만의 특별한 행동이다. 누르면 설명이 나온다.',
+  death: '즉사기다. 막지 못하면 사경 없이 그 자리에서 죽는다. 막는 법은 화면 위 붉은 띠에 있다.',
+};
+
+/** 관망(_wait): 아무것도 하지 않는 차례 */
+export const INTENT_WAIT = '다음 차례엔 아무것도 하지 않는다.';
+
+/** 받침: 0 없음 · 'l' ㄹ · 1 그 밖 */
+export { josa } from '../engine/josa';
+
 export const ROOM_ICON: Record<RoomType, string> = {
   start: 'gi:footsteps',
   combat: 'gi:crossed-swords',
@@ -187,9 +233,9 @@ export function insightText(n?: number): string {
   const pct = (x: number) => Math.round(x * 100);
   const lines = INSIGHT_STEPS.map((s) => `${has ? (k >= s.at ? '● ' : '○ ') : ''}${s.at}: ${s.text}`);
   lines.push(
-    `1당 약점 공격 피해 +${pct(INSIGHT_WEAK)}% (${INSIGHT_WEAK_CAP}까지)${has ? ` — 지금 +${pct(INSIGHT_WEAK * Math.min(INSIGHT_WEAK_CAP, k))}%` : ''}`,
+    `약점 공격 피해 +${pct(WEAK_BONUS)}%, 통찰 1당 +${pct(INSIGHT_WEAK)}% 더 (${INSIGHT_WEAK_CAP}까지)${has ? `. 지금 +${pct(WEAK_BONUS + INSIGHT_WEAK * Math.min(INSIGHT_WEAK_CAP, k))}%` : ''}`,
     '금기 스킬과 공허의 유물·각인이 통찰에 비례해 강해진다',
-    `대가: 받는 정신 피해 +${pct(INSIGHT_SAN)}%/통찰 (${INSIGHT_SAN_CAP}까지)${has ? ` — 지금 +${pct(INSIGHT_SAN * Math.min(INSIGHT_SAN_CAP, k))}%` : ''}`,
+    `대가: 받는 정신 피해 +${pct(INSIGHT_SAN)}%/통찰 (${INSIGHT_SAN_CAP}까지)${has ? `. 지금 +${pct(INSIGHT_SAN * Math.min(INSIGHT_SAN_CAP, k))}%` : ''}`,
   );
   return lines.join('\n');
 }
@@ -197,11 +243,11 @@ export function insightText(n?: number): string {
 /** 한 줄짜리 통찰 풀이 (용어 풀이 목록용 — 줄바꿈이 보이지 않는 곳) */
 export function insightBrief(): string {
   const steps = INSIGHT_STEPS.map((s) => `[${s.at}] ${s.text}`).join(' ');
-  return `${steps}. 1당 약점 공격 피해 +${Math.round(INSIGHT_WEAK * 100)}% (${INSIGHT_WEAK_CAP}까지), 금기 스킬이 강해진다. 대신 받는 정신 피해가 1당 ${Math.round(INSIGHT_SAN * 100)}% 늘어난다 (${INSIGHT_SAN_CAP}까지).`;
+  return `${steps}. 1당 약점 공격 피해 +${Math.round(INSIGHT_WEAK * 100)}% 더 (${INSIGHT_WEAK_CAP}까지), 금기 스킬이 강해진다. 대신 받는 정신 피해가 1당 ${Math.round(INSIGHT_SAN * 100)}% 늘어난다 (${INSIGHT_SAN_CAP}까지).`;
 }
 
 /** 통찰을 얻는 길 */
-export const INSIGHT_SOURCES = '얻기 어렵다 — 수호자의 이계 정수, 그리고 영구한 대가(최대 정신력·최대 체력·광기)를 치르는 선택으로만.';
+export const INSIGHT_SOURCES = '대가 없이는 얻을 수 없다. 영구한 대가(최대 정신력·최대 체력·광기)를 치르는 선택, 금기의 봉헌, 수호자 유물로만 얻는다.';
 
 // ───────────── 스킬 설명 ─────────────
 

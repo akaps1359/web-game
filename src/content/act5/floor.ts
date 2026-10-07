@@ -24,9 +24,9 @@ reg.floors([
     name: '꿈꾸는 우주',
     victory: '별의 태아는 태어나지 못했다. 우주는 아직 꿈에서 깨지 않았다.',
     law:
-      `떠도는 섬 — ${SHIFT_HOURS}시간마다 꿈의 섬들이 떠돌아 복도의 연결이 바뀐다.\n` +
-      '뒤집힌 꿈 — 회복 반전 구역(지도에 표시)의 전투에서는 당신의 회복이 피해가 된다.\n' +
-      `자장가 — 방을 옮길 때마다 정신력 -${MOVE_SANITY}. 적을 붕괴시키면 꿈에서 깨어나듯 정신력 +${BREAK_SANITY}.`,
+      `떠도는 섬: ${SHIFT_HOURS}시간마다 꿈의 섬들이 떠돌아 복도의 연결이 바뀐다.\n` +
+      '뒤집힌 꿈: 회복 반전 구역(지도에 표시)에서 싸울 때는 내가 받는 회복이 피해가 된다.\n' +
+      `자장가: 방을 옮길 때마다 정신력 -${MOVE_SANITY}. 적을 붕괴시키면 꿈에서 깨어나듯 정신력 +${BREAK_SANITY}.`,
     hooks: {
       onBreak(c) {
         c.gainSanity(BREAK_SANITY);
@@ -46,10 +46,10 @@ reg.floors([
       // 자장가
       const s = loseSanityRun(run, MOVE_SANITY);
       if (run.over) return;
-      if (s.madness) log(run, '자장가가 정신을 잠식했다 — 광기에 사로잡혔다');
+      if (s.madness) log(run, '자장가가 정신을 잠식했다. 광기에 사로잡혔다');
       else if (!f.vars.lullTold) {
         f.vars.lullTold = 1;
-        log(run, `어디선가 자장가가 들린다. 1층부터 당신을 부르던 그 목소리다 — 걸음마다 정신이 깎인다 (정신력 -${s.lost})`);
+        log(run, `어디선가 자장가가 들린다. 1층부터 들려오던 그 목소리다. 걸음마다 정신이 깎인다 (정신력 -${s.lost})`);
       }
 
       // 떠도는 섬
@@ -72,7 +72,7 @@ reg.floors([
       }
       reveal(run, f, f.pos);
       connectSeen(f);
-      log(run, '섬들이 떠돌았다 — 복도의 연결이 바뀌었다');
+      log(run, '섬들이 떠돌아 복도의 연결이 바뀌었다');
     },
     lord: {
       id: 'dream-eater',
@@ -81,9 +81,9 @@ reg.floors([
       goal: 5,
       warnings: [
         '잠결에 누군가 입맛을 다시는 소리를 들었다…',
-        '꿈이 얇아진다. 무언가가 당신의 꿈을 갉아먹고 있다',
-        '기억 한 조각이 사라졌다. 그것은 이제 당신의 꿈 바로 곁에 있다',
-        '꿈을 먹는 자가 깨어났다 — 지도에 표시됨',
+        '꿈이 얇아진다. 무언가가 꿈 가장자리를 갉아먹고 있다',
+        '기억 한 조각이 사라졌다. 그것이 이제 꿈 바로 곁까지 와 있다',
+        '꿈을 먹는 자가 깨어났다 (지도에 표시)',
       ],
       // 숨겨진 조건: 이 층에서 잠들기(야영지 수면 +2, 낯선 침대 +2, 일흔 계단 +1),
       // 회복 반전 구역에서의 승리 +1, 정신력이 절반 이하인 채로 조수가 차오름 +1 (흔들리는 꿈은 맛있다)
@@ -95,7 +95,7 @@ reg.floors([
           f.vars.lordH = f.hours;
           const sleepless = run.relics.some((x) => x.id === 'sleeper-scale');
           if (prev?.type === 'camp' && prev.cleared && dh >= SLEPT_HOURS && !sleepless) {
-            log(run, '잠든 사이, 무언가가 당신의 꿈을 한 입 베어 물었다');
+            log(run, '잠든 사이 무언가가 꿈을 한 입 베어 물었다');
             return 2;
           }
           return 0;

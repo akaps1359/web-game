@@ -47,6 +47,7 @@ import {
 } from './vfxRecipes';
 import { blurredSilhouette, silhouetteCells, VT } from './vfxTextures';
 import { castSkill, enemyUltimate, type CastTarget } from './vfxSkills';
+import { gapHarvestFx, gapOpenFx } from './vfxGap';
 import { PlayerWard } from './vfxWard';
 
 export interface Rect {
@@ -1282,6 +1283,30 @@ export class Battle extends Container {
     const a = this.anchor(uid);
     if (!a) return;
     revealGlint(this.vfx, a.x, a.y - a.size * 0.75, a.size, color);
+  }
+
+  /** 틈이 열렸다: 몸에 계열 색 균열이 번쩍 (큰 틈은 더 크게) */
+  gapOpen(uid: string, tint: number, big: boolean) {
+    const a = this.anchor(uid);
+    if (!a) return;
+    gapOpenFx(this.vfx, a.x, a.y - a.size * 0.52, a.size, tint, big);
+    const v = this.views.get(uid);
+    if (v) {
+      v.tintFlash(tint, big ? 0.55 : 0.4, 0.35);
+      if (big) v.freezeT = Math.max(v.freezeT, 0.05);
+    }
+  }
+
+  /** 틈을 거뒀다: 균열이 깨져 흩어지고 거둔 계열의 빛 (from: 틈의 색, to: 거둔 계열의 색) */
+  gapHarvest(uid: string, from: number, to: number, big: boolean) {
+    const a = this.anchor(uid);
+    if (!a) return;
+    gapHarvestFx(this.vfx, a.x, a.y - a.size * 0.52, a.size, from, to, big);
+    const v = this.views.get(uid);
+    if (v) {
+      v.tintFlash(to, 0.45, 0.3);
+      v.recoil(0.6);
+    }
   }
 
   /** 버팀 회복 */

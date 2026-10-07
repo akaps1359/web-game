@@ -5,7 +5,7 @@ import { loadMeta, type Meta } from './meta';
 
 export type Sheet =
   | null
-  | { kind: 'character'; tab?: 'skills' | 'essences' | 'equip' | 'relics' | 'status' }
+  | { kind: 'character'; tab?: 'skills' | 'essences' | 'equip' | 'relics' | 'items' | 'status' }
   | { kind: 'settings' }
   | { kind: 'codex' }
   | { kind: 'map' }

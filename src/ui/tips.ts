@@ -1,6 +1,7 @@
 import { saveMeta } from '../state/meta';
 import { store } from '../state/store';
 import { showTip } from './components';
+import { MAX_MADNESS } from '../engine/combat';
 
 /** 처음 한 번만 보여주는 도움말 */
 const TIPS: Record<string, { title: string; icon: string; body: string }> = {
@@ -17,7 +18,7 @@ const TIPS: Record<string, { title: string; icon: string; body: string }> = {
   essence: {
     title: '정수',
     icon: 'gi:heart-beats',
-    body: '쓰러뜨린 존재가 정수를 남겼다. 흡수하면 스탯과 패시브, 그리고 최대 체력을 얻는다. 수호자의 정수라면 여기에 그 존재의 기술 하나를 골라 함께 배울 수 있다.\n\n정수 자리는 4개에서 시작해 층 수호자를 쓰러뜨릴 때마다 하나씩 는다. 자리가 꽉 차면 가진 정수 하나를 깨뜨리고 바꿀 수 있다 — 무엇을 들일지 고르는 것이 곧 빌드다. 아껴 두고 싶으면 병에 담아 두었다가 신전에서 골드를 내고 새길 수 있다.\n\n청록빛 이계의 정수는 흡수할 때 최대 정신력 -5를 치른다. 수호자의 이계 정수라면 통찰 +1도 얻는다 — 그 밖의 통찰은 영구한 대가를 치러야만 얻는다.',
+    body: '쓰러뜨린 존재가 정수를 남겼다. 흡수하면 스탯과 패시브, 그리고 최대 체력을 얻는다. 수호자의 정수라면 여기에 그 존재의 기술 하나를 골라 함께 배울 수 있다.\n\n정수 자리는 4개에서 시작해 층 수호자를 쓰러뜨릴 때마다 하나씩 는다. 자리가 꽉 차면 가진 정수 하나를 깨뜨리고 바꿀 수 있다. 무엇을 들일지 고르는 것이 곧 빌드다. 아껴 두고 싶으면 병에 담아 두었다가 신전에서 골드를 내고 새길 수 있다.\n\n청록빛 이계의 정수는 흡수할 때 최대 정신력 -5를 치른다. 통찰은 주지 않는다.',
   },
   dark: {
     title: '어둠',
@@ -27,7 +28,7 @@ const TIPS: Record<string, { title: string; icon: string; body: string }> = {
   sanity: {
     title: '정신력',
     icon: 'gi:brain',
-    body: '정신력이 0이 되면 붕괴해 광기를 얻는다. 나쁜 광기가 4개가 되면 완전히 미쳐 여정이 끝난다.\n\n야영지에서 명상하거나 신전에서 기도해 회복할 수 있다.',
+    body: `정신력이 0이 되면 붕괴해 광기를 얻는다. 나쁜 광기가 ${MAX_MADNESS}개가 되면 완전히 미쳐 여정이 끝난다.\n\n야영지에서 명상하거나 신전에서 기도해 회복할 수 있다.`,
   },
   dying: {
     title: '사경',
