@@ -8,6 +8,7 @@
 - `npm run sim` — 봇 자동 플레이 밸런스 시뮬레이션 (`SIM_RUNS=40 SIM_ORIGINS=soldier`), 결과 `sim/out/balance.txt`
 - `npm run build` — 타입 검사 + 빌드 (GitHub Pages 배포용, base `/web-game/`)
 - 배포: main에 push → `.github/workflows/deploy.yml`
+- 작업이 끝나면 묻지 말고 바로 배포한다: `npm test`·`npm run build`가 통과하면 main에 커밋하고 push (클라우드 세션도 같다)
 
 ## 구조
 - `src/engine/` 순수 게임 로직 (DOM 금지, 난수는 `Rng`만 — `Math.random` 금지). 상태는 전부 JSON 직렬화 가능해야 함 (저장/시뮬레이터).
