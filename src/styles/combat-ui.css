@@ -18,13 +18,33 @@
 }
 
 /* ───────── 가죽 바탕 ───────── */
+/*
+ * 화면이 모자라면(기술이 세 줄이 되거나, 내 상태·위협 띠가 붙거나, 사파리 주소창이 자리를 먹으면) 수첩이 줄어든다.
+ * 전장은 최소 높이(.battle-area)를 지키고, 그다음엔 기술 카드가 56 → 38px까지 낮아진다 (카드 안의 그림·글자는 @container로).
+ * 그래도 모자란 낮은 화면은 아래 @media (max-height)가 여백을 줄인다. 주머니와 턴 종료가 화면 밖으로 밀려나지 않게
+ */
 .kit {
   position: relative;
   z-index: 3;
-  flex: none;
+  flex: 0 1 auto;
+  /* 세로 flex 상자의 자동 최소 높이는 내용 전체라 줄지 않는다 — 0으로 두고, 줄어들 수 있는 것은 기술 칸(최소 38px 줄)뿐 */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   /* 아이폰 아래 홈 막대 자리까지 가죽이 이어지게 */
   margin-bottom: calc(-1 * var(--safe-b));
   padding: 6px 0 calc(6px + var(--safe-b));
+}
+.kit > * {
+  flex: none;
+}
+/*
+ * 전장의 최소 높이: 낮은 화면일수록 조금씩 내준다 (--area-min, 아래 @media). 그래도 수첩이 넘치면
+ * Combat.tsx의 fitKit이 넘친 만큼(--area-cut)을 더 내준다 — 120px까지
+ */
+.combat .battle-area {
+  --area-min: 200px;
+  min-height: max(120px, calc(var(--area-min) - var(--area-cut, 0px)));
 }
 /* 가죽: 위 가장자리는 칼로 자른 듯 고르지 않게 */
 .kit::before {
@@ -253,6 +273,12 @@
   line-height: 1.42;
   color: #cbbfa6;
 }
+/* 긴 설명은 쪽지 안에서 스크롤 (쪽지가 늘어나 아래 단추를 밀어내지 않게). 이름·거두기·못 쓰는 까닭은 늘 보인다. 전체는 카드를 길게 눌러 */
+.kit .infobox .desc {
+  max-height: calc(1.42em * 5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .kit .infobox .nm {
   font-family: var(--serif);
   font-size: 15px;
@@ -320,18 +346,27 @@
 }
 
 /* ───────── 스킬 카드: 잉크로 그린 수첩 낱장 ───────── */
+/*
+ * 줄 높이는 넉넉하면 56px, 화면이 모자라면 38px까지 (수첩에서 줄어드는 것은 이 칸뿐이다).
+ * 그리드의 자동 최소 높이는 내용 전체(56px 줄)라 줄지 않으므로, 최소 높이를 줄 수(--rows, Combat.tsx)로 정한다
+ */
 .kit .skills {
+  flex: 1 1 auto;
+  grid-auto-rows: minmax(38px, 56px);
   gap: 8px 7px;
   padding: 10px 12px 0;
+  min-height: calc(var(--rows, 2) * 38px + (var(--rows, 2) - 1) * 8px + 10px);
 }
 .kit .skills.many {
   grid-template-columns: repeat(4, 1fr);
 }
 .kit .skill {
   --edge: var(--cu-edge-a);
-  min-height: 56px;
-  padding: 8px 5px 6px;
-  gap: 3px;
+  /* 높이는 줄(.skills)이 정한다. 안의 그림·글자는 카드 높이에 맞춘다 (아래 @container) */
+  container-type: size;
+  min-height: 0;
+  padding: 0 5px;
+  gap: 0;
   border: none;
   border-radius: 3px 5px 4px 6px / 5px 3px 6px 4px;
   background: var(--edge) 0 0 / 100% 100% no-repeat, var(--cu-fiber), radial-gradient(110% 90% at 50% 35%, rgba(255, 226, 170, 0.07), transparent 72%), linear-gradient(180deg, #302517, #20170e);
@@ -350,6 +385,7 @@
   scale: 0.96;
 }
 .kit .skill .sn {
+  margin-top: 3px;
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -438,6 +474,29 @@
 }
 .kit .skill.cooling {
   opacity: 1;
+}
+
+/* 낮아진 카드 (화면이 모자랄 때): 그림·이름·재사용 대기를 작게 */
+@container (max-height: 49px) {
+  .kit .skill > .ic {
+    width: 19px !important;
+    height: 19px !important;
+  }
+  .kit .skill .sn {
+    margin-top: 1px;
+    font-size: 11px;
+  }
+  .kit .skill .basic-tag {
+    top: 2px;
+    right: 5px;
+    font-size: 9px;
+  }
+  .kit .skill .cd {
+    padding-top: 3px;
+  }
+  .kit .skill .cd b {
+    font-size: 19px;
+  }
 }
 
 /* 빈 자리: 연필로 그어 둔 칸 */
@@ -1050,5 +1109,69 @@ button.gapmark:active {
   }
   .eplate .gapmark {
     animation: none;
+  }
+}
+
+/*
+ * 낮은 화면 (사파리 주소창·도구 막대까지 빼면 680px이 안 되는 폰): 위협 띠와 내 상태 줄까지 붙어도 주머니·턴 종료가 보이게
+ * 전장의 최소 높이를 조금 내주고 수첩의 여백을 줄인다 (기술 카드가 낮아지는 것은 위의 .skills)
+ */
+@media (max-height: 680px) {
+  .combat .battle-area {
+    --area-min: 176px;
+  }
+  .kit .infobox .desc {
+    max-height: calc(1.42em * 4);
+  }
+  .kit .pbox {
+    padding-top: 11px;
+    gap: 5px;
+  }
+}
+
+/* 아주 낮은 화면 (아이폰 SE·미니의 사파리처럼 620px이 안 될 때) */
+@media (max-height: 620px) {
+  .combat .battle-area {
+    --area-min: 160px;
+  }
+  .combat .battle-top {
+    padding-top: 4px;
+  }
+  .kit {
+    padding-top: 4px;
+    padding-bottom: calc(4px + var(--safe-b));
+  }
+  .kit .pbox {
+    padding-top: 10px;
+    gap: 4px;
+  }
+  .kit .infobox {
+    margin-top: 5px;
+    min-height: 44px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .kit .infobox .desc {
+    max-height: calc(1.42em * 3);
+  }
+  .kit .skills {
+    padding-top: 7px;
+    row-gap: 6px;
+    min-height: calc(var(--rows, 2) * 38px + (var(--rows, 2) - 1) * 6px + 7px);
+  }
+  .kit .footer {
+    padding-top: 7px;
+    padding-bottom: 2px;
+  }
+  .kit .slot-item,
+  .kit .endturn {
+    height: 42px;
+    min-height: 42px;
+  }
+  /* 위협 띠는 한 줄로 (눌러서 전체) */
+  .combat .obj-strip span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }

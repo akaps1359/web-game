@@ -41,6 +41,7 @@ export function CombatScreen() {
   const c = s.combat;
   const areaRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
+  const kitRef = useRef<HTMLDivElement>(null);
   const [, setTick] = useState(0);
   /** 의도 표시 읽는 법 (범례 창) */
   const [legend, setLegend] = useState(false);
@@ -66,6 +67,14 @@ export function CombatScreen() {
       ro.disconnect();
       window.removeEventListener('resize', measure);
     };
+  }, []);
+
+  // 아래 수첩이 화면을 넘치지 않게 (그릴 때마다, 화면 크기가 바뀔 때마다)
+  useLayoutEffect(() => fitKit(kitRef.current, areaRef.current));
+  useEffect(() => {
+    const on = () => fitKit(kitRef.current, areaRef.current);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
   }, []);
 
   // 틈이 닫히면 자세히 보기도 닫는다 (연출 중에 열어 둔 것이 나중에 다시 뜨지 않게)
@@ -217,7 +226,7 @@ ${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
           })}
 
         {/* 아래쪽: 탐험가의 가죽 수첩과 장비 띠 (내 상태 · 설명 쪽지 · 스킬 카드 · 주머니와 도장) */}
-        <div class="kit">
+        <div class="kit" ref={kitRef}>
           <div class="pbox">
             <div class="prow">
               <button id="p-anchor" class="medal" onClick={() => playerTip()} aria-label="내 정보">
@@ -253,7 +262,8 @@ ${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
 
           <InfoBox onIntent={setPeek} />
 
-          <div class={`skills ${refs.length > 9 ? 'many' : ''}`}>
+          {/* 줄 수: 화면이 모자라면 카드가 낮아지는데, 그 최소 높이를 CSS가 줄 수로 정한다 (combat-ui.css) */}
+          <div class={`skills ${refs.length > 9 ? 'many' : ''}`} style={{ '--rows': Math.ceil(refs.length / (refs.length > 9 ? 4 : 3)) } as Record<string, number>}>
             {refs.map((ref, i) => (ref ? <SkillButton key={ref} r={ref} /> : <EmptySlot key={`e${i}`} />))}
           </div>
 
@@ -299,6 +309,20 @@ ${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
       {legend && <IntentLegend onClose={() => setLegend(false)} />}
     </>
   );
+}
+
+/**
+ * 마지막 안전장치: 아래 수첩(내 상태·설명·기술·주머니와 턴 종료)이 화면을 넘치면 넘친 만큼 전장의 최소 높이를 내준다 (--area-cut, 120px까지).
+ * 보통은 CSS가 먼저 맞춘다 (기술 카드가 낮아지고 낮은 화면은 여백을 줄인다). 위협 띠·상태 줄·긴 설명이 한꺼번에 붙은 낮은 화면에서만 쓰인다.
+ * 매번 내준 것을 거두고 다시 재므로 자리가 남으면 저절로 돌려준다. 높이는 변형(기울어진 화면) 전의 레이아웃 값으로 잰다.
+ * 맨 아래 단추 밑의 여백(아이폰 홈 막대 자리)까지 들어가야 맞는 것이다
+ */
+function fitKit(kit: HTMLElement | null, area: HTMLElement | null) {
+  const foot = kit?.lastElementChild as HTMLElement | null | undefined;
+  if (!kit || !area || !foot) return;
+  area.style.removeProperty('--area-cut');
+  const over = foot.offsetTop + foot.offsetHeight + (parseFloat(getComputedStyle(kit).paddingBottom) || 0) - kit.clientHeight;
+  if (over > 1) area.style.setProperty('--area-cut', `${Math.ceil(over)}px`);
 }
 
 /** 전투 중 선택지: 고르기 전에는 다른 것을 할 수 없다 */
@@ -1122,7 +1146,7 @@ function InfoBox({ onIntent }: { onIntent: (uid: string) => void }) {
           </span>
           <div class="txt">
             <div class="nm">{def.name}</div>
-            {def.desc}
+            <div class="desc">{def.desc}</div>
           </div>
           {def.target !== 'single' ? (
             <button class="use" disabled={s.busy} onClick={() => useItem(Number(s.sel!.slice(1)))}>
@@ -1158,7 +1182,9 @@ function InfoBox({ onIntent }: { onIntent: (uid: string) => void }) {
               {cd > 0 ? ` · 재사용 대기 ${cd >= 99 ? '전투당 1회' : cd + '턴'}` : ''}
             </span>
           </div>
-          <Segs segs={segs} />
+          <div class="desc">
+            <Segs segs={segs} />
+          </div>
           {gh && (
             <div class={`gap-line ${gh.sure ? '' : 'maybe'}`} style={{ color: gh.color }}>
               <Icon name={GAP_ICON} size={13} color={gh.color} />
