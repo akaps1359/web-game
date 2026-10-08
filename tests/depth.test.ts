@@ -222,7 +222,7 @@ describe('각성: 깊은 층의 수호자', () => {
 });
 
 describe('변이', () => {
-  it('정예는 층마다 DEPTH.mutElite개 — 1층·수호자·하수인은 없다. 2단계 변이는 4층부터. 시드가 같으면 같다', () => {
+  it('정예는 층마다 DEPTH.mutElite개(소수는 그 확률로 하나 더) — 1층·수호자·하수인은 없다. 2단계 변이는 4층부터. 시드가 같으면 같다', () => {
     const tier = (id: string) => MUTATION.get(id)!.tier;
     for (let seed = 1; seed <= 24; seed++) {
       const a2 = fight(['flagellant'], { kind: 'elite', seed }).alive[0];
@@ -233,6 +233,9 @@ describe('변이', () => {
       expect(a3.affix!.every((m) => tier(m) === 1)).toBe(true);
       const a4 = fight(['outer-servitor', 'star-walker'], { kind: 'elite', seed });
       expect(one(a4, 'star-walker').affix?.length).toBe(DEPTH.mutElite[4]);
+      const a5 = fight(['dream-hunter'], { kind: 'elite', seed }).alive[0].affix?.length ?? 0;
+      expect(a5).toBeGreaterThanOrEqual(Math.floor(DEPTH.mutElite[5]));
+      expect(a5).toBeLessThanOrEqual(Math.ceil(DEPTH.mutElite[5]));
       expect(fight(['thug'], { seed }).alive[0].affix).toEqual([]);
       expect(one(fight(['shoggoth'], { kind: 'boss', seed }), 'shoggoth').affix).toEqual([]);
       expect(fight(['flagellant'], { kind: 'elite', seed }).alive[0].affix).toEqual(a2.affix);

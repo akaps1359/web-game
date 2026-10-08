@@ -24,15 +24,15 @@ import { cine } from './lib';
  */
 
 export const DEPTH = {
-  /** 변이 개수 (층 인덱스): 정예 */
-  mutElite: [0, 0, 1, 1, 1, 2],
+  /** 변이 개수 (층 인덱스): 정예. 소수는 그 확률로 하나 더 (1.5 = 하나 + 50%로 둘) */
+  mutElite: [0, 0, 1, 1, 1, 1.5],
   /** 일반 적에게 변이가 하나 붙을 확률 (층 인덱스) */
   mutNormal: [0, 0, 0, 0.25, 0.4, 0.55],
   /** 판짜기를 노리는 2단계 변이가 나오는 층과 그 무게 (층 인덱스) */
   tier2From: 4,
   tier2Weight: [0, 0, 0, 0, 1, 1],
   /** 가호: 한 턴에 받는 피해 상한 (최대 체력 비율, 층 인덱스) */
-  aegisElite: [0, 0, 0, 0.35, 0.27, 0.22],
+  aegisElite: [0, 0, 0, 0.35, 0.27, 0.25],
   aegisBoss: [0, 0, 0, 0.25, 0.2, 0.18],
   /** 붕괴해 있는 동안 상한 배율 */
   aegisBroken: 2,
@@ -430,7 +430,8 @@ export function rollMutations(c: Combat, e: EnemyUnit) {
   const act = Math.min(5, def.act);
   if (typeof c.run.rng.mut !== 'number') c.run.rng.mut = deriveSeed(c.run.seed, 'mut');
   const r = new Rng(c.run.rng, 'mut');
-  const n = def.tier === 'elite' ? DEPTH.mutElite[act] : r.chance(DEPTH.mutNormal[act]) ? 1 : 0;
+  const want = def.tier === 'elite' ? DEPTH.mutElite[act] : DEPTH.mutNormal[act];
+  const n = Math.floor(want) + (r.chance(want - Math.floor(want)) ? 1 : 0);
   for (let i = 0; i < n; i++) {
     const have = e.affix;
     const pool = MUTATIONS.filter(
