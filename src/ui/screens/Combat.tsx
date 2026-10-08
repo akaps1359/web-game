@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { garbleStable, mountWatcher, realWorld, staticCracks } from '../cinema';
 import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
-import { DISGUISE_REVEAL, GUARD, HIDDEN_REVEAL, breakProfile, lvlVal, shownIntentOf } from '../../engine/combat';
+import { BUILTIN_MOVES, DISGUISE_REVEAL, GUARD, HIDDEN_REVEAL, breakProfile, lvlVal, shownIntentOf, toleranceGain } from '../../engine/combat';
+import { DEPTH, MUTATION, aegisCap, aegisLeft, aegisPoiseCap, canAwaken } from '../../content/depth';
 import type { CombatChoice, EnemyUnit, Intent, IntentKind, Objective, SkillDef } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
@@ -34,6 +35,8 @@ import '../../styles/combat-ui.css';
 
 const RANGE_NAME = { melee: '근접', ranged: '원거리', self: '자신' } as const;
 const TARGET_NAME = { single: '단일', front: '전열', back: '후열', all: '전체', random: '무작위', self: '자신' } as const;
+/** 변이 표시 색 (보라) */
+const MUT_COLOR = '#c8a0ff';
 
 export function CombatScreen() {
   const s = store;
@@ -421,11 +424,13 @@ function Guard({ icon, n, color, label }: { icon: string; n: number; color: stri
   );
 }
 
-function StatusRow({ st, max }: { st: Record<string, number>; max?: number }) {
+function StatusRow({ st, max, muts }: { st: Record<string, number>; max?: number; muts?: string[] }) {
   const ids = Object.keys(st).filter((id) => st[id] && STATUSES.has(id) && !STATUSES.get(id)!.hidden);
-  if (!ids.length) return null;
+  // 변이(보라 테두리)는 언제나 앞에 보인다 — 상태는 남은 자리에 (content/depth.ts)
+  const ms = (muts ?? []).filter((id) => MUTATION.has(id));
+  if (!ids.length && !ms.length) return null;
   // 적 이름표 아래는 한 줄만 (두 줄이 되면 아래 내 정보 칸에 가려진다) — 넘치는 것은 「+N」을 눌러 본다
-  const cap = max ? Math.max(1, Math.floor((max + 2) / 22)) : ids.length;
+  const cap = max ? Math.max(1, Math.floor((max + 2) / 22) - ms.length) : ids.length;
   const shown = ids.length > cap ? ids.slice(0, cap - 1) : ids;
   const rest = ids.slice(shown.length);
   const restTip = () =>
@@ -437,6 +442,15 @@ function StatusRow({ st, max }: { st: Record<string, number>; max?: number }) {
     });
   return (
     <div class="st-row" style={max ? { maxWidth: max } : { justifyContent: 'flex-start', maxWidth: 'none' }}>
+      {ms.map((id) => {
+        const m = MUTATION.get(id)!;
+        const tip = () => showTip({ title: `변이 · ${m.name}`, icon: m.icon, color: MUT_COLOR, body: m.desc });
+        return (
+          <span class="st mu" style={{ pointerEvents: 'auto' }} {...press(tip, tip)}>
+            <Icon name={m.icon} size={13} color={MUT_COLOR} />
+          </span>
+        );
+      })}
       {rest.length > 0 && (
         <span class="st" style={{ pointerEvents: 'auto', order: 1 }} {...press(restTip, restTip)}>
           <span class="num" style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>
@@ -517,6 +531,8 @@ function guardSay(total: number): string | null {
 
 /** 힘을 모은 뒤에 쓸 일격의 이름 (같은 피해의 공격 — 모르면 null) */
 function chargeFollowUp(e: EnemyUnit, it: Intent): string | null {
+  const own = BUILTIN_MOVES[it.move]?.follow ?? ENEMIES.get(e.def)?.moves[it.move]?.follow;
+  if (own) return own;
   const moves = ENEMIES.get(e.def)?.moves;
   if (!moves || !it.dmg) return null;
   const hits = it.hits ?? 1;
@@ -814,6 +830,10 @@ function GuardLegend() {
         </p>
       </div>
       <p class="legend-note">{breakGlossary()} 붕괴한 적은 체력 막대가 붉게 빛나고, 숫자는 남은 쉬는 차례다.</p>
+      <p class="legend-note">
+        깊은 층(3층부터)의 존재는 붕괴를 겪을수록 버팀이 두꺼워지고(붕괴 내성), 정예·수호자는 한 턴에 받는 피해와 깎이는 버팀에 상한이 있다(가호 — 붕괴시키면 피해 상한 두 배). 이름표 아래 보라 테두리는
+        변이다.
+      </p>
     </div>
   );
 }
@@ -939,7 +959,7 @@ function EnemyOverlay({
               )}
             </div>
           </div>
-          <StatusRow st={e.st} max={Math.max(64, Math.min(130, (a.slot ?? 130) - 4))} />
+          <StatusRow st={e.st} max={Math.max(64, Math.min(130, (a.slot ?? 130) - 4))} muts={real.affix} />
         </div>
       </div>
     </>
@@ -987,8 +1007,11 @@ function enemyTip(e: EnemyUnit) {
   const def = ENEMIES.get(e.def);
   if (!def) return;
   const traits = (def.traits ?? []).map((t) => TRAITS.get(t)).filter(Boolean);
+  const muts = (e.affix ?? []).map((id) => MUTATION.get(id)).filter(Boolean);
   const r = readIntent(e, snapIntentOf(e));
   const gap = gapView(e.uid);
+  const cap = aegisCap(e);
+  const gain = e.maxPoise > 0 ? toleranceGain(def, e.mem.tol ?? 0) : 0;
   showTip({
     title: e.name,
     sub: `${def.tier === 'boss' ? '수호자' : def.tier === 'elite' ? '정예' : def.tier === 'minion' ? '하수인' : '일반'} · ${e.row === 0 ? '전열' : '후열'}`,
@@ -997,15 +1020,18 @@ function enemyTip(e: EnemyUnit) {
     body:
       (r ? `의도: ${r.title}\n${r.says.join(' ')}` : '') +
       (gap ? `${r ? '\n\n' : ''}${gapLine(gap)}` : '') +
-      (traits.length ? `\n\n${traits.map((t) => `【${t!.name}】 ${t!.desc}`).join('\n')}` : ''),
+      (traits.length ? `\n\n${traits.map((t) => `【${t!.name}】 ${t!.desc}`).join('\n')}` : '') +
+      (muts.length ? `\n\n${muts.map((m) => `【변이 · ${m!.name}】 ${m!.desc}`).join('\n')}` : ''),
     lines: [
       { label: '체력', value: def.tier === 'boss' ? woundWord(e.hp / Math.max(1, e.maxHp)) : `${e.hp}/${e.maxHp}` },
       ...(e.maxPoise > 0
         ? [
             { label: '버팀', value: e.broken ? `붕괴 중 · 받는 피해 ${timesWord(breakProfile(def).vuln)}` : `${e.poise}/${e.maxPoise} · 받는 피해 ${guardWord()}` },
-            { label: '붕괴하면', value: breakSay(def) },
+            { label: '붕괴하면', value: gain > 0 ? `${breakSay(def)} · 내성 버팀 +${gain}` : breakSay(def) },
           ]
         : []),
+      ...(cap > 0 && store.combat ? [{ label: '가호', value: `한 턴 피해 상한 ${cap}${e.broken ? ' (붕괴로 두 배)' : ''} · 남은 ${aegisLeft(store.combat, e)}${aegisPoiseCap(e) > 0 ? ` · 버팀은 한 턴에 ${aegisPoiseCap(e)}까지` : ''}` }] : []),
+      ...(canAwaken(e) ? [{ label: '각성', value: e.mem.awk ? '깨어났다 — 평범한 차례에 심연 강타를 모은다' : `체력이 ${Math.round(DEPTH.awakenAt * 100)}% 아래로 내려가면 깨어난다` }] : []),
       {
         label: '약점',
         value: e.weak.map((w) => (e.known.includes(w) ? DMG_NAME[w] : '?')).join(' · '),

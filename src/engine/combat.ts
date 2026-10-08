@@ -39,6 +39,7 @@ import type {
 } from './types';
 import type { RunState } from './run';
 import { abyssDmgMult, abyssHpMult, abyssRise, abyssSources } from './abyss';
+import { affixHooks, pactHooks } from './growth';
 
 // ───────────── 통찰 ─────────────
 // 대가 없이 들어오지 않는다(영구 대가를 치르는 선택·금기·수호자 유물). 1점마다 보이는 것이 늘어난다.
@@ -85,9 +86,29 @@ export const GUARD = {
   poise: 1.2,
 };
 
-/** 적의 최대 버팀 (EnemyDef.poise·변신 형태의 버팀에 GUARD.poise를 곱한다. 0이면 버팀 없음) */
-export function scaledPoise(n: number): number {
-  return n > 0 ? Math.max(1, Math.round(n * GUARD.poise)) : 0;
+/**
+ * 층별 적 버팀 배율 (GUARD.poise 위에 곱한다) — 2026-10 심연 압력.
+ * 판이 깊어질수록 손에 쥔 타격 수·약점 폭이 버팀보다 훨씬 빨리 늘어 4·5층 적은 한 턴에 무너졌다
+ */
+export const ACT_POISE_MULT = [1, 1, 1, 1.1, 1.15, 1.2];
+
+/** 적의 최대 버팀 (EnemyDef.poise·변신 형태의 버팀에 GUARD.poise와 그 적의 층 배율을 곱한다. 0이면 버팀 없음) */
+export function scaledPoise(n: number, act = 1): number {
+  return n > 0 ? Math.max(1, Math.round(n * GUARD.poise * (ACT_POISE_MULT[Math.min(5, act)] ?? 1))) : 0;
+}
+
+/**
+ * 붕괴 내성 (2026-10 심연 압력, 몬스터 헌터의 기절 내성·다키스트 던전의 기절 저항 참고): 붕괴할 때마다 그 전투에서 버팀 최대치가 는다.
+ * 느는 양 = 처음 버팀 × act[적의 층] (올림, 적어도 1). 최대 max번. 1·2층은 늘지 않는다 (판을 짜기 전이라 가장 어렵다 —
+ * 2층에 0.25를 주니 시작 덱 군인이 2층 균열 수호자에게 졌다: tests/act2-patterns 출신 공정성)
+ */
+export const TOLERANCE = { act: [0, 0, 0, 0.4, 0.5, 0.6], max: 3 };
+
+/** 이 적이 붕괴할 때 버팀 최대치가 늘어나는 양 (내성이 다 찼거나 1층이면 0) */
+export function toleranceGain(def: Pick<EnemyDef, 'poise' | 'act'>, times: number): number {
+  const r = TOLERANCE.act[Math.min(5, def.act)] ?? 0;
+  if (r <= 0 || times >= TOLERANCE.max) return 0;
+  return Math.max(1, Math.ceil(scaledPoise(def.poise, def.act) * r));
 }
 
 /** 붕괴 (등급 기본값 — 적마다 EnemyDef.brk로 바꾼다). stun: 행동을 건너뛰는 횟수 · vuln: 붕괴 중 받는 피해 배율 */
@@ -237,7 +258,8 @@ type DamageOpts = {
   repeat?: boolean;
 };
 
-const BUILTIN_MOVES: Record<string, MoveDef> = {
+/** 모든 적이 쓰는 내장 행동. 콘텐츠가 모든 수호자에게 끼어드는 행동을 더한다 (content/depth.ts — 심연의 각성) */
+export const BUILTIN_MOVES: Record<string, MoveDef> = {
   _advance: {
     name: '전진',
     intent: 'advance',
@@ -255,7 +277,8 @@ export const MAX_ROW = 3;
 export const ACT_HP_MULT = [1, 1, 1.25, 1.65, 2.2, 2.0];
 /** 수호자(층 수호자·계층군주) 체력 배율 — 수호자 난이도 조절용 */
 export const BOSS_HP_MULT = { value: 1.1 };
-export const ACT_DMG_MULT = [1, 1, 1.1, 1.3, 1.5, 1.4];
+/** 2026-10 심연 압력: 4·5층 +10% (1.5·1.4 → 1.65·1.55) — 강한 덱도 4·5층에서 몇 턴은 맞으며 버티게 (가호와 함께) */
+export const ACT_DMG_MULT = [1, 1, 1.1, 1.3, 1.65, 1.55];
 /**
  * 정예·수호자 전투의 적 공격 배율 (층별, ACT_DMG_MULT 위에 곱한다) — 2026-10 밸런스 개편.
  * 적 체력은 플레이어의 딜을 따라 오르는데(ACT_HP_MULT) 공격은 플레이어의 최대 체력을 따라가지 못해
@@ -278,6 +301,12 @@ export const MAX_MADNESS = 5;
 
 export function isEnemy(u: Unit | null | undefined): u is EnemyUnit {
   return !!u && u.uid !== 'p';
+}
+
+/** 이 적의 특성 id: 정의의 특성 + 이 개체에 붙은 변이 */
+export function traitIds(e: EnemyUnit): string[] {
+  const base = ENEMIES.get(e.def)?.traits ?? [];
+  return e.affix?.length ? [...base, ...e.affix] : base;
 }
 
 // ───────────── 전투 ─────────────
@@ -329,6 +358,8 @@ export class Combat {
     p.block = 0;
     p.st = {};
     for (const slot of enc.enemies) c.spawn(slot.id, slot.row, true);
+    // 모두 나온 뒤에 알린다 (변이 '결속'처럼 함께 나온 적을 보는 것이 있다). onSpawn이 불러낸 하수인은 이미 알렸다 — 받는 쪽이 한 번만 처리한다
+    for (const e of [...c.s.enemies]) c.fire('all', 'onEnemySpawn', e);
     c.fire(p, 'onCombatStart');
     for (const e of c.alive) c.fire(e, 'onCombatStart');
 
@@ -459,6 +490,9 @@ export class Combat {
         const d = ESSENCES.get(es.id);
         if (d?.passive.hooks) yield [d.passive.hooks, { kind: 'essence', id: es.id, unit: p, n: es.guardian ? 2 : 1 }];
       }
+      // 성장 개편: 장비 접사·계약의 저주와 축복 (engine/growth.ts)
+      yield* affixHooks(run);
+      yield* pactHooks(run);
     }
     for (const e of this.s.enemies) {
       if (e.dead) continue;
@@ -467,7 +501,7 @@ export class Combat {
         const d = STATUSES.get(id);
         if (d?.hooks && e.st[id]) yield [d.hooks, { kind: 'status', id, unit: e, n: e.st[id] }];
       }
-      for (const id of ENEMIES.get(e.def)?.traits ?? []) {
+      for (const id of traitIds(e)) {
         const d = TRAITS.get(id);
         if (d) yield [d.hooks, { kind: 'trait', id, unit: e, n: 1 }];
       }
@@ -593,6 +627,8 @@ export class Combat {
     // 버팀에 깎여 0이 되는 작은 피해(출혈 1 등)도 1은 들어간다
     if (d.guard < 1 && d.amount === 0 && raw > 0) d.amount = 1;
     d.bare = Math.max(0, Math.floor(pre));
+    // 마지막 손질 (상한 등) — 속성 없는 피해에도 (modDamageIn은 속성 있는 피해에만 불린다)
+    if (tgtKnown) this.fire(d.tgt, 'modDamageFinal', d);
     if (d.cap !== undefined) {
       d.amount = Math.min(d.amount, d.cap);
       d.bare = Math.min(d.bare, d.cap);
@@ -659,6 +695,8 @@ export class Combat {
             dec += 1;
           } else t.chip = k;
         }
+        // 변이·규칙이 깎일 양을 바꾼다 (불굴·결속·심연을 모으는 수호자 등)
+        if (dec > 0) for (const [h, self] of this.sources(t)) if (h.modPoiseLoss) dec = Math.max(0, h.modPoiseLoss(this, self, t, dec, d));
         if (dec > 0) {
           t.poise = Math.max(0, t.poise - dec);
           if (t.poise === 0) d.broke = true;
@@ -772,8 +810,8 @@ export class Combat {
       if (d) d.killed = false;
       return;
     }
-    // 자기 사망 특성 (부활 등)
-    for (const id of ENEMIES.get(t.def)?.traits ?? []) {
+    // 자기 사망 특성 (부활 등) — 변이 포함
+    for (const id of traitIds(t)) {
       TRAITS.get(id)?.hooks.onDeath?.(this, { kind: 'trait', id, unit: t, n: 1 }, d);
     }
     // 전장 규칙의 부활(망자의 귀환)도 처치 보상보다 먼저 — 다시 일어서면 아직 처치가 아니다 (처치 효과가 두 번 터지지 않게)
@@ -808,7 +846,8 @@ export class Combat {
 
   /** 붕괴: 하던 행동이 끊기고 breakProfile의 stun번 행동을 건너뛴다. 그동안과 그다음 내 턴까지 받는 피해가 vuln배 */
   breakEnemy(e: EnemyUnit) {
-    const b = breakProfile(this.defOf(e));
+    const def = this.defOf(e);
+    const b = breakProfile(def);
     e.broken = 2;
     e.poise = 0;
     e.chip = 0;
@@ -816,6 +855,14 @@ export class Combat {
     e.intent = { move: '_broken', kind: 'stunned', label: '붕괴' };
     delete e.mem.charge;
     this.emit({ t: 'break', uid: e.uid, turns: b.stun, vuln: b.vuln });
+    // 붕괴 내성: 다음 붕괴는 더 어렵다 (버팀 최대치가 늘어 돌아온다). 상태 칸의 '붕괴 내성'은 늘어난 양을 보여 준다
+    const gain = e.maxPoise > 0 ? toleranceGain(def, e.mem.tol ?? 0) : 0;
+    if (gain > 0) {
+      e.mem.tol = (e.mem.tol ?? 0) + 1;
+      e.maxPoise += gain;
+      e.st.tolerance = (e.st.tolerance ?? 0) + gain;
+      this.emit({ t: 'status', uid: e.uid, id: 'tolerance', n: gain });
+    }
     this.fire(this.p, 'onBreak', e);
     this.run.stats.breaks++;
   }
@@ -1049,8 +1096,8 @@ export class Combat {
       block: 0,
       st: {},
       row: r,
-      poise: scaledPoise(def.poise),
-      maxPoise: scaledPoise(def.poise),
+      poise: scaledPoise(def.poise, def.act),
+      maxPoise: scaledPoise(def.poise, def.act),
       broken: 0,
       weak: [...def.weak],
       known: def.weak.filter((w) => this.run.knownWeak?.[def.id]?.includes(w)),
@@ -1068,6 +1115,8 @@ export class Combat {
     this.senseWeak(e);
     if (!initial) {
       this.emit({ t: 'spawn', uid: e.uid });
+      // 변이 등 (전투 시작 때 나온 적은 모두 나온 뒤 begin에서 한 번에)
+      this.fire('all', 'onEnemySpawn', e);
       if (this.s.phase === 'player') this.planIntent(e);
     }
     return e;
@@ -1428,7 +1477,21 @@ export class Combat {
 
   planIntent(e: EnemyUnit) {
     if (e.dead) return;
-    let id = this.defOf(e).ai(this, e);
+    let id: string | undefined;
+    for (const [h, self] of this.sources(e)) {
+      id = h.planOverride?.(this, self, e);
+      if (id) break;
+    }
+    if (!id) {
+      id = this.defOf(e).ai(this, e);
+      for (const [h, self] of this.sources(e)) {
+        const r = h.planReplace?.(this, self, e, id);
+        if (r) {
+          id = r;
+          break;
+        }
+      }
+    }
     let m = this.moveDef(e, id);
     if (m.melee && e.row !== 0) {
       id = this.row(0).length < MAX_ROW ? '_advance' : '_wait';

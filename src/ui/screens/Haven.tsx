@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { equipName } from '../../engine/growth';
 import { ESSENCES, EQUIPS, FLOORS, MADNESS } from '../../engine/registry';
 import { CURE_COST, cureMadness, inn, INN_SANITY, leaveHaven, purgeEssence, removalCost, smith, smithCost, TRAIN_COST } from '../../engine/places';
 import { openShop } from '../../engine/shop';
@@ -99,7 +100,7 @@ export function HavenScreen() {
                   </div>
                   <div class="body">
                     <div class="name">
-                      {def.name} {it.lvl > 0 ? `+${it.lvl}` : ''}
+                      {equipName(it)} {it.lvl > 0 ? `+${it.lvl}` : ''}
                     </div>
                     <div class="desc">{def.desc}</div>
                   </div>

@@ -171,6 +171,7 @@ describe('쇼고스 — 흉내 (테켈리-리)', () => {
     const s = e('shoggoth');
     c.drain();
     s.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
+    s.mem.agOff = 1; // 가호(한 턴 피해 상한)도
     c.damage({ src: c.p, tgt: s, base: Math.ceil(s.maxHp * 0.8), type: 'true', attack: true });
     const evs = c.drain();
     expect(cines(evs, 'handprints').length).toBe(1);
@@ -364,6 +365,7 @@ describe('각도의 왕 — 틴달로스의 사냥 (막아야 하는 큰 위협)
     const { c, e } = fight('a3-boss-king');
     const k = e('angle-king');
     k.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게
+    k.mem.agOff = 1; // 가호(한 턴 피해 상한)도 걷는다
     c.damage({ src: c.p, tgt: k, base: Math.ceil(k.maxHp * 0.6), type: 'true', attack: true });
     k.intent = { ...WAIT };
     c.endTurn();
@@ -1134,6 +1136,7 @@ describe('3층 기믹의 출신 간 공정성 — 시작 덱으로', () => {
     const c = startCombat(meleeOnly(), 'a3-boss-shoggoth', { anomaly: null });
     const s = c.alive.find((x) => x.def === 'shoggoth')!;
     s.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게
+    s.mem.agOff = 1; // 가호(한 턴 피해 상한)도
     c.damage({ src: c.p, tgt: s, base: Math.ceil(s.maxHp * 0.55), type: 'true', attack: true });
     const blobs = c.alive.filter((x) => x.def === 'shoggoth-blob');
     expect(blobs.length).toBe(4);

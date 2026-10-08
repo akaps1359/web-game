@@ -91,6 +91,7 @@ function act(c: Combat, e: EnemyUnit, id: string) {
 
 /** 지금 단계를 끝낸다 (방어 무시 피해) */
 function slay(c: Combat, e: EnemyUnit) {
+  e.mem.agOff = 1; // 가호(한 턴 피해 상한)를 걷고 한 번에
   c.damage({ src: c.p, tgt: e, base: e.hp + e.block + 9999, type: 'true', ignoreBlock: true });
 }
 
@@ -358,6 +359,7 @@ describe('계층군주 꿈을 먹는 자 — 삼켜진 기억', () => {
     const eater = find(c, 'dream-eater');
     c.drain();
     eater.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
+    eater.mem.agOff = 1; // 가호(한 턴 피해 상한)도
     c.damage({ src: c.p, tgt: eater, base: Math.ceil(eater.maxHp * 0.6), type: 'true' });
     expect(eater.form).toBe(1);
     const ev = c.drain();

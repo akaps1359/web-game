@@ -18,6 +18,7 @@ import {
 } from '../engine/run';
 import { continueRift, distances, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
 import { chooseEvent, eventView, leaveEvent } from '../engine/events';
+import { GROWTH, forgoChoice, omensOf, shrinePacts, signShrinePact } from '../engine/growth';
 import { camp, campRefuel, cureMadness, inn, inscribeFlask, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
 import { buy, priceOf } from '../engine/shop';
 import { endRun, winRun } from '../engine/run';
@@ -39,6 +40,10 @@ export interface CombatLog {
   dealt: number;
   /** 붕괴시킨 횟수 */
   breaks: number;
+  /** 심연 압력 (content/depth.ts): 이 전투에 나온 적들의 변이 · 심연 강타가 터진/끊긴 횟수 */
+  muts?: string[];
+  blast?: number;
+  blastCut?: number;
   /** 틈 (content/gap.ts): 연 횟수(큰 틈) · 거둔 횟수(큰 틈) · 같은 계열로 쳐서 거두지 못한 횟수 · 출신 밖 계열로 거둔 횟수 */
   gap?: { open: number; bigOpen: number; harvest: number; bigHarvest: number; same: number; off: number };
 }
@@ -67,6 +72,8 @@ export interface SimResult {
   endSchools: number;
   endOffOrigin: number;
   endBridges: number;
+  /** 성장 개편 (engine/growth.ts): 받은 징조 · 이룬 징조 · 고르는 보상을 지나친 횟수 · 맺은 계약 · 이루어진 축복 · 진화 · 판 끝 장착 장비의 접사 수 */
+  growth: { omens: number; omenUsed: number; skipped: number; pacts: number; boons: number; evolved: number; affixes: number };
   /** 막 시작 시점의 상태 */
   actStart: { act: number; hp: number; maxHp: number; level: number; sanity: number; str: number; dex: number; ap: number; relics: number; essences: number; skills: number; upgrades: number; insight: number; relicIds: string[] }[];
 }
@@ -340,6 +347,9 @@ function inscribeAll(run: RunState) {
  */
 export const botEssence: { mode: 'skill' | 'core' | 'auto' } = { mode: 'auto' };
 
+/** 봇의 성장 개편 행동 (SIM_GROWTH로 끈다): 계약을 맺는가 */
+export const botGrowth = { pacts: true };
+
 /** 봇이 도전하는 심연 단계 (밸런스 시뮬레이션의 SIM_ASC) */
 export const botAsc = { value: 0 };
 
@@ -397,7 +407,9 @@ function handleReward(run: RunState, res: SimResult) {
   }
   if (rw.choice && !rw.chosen) {
     const emptySlot = run.slots.includes(null);
-    let idx = rw.choice.findIndex((c) => c.kind === 'relic');
+    // 유물 진화가 나왔으면 그것부터 (engine/growth.ts)
+    let idx = rw.choice.findIndex((c) => c.kind === 'evolve');
+    if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'relic');
     // 창세는 무엇보다 먼저 (빈 칸이 없으면 가장 약한 스킬과 바꿔 낀다 — equipGenesis)
     if (idx < 0) idx = genesisPick(run, rw.choice);
     // 빈 칸이 있으면 등급·실마리 점수가 가장 높은 스킬, 없으면 확실히 나은 실마리 스킬만 (더 약한 스킬과 바꿔 낀다 — equipClue)
@@ -406,9 +418,15 @@ function handleReward(run: RunState, res: SimResult) {
     if (idx < 0 && botClue.take) idx = clue = cluePick(run, rw.choice);
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'upgrade');
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'equip');
-    if (idx < 0) idx = 0;
-    const it = rw.choice[idx];
-    if (it.kind === 'upgrade') {
+    // 쓸 만한 것이 없으면 고르지 않고 지나쳐 징조를 받는다 (성장 개편 — 사람은 4층쯤부터 이렇게 했다)
+    if (idx < 0 && rw.omen && omensOf(run).length < GROWTH.omenCap && forgoChoice(run)) {
+      res.growth.skipped++;
+      idx = -1;
+    } else if (idx < 0) idx = 0;
+    const it = idx >= 0 ? rw.choice[idx] : null;
+    if (!it) {
+      // 지나쳤다
+    } else if (it.kind === 'upgrade') {
       const s = run.skills.find((x) => run.slots.includes(x.uid) && canUpgradeSkill(run, x)) ?? run.skills.find((x) => canUpgradeSkill(run, x));
       if (s) chooseLoot(run, idx, s.uid);
     } else {
@@ -419,13 +437,14 @@ function handleReward(run: RunState, res: SimResult) {
       }
     }
   }
-  // 더 좋은 장비 장착
+  // 더 좋은 장비 장착 (등급, 그리고 접사 수 — 성장 개편)
+  const gearValue = (x: { id: string; aff?: string[] }) => RANK[EQUIPS.get(x.id)!.rarity] + 0.6 * (x.aff?.length ?? 0);
   for (const it of [...run.bag]) {
     const def = EQUIPS.get(it.id)!;
     const slot = def.slot === 'trinket' ? (!run.equip.trinket1 ? 'trinket1' : !run.equip.trinket2 ? 'trinket2' : null) : def.slot;
     if (!slot) continue;
     const cur = run.equip[slot];
-    if (!cur || RANK[def.rarity] > RANK[EQUIPS.get(cur.id)!.rarity]) equipFromBag(run, it.uid, slot);
+    if (!cur || gearValue(it) > gearValue(cur)) equipFromBag(run, it.uid, slot);
   }
   equipGenesis(run);
   const next = rw.next;
@@ -464,8 +483,10 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
     endSchools: 0,
     endOffOrigin: 0,
     endBridges: 0,
+    growth: { omens: 0, omenUsed: 0, skipped: 0, pacts: 0, boons: 0, evolved: 0, affixes: 0 },
     actStart: [snapStart(run)],
   };
+
   let lastAct = 1;
   for (let step = 0; step < maxSteps && !run.over; step++) {
     if (run.act !== lastAct) {
@@ -496,6 +517,9 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
           won: c.s.phase === 'victory',
           dealt: run.stats.dmgDealt - dealt0,
           breaks: run.stats.breaks - breaks0,
+          muts: c.s.enemies.flatMap((e) => e.affix ?? []),
+          blast: c.s.vars['abyss:blast'] ?? 0,
+          blastCut: c.s.vars['abyss:cut'] ?? 0,
           gap: {
             open: gs.open,
             bigOpen: gs.bigOpen,
@@ -527,11 +551,17 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
       }
       case 'camp': {
         const p = run.player;
-        const upg = run.skills.find((x) => run.slots.includes(x.uid) && canUpgradeSkill(run, x));
-        if (p.hp < p.maxHp * 0.65) camp(run, 'sleep');
-        else if (p.sanity < 45) camp(run, 'meditate');
-        else if (upg) camp(run, 'train', upg.uid);
-        else camp(run, 'sleep');
+        const act = () => {
+          const upg = run.skills.find((x) => run.slots.includes(x.uid) && canUpgradeSkill(run, x));
+          if (p.hp < p.maxHp * 0.65) camp(run, 'sleep');
+          else if (p.sanity < 45) camp(run, 'meditate');
+          else if (upg) camp(run, 'train', upg.uid);
+          else camp(run, 'sleep');
+        };
+        act();
+        // 휴식의 징조: 방이 아직 열려 있으면 한 번 더
+        const room = run.floor?.rooms[run.floor.pos];
+        if (room && !room.cleared) act();
         campRefuel(run);
         leavePlace(run);
         break;
@@ -560,6 +590,11 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
       }
       case 'shrine': {
         shrinePray(run);
+        // 계약: 체력이 넉넉하면 첫째 것을 맺는다 (성장 개편)
+        if (botGrowth.pacts && run.player.hp > run.player.maxHp * 0.6) {
+          const offers = shrinePacts(run);
+          if (typeof offers !== 'string' && offers.length) signShrinePact(run, 0);
+        }
         inscribeAll(run);
         const bad = run.madness.find((m) => !MADNESS.get(m)?.virtue);
         if (bad && run.player.gold >= 120) cureMadness(run, bad);
@@ -616,6 +651,12 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
   res.rooms = run.stats.rooms;
   res.hours = run.stats.hours;
   res.genesis = run.genesis;
+  res.growth.omens = run.stats.omens ?? 0;
+  res.growth.omenUsed = run.stats.omensUsed ?? 0;
+  res.growth.evolved = run.stats.evolved ?? 0;
+  res.growth.pacts = run.pacts?.length ?? 0;
+  res.growth.boons = run.pacts?.filter((p) => p.left <= 0).length ?? 0;
+  res.growth.affixes = Object.values(run.equip).reduce((s, it) => s + (it?.aff?.length ?? 0), 0);
   Object.assign(res, endMix(run));
   return res;
 }
@@ -659,6 +700,40 @@ export function summarize(results: SimResult[]): string {
       return (l.reduce((s, c) => s + (c.breaks ?? 0), 0) / Math.max(1, l.length)).toFixed(2);
     };
     lines.push(`  붕괴: 전투당 일반 ${per('normal')} · 정예 ${per('elite')} · 수호자 ${per('boss')}`);
+  }
+  {
+    // 심연 압력 (2026-10): 변이마다 그 전투의 체력 손실이 같은 층·종류 평균의 몇 배였나 · 패배
+    const all = results.flatMap((r) => r.combats);
+    const base = new Map<string, number>();
+    for (const c of all) {
+      const k = `${c.act}${c.kind}`;
+      if (!base.has(k)) {
+        const l = all.filter((x) => x.act === c.act && x.kind === c.kind);
+        base.set(k, l.reduce((sum, x) => sum + x.hpLost, 0) / Math.max(1, l.length));
+      }
+    }
+    const by = new Map<string, { n: number; rel: number; lost: number }>();
+    for (const c of all) {
+      for (const m of new Set(c.muts ?? [])) {
+        const v = by.get(m) ?? { n: 0, rel: 0, lost: 0 };
+        v.n++;
+        v.rel += c.hpLost / Math.max(1, base.get(`${c.act}${c.kind}`) ?? 1);
+        v.lost += c.won ? 0 : 1;
+        by.set(m, v);
+      }
+    }
+    if (by.size) {
+      lines.push(
+        '  변이: ' +
+          [...by.entries()]
+            .sort((a, b) => b[1].rel / b[1].n - a[1].rel / a[1].n)
+            .map(([m, v]) => `${m.replace('mut-', '')} ${v.n}전 ×${(v.rel / v.n).toFixed(2)} 패${v.lost}`)
+            .join(' · '),
+      );
+    }
+    const bl = all.reduce((sum, c) => sum + (c.blast ?? 0), 0);
+    const cut = all.reduce((sum, c) => sum + (c.blastCut ?? 0), 0);
+    lines.push(`  심연 강타: 터짐 ${bl} · 붕괴로 끊음 ${cut}`);
   }
   const bossStats = new Map<string, CombatLog[]>();
   for (const r of results) for (const c of r.combats) if (c.kind !== 'normal') bossStats.set(c.enc, [...(bossStats.get(c.enc) ?? []), c]);
@@ -715,6 +790,10 @@ export function summarize(results: SimResult[]): string {
     const st = results.flatMap((r) => r.actStart.filter((x) => x.act === a));
     const av = (k: 'level' | 'maxHp' | 'str' | 'dex' | 'ap' | 'relics' | 'essences' | 'skills' | 'upgrades' | 'insight') => (st.reduce((s, x) => s + x[k], 0) / Math.max(1, st.length)).toFixed(1);
     if (st.length) lines.push(`  ${a}층 시작: Lv ${av('level')} · 체력 ${av('maxHp')} · 힘 ${av('str')} · 민첩 ${av('dex')} · AP ${av('ap')} · 유물 ${av('relics')} · 정수 ${av('essences')} · 스킬 ${av('skills')}(강화 ${av('upgrades')}) · 통찰 ${av('insight')}`);
+  }
+  {
+    const per = (f: (g: SimResult['growth']) => number) => (results.reduce((s, r) => s + f(r.growth), 0) / n).toFixed(2);
+    lines.push(`  성장: 판당 징조 받음 ${per((g) => g.omens)} · 이룸 ${per((g) => g.omenUsed)} · 보상 지나침 ${per((g) => g.skipped)} · 계약 ${per((g) => g.pacts)}(축복 ${per((g) => g.boons)}) · 진화 ${per((g) => g.evolved)} · 판 끝 장착 장비 접사 ${per((g) => g.affixes)}`);
   }
   void ENCOUNTERS;
   void RELICS;

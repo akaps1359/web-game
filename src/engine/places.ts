@@ -17,6 +17,7 @@ import {
 } from './run';
 import type { EquipSlot } from './types';
 import { abyssSleep } from './abyss';
+import { useOmen } from './growth';
 
 // ───────────── 야영지 ─────────────
 
@@ -106,7 +107,13 @@ export function camp(run: RunState, act: CampAction, target?: string): string | 
       break;
     }
   }
-  room.cleared = true;
+  // 휴식의 징조: 이 야영지에서 한 가지를 더 한다 (방이 닫히지 않는다 — 한 번만)
+  const f = run.floor!;
+  const key = `rested${room.id}`;
+  if (!f.vars[key] && useOmen(run, 'omen-rest')) {
+    f.vars[key] = 1;
+    log(run, '휴식의 징조: 한 가지를 더 할 수 있다');
+  } else room.cleared = true;
   advanceTime(run, CAMP_INFO[act].hours);
   return null;
 }

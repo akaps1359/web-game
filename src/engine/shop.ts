@@ -14,12 +14,15 @@ import {
 } from './run';
 import type { Rarity } from './types';
 import { abyssShopMult } from './abyss';
+import { rollAffixes, useOmen } from './growth';
 
 export interface ShopItem {
   kind: 'skill' | 'relic' | 'equip' | 'rune' | 'consumable' | 'oil';
   id: string;
   price: number;
   sold: boolean;
+  /** 장비의 접사 (진열할 때 정해진다 — engine/growth.ts) */
+  aff?: string[];
 }
 
 export interface ShopState {
@@ -55,10 +58,14 @@ function rarityOf(kind: ShopItem['kind'], id: string): Rarity {
   }
 }
 
+/** 상점 값이 층마다 오르는 비율 */
+export const SHOP_ACT_STEP = 0.15;
+
 function price(run: RunState, kind: ShopItem['kind'], id: string): number {
   const r = rng(run, 'loot');
   const base = PRICE[kind][rarityOf(kind, id)] ?? PRICE[kind].common ?? 50;
-  const act = 1 + 0.1 * (Math.min(run.act, 5) - 1);
+  // 성장 개편 (2026-10): 층마다 15%씩 (예전 10% — 골드가 3배로 불어 4층부터 남아돌았다. 골드는 GOLD_MULT로 2.2배까지)
+  const act = 1 + SHOP_ACT_STEP * (Math.min(run.act, 5) - 1);
   const jitter = 0.9 + r.next() * 0.2;
   // 심연 「값을 올린 상인」: 상점 값이 오른다
   return Math.round(base * act * jitter * abyssShopMult(run));
@@ -71,11 +78,15 @@ function stock(run: RunState, kind: 'merchant' | 'haven'): ShopItem[] {
     if (id && !items.some((x) => x.kind === k && x.id === id)) items.push({ kind: k, id, price: price(run, k, id), sold: false });
   };
   for (const id of rollSkills(run, big ? 5 : 3, 'shop')) push('skill', id);
-  for (let i = 0; i < (big ? 2 : 1); i++) push('relic', rollRelic(run));
+  // 성장 개편: 거점도 유물은 하나 (예전 둘 — 판마다 유물 17개)
+  push('relic', rollRelic(run));
   for (let i = 0; i < (big ? 3 : 2); i++) push('equip', rollEquip(run, 'shop'));
   for (let i = 0; i < (big ? 2 : 1); i++) push('rune', rollRune(run));
   for (let i = 0; i < (big ? 3 : 2); i++) push('consumable', rollConsumable(run));
   push('oil', 'oil');
+  for (const it of items) if (it.kind === 'equip') it.aff = rollAffixes(run, it.id);
+  // 상인의 징조: 이번에 새로 연 상점은 30% 싸다
+  if (useOmen(run, 'omen-merchant')) for (const it of items) if (it.kind !== 'oil') it.price = Math.round(it.price * 0.7);
   return items;
 }
 
@@ -111,7 +122,7 @@ export function buy(run: RunState, idx: number): string | null {
       gainRelic(run, it.id);
       break;
     case 'equip':
-      if (!gainEquip(run, it.id)) return '가방이 가득 찼다';
+      if (!gainEquip(run, it.id, 0, it.aff)) return '가방이 가득 찼다';
       break;
     case 'rune':
       run.runes.push(it.id);

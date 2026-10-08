@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
-import { ESSENCES, MADNESS, EQUIPS } from '../../engine/registry';
+import { ESSENCES, MADNESS, EQUIPS, PACTS } from '../../engine/registry';
+import { GROWTH, equipName, shrinePacts, signShrinePact } from '../../engine/growth';
 import { CAMP_INFO, camp, campDesc, campRefuel, cureMadness, CURE_COST, forbiddenOffer, acceptForbidden, leavePlace, PRAY_SANITY, purgeEssence, removalCost, shrinePray, type CampAction } from '../../engine/places';
 import { applyAsk } from '../ask';
 import { store } from '../../state/store';
@@ -76,7 +77,7 @@ export function CampScreen() {
                   </div>
                   <div class="body">
                     <div class="name">
-                      {def.name} {it.lvl > 0 ? `+${it.lvl}` : ''}
+                      {equipName(it)} {it.lvl > 0 ? `+${it.lvl}` : ''}
                     </div>
                     <div class="desc">{def.desc}</div>
                   </div>
@@ -107,7 +108,8 @@ export function ShrineScreen() {
   const f = run.floor!;
   const prayed = !!f.vars[`pray${f.pos}`];
   const offered = !!f.vars[`offer${f.pos}`];
-  const [mode, setMode] = useState<'main' | 'purge' | 'cure' | 'offer' | 'inscribe'>('main');
+  const [mode, setMode] = useState<'main' | 'purge' | 'cure' | 'offer' | 'inscribe' | 'pact'>('main');
+  const pacted = !!f.vars[`pact${f.pos}`];
   const flasks = run.flasks?.length ?? 0;
   const [offers, setOffers] = useState<string[]>([]);
   const mad = run.madness.filter((m) => !MADNESS.get(m)?.virtue);
@@ -181,8 +183,21 @@ export function ShrineScreen() {
                 <div class="desc">최대 정신력 -8을 바치고 금기 스킬 하나를 얻는다 (통찰 +1)</div>
               </div>
             </button>
+            {/* 계약 (2026-10 성장 개편 — 하데스 혼돈의 축복처럼: 저주를 견디면 축복이 영원히) */}
+            <button class={`card ${pacted ? 'off' : ''}`} onClick={() => !pacted && setMode('pact')}>
+              <div class="badge">
+                <Icon name="gi:quill-ink" size={26} color="#c8a0ff" />
+              </div>
+              <div class="body">
+                <div class="name" style={{ color: '#d9c2ff' }}>
+                  심연과의 계약
+                </div>
+                <div class="desc">{pacted ? '이 제단과는 이미 계약을 맺었다' : `저주를 ${GROWTH.pactFights}전투 견디면 그 뒤로 축복이 영원히. 둘 중 하나를 맺거나 물린다`}</div>
+              </div>
+            </button>
           </div>
         )}
+        {mode === 'pact' && <PactList onDone={() => setMode('main')} />}
         {mode === 'inscribe' && (
           <div class="list">
             <FlaskList where="shrine" />
@@ -261,6 +276,58 @@ export function ShrineScreen() {
           ?
         </button>
       </div>
+    </div>
+  );
+}
+
+/** 신전의 계약 둘 (engine/growth.ts shrinePacts) */
+function PactList({ onDone }: { onDone: () => void }) {
+  const run = store.run!;
+  const offers = shrinePacts(run);
+  if (typeof offers === 'string') {
+    return (
+      <div class="list">
+        <p class="dim">{offers}</p>
+        <button class="btn ghost" onClick={onDone}>
+          돌아가기
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div class="list">
+      <div class="section-label">저주를 {GROWTH.pactFights}전투(이긴 전투) 견디면 축복이 영원히</div>
+      {offers.map((o, i) => {
+        const c = PACTS.get(o.curse)!;
+        const b = PACTS.get(o.boon)!;
+        return (
+          <button
+            class="card"
+            onClick={() =>
+              applyAsk(
+                { title: '계약을 맺을까요?', icon: 'gi:quill-ink', body: `저주 「${c.name}」: ${c.desc} (${GROWTH.pactFights}전투)\n축복 「${b.name}」: ${b.desc} (그 뒤로 영원히)`, ok: '서명한다' },
+                (r) => signShrinePact(r, i),
+                `계약: ${b.name}`,
+              ).then(onDone)
+            }
+          >
+            <div class="badge">
+              <Icon name={b.icon} size={26} color="#d9c2ff" />
+            </div>
+            <div class="body">
+              <div class="name">
+                <span style={{ color: '#ff9a8a' }}>{c.name}</span> → <span style={{ color: '#d9c2ff' }}>{b.name}</span>
+              </div>
+              <div class="desc">
+                {GROWTH.pactFights}전투 동안 {c.desc} · 그 뒤로 {b.desc}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+      <button class="btn ghost" onClick={onDone}>
+        물린다
+      </button>
     </div>
   );
 }

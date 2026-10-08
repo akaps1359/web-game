@@ -1,7 +1,7 @@
 import '../../styles/sheets.css';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { CONSUMABLES, EQUIPS, ESSENCES, MADNESS, RELICS, RUNES, SKILLS } from '../../engine/registry';
+import { AFFIXES, CONSUMABLES, EQUIPS, ESSENCES, MADNESS, RELICS, RUNES, SKILLS } from '../../engine/registry';
 import { BAG_SIZE, FLASK_CAP, equipFromBag, equipSkill, essenceActives, essenceCap, essenceStats, essenceUsed, inscribeCost, pourFlask, removalCost, socketRune, takesSlot, unequip, xpToNext, type EssenceDrop, type RunState } from '../../engine/run';
 import { CURE_COST } from '../../engine/places';
 import { BREAKDOWN_RESET, MAX_MADNESS } from '../../engine/combat';
@@ -1082,7 +1082,7 @@ function equipView(c: Ctx): View {
       {SLOTS.map((slot) => {
         const it = run.equip[slot];
         const def = it && EQUIPS.get(it.id);
-        if (it && def) return <Row c={c} it={{ k: 'equip', slot }} icon={def.icon} color={RARITY_COLOR[def.rarity]} glow={def.rarity === 'genesis'} name={equipName(def, it.lvl)} meta={equipMeta(def)} />;
+        if (it && def) return <Row c={c} it={{ k: 'equip', slot }} icon={def.icon} color={RARITY_COLOR[def.rarity]} glow={def.rarity === 'genesis'} name={withAffix(equipName(def, it.lvl), it.aff)} meta={equipMeta(def)} />;
         const can = run.bag.some((b) => {
           const d = EQUIPS.get(b.id);
           return d && fitsSlot(d, slot);
@@ -1093,7 +1093,7 @@ function equipView(c: Ctx): View {
       {run.bag.length === 0 && <Empty>가방이 비어 있다.</Empty>}
       {run.bag.map((it) => {
         const def = EQUIPS.get(it.id);
-        return def && <Row c={c} it={{ k: 'bag', uid: it.uid }} icon={def.icon} color={RARITY_COLOR[def.rarity]} glow={def.rarity === 'genesis'} name={equipName(def, it.lvl)} meta={equipMeta(def)} />;
+        return def && <Row c={c} it={{ k: 'bag', uid: it.uid }} icon={def.icon} color={RARITY_COLOR[def.rarity]} glow={def.rarity === 'genesis'} name={withAffix(equipName(def, it.lvl), it.aff)} meta={equipMeta(def)} />;
       })}
     </>
   );
@@ -1110,7 +1110,18 @@ function equipView(c: Ctx): View {
 }
 
 /** 장비 낱장의 공통 내용: 칸·강화·최대 체력, 설명, 기본기 (children: 용어 풀이 앞에 끼울 비교) */
-function EquipBody({ def, lvl, children }: { def: EquipDef; lvl: number; children?: ComponentChildren }) {
+/** 장비 이름 앞에 접사 ('날선 · 굳센 사냥칼 +1' — 접사는 보랏빛) */
+function withAffix(name: ComponentChildren, aff?: string[]): ComponentChildren {
+  const pre = (aff ?? []).map((a) => AFFIXES.get(a)?.name).filter(Boolean);
+  if (!pre.length) return name;
+  return (
+    <>
+      <span style={{ color: '#d9c2ff' }}>{pre.join(' · ')}</span> {name}
+    </>
+  );
+}
+
+function EquipBody({ def, lvl, aff, children }: { def: EquipDef; lvl: number; aff?: string[]; children?: ComponentChildren }) {
   const sk = def.skill ? SKILLS.get(def.skill) : undefined;
   const n = sk ? skillNums(sk, lvl) : null;
   const segs = sk ? skillDesc(sk, lvl) : [];
@@ -1124,6 +1135,20 @@ function EquipBody({ def, lvl, children }: { def: EquipDef; lvl: number; childre
         ]}
       />
       <p class="inv-desc">{def.desc}</p>
+      {/* 접사 (2026-10 성장 개편 — 얻을 때 층에 따라 무작위로 붙는다) */}
+      {aff && aff.length > 0 && (
+        <div class="inv-block">
+          <b class="bt">
+            <Icon name="gi:anvil" size={14} color="#c8a0ff" />
+            접사
+          </b>
+          {aff.map((a) => (
+            <div class="inv-small" style={{ margin: '2px 0 0' }}>
+              <b style={{ color: '#d9c2ff' }}>{AFFIXES.get(a)?.name}</b> {AFFIXES.get(a)?.desc}
+            </div>
+          ))}
+        </div>
+      )}
       {sk && n && (
         <div class="inv-block">
           <b class="bt">
@@ -1151,12 +1176,12 @@ function EquipDetail({ c, it, slot }: { c: Ctx; it: OwnedItem; slot: EquipSlot }
       icon={def.icon}
       color={RARITY_COLOR[def.rarity]}
       glow={def.rarity === 'genesis'}
-      title={equipName(def, it.lvl)}
+      title={withAffix(equipName(def, it.lvl), it.aff)}
       sub={`${SLOT_NAME[slot]} · ${RARITY_NAME[def.rarity]} · 장착 중`}
       acts={[{ label: '해제', kind: 'main', why: c.lock ? LOCK : full ? `가방이 가득 찼다(${BAG_SIZE}/${BAG_SIZE}). 해제하려면 가방을 비워야 한다.` : null, run: () => void unequipAsk(c, it, def, slot) }]}
       onClose={() => c.show(null)}
     >
-      <EquipBody def={def} lvl={it.lvl} />
+      <EquipBody def={def} lvl={it.lvl} aff={it.aff} />
     </Detail>
   );
 }
@@ -1175,8 +1200,8 @@ function BagDetail({ c, it }: { c: Ctx; it: OwnedItem }) {
       ? { label: '교체', kind: 'main', why: lock, run: () => void equipAsk(c, it, def, targets[0]) }
       : { label: '교체', kind: 'main', why: lock, run: () => c.setMode('trinket') };
   return (
-    <Detail icon={def.icon} color={RARITY_COLOR[def.rarity]} glow={def.rarity === 'genesis'} title={equipName(def, it.lvl)} sub={`${KIND_NAME[def.slot]} · ${RARITY_NAME[def.rarity]} · 가방`} acts={[act]} onClose={() => c.show(null)}>
-      <EquipBody def={def} lvl={it.lvl}>
+    <Detail icon={def.icon} color={RARITY_COLOR[def.rarity]} glow={def.rarity === 'genesis'} title={withAffix(equipName(def, it.lvl), it.aff)} sub={`${KIND_NAME[def.slot]} · ${RARITY_NAME[def.rarity]} · 가방`} acts={[act]} onClose={() => c.show(null)}>
+      <EquipBody def={def} lvl={it.lvl} aff={it.aff}>
         <Head label={empty ? '장착하면' : '지금 장착한 것과 비교'} sub />
         {empty ? (
           <p class="inv-small">비어 있는 {SLOT_NAME[empty]} 칸에 들어간다.</p>

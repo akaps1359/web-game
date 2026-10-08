@@ -123,6 +123,40 @@ export interface PerkDef {
   onGain?(run: RunState): void;
 }
 
+/** 장비 접사 (2026-10 성장 개편, content/growth/affixes.ts): 얻은 장비마다 무작위로 붙는다. 장착한 동안 훅이 돈다 */
+export interface AffixDef {
+  id: string;
+  /** 장비 이름 앞에 붙는 말 (예: '날선') */
+  name: string;
+  icon: string;
+  desc: string;
+  /** 1: 어느 층에서나 · 2: 3층부터 */
+  tier: 1 | 2;
+  /** 붙을 수 있는 장비 칸 (없으면 모두) */
+  slots?: ('weapon' | 'armor' | 'trinket')[];
+  hooks?: Hooks;
+}
+
+/** 징조 (2026-10 성장 개편, content/growth/omens.ts): 보상을 고르지 않고 지나치면 받는다. 정해진 때에 한 번 이루어진다 */
+export interface OmenDef {
+  id: string;
+  name: string;
+  icon: string;
+  desc: string;
+}
+
+/** 계약의 한쪽 (2026-10 성장 개편, content/growth/pacts.ts): 저주는 몇 전투 동안, 그 뒤로 축복이 영원히 */
+export interface PactPartDef {
+  id: string;
+  kind: 'curse' | 'boon';
+  name: string;
+  icon: string;
+  desc: string;
+  hooks?: Hooks;
+  /** 축복이 이루어지는 순간 (최대 체력·힘 같은 영구 수치) */
+  onGain?(run: RunState): void;
+}
+
 export interface MadnessDef {
   id: string;
   name: string;
@@ -168,6 +202,9 @@ export const EVENTS = new Map<string, EventDef>();
 export const ORIGINS = new Map<string, OriginDef>();
 export const FLOORS = new Map<number, FloorDef>();
 export const RULES = new Map<string, RuleDef>();
+export const AFFIXES = new Map<string, AffixDef>();
+export const OMENS = new Map<string, OmenDef>();
+export const PACTS = new Map<string, PactPartDef>();
 
 export interface StatusTicks {
   /** 소유자 턴 시작 시 */
@@ -200,6 +237,9 @@ export const reg = {
   events: (d: EventDef[]) => addAll(EVENTS, d),
   origins: (d: OriginDef[]) => addAll(ORIGINS, d),
   rules: (d: RuleDef[]) => addAll(RULES, d),
+  affixes: (d: AffixDef[]) => addAll(AFFIXES, d),
+  omens: (d: OmenDef[]) => addAll(OMENS, d),
+  pacts: (d: PactPartDef[]) => addAll(PACTS, d),
   floors: (d: FloorDef[]) => {
     for (const f of d) FLOORS.set(f.act, f);
   },

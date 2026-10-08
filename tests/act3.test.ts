@@ -185,7 +185,8 @@ describe('3층 — 법칙', () => {
     const base = a.preview(a.alive[0], a.p, 20, 'blunt');
     const run2 = floor3();
     const b = startCombat(run2, 'a3-e-dogs', { anomaly: THAWED_ROOM });
-    expect(b.preview(b.alive[0], b.p, 20, 'blunt')).toBe(Math.floor(base * 1.25));
+    // 미리보기는 내림한 값이라 한 번 더 곱하면 1 차이가 날 수 있다
+    expect(Math.abs(b.preview(b.alive[0], b.p, 20, 'blunt') - base * 1.25)).toBeLessThanOrEqual(1);
   });
 
   it('어둠 속 전투는 동상을 안고 시작하고, 동상 5면 행동력 -1, 화염이 녹인다', () => {
@@ -279,6 +280,7 @@ describe('3층 — 적의 기믹', () => {
     const elder = c.alive.find((e) => e.def === 'awakened-elder')!;
     const thrall = c.alive.find((e) => e.def === 'shoggoth-thrall')!;
     elder.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
+    elder.mem.agOff = 1; // 가호(한 턴 피해 상한)도 걷는다 — 한 번에 절반 아래로
     c.damage({ src: c.p, tgt: elder, base: Math.ceil(elder.maxHp * 0.55), type: 'slash', attack: true });
     expect(thrall.mem.rebel).toBe(1);
     expect(thrall.intent?.move).toBe('revolt');

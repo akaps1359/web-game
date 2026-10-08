@@ -4,7 +4,8 @@ import { bottle, choose, leaveReward, take } from '../../state/actions';
 import { store } from '../../state/store';
 import { EssenceCard, LootCard, lootClue, lootInfo, lootName, STAT_NAME } from '../cards';
 import { ask, confirmThen } from '../ask';
-import { ESSENCES, SKILLS } from '../../engine/registry';
+import { ESSENCES, OMENS, SKILLS } from '../../engine/registry';
+import { GROWTH, omensOf } from '../../engine/growth';
 import type { EssenceStats } from '../../engine/types';
 import type { LootItem } from '../../engine/run';
 import { Icon } from '../components';
@@ -180,6 +181,8 @@ export function RewardScreen() {
             <div class="section-label">
               {rw.chosen ? '선택 완료' : rw.choice.some(isGenesisLoot) ? '창세의 것: 하나 선택 (판마다 하나뿐)' : '하나 선택'}
             </div>
+            {/* 징조 (2026-10 성장 개편): 고르지 않고 떠나면 받는다 — 건너뛰기도 선택이다 */}
+            {!rw.chosen && rw.omen && OMENS.has(rw.omen) && <OmenNote id={rw.omen} />}
             <div class="list">
               {rw.choice.map((it, i) => (
                 <LootCard
@@ -210,6 +213,21 @@ export function RewardScreen() {
           {pending ? '남기고 떠난다' : '계속'}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** 고르지 않고 떠나면 받을 징조 (지닌 징조가 가득하면 받지 못한다) */
+function OmenNote({ id }: { id: string }) {
+  const o = OMENS.get(id)!;
+  const full = omensOf(store.run!).length >= GROWTH.omenCap;
+  return (
+    <div class="omen-note">
+      <Icon name={o.icon} size={18} color="#c8a0ff" />
+      <span>
+        고르지 않고 떠나면 <b>{o.name}</b>: {o.desc}
+        {full && <em> (징조가 가득 차 받지 못한다 — {GROWTH.omenCap}개)</em>}
+      </span>
     </div>
   );
 }

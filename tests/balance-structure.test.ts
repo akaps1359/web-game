@@ -124,7 +124,8 @@ describe('정수 자리제', () => {
   it('봇은 정수 자리를 넘겨 흡수하지 않고, 꽉 차면 바꾸거나 병에 담는다', () => {
     let maxUsed = 0;
     let overflow = 0;
-    for (const seed of [11, 13]) {
+    // 일찍 죽는 판도 있다 (2026-10 심연 압력 뒤 11·13은 1·2층에서) — 여러 판 중 하나라도 자리가 찰 만큼 내려가면 된다
+    for (const seed of [11, 13, 17, 19, 23]) {
       const res = simulateRun(seed, 'soldier', 4000, (run) => {
         const used = essenceUsed(run);
         maxUsed = Math.max(maxUsed, used);

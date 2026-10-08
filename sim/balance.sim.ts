@@ -7,6 +7,12 @@ import { BOSS_HP_MULT, BREAK, GUARD } from '../src/engine/combat';
 import { botAsc, botClue, botEssence, simulateRun, summarize } from '../src/sim/runbot';
 import { BOT_BREAK } from '../src/sim/bot';
 import { GAP } from '../src/content/gap';
+import { DEPTH } from '../src/content/depth';
+import { ACT_DMG_MULT, ACT_HP_MULT, ACT_SAN_MULT, BOSS_DMG_MULT, ELITE_DMG_MULT, TOLERANCE } from '../src/engine/combat';
+import { GROWTH } from '../src/engine/growth';
+import { CHOICE_RATE, GOLD_MULT, RARITY_ACT, XP_STEP } from '../src/engine/run';
+import { botGrowth } from '../src/sim/runbot';
+import { reg } from '../src/engine/registry';
 
 const N = Number(process.env.SIM_RUNS ?? 40);
 /** 시드 묶음 바꾸기 (다른 판들로 다시 재 보기) */
@@ -36,6 +42,43 @@ if (process.env.SIM_BOT_BREAK) Object.assign(BOT_BREAK, JSON.parse(process.env.S
 // 틈 수치 바꾸기: SIM_GAP='{"crit":1.5,"bleed":2}' · 거두기 끄기: SIM_GAP=off
 if (process.env.SIM_GAP === 'off') GAP.perTurn = 0;
 else if (process.env.SIM_GAP) Object.assign(GAP, JSON.parse(process.env.SIM_GAP));
+
+// 심연 압력 (content/depth.ts — 2026-10): SIM_DEPTH='{"aegisElite":[0,0,0,0.3,0.22,0.2]}' · SIM_TOLERANCE='{"act":[0,0,0,0.5,0.6,0.7]}'
+if (process.env.SIM_DEPTH) Object.assign(DEPTH, JSON.parse(process.env.SIM_DEPTH));
+if (process.env.SIM_TOLERANCE) Object.assign(TOLERANCE, JSON.parse(process.env.SIM_TOLERANCE));
+// 층별 적 배율: SIM_ACT='{"hp":[1,1,1.25,1.65,2.2,2.0],"dmg":[...],"elite":[...],"boss":[...],"san":[...]}'
+if (process.env.SIM_ACT) {
+  const a = JSON.parse(process.env.SIM_ACT);
+  const arrs = { hp: ACT_HP_MULT, dmg: ACT_DMG_MULT, elite: ELITE_DMG_MULT, boss: BOSS_DMG_MULT, san: ACT_SAN_MULT };
+  for (const [k, arr] of Object.entries(arrs)) if (a[k]) arr.splice(0, arr.length, ...a[k]);
+}
+// 성장 개편 (engine/growth.ts — 2026-10): SIM_GROWTH='{"affixes":[0,0.2,0.4,0.7,1,1.3]}' · SIM_XP='{"per":35}' · SIM_RATE='[1,0.8,0.6,0.5,0.45,0.4]'
+// SIM_GOLD='[1,1,1.2,1.4,1.6,1.8]' · SIM_RARITY='{"rare":[1,1,1,1.2,1.4,1.6]}' · 봇이 계약을 맺지 않게: SIM_BOT_GROWTH='{"pacts":false}'
+if (process.env.SIM_GROWTH) Object.assign(GROWTH, JSON.parse(process.env.SIM_GROWTH));
+if (process.env.SIM_XP) Object.assign(XP_STEP, JSON.parse(process.env.SIM_XP));
+if (process.env.SIM_RATE) CHOICE_RATE.splice(0, CHOICE_RATE.length, ...JSON.parse(process.env.SIM_RATE));
+if (process.env.SIM_GOLD) GOLD_MULT.splice(0, GOLD_MULT.length, ...JSON.parse(process.env.SIM_GOLD));
+if (process.env.SIM_RARITY) Object.assign(RARITY_ACT, JSON.parse(process.env.SIM_RARITY));
+if (process.env.SIM_BOT_GROWTH) Object.assign(botGrowth, JSON.parse(process.env.SIM_BOT_GROWTH));
+
+// 사람처럼 강한 플레이어 흉내 (후반 층이 강한 덱에게 얼마나 쉬워지는지 볼 때): SIM_POWER='{"dmg":1.5,"taken":0.85}'
+// dmg: 내가 주는 피해 배율 · taken: 적 공격으로 받는 피해 배율 (봇은 사람보다 판짜기·막기가 서툴다)
+if (process.env.SIM_POWER) {
+  const pw = { dmg: 1, taken: 1, ...JSON.parse(process.env.SIM_POWER) } as { dmg: number; taken: number };
+  reg.rules([
+    {
+      id: 'sim-power',
+      hooks: {
+        modDamageOut(c, _s, d) {
+          if (d.src === c.p && d.tgt !== c.p) d.mult *= pw.dmg;
+        },
+        modDamageIn(c, _s, d) {
+          if (d.tgt === c.p && d.src && d.src !== c.p && d.attack) d.mult *= pw.taken;
+        },
+      },
+    },
+  ]);
+}
 
 it('밸런스 시뮬레이션', () => {
   const out: string[] = [];
