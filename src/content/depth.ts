@@ -32,8 +32,8 @@ export const DEPTH = {
   tier2From: 4,
   tier2Weight: [0, 0, 0, 0, 1, 1],
   /** 가호: 한 턴에 받는 피해 상한 (최대 체력 비율, 층 인덱스) */
-  aegisElite: [0, 0, 0, 0.35, 0.27, 0.25],
-  aegisBoss: [0, 0, 0, 0.25, 0.2, 0.18],
+  aegisElite: [0, 0, 0, 0.3, 0.2, 0.16],
+  aegisBoss: [0, 0, 0, 0.22, 0.15, 0.12],
   /** 붕괴해 있는 동안 상한 배율 */
   aegisBroken: 2,
   /**
@@ -56,8 +56,11 @@ export const DEPTH = {
 /** 5층 심연 강타(꿈의 붕락)의 정신 피해 */
 const BLAST_SANITY = 8;
 
-/** 가호·각성을 받지 않는 수호자 (세 단계를 따로 설계한 마지막 수호자) */
-const OWN_DESIGN = ['a5-unborn'];
+/**
+ * 가호·각성을 받지 않는 적: 세 단계를 따로 설계한 마지막 수호자, 몰아치는 피해에 스스로 답하는 문턱의 존재
+ * (한 턴에 최대 체력의 25%를 넘게 받으면 세계가 뒤집힌다 — 가호가 그 아래로 막으면 패턴이 사라진다)
+ */
+const OWN_DESIGN = ['a5-unborn', 'a5-liminal'];
 /** 변이가 붙지 않는 적 (무리·도둑·무고한 자처럼 성격이 정해진 것) */
 const NO_MUT = ['swarm', 'thief', 'a2-innocent', 'a5-pilgrim'];
 
