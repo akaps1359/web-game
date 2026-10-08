@@ -159,6 +159,8 @@ function tips() {
   } else if (r.screen === 'combat') {
     tipOnce('combat');
     if ((r.player.st.dying ?? 0) > 0) tipOnce('dying');
+    // 깊은 층의 장치(가호·변이)를 처음 만났을 때
+    if (r.combat?.enemies.some((e) => !e.dead && (e.affix?.length || (e.st.aegis ?? 0) > 0))) tipOnce('depth');
   } else if (r.screen === 'reward' && r.reward?.items.some((i) => i.kind === 'essence')) tipOnce('essence');
 }
 

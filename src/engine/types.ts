@@ -126,6 +126,11 @@ export interface EnemyUnit extends Unit {
   scale: number;
   /** 변신 형태 (EnemyDef.forms 인덱스 + 1, 0 = 기본) */
   form?: number;
+  /**
+   * 변이 (2026-10 심연 압력, content/depth.ts): 이 개체에만 붙은 특성 id. EnemyDef.traits처럼 훅이 돈다.
+   * 2층부터 정예, 3층부터 일반 적에게 무작위로 붙는다. 굴린 적이 없으면 undefined (예전 저장)
+   */
+  affix?: string[];
 }
 
 // ───────────── 소유 아이템 ─────────────
@@ -282,6 +287,28 @@ export interface Hooks {
   /** 소유자 쪽(플레이어 쪽이면 플레이어가) 적을 처치 */
   onKill?(c: Combat, s: HookSelf, victim: EnemyUnit, d: DamageCtx | null): void;
   onBreak?(c: Combat, s: HookSelf, victim: EnemyUnit): void;
+  /**
+   * 피해 계산의 마지막 (버팀 배율까지 건 뒤, 상한을 적용하기 전). 속성 없는 피해(지속 피해·가시)에도 불린다 —
+   * modDamageIn은 속성 있는 피해에만 불린다. 맞는 쪽(owner = 대상)의 특성·변이와 규칙에 걸린다 (가호: d.cap)
+   */
+  modDamageFinal?(c: Combat, s: HookSelf, d: DamageCtx): void;
+  /**
+   * 적의 버팀이 깎이려 할 때 (약점·버팀 추가 감소·약점이 아닌 공격의 누적). 깎일 양을 바꿔 돌려준다 — 0이면 깎이지 않는다.
+   * 맞는 적의 특성·변이와 규칙에 걸린다 (owner = 그 적)
+   */
+  modPoiseLoss?(c: Combat, s: HookSelf, target: EnemyUnit, dec: number, d: DamageCtx): number;
+  /**
+   * 적의 다음 행동을 정할 때 AI보다 먼저 묻는다: 행동 id를 돌려주면 그것으로 정한다 (심연의 각성처럼 모든 수호자에게 끼어드는 패턴).
+   * 맞는 적의 특성·변이와 규칙에 걸린다 (owner = 그 적). 끼어든 차례에는 그 적의 ai()를 부르지 않는다
+   */
+  planOverride?(c: Combat, s: HookSelf, e: EnemyUnit): string | undefined;
+  /**
+   * AI가 고른 다음 행동을 바꿀 기회 (planOverride가 없을 때, ai() 다음). 바꿀 행동 id를 돌려준다.
+   * AI가 이미 상태를 걸어 둔 특별한 행동(명령·퍼즐·차지)은 건드리지 말고 평범한 행동만 바꿀 것 (심연의 각성)
+   */
+  planReplace?(c: Combat, s: HookSelf, e: EnemyUnit, planned: string): string | undefined;
+  /** 적이 전장에 나타났다 (전투 시작 때 모두 나온 뒤 한 번씩, 그 뒤 불려 나올 때마다). 규칙만 받는다 (owner = 'all') */
+  onEnemySpawn?(c: Combat, s: HookSelf, e: EnemyUnit): void;
   /** 상태 부여 수치 보정. 반환값이 새 수치 */
   modApply?(c: Combat, s: HookSelf, target: Unit, id: string, n: number): number;
   onApplied?(c: Combat, s: HookSelf, target: Unit, id: string, n: number): void;
@@ -535,6 +562,8 @@ export interface MoveDef {
   melee?: boolean;
   hidden?: boolean;
   charging?: boolean;
+  /** 힘을 모으는 행동이면, 다음 차례에 쓸 일격의 이름 (의도 설명에 — 없으면 같은 피해의 공격을 찾는다) */
+  follow?: string;
   desc?: string;
   run(c: Combat, e: EnemyUnit): void;
 }

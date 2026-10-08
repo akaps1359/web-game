@@ -137,7 +137,8 @@ describe('적 행동 — 전수 검사', () => {
       if (c.run.light !== before.light) diffs.push('등불');
       if (c.p.insight !== before.insight) diffs.push('통찰');
       if (JSON.stringify(c.s.cd) !== before.cd) diffs.push('재사용 대기');
-      if (!e.dead && e.hp > before.hp && !byTrait[def.id]) diffs.push('회복');
+      // 변이(흡혈·재생)의 회복은 변이 설명이 알려 준다 (content/depth.ts)
+      if (!e.dead && e.hp > before.hp && !byTrait[def.id] && !e.affix?.some((a) => a === 'mut-leech' || a === 'mut-regen')) diffs.push('회복');
       if (!e.dead && visible(e.st) !== before.est && !byTrait[def.id]) diffs.push(`자신 상태 ${visible(e.st)}`);
       if (diffs.length) missing.push(`${def.id}.${id} [${m.name}]: ${diffs.join(', ')}`);
     }

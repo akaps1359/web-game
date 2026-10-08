@@ -39,6 +39,10 @@ export interface CombatLog {
   dealt: number;
   /** 붕괴시킨 횟수 */
   breaks: number;
+  /** 심연 압력 (content/depth.ts): 이 전투에 나온 적들의 변이 · 심연 강타가 터진/끊긴 횟수 */
+  muts?: string[];
+  blast?: number;
+  blastCut?: number;
   /** 틈 (content/gap.ts): 연 횟수(큰 틈) · 거둔 횟수(큰 틈) · 같은 계열로 쳐서 거두지 못한 횟수 · 출신 밖 계열로 거둔 횟수 */
   gap?: { open: number; bigOpen: number; harvest: number; bigHarvest: number; same: number; off: number };
 }
@@ -496,6 +500,9 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
           won: c.s.phase === 'victory',
           dealt: run.stats.dmgDealt - dealt0,
           breaks: run.stats.breaks - breaks0,
+          muts: c.s.enemies.flatMap((e) => e.affix ?? []),
+          blast: c.s.vars['abyss:blast'] ?? 0,
+          blastCut: c.s.vars['abyss:cut'] ?? 0,
           gap: {
             open: gs.open,
             bigOpen: gs.bigOpen,
@@ -659,6 +666,40 @@ export function summarize(results: SimResult[]): string {
       return (l.reduce((s, c) => s + (c.breaks ?? 0), 0) / Math.max(1, l.length)).toFixed(2);
     };
     lines.push(`  붕괴: 전투당 일반 ${per('normal')} · 정예 ${per('elite')} · 수호자 ${per('boss')}`);
+  }
+  {
+    // 심연 압력 (2026-10): 변이마다 그 전투의 체력 손실이 같은 층·종류 평균의 몇 배였나 · 패배
+    const all = results.flatMap((r) => r.combats);
+    const base = new Map<string, number>();
+    for (const c of all) {
+      const k = `${c.act}${c.kind}`;
+      if (!base.has(k)) {
+        const l = all.filter((x) => x.act === c.act && x.kind === c.kind);
+        base.set(k, l.reduce((sum, x) => sum + x.hpLost, 0) / Math.max(1, l.length));
+      }
+    }
+    const by = new Map<string, { n: number; rel: number; lost: number }>();
+    for (const c of all) {
+      for (const m of new Set(c.muts ?? [])) {
+        const v = by.get(m) ?? { n: 0, rel: 0, lost: 0 };
+        v.n++;
+        v.rel += c.hpLost / Math.max(1, base.get(`${c.act}${c.kind}`) ?? 1);
+        v.lost += c.won ? 0 : 1;
+        by.set(m, v);
+      }
+    }
+    if (by.size) {
+      lines.push(
+        '  변이: ' +
+          [...by.entries()]
+            .sort((a, b) => b[1].rel / b[1].n - a[1].rel / a[1].n)
+            .map(([m, v]) => `${m.replace('mut-', '')} ${v.n}전 ×${(v.rel / v.n).toFixed(2)} 패${v.lost}`)
+            .join(' · '),
+      );
+    }
+    const bl = all.reduce((sum, c) => sum + (c.blast ?? 0), 0);
+    const cut = all.reduce((sum, c) => sum + (c.blastCut ?? 0), 0);
+    lines.push(`  심연 강타: 터짐 ${bl} · 붕괴로 끊음 ${cut}`);
   }
   const bossStats = new Map<string, CombatLog[]>();
   for (const r of results) for (const c of r.combats) if (c.kind !== 'normal') bossStats.set(c.enc, [...(bossStats.get(c.enc) ?? []), c]);

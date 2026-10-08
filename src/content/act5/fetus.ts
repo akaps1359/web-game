@@ -583,7 +583,7 @@ reg.traits([
         e.maxHp = Math.max(1, Math.round((P.hp * (e.mem.hpMul ?? 100)) / 100));
         e.hp = e.maxHp;
         e.block = 0;
-        e.maxPoise = scaledPoise(P.poise);
+        e.maxPoise = scaledPoise(P.poise, 5);
         c.restorePoise(e, false);
         e.mem.grows = 0;
         delete e.mem.charge;

@@ -3,6 +3,7 @@ import { store } from '../state/store';
 import { showTip } from './components';
 import { MAX_MADNESS } from '../engine/combat';
 import { guardWord } from './guard';
+import { DEPTH } from '../content/depth';
 
 /** 처음 한 번만 보여주는 도움말 */
 const TIPS: Record<string, { title: string; icon: string; body: string }> = {
@@ -30,6 +31,11 @@ const TIPS: Record<string, { title: string; icon: string; body: string }> = {
     title: '정신력',
     icon: 'gi:brain',
     body: `정신력이 0이 되면 붕괴해 광기를 얻는다. 나쁜 광기가 ${MAX_MADNESS}개가 되면 완전히 미쳐 여정이 끝난다.\n\n야영지에서 명상하거나 신전에서 기도해 회복할 수 있다.`,
+  },
+  depth: {
+    title: '심연 압력',
+    icon: 'gi:evil-moon',
+    body: `깊은 층의 존재들은 쉽게 무너지지 않는다.\n\n가호: 정예·수호자는 한 턴에 받는 피해에 상한이 있다. 붕괴시키면 상한이 두 배가 된다.\n\n붕괴 내성: 붕괴를 겪을 때마다 버팀 최대치가 늘어난다.\n\n변이: 이름표 아래 보라 테두리 표시. 누르면 무엇인지 나온다.\n\n각성: 층 수호자는 체력이 ${Math.round(DEPTH.awakenAt * 100)}% 아래로 내려가면 깨어나 심연을 모은다. 모으는 동안 붕괴시키면 끊긴다.`,
   },
   dying: {
     title: '사경',

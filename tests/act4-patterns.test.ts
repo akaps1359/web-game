@@ -212,6 +212,7 @@ describe('4층 수호자 — 검은 파라오', () => {
     const ph = find(c, 'black-pharaoh');
     c.drain();
     ph.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
+    ph.mem.agOff = 1; // 가호(한 턴 피해 상한)도
     c.damage({ src: c.p, tgt: ph, base: Math.ceil(ph.maxHp * 0.55), type: 'true' });
     expect(ph.form).toBe(1);
     const evs = c.drain();
@@ -226,6 +227,7 @@ describe('4층 수호자 — 검은 파라오', () => {
     const c = startCombat(run, 'a4-boss-pharaoh', { anomaly: null });
     const ph = find(c, 'black-pharaoh');
     ph.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게
+    ph.mem.agOff = 1; // 가호(한 턴 피해 상한)도
     c.damage({ src: c.p, tgt: ph, base: Math.ceil(ph.maxHp * 0.55), type: 'true' });
     ph.poise = ph.maxPoise; // 버팀 0인 채로 맞으면 붕괴한다
     expect(ph.form).toBe(1);

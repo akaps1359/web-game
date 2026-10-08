@@ -7,6 +7,7 @@ import { BOSS_HP_MULT, BREAK, GUARD } from '../src/engine/combat';
 import { botAsc, botClue, botEssence, simulateRun, summarize } from '../src/sim/runbot';
 import { BOT_BREAK } from '../src/sim/bot';
 import { GAP } from '../src/content/gap';
+import { reg } from '../src/engine/registry';
 
 const N = Number(process.env.SIM_RUNS ?? 40);
 /** 시드 묶음 바꾸기 (다른 판들로 다시 재 보기) */
@@ -36,6 +37,25 @@ if (process.env.SIM_BOT_BREAK) Object.assign(BOT_BREAK, JSON.parse(process.env.S
 // 틈 수치 바꾸기: SIM_GAP='{"crit":1.5,"bleed":2}' · 거두기 끄기: SIM_GAP=off
 if (process.env.SIM_GAP === 'off') GAP.perTurn = 0;
 else if (process.env.SIM_GAP) Object.assign(GAP, JSON.parse(process.env.SIM_GAP));
+
+// 사람처럼 강한 플레이어 흉내 (후반 층이 강한 덱에게 얼마나 쉬워지는지 볼 때): SIM_POWER='{"dmg":1.5,"taken":0.85}'
+// dmg: 내가 주는 피해 배율 · taken: 적 공격으로 받는 피해 배율 (봇은 사람보다 판짜기·막기가 서툴다)
+if (process.env.SIM_POWER) {
+  const pw = { dmg: 1, taken: 1, ...JSON.parse(process.env.SIM_POWER) } as { dmg: number; taken: number };
+  reg.rules([
+    {
+      id: 'sim-power',
+      hooks: {
+        modDamageOut(c, _s, d) {
+          if (d.src === c.p && d.tgt !== c.p) d.mult *= pw.dmg;
+        },
+        modDamageIn(c, _s, d) {
+          if (d.tgt === c.p && d.src && d.src !== c.p && d.attack) d.mult *= pw.taken;
+        },
+      },
+    },
+  ]);
+}
 
 it('밸런스 시뮬레이션', () => {
   const out: string[] = [];
