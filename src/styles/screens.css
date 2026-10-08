@@ -965,3 +965,30 @@
   font-weight: 500;
   color: var(--ink-3);
 }
+
+/* 버팀 (붕괴 개편): 약점이 아닌 공격이 쌓이면 다음에 깎일 ◆가 위에서부터 빈다 (--d), 붕괴 중이면 남은 쉬는 차례 */
+.poise i.drain {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0 var(--d, 0%), rgba(255, 224, 128, 0.85) var(--d, 0%) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 224, 128, 0.75);
+}
+.poise .brk {
+  font-family: var(--num);
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #ff5a4a;
+  text-shadow: 0 0 6px rgba(255, 90, 74, 0.7), 0 1px 2px #000;
+  white-space: nowrap;
+}
+/* 버팀이 남은 적은 금빛 테두리(받는 피해가 준다), 붕괴한 적은 붉게 맥박친다 */
+.eplate .bar.guarded {
+  box-shadow: 0 0 0 1px rgba(255, 224, 128, 0.5);
+}
+.eplate .bar.exposed {
+  box-shadow: 0 0 0 1.5px #ff5a4a, 0 0 8px rgba(255, 90, 74, 0.6);
+  animation: exposed-pulse 1.1s ease-in-out infinite;
+}
+@keyframes exposed-pulse {
+  50% {
+    box-shadow: 0 0 0 1.5px #ff5a4a, 0 0 14px rgba(255, 90, 74, 0.85);
+  }
+}

@@ -17,8 +17,9 @@ reg.skills([
     tags: ['attack', 'mark'],
     makes: ['mark'],
     reads: [],
-    vals: { dmg: [4, 5], mark: [2, 3] },
-    desc: '{D:dmg} 비전 피해, 인장 {mark}',
+    // 붕괴 개편: 출신마다 시작 덱에 버팀을 깨는 기술 하나 (군인 정조준 사격 · 사냥꾼 톱날 베기 · 학자 인장 각인)
+    vals: { dmg: [4, 5], mark: [2, 3], poise: 1 },
+    desc: '{D:dmg} 비전 피해, 인장 {mark}, 버팀 추가 -{poise}',
     run: (c, u, t) => {
       hit(c, u, t);
       if (t && !t.dead) c.apply(t, 'mark', u.v('mark'), c.p);
@@ -38,8 +39,9 @@ reg.skills([
     tags: ['attack', 'mark', 'detonate'],
     makes: [],
     reads: ['mark'],
-    vals: { base: [7, 9], per: [5, 7] },
-    desc: '대상의 인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해',
+    // 붕괴 개편: 학자는 인장을 새기고 터뜨려 버팀을 깬다 (시작 덱으로 약점을 못 치는 1층 적이 많다)
+    vals: { base: [7, 9], per: [5, 7], poise: 1 },
+    desc: '대상의 인장을 모두 터뜨려 {base} + 인장당 {per} 비전 피해, 버팀 추가 -{poise}',
     run: (c, u, t) => {
       // 기본·인장당 피해도 위력(메아리·절약 각인)을 따른다
       if (t) detonate(c, u, t, Math.floor(u.v('per') * u.power), Math.floor(u.v('base') * u.power));

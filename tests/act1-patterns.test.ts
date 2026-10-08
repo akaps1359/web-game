@@ -257,6 +257,7 @@ describe('1층 — 밀수조직 두목: 휴전 제안과 배신', () => {
   it('체력이 절반 아래로 떨어지면 화면 너머로 속삭인다 (한 번)', () => {
     const c = fight('a1-boss-queen');
     const q = find(c, 'queen');
+    q.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
     c.damage({ src: c.p, tgt: q, base: Math.ceil(q.maxHp * 0.55), type: 'true', attack: true });
     c.damage({ src: c.p, tgt: q, base: 5, type: 'true', attack: true });
     expect(cines(c.drain(), 'whisper').length).toBe(1);
@@ -315,7 +316,8 @@ describe('1층 — 늙은 어부: 낚싯줄', () => {
       c.endTurn();
       expect(c.alive.some((e) => e.def === LINE)).toBe(false);
     }
-    // 본모습을 드러내면 낚싯대를 놓친다
+    // 본모습을 드러내면 낚싯대를 놓친다 (버팀을 걷어 피해가 그대로 들어가게)
+    f.poise = 0;
     c.damage({ src: c.p, tgt: f, base: f.hp - Math.floor(f.maxHp * 0.5) + 1, type: 'true', attack: true });
     const ev2 = c.drain();
     expect(f.form).toBe(1);
@@ -365,6 +367,7 @@ describe('1층 — 늙은 어부: 낚싯줄', () => {
   it('본모습의 심연의 노래에 홀리면 다음 내 턴 행동력 -1', () => {
     const c = fight('a1-boss-fisherman');
     const f = find(c, 'fisherman');
+    f.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게
     c.damage({ src: c.p, tgt: f, base: Math.ceil(f.maxHp * 0.55), type: 'true', attack: true });
     expect(f.form).toBe(1);
     f.mem.c2 = 2;

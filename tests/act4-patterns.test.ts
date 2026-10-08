@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { Combat, DISGUISE_REVEAL, type CombatEvent } from '../src/engine/combat';
+import { Combat, DISGUISE_REVEAL, GUARD, type CombatEvent } from '../src/engine/combat';
 import { ENCOUNTERS, ENEMIES, SKILLS } from '../src/engine/registry';
 import { finishCombat, newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
@@ -211,6 +211,7 @@ describe('4층 수호자 — 검은 파라오', () => {
     const c = startCombat(floor4(), 'a4-boss-pharaoh', { anomaly: null });
     const ph = find(c, 'black-pharaoh');
     c.drain();
+    ph.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
     c.damage({ src: c.p, tgt: ph, base: Math.ceil(ph.maxHp * 0.55), type: 'true' });
     expect(ph.form).toBe(1);
     const evs = c.drain();
@@ -224,7 +225,9 @@ describe('4층 수호자 — 검은 파라오', () => {
     const run = floor4();
     const c = startCombat(run, 'a4-boss-pharaoh', { anomaly: null });
     const ph = find(c, 'black-pharaoh');
+    ph.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게
     c.damage({ src: c.p, tgt: ph, base: Math.ceil(ph.maxHp * 0.55), type: 'true' });
+    ph.poise = ph.maxPoise; // 버팀 0인 채로 맞으면 붕괴한다
     expect(ph.form).toBe(1);
     c.p.st[DOOM] = 9;
     ph.mem.c2 = 1;
@@ -409,6 +412,8 @@ describe('4층 수호자 — 별의 자손 군주', () => {
     expect(lord.st[QUAKE]).toBe(need);
     expect(lord.intent!.move).not.toBe('flip');
 
+    // 문턱은 잃은 체력으로 센다 — 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
+    lord.poise = 0;
     c.damage({ src: c.p, tgt: lord, base: need - 1, type: 'true' });
     expect(lord.st[QUAKE]).toBe(1);
     expect(lord.intent!.move).not.toBe('flip');
@@ -640,7 +645,8 @@ describe('4층 정예', () => {
     act(c, w, 'ride');
     expect(w.st[WINDRIDE]).toBe(RIDE_HITS);
     const d = c.damage({ src: c.p, tgt: w, base: 20, type: 'slash', attack: true });
-    expect(d.amount).toBe(Math.floor((20 + c.p.str) * 0.5));
+    // 바람의 절반 위에 버팀이 남은 적의 배율(GUARD.mult)이 겹친다
+    expect(d.amount).toBe(Math.floor((20 + c.p.str) * 0.5 * GUARD.mult));
     expect(w.st[WINDRIDE]).toBe(RIDE_HITS - 1);
     for (let i = 1; i < RIDE_HITS; i++) c.damage({ src: c.p, tgt: w, base: 1, type: 'slash', attack: true });
     expect(w.st[WINDRIDE]).toBeUndefined();

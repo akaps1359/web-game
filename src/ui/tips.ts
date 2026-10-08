@@ -2,6 +2,7 @@ import { saveMeta } from '../state/meta';
 import { store } from '../state/store';
 import { showTip } from './components';
 import { MAX_MADNESS } from '../engine/combat';
+import { guardWord } from './guard';
 
 /** 처음 한 번만 보여주는 도움말 */
 const TIPS: Record<string, { title: string; icon: string; body: string }> = {
@@ -13,7 +14,7 @@ const TIPS: Record<string, { title: string; icon: string; body: string }> = {
   combat: {
     title: '전투',
     icon: 'gi:crossed-swords',
-    body: '적 머리 위의 아이콘이 다음 행동(의도)이다. 숫자는 받을 피해.\n\n스킬을 누르면 설명이 나오고, 한 번 더 누르거나 적을 눌러 쓴다. 행동력(◆)을 다 쓰면 턴을 끝낸다.\n\n적 아래의 노란 ◆는 버팀. 약점 속성으로 맞히면 깎이고, 0이 되면 붕괴해 행동을 못 하고 피해를 50% 더 받는다. 큰 공격(번개 표시)은 붕괴로 끊을 수 있다.',
+    body: `적 머리 위의 아이콘이 다음 행동(의도)이다. 숫자는 받을 피해.\n\n스킬을 누르면 설명이 나오고, 한 번 더 누르거나 적을 눌러 쓴다. 행동력(◆)을 다 쓰면 턴을 끝낸다.\n\n적 아래의 노란 ◆는 버팀. 버팀이 남은 적은 피해를 ${guardWord()}만 받는다. 약점 속성으로 맞히면 하나씩 깎이고 0이 되면 붕괴한다. 붕괴한 적은 차례를 쉬고 피해를 더 받는다. 큰 공격(번개 표시)도 붕괴로 끊긴다.`,
   },
   essence: {
     title: '정수',

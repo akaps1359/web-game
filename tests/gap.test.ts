@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { Combat, type CombatEvent } from '../src/engine/combat';
+import { Combat, GUARD, type CombatEvent } from '../src/engine/combat';
 import { RUNES, SKILLS } from '../src/engine/registry';
 import { startCombat, newRun, type RunState } from '../src/engine/run';
 import { HUMAN_SCHOOLS, dismantlePool, dismantleToRune, runeSchool, skillSchools } from '../src/engine/schools';
 import type { DmgType, EnemyUnit, School } from '../src/engine/types';
 import { GAP, GAP_ID, GAP_RULE, closeGap, gapBonusText, gapHarvestHint, gapInfo, gapList, gapStats, harvestsLeft, openGap } from '../src/content/gap';
 import { autoTurn } from '../src/sim/bot';
+
+// 틈의 셈만 본다: 버팀이 남은 적이 덜 받는 배율은 끈다 (버팀 99라야 틈이 열린다. 버팀 자체는 tests/guard.test.ts)
+GUARD.mult = 1;
 
 /**
  * 깨끗한 주인공(유물·장신구·정수 없음, 체력 넉넉)으로 「깡패(전열) + 입문자 둘(후열)」 전투.
@@ -382,12 +385,14 @@ describe('틈: 화면 연결과 저장', () => {
     const e = front(c);
     expect(gapHarvestHint(c, 's0', e.uid)).toBeNull();
     setGap(c, e, 'occult');
-    expect(gapHarvestHint(c, 's0', e.uid)).toBe('틈 거두기: 치명(피해 1.5배)');
-    expect(gapHarvestHint(c, 's3', e.uid)).toBe('틈 거두기: 출혈 2');
+    // 거두는 타격의 버팀 감소 (GAP.poise)도 함께 적힌다
+    const poise = GAP.poise ? `, 버팀 -${GAP.poise}` : '';
+    expect(gapHarvestHint(c, 's0', e.uid)).toBe(`틈 거두기: 치명(피해 1.5배)${poise}`);
+    expect(gapHarvestHint(c, 's3', e.uid)).toBe(`틈 거두기: 출혈 2${poise}`);
     expect(gapHarvestHint(c, 's1', e.uid)).toBeNull();
     expect(gapHarvestHint(c, 's2', e.uid)).toBeNull();
     setGap(c, e, 'occult', true);
-    expect(gapHarvestHint(c, 's3', e.uid)).toBe('큰 틈 거두기: 출혈 4');
+    expect(gapHarvestHint(c, 's3', e.uid)).toBe(`큰 틈 거두기: 출혈 4${poise}`);
   });
 
   it('보너스 문구와 규칙은 한 줄씩', () => {

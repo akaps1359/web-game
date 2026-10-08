@@ -3,6 +3,8 @@ import { INSIGHT_WEAK, MAX_MADNESS, WEAK_BONUS } from '../engine/combat';
 import { INSIGHT_SOURCES, INTENT_COLOR, INTENT_ICON, INTENT_MEANING, SCHOOL_NAME, insightBrief } from './text';
 import { GAP_RULE, GAP_RULE_MORE, gapBonusText } from '../content/gap';
 import { HUMAN_SCHOOLS } from '../engine/schools';
+import { GUARD } from '../engine/combat';
+import { breakGlossary, guardWord } from './guard';
 
 /** 설명 속 용어 풀이 (슬레이 더 스파이어의 키워드 설명처럼) */
 export interface Keyword {
@@ -17,8 +19,13 @@ const pctOf = (x: number) => Math.round(x * 100);
 
 /** 상태이상이 아닌 기본 규칙 용어 */
 const TERMS: Keyword[] = [
-  { name: '버팀', icon: 'gi:diamonds', color: '#ffe080', desc: '적 아래의 노란 ◆. 약점 속성으로 공격하면 하나씩 깎이고, 0이 되면 붕괴한다.' },
-  { name: '붕괴', icon: 'gi:shattered-glass', color: '#ffe080', desc: '버팀이 다 깎인 상태. 한 번 행동하지 못하고 받는 피해가 50% 늘어난다. 준비 중이던 큰 공격(번개 표시)도 끊긴다.' },
+  {
+    name: '버팀',
+    icon: 'gi:diamonds',
+    color: '#ffe080',
+    desc: `적 아래의 노란 ◆. 남아 있는 동안 받는 피해가 ${guardWord()}이다(지속 피해 포함). 약점 속성으로 치면 하나, 약점이 아닌 공격은 ${GUARD.chip}번에 하나 깎인다. 0이 되면 붕괴한다.`,
+  },
+  { name: '붕괴', icon: 'gi:shattered-glass', color: '#ffe080', desc: breakGlossary() },
   { name: '방어도', icon: 'gi:shield', color: '#8fc4ea', desc: '받는 피해를 먼저 막아 준다. 내 차례가 다시 시작되면 사라진다.' },
   { name: '약점', icon: 'gi:targeted', color: '#ff9a8a', desc: `존재마다 약한 피해 속성(참격·관통·타격·화염·비전·공허)이 있다. 약점으로 맞히면 버팀을 깎고 피해 +${pctOf(WEAK_BONUS)}%, 통찰 1당 +${pctOf(INSIGHT_WEAK)}% 더. 한 번 알아낸 약점은 다음 여정에도 보인다.` },
   { name: '행동력', icon: 'gi:diamonds', color: '#f0cf7a', desc: '스킬을 쓰는 데 드는 ◆. 내 차례가 시작될 때마다 다시 찬다.' },

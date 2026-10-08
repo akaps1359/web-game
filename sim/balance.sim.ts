@@ -3,8 +3,9 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import '../src/content';
 import { CORE_HP, GENESIS, ORIGIN_WEIGHT } from '../src/engine/run';
 import { CLUE } from '../src/engine/keywords';
-import { BOSS_HP_MULT } from '../src/engine/combat';
+import { BOSS_HP_MULT, BREAK, GUARD } from '../src/engine/combat';
 import { botAsc, botClue, botEssence, simulateRun, summarize } from '../src/sim/runbot';
+import { BOT_BREAK } from '../src/sim/bot';
 import { GAP } from '../src/content/gap';
 
 const N = Number(process.env.SIM_RUNS ?? 40);
@@ -27,6 +28,11 @@ if (process.env.SIM_BOT_CLUE_W) botClue.weight = Number(process.env.SIM_BOT_CLUE
 if (process.env.SIM_ORIGIN_LATE) ORIGIN_WEIGHT.late = Number(process.env.SIM_ORIGIN_LATE);
 // 심연 단계 (0~15): SIM_ASC=10
 if (process.env.SIM_ASC) botAsc.value = Number(process.env.SIM_ASC);
+// 버팀·붕괴 수치 바꾸기 (2026-10 붕괴 개편): SIM_GUARD='{"mult":0.4,"chip":4}' · SIM_BREAK='{"boss":{"vuln":1.75},"normal":{"stun":1}}'
+if (process.env.SIM_GUARD) Object.assign(GUARD, JSON.parse(process.env.SIM_GUARD));
+if (process.env.SIM_BREAK) for (const [k, v] of Object.entries(JSON.parse(process.env.SIM_BREAK))) Object.assign(BREAK[k as keyof typeof BREAK], v);
+// 봇이 보는 버팀 1의 값: SIM_BOT_BREAK='{"pip":3}'
+if (process.env.SIM_BOT_BREAK) Object.assign(BOT_BREAK, JSON.parse(process.env.SIM_BOT_BREAK));
 // 틈 수치 바꾸기: SIM_GAP='{"crit":1.5,"bleed":2}' · 거두기 끄기: SIM_GAP=off
 if (process.env.SIM_GAP === 'off') GAP.perTurn = 0;
 else if (process.env.SIM_GAP) Object.assign(GAP, JSON.parse(process.env.SIM_GAP));

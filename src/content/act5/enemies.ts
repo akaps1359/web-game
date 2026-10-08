@@ -241,8 +241,7 @@ reg.traits([
         e.dead = false;
         e.hp = Math.ceil(e.maxHp * 0.4);
         e.block = 0;
-        e.broken = 0;
-        e.poise = e.maxPoise;
+        c.restorePoise(e, false);
         delete e.mem.charge;
         e.weak = [...SATURN_WEAK[(3 - lives) % SATURN_WEAK.length]];
         // 무늬가 바뀌면 아는 약점도 처음부터 — 통찰로 보이는 것만 (1이면 하나, 2 이상이면 전부)

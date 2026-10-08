@@ -1,6 +1,6 @@
 import { josa } from '../../engine/josa';
 import { reg } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
+import { isEnemy, scaledPoise, unguarded, type Combat } from '../../engine/combat';
 import { cycle, last, opener, pick, hpPct } from '../../engine/ai';
 import type { EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
@@ -185,8 +185,8 @@ reg.traits([
         // 바뀐 약점도 통찰로 본다 (1이면 하나, 2 이상이면 전부)
         delete e.mem.sensed;
         c.senseWeak(e);
-        e.maxPoise = 10;
-        e.poise = e.broken ? 0 : 10;
+        e.maxPoise = scaledPoise(10);
+        e.poise = e.broken ? 0 : e.maxPoise;
         releaseSkill(c, e, (n) => `낚싯대가 부러졌다. 「${n}」${josa(n, '을')} 되찾았다`);
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
         cine(c, 'shatter', { uid: e.uid });
@@ -266,7 +266,7 @@ reg.traits([
         if (!isEnemy(e) || e.mem.bailed) return;
         // 내 턴에 준 피해, 그리고 선장 차례가 시작될 때 터지는 지속 피해(출혈·독·화상)도 센다 — 만조가 닿기 전이다
         if (!((c.s.phase === 'player' && d.src === c.p) || d.tags.includes('dot'))) return;
-        e.mem.bail = (e.mem.bail ?? 0) + d.amount;
+        e.mem.bail = (e.mem.bail ?? 0) + unguarded(d);
         if (e.mem.bail >= BAIL_DMG) {
           e.mem.bailed = 1;
           bailWater(c, e);
@@ -308,7 +308,7 @@ reg.traits([
     hooks: {
       onDamageTaken(c, s, d) {
         const dot = d.tags.includes('dot');
-        if (isEnemy(s.unit) && (d.src === c.p || dot)) plead(c, s.unit, d.amount, dot);
+        if (isEnemy(s.unit) && (d.src === c.p || dot)) plead(c, s.unit, unguarded(d), dot);
       },
       // 지속 피해가 터진 뒤, 행동하기 전에 판결한다
       onUnitTurnStart(c) {

@@ -87,8 +87,7 @@ ABYSS_RULES.push(
       e.dead = false;
       e.hp = Math.max(1, Math.ceil(e.maxHp * T.riseHp));
       e.block = 0;
-      e.broken = 0;
-      e.poise = e.maxPoise;
+      c.restorePoise(e, false);
       delete e.mem.charge;
       // 봇·다른 규칙이 보는 '다시 일어선' 표식 (망자의 귀환과 같다)
       e.mem.revived = 1;

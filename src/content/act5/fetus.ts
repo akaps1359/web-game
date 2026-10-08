@@ -1,6 +1,6 @@
 import { josa } from '../../engine/josa';
 import { ANOMALIES, reg, SKILLS } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
+import { isEnemy, scaledPoise, type Combat } from '../../engine/combat';
 import { cycle, last, opener } from '../../engine/ai';
 import type { DamageCtx, DmgType, EnemyUnit, Hooks } from '../../engine/types';
 import { cine, setUi } from '../lib';
@@ -583,9 +583,8 @@ reg.traits([
         e.maxHp = Math.max(1, Math.round((P.hp * (e.mem.hpMul ?? 100)) / 100));
         e.hp = e.maxHp;
         e.block = 0;
-        e.broken = 0;
-        e.maxPoise = P.poise;
-        e.poise = P.poise;
+        e.maxPoise = scaledPoise(P.poise);
+        c.restorePoise(e, false);
         e.mem.grows = 0;
         delete e.mem.charge;
         // 새로 태어난 몸에는 앞 모습에 쌓인 파멸이 남지 않는다 (쌓아 둔 파멸로 다음 모습을 곧바로 넘기는 것 방지)

@@ -1,5 +1,5 @@
 import { reg } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
+import { isEnemy, unguarded, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import type { EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, release } from '../moves';
@@ -169,7 +169,7 @@ reg.traits([
       onDamageTaken(c, s, d) {
         syncTilt(c);
         // 사냥을 부른 뒤 왕이 받은 피해를 센다 (적끼리 준 피해는 빼고)
-        if (isEnemy(s.unit) && !isEnemy(d.src)) huntHit(c, s.unit, d.amount);
+        if (isEnemy(s.unit) && !isEnemy(d.src)) huntHit(c, s.unit, unguarded(d));
       },
       onDeath(c) {
         closeAngles(c, '열린 각이 모두 닫혔다');
@@ -226,7 +226,7 @@ reg.traits([
         const e = s.unit;
         if (!isEnemy(e) || !e.mem.full) return;
         if (d.broke) cancelFull(c, '해부학자가 무너져 완전 해부가 멈췄다');
-        else if (!isEnemy(d.src)) fullHit(c, e, d.amount);
+        else if (!isEnemy(d.src)) fullHit(c, e, unguarded(d));
       },
       onUnitTurnStart(c, s) {
         // 피해 없이 무너졌을 때도 (버팀 깎기)
@@ -244,7 +244,7 @@ reg.traits([
     desc: `몸속에 심은 알은 어미와 이어져 있다. 알이 있는 동안 이것에게 피해 ${EGG_LINK_DMG}을 주면 알이 함께 죽는다 (출혈·독·화상 포함)`,
     hooks: {
       onDamageTaken(c, _s, d) {
-        if (!isEnemy(d.src)) broodHurt(c, d.amount);
+        if (!isEnemy(d.src)) broodHurt(c, unguarded(d));
       },
     },
   },

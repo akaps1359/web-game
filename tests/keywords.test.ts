@@ -135,7 +135,7 @@ function arena(id: string, lvl = 0): Combat {
     e.weak = [];
     e.resist = {};
     e.st = {};
-    e.poise = e.maxPoise = 99;
+    e.poise = e.maxPoise = 0;
   }
   c.drain();
   return c;

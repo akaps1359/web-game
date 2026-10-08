@@ -54,7 +54,8 @@ export function detonate(c: Combat, u: SkillUse, t: EnemyUnit, per: number, base
   const dmg = base + marks * per;
   if (dmg <= 0) return null;
   c.emit({ t: 'fx', name: 'detonate', tgt: t.uid });
-  return c.damage({ src: c.p, tgt: t, base: dmg, type: u.type ?? 'arcane', attack: true, skill: u, tags: ['detonate'] });
+  // 버팀 추가 감소는 기술이 정한다 (인장 폭발 — vals.poise, 없으면 0)
+  return c.damage({ src: c.p, tgt: t, base: dmg, type: u.type ?? 'arcane', attack: true, skill: u, poise: u.v('poise'), tags: ['detonate'] });
 }
 
 /** 3층 '표본 채집'으로 빼앗겨 잠긴 기술인가 (빼앗은 적을 쓰러뜨려야 되찾는다 — 대기를 되돌리는 효과로는 풀리지 않는다) */

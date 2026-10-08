@@ -112,6 +112,8 @@ describe('설명과 다르게 동작하던 것들', () => {
       const c = startCombat(run, 'a1-thug');
       const e = c.alive[0];
       e.hp = e.maxHp = 9999;
+      // 버팀 배율(절반) 없이 위력만 비교한다
+      e.maxPoise = e.poise = 0;
       setup(c, e);
       const before = e.hp;
       expect(c.useSkill(s.uid, e.uid), id).toBeNull();
@@ -176,6 +178,7 @@ describe('설명과 다르게 동작하던 것들', () => {
     const run = sturdyRun();
     equip(run, 'trinket2', 'void-shard', 2);
     const c = startCombat(run, 'a1-thug');
+    c.alive[0].maxPoise = c.alive[0].poise = 0;
     expect(c.preview(c.p, c.alive[0], 10, 'void', { attack: false }) - c.preview(c.p, c.alive[0], 10, 'fire', { attack: false })).toBe(5);
   });
 });

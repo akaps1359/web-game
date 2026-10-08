@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { garbleStable, mountWatcher, realWorld, staticCracks } from '../cinema';
 import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
-import { DISGUISE_REVEAL, HIDDEN_REVEAL, lvlVal, shownIntentOf } from '../../engine/combat';
+import { DISGUISE_REVEAL, GUARD, HIDDEN_REVEAL, breakProfile, lvlVal, shownIntentOf } from '../../engine/combat';
 import type { CombatChoice, EnemyUnit, Intent, IntentKind, Objective, SkillDef } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
@@ -12,6 +12,7 @@ import { store } from '../../state/store';
 import { saveMeta } from '../../state/meta';
 import { Bar, Icon, press, Segs, Sheet, showTip } from '../components';
 import { keywordsIn } from '../glossary';
+import { CHIP_RULE, GUARD_RULE, breakGlossary, breakSay, guardWord, timesWord } from '../guard';
 import { schoolLabel } from '../cards';
 import { GAP_ICON, GapLegend, GapMark, GapPeek, gapLine, gapView, harvestHint, harvestSay, type HarvestHint } from '../gap';
 import {
@@ -510,6 +511,15 @@ function threatSay(e: EnemyUnit, it: Intent | null, obj: Objective | null | unde
   return `${obj.lethal ? '즉사를 막는 법' : '막아야 할 위협'}: ${obj.text}`;
 }
 
+/** 붕괴한 적의 의도 설명: 남은 쉬는 차례와 받는 피해 */
+function brokenSay(e: EnemyUnit): string {
+  const def = ENEMIES.get(e.def);
+  const vuln = def ? breakProfile(def).vuln : 1.5;
+  const left = e.broken === 2 ? (e.mem.bk ?? 1) : 0;
+  const rest = left > 1 ? `붕괴해서 적의 차례를 ${left}번 더 쉰다.` : '붕괴해서 다음 적의 차례엔 행동하지 못한다.';
+  return `${rest} 버팀이 돌아올 때까지 받는 피해가 ${timesWord(vuln)}다.`;
+}
+
 /** 다음 적의 차례에 하는 일 (피해가 없는 의도) */
 const NEXT_TURN: IntentKind[] = ['block', 'buff', 'debuff', 'summon', 'advance', 'retreat', 'heal', 'flee'];
 
@@ -573,7 +583,7 @@ function readIntent(e: EnemyUnit, real: Intent | null): IntentRead | null {
       word: INTENT_NAME.stunned,
       name: '행동 불가',
       title: it.label,
-      says: [it.move === '_broken' ? '붕괴해서 다음 적의 차례엔 행동하지 못한다. 버팀이 돌아올 때까지 받는 피해가 50% 늘어난다.' : INTENT_MEANING.stunned],
+      says: [it.move === '_broken' ? brokenSay(e) : INTENT_MEANING.stunned],
       rule,
     };
   }
@@ -764,6 +774,26 @@ function PeekWords({ text }: { text: string }) {
   );
 }
 
+/** 의도 읽는 법 아래: 버팀 표시 읽는 법 (붕괴 개편) */
+function GuardLegend() {
+  return (
+    <div class="gap-legend">
+      <div class="legend-lead">
+        <div class="poise" style={{ flex: 'none' }}>
+          <i />
+          <i />
+          <i class="drain" style={{ '--d': '33%' } as Record<string, string>} />
+          <i class="off" />
+        </div>
+        <p>
+          적 이름 아래의 노란 ◆는 <b>버팀</b>이다. {GUARD_RULE}(금빛 테두리). {CHIP_RULE}. 비어 가는 ◆가 다음에 깎일 것이다.
+        </p>
+      </div>
+      <p class="legend-note">{breakGlossary()} 붕괴한 적은 체력 막대가 붉게 빛나고, 숫자는 남은 쉬는 차례다.</p>
+    </div>
+  );
+}
+
 /** 의도 표시 읽는 법: 모든 아이콘의 뜻 */
 function IntentLegend({ onClose }: { onClose: () => void }) {
   const rows: [IntentKind, string, string][] = [
@@ -807,6 +837,7 @@ function IntentLegend({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
+        <GuardLegend />
         <GapLegend />
       </div>
     </Sheet>
@@ -868,23 +899,10 @@ function EnemyOverlay({
             {/* 틈: 이름 옆 (긴 이름은 말줄임으로 줄어든다. 아래 버팀·약점 줄과 겹치지 않게) */}
             {gap && <GapMark key={`${gap.school}${gap.big ? '+' : ''}`} g={gap} onPress={onGap} />}
           </div>
-          <Bar kind="hp" value={Math.max(0, e.hp)} max={e.maxHp} label={def?.tier === 'boss' ? '' : undefined} />
+          {/* 버팀이 남은 적은 금빛 테두리(받는 피해 절반), 붕괴한 적은 붉은 테두리 */}
+          <Bar kind="hp" value={Math.max(0, e.hp)} max={e.maxHp} label={def?.tier === 'boss' ? '' : undefined} cls={e.maxPoise <= 0 ? '' : e.broken ? 'exposed' : e.poise > 0 ? 'guarded' : ''} />
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {e.maxPoise > 0 &&
-              (e.maxPoise > 8 ? (
-                <div class={`poise ${e.broken ? 'broken' : ''}`} style={{ alignItems: 'center', gap: 3 }}>
-                  <i />
-                  <span class="num" style={{ fontSize: 10.5, color: e.broken ? '#ff5a4a' : '#ffe080' }}>
-                    {e.poise}/{e.maxPoise}
-                  </span>
-                </div>
-              ) : (
-                <div class={`poise ${e.broken ? 'broken' : ''}`}>
-                  {Array.from({ length: e.maxPoise }, (_, i) => (
-                    <i class={i < e.poise ? '' : 'off'} />
-                  ))}
-                </div>
-              ))}
+            {e.maxPoise > 0 && <PoiseRow e={e} />}
             <div class="weak-row">
               {real.weak.map((w) =>
                 e.known.includes(w) ? (
@@ -901,6 +919,38 @@ function EnemyOverlay({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * 버팀 줄: ◆가 남은 버팀. 약점이 아닌 공격이 쌓이면 다음에 깎일 ◆가 위에서부터 빈다 (GUARD.chip번이면 하나).
+ * 붕괴 중이면 '붕괴 2'(남은 쉬는 차례). 버팀이 많은 적(9 이상)은 ◆ 하나와 숫자로
+ */
+function PoiseRow({ e }: { e: Snap['e'][number] }) {
+  if (e.broken) {
+    return (
+      <div class="poise broken">
+        <span class="brk">붕괴{e.stun > 0 ? ` ${e.stun}` : ''}</span>
+      </div>
+    );
+  }
+  const drain = (i: number) => (i === e.poise - 1 && e.chip > 0 ? ({ '--d': `${Math.round((e.chip / GUARD.chip) * 100)}%` } as Record<string, string>) : undefined);
+  if (e.maxPoise > 8) {
+    return (
+      <div class="poise" style={{ alignItems: 'center', gap: 3 }}>
+        <i class={e.chip > 0 ? 'drain' : ''} style={drain(e.poise - 1)} />
+        <span class="num" style={{ fontSize: 10.5, color: '#ffe080' }}>
+          {e.poise}/{e.maxPoise}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div class="poise">
+      {Array.from({ length: e.maxPoise }, (_, i) => (
+        <i class={i < e.poise ? (i === e.poise - 1 && e.chip > 0 ? 'drain' : '') : 'off'} style={drain(i)} />
+      ))}
+    </div>
   );
 }
 
@@ -926,7 +976,12 @@ function enemyTip(e: EnemyUnit) {
       (traits.length ? `\n\n${traits.map((t) => `【${t!.name}】 ${t!.desc}`).join('\n')}` : ''),
     lines: [
       { label: '체력', value: def.tier === 'boss' ? woundWord(e.hp / Math.max(1, e.maxHp)) : `${e.hp}/${e.maxHp}` },
-      { label: '버팀', value: `${e.poise}/${e.maxPoise}${e.broken ? ' (붕괴)' : ''}` },
+      ...(e.maxPoise > 0
+        ? [
+            { label: '버팀', value: e.broken ? `붕괴 중 · 받는 피해 ${timesWord(breakProfile(def).vuln)}` : `${e.poise}/${e.maxPoise} · 받는 피해 ${guardWord()}` },
+            { label: '붕괴하면', value: breakSay(def) },
+          ]
+        : []),
       {
         label: '약점',
         value: e.weak.map((w) => (e.known.includes(w) ? DMG_NAME[w] : '?')).join(' · '),

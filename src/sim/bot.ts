@@ -1,5 +1,6 @@
-import { Combat } from '../engine/combat';
+import { Combat, GUARD, breakProfile } from '../engine/combat';
 import type { RunState } from '../engine/run';
+import { ENEMIES } from '../engine/registry';
 import { gapStats } from '../content/gap';
 
 /**
@@ -21,6 +22,14 @@ export const BOT_DOT: { turns: Record<'normal' | 'elite' | 'boss', number> } = {
  * 예전 봇은 후열의 재 속을 원거리로 계속 쏴 반격을 키웠다 (2026-10 최종 밸런스: 시작 덱 군인이 재에 묻힌 것에게 30번 중 2번 지던 것이 0번)
  */
 export const BOT_INC = { k: 1 };
+
+/**
+ * 버팀 (2026-10 붕괴 개편): 버팀 1의 값. 약점이 아닌 타격은 GUARD.chip분의 1씩 센다.
+ * 붕괴는 막은 공격을 건너뛰는 차례 수만큼 센다 (일반 적은 오래 쉰다).
+ * 버팀 1의 값을 큰 적일수록 크게(붕괴 창에서 더 들어갈 피해 ÷ 최대 버팀) 쳐 보니 봇이 버팀만 쫓다 막기를 놓쳐 더 약해졌다
+ * (최대 체력의 30%를 창으로 보면 승률 54.8 → 49.0%, 10%면 52.5%). 사람의 감에 가까운 것은 고르게 2점
+ */
+export const BOT_BREAK = { pip: 2 };
 
 /** n에서 시작해 턴마다 1씩 줄어드는 지속 피해가 t턴 동안 주는 피해 */
 const dotSum = (n: number, t: number) => {
@@ -56,8 +65,11 @@ function score(before: RunState, after: RunState, need: number, cost = 0): numbe
     if (ea.dead && !eb.dead) s += 12;
     if (ea.mem.revived && !eb.mem.revived) s += 12 + eb.hp;
     if (ea.mem.transformed && !eb.mem.transformed) s += 25;
-    if (ea.broken === 2 && eb.broken !== 2) s += 10 + (eb.intent?.dmg ?? 0) * (eb.intent?.hits ?? 1) * 0.8;
-    s += Math.max(0, eb.poise - ea.poise) * 2;
+    // 붕괴: 막은 공격(건너뛰는 차례 수만큼) · 버팀 1은 BOT_BREAK.pip (약점이 아닌 타격은 GUARD.chip분의 1)
+    const def = ENEMIES.get(eb.def);
+    if (ea.broken === 2 && eb.broken !== 2) s += 10 + (eb.intent?.dmg ?? 0) * (eb.intent?.hits ?? 1) * 0.8 * (def ? breakProfile(def).stun : 1);
+    s += Math.max(0, eb.poise - ea.poise) * BOT_BREAK.pip;
+    if (ea.broken === 0 && eb.broken === 0) s += (Math.max(0, (ea.chip ?? 0) - (eb.chip ?? 0)) / GUARD.chip) * BOT_BREAK.pip;
     // 지속 피해: 둘 다 이 행동 뒤의 체력까지만 센다 (때려서 줄인 체력을 지속 피해 손해로 치지 않게)
     const T = BOT_DOT.turns[b.kind as 'normal'] ?? BOT_DOT.turns.normal;
     const hpLeft = Math.max(0, ea.hp);

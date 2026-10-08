@@ -111,10 +111,10 @@ export function TipView() {
   );
 }
 
-export function Bar({ kind, value, max, label, block = 0 }: { kind: 'hp' | 'san'; value: number; max: number; label?: string; block?: number }) {
+export function Bar({ kind, value, max, label, block = 0, cls }: { kind: 'hp' | 'san'; value: number; max: number; label?: string; block?: number; cls?: string }) {
   const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
   return (
-    <div class={`bar ${kind} ${block > 0 ? 'block-on' : ''}`}>
+    <div class={`bar ${kind} ${block > 0 ? 'block-on' : ''} ${cls ?? ''}`}>
       <i class="lag" style={{ width: `${pct}%` }} />
       <i class="val" style={{ width: `${pct}%` }} />
       <span>{label ?? `${value}/${max}`}</span>

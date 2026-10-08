@@ -35,8 +35,9 @@ reg.skills([
     tags: ['attack', 'bleed'],
     makes: ['bleed'],
     reads: [],
-    vals: { dmg: [5, 6], bleed: [3, 5] },
-    desc: '{D:dmg} 참격 피해, 출혈 {bleed}',
+    // 붕괴 개편: 출신마다 시작 덱에 버팀을 깨는 기술 하나 (군인 정조준 사격 · 사냥꾼 톱날 베기 · 학자 인장 각인)
+    vals: { dmg: [5, 6], bleed: [3, 5], poise: 1 },
+    desc: '{D:dmg} 참격 피해, 출혈 {bleed}, 버팀 추가 -{poise}',
     run: (c, u, t) => {
       hit(c, u, t);
       if (t && !t.dead) c.apply(t, 'bleed', u.v('bleed'), c.p);

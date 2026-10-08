@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { icons as ICON_SET } from '@iconify-json/game-icons';
 import '../src/content';
-import { Combat, lvlVal, weakMult } from '../src/engine/combat';
+import { Combat, GUARD, lvlVal, weakMult } from '../src/engine/combat';
 import { ENCOUNTERS, EQUIPS, RELICS, RUNES, SKILLS, STATUSES } from '../src/engine/registry';
 import {
   GENESIS,
@@ -328,8 +328,8 @@ describe('창세: 장비 효과', () => {
     expect(c.useSkill('weapon', t.uid)).toBeNull();
     let hits = dmgEvents(c);
     expect(hits[0].dtype).toBe('fire');
-    // 약점으로 맞혔으니 약점 공격 피해 보너스(통찰 0이면 WEAK_BONUS만)가 붙는다
-    expect(hits[0].amount).toBe(Math.floor(v('w-g-tablet', 'dmg', 0) * weakMult(0)));
+    // 약점으로 맞혔으니 약점 공격 피해 보너스(통찰 0이면 WEAK_BONUS만)가 붙는다. 버팀이 남은 적이라 절반 (GUARD.mult)
+    expect(hits[0].amount).toBe(Math.floor(v('w-g-tablet', 'dmg', 0) * weakMult(0) * GUARD.mult));
     expect(t.known).toContain('fire');
     expect(t.poise).toBe(1);
     expect(c.s.ap).toBe(ap - 1);
@@ -355,8 +355,8 @@ describe('창세: 장비 효과', () => {
       d.useSkill('weapon', u.uid);
       const h = dmgEvents(d);
       expect(h[0].dtype, `${weak} ${known} ${types}`).toBe(want);
-      // 약점으로 맞히면 약점 공격 피해 보너스가 붙는다 (약점이 없는 적을 비전으로 칠 때는 그대로)
-      expect(h[0].amount).toBe(Math.floor(v('w-g-tablet', 'dmg', 2) * (weak.includes(want) ? weakMult(0) : 1)));
+      // 약점으로 맞히면 약점 공격 피해 보너스가 붙는다 (약점이 없는 적을 비전으로 칠 때는 그대로). 버팀이 남은 적이라 절반
+      expect(h[0].amount).toBe(Math.floor(v('w-g-tablet', 'dmg', 2) * (weak.includes(want) ? weakMult(0) : 1) * GUARD.mult));
     }
   });
 

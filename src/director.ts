@@ -10,6 +10,7 @@ import { store } from './state/store';
 import { DMG_COLOR, DMG_NAME, SCHOOL_COLOR } from './ui/text';
 import { gapBonusText } from './content/gap';
 import { noteGap } from './ui/gap';
+import { timesWord } from './ui/guard';
 
 // ───────────── 떠오르는 글자 ─────────────
 
@@ -427,6 +428,8 @@ async function step(ev: CombatEvent) {
       }
       const p = unitPoint(ev.uid, 0.7);
       floater(p.x, p.y, '붕괴!', '#ffe080', 'big', 40);
+      // 무너지는 정도 (붕괴 개편): 쉬는 차례와 받는 피해
+      floater(p.x, p.y + 30, `차례 ${ev.turns}번 쉼 · 받는 피해 ${timesWord(ev.vuln)}`, '#ffb4a8', 'word', 14);
       sound.sfx('break');
       await wait(520);
       return;

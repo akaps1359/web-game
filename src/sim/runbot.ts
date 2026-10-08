@@ -37,6 +37,8 @@ export interface CombatLog {
   sanityLost: number;
   won: boolean;
   dealt: number;
+  /** 붕괴시킨 횟수 */
+  breaks: number;
   /** 틈 (content/gap.ts): 연 횟수(큰 틈) · 거둔 횟수(큰 틈) · 같은 계열로 쳐서 거두지 못한 횟수 · 출신 밖 계열로 거둔 횟수 */
   gap?: { open: number; bigOpen: number; harvest: number; bigHarvest: number; same: number; off: number };
 }
@@ -478,6 +480,7 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
         const hp0 = run.player.hp;
         const dealt0 = run.stats.dmgDealt;
         const san0 = run.stats.sanityLost;
+        const breaks0 = run.stats.breaks;
         let n = 0;
         while (!c.over && n++ < 120) autoTurn(c);
         if (!c.over) c.s.phase = 'defeat';
@@ -492,6 +495,7 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
           sanityLost: run.stats.sanityLost - san0,
           won: c.s.phase === 'victory',
           dealt: run.stats.dmgDealt - dealt0,
+          breaks: run.stats.breaks - breaks0,
           gap: {
             open: gs.open,
             bigOpen: gs.bigOpen,
@@ -646,6 +650,15 @@ export function summarize(results: SimResult[]): string {
       const dpt = (l.reduce((s, c) => s + c.dealt, 0) / Math.max(1, l.reduce((s, c) => s + c.turns, 0))).toFixed(0);
       lines.push(`  ${act}층 ${kind}: ${l.length}전 · 평균 피해 ${avg('hpLost')} · 정신 ${avg('sanityLost')} · ${avg('turns')}턴 · 턴당 딜 ${dpt} · 패배 ${l.filter((c) => !c.won).length}`);
     }
+  }
+  {
+    // 붕괴 (2026-10 붕괴 개편): 전투 종류별 전투당 붕괴 횟수
+    const all = results.flatMap((r) => r.combats);
+    const per = (kind: string) => {
+      const l = all.filter((c) => c.kind === kind);
+      return (l.reduce((s, c) => s + (c.breaks ?? 0), 0) / Math.max(1, l.length)).toFixed(2);
+    };
+    lines.push(`  붕괴: 전투당 일반 ${per('normal')} · 정예 ${per('elite')} · 수호자 ${per('boss')}`);
   }
   const bossStats = new Map<string, CombatLog[]>();
   for (const r of results) for (const c of r.combats) if (c.kind !== 'normal') bossStats.set(c.enc, [...(bossStats.get(c.enc) ?? []), c]);

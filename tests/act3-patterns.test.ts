@@ -170,6 +170,7 @@ describe('쇼고스 — 흉내 (테켈리-리)', () => {
     const { c, e } = fight('a3-boss-shoggoth');
     const s = e('shoggoth');
     c.drain();
+    s.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
     c.damage({ src: c.p, tgt: s, base: Math.ceil(s.maxHp * 0.8), type: 'true', attack: true });
     const evs = c.drain();
     expect(cines(evs, 'handprints').length).toBe(1);
@@ -362,6 +363,7 @@ describe('각도의 왕 — 틴달로스의 사냥 (막아야 하는 큰 위협)
   it('체력이 절반 아래로 떨어지면 남은 모서리를 한꺼번에 열고, 그다음 차례에 사냥을 부른다', () => {
     const { c, e } = fight('a3-boss-king');
     const k = e('angle-king');
+    k.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게
     c.damage({ src: c.p, tgt: k, base: Math.ceil(k.maxHp * 0.6), type: 'true', attack: true });
     k.intent = { ...WAIT };
     c.endTurn();
@@ -1017,8 +1019,15 @@ describe('3층 기믹의 출신 간 공정성 — 시작 덱으로', () => {
     expect(c.row(0).length).toBeGreaterThan(0);
     const knife = SKILLS.get('w-knife')!;
     expect(c.validTargets(knife).map((x) => x.uid)).toContain(k.uid);
-    // 숨어 있어도 사냥하는 동안에는 피해가 줄지 않는다
-    expect(c.preview(c.p, k, 10, 'slash')).toBe(c.preview(c.p, c.row(0)[0], 10, 'slash'));
+    // 숨어 있어도 사냥하는 동안에는 피해가 줄지 않는다 (버팀 배율은 빼고 비교한다)
+    const bare = (x: typeof k) => {
+      const p = x.poise;
+      x.poise = 0;
+      const n = c.preview(c.p, x, 10, 'slash');
+      x.poise = p;
+      return n;
+    };
+    expect(bare(k)).toBe(bare(c.row(0)[0]));
     c.drain();
     autoTurn(c);
     expect(hitsTagged(c.drain(), 'a3-hunt').length).toBe(0);
@@ -1124,6 +1133,7 @@ describe('3층 기믹의 출신 간 공정성 — 시작 덱으로', () => {
   it('쇼고스가 떼어 낸 원형질 조각은 후열로 밀려나도 근접으로 끊어 낼 수 있다', () => {
     const c = startCombat(meleeOnly(), 'a3-boss-shoggoth', { anomaly: null });
     const s = c.alive.find((x) => x.def === 'shoggoth')!;
+    s.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게
     c.damage({ src: c.p, tgt: s, base: Math.ceil(s.maxHp * 0.55), type: 'true', attack: true });
     const blobs = c.alive.filter((x) => x.def === 'shoggoth-blob');
     expect(blobs.length).toBe(4);

@@ -34,7 +34,7 @@ function arena(id: string, lvl = 0): Combat {
     e.weak = [];
     e.resist = {};
     e.st = {};
-    e.poise = e.maxPoise = 99;
+    e.poise = e.maxPoise = 0;
   }
   c.drain();
   return c;
@@ -190,7 +190,8 @@ describe('예전 합기: 효과', () => {
     t.st.poison = 6;
     t.poise = t.maxPoise = 10;
     expect(c.useSkill('sk', t.uid)).toBeNull();
-    expect(total(c)).toBe(7);
+    // 버팀이 남은 적이라 피해 7이 절반으로 (GUARD.mult)
+    expect(total(c)).toBe(3);
     expect(t.st.poison).toBe(9);
     expect(t.poise).toBe(7);
     expect(c.s.ammo).toBe(5);

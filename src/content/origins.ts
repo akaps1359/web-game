@@ -33,7 +33,8 @@ reg.origins([
     name: '오컬트 학자',
     icon: 'gi:spell-book',
     desc: '금지된 책을 너무 많이 읽었다. 인장과 금기의 지식을 쓴다.',
-    hp: 76,
+    // 붕괴 개편: 막는 기술이 보호의 원 하나라 길어진 전투에서 가장 많이 다쳤다 (1층 일반전 피해 군인 5.7 · 학자 9.7)
+    hp: 84,
     sanity: 110,
     gold: 70,
     skills: ['sigil', 'detonate', 'circle', 'whisper-void'],

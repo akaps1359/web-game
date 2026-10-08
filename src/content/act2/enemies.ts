@@ -1,5 +1,5 @@
 import { ENEMIES, reg } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
+import { isEnemy, unguarded, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import type { DmgType, EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
@@ -244,7 +244,7 @@ reg.traits([
         const e = s.unit;
         if (!isEnemy(e) || !e.mem.req) return;
         if (d.broke) cutRequiem(c, e, '붕괴로 지휘가 끊겼다');
-        else requiemHit(c, e, d.hpLoss + d.blocked);
+        else requiemHit(c, e, unguarded(d));
       },
       onAnyDeath(c, s, victim) {
         const e = s.unit;
@@ -306,8 +306,7 @@ reg.traits([
           e.dead = false;
           e.hp = Math.ceil(e.maxHp * RISE_PCT);
           e.block = 0;
-          e.broken = 0;
-          e.poise = e.maxPoise;
+          c.restorePoise(e, false);
           delete e.mem.charge;
           for (const id of ['weak', 'vuln', 'frail', 'bleed', 'poison', 'burn', 'mark', 'corrode', 'doom']) c.clear(e, id);
           c.emit({ t: 'spawn', uid: e.uid });

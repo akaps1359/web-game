@@ -251,7 +251,7 @@ describe('점검: 위력 배율(메아리 50%·절약 75%)', () => {
     for (const e of c.alive) {
       e.hp = e.maxHp = 5000;
       Object.assign(e.st, { bleed: 6, poison: 6, burn: 6 });
-      e.poise = e.maxPoise = 99;
+      e.poise = e.maxPoise = 0;
       e.weak = [];
     }
     c.p.st = { tentacle: 4, barrier: 30 };
@@ -314,6 +314,8 @@ describe('점검: 여러 번 타격하는 스킬 (시궁쥐 떼 무리 근성)',
     absorbEssence(withRats, { id: 'rats', color: 0 });
     const a = startCombat(withRats, 'a1-cult', { anomaly: null });
     const b = startCombat(sturdy(4), 'a1-cult', { anomaly: null });
+    // 버팀 배율(절반)에 1이 버려지지 않게 버팀 없는 적으로 잰다
+    for (const x of [a, b]) for (const e of x.alive) e.maxPoise = e.poise = 0;
     const def = SKILLS.get(id)!;
     const owned = { uid: 'x', id, lvl: 0, runes: [] };
     a.p.st = {};

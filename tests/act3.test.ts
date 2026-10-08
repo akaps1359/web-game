@@ -278,6 +278,7 @@ describe('3층 — 적의 기믹', () => {
     const c = startCombat(run, 'lord-a3');
     const elder = c.alive.find((e) => e.def === 'awakened-elder')!;
     const thrall = c.alive.find((e) => e.def === 'shoggoth-thrall')!;
+    elder.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
     c.damage({ src: c.p, tgt: elder, base: Math.ceil(elder.maxHp * 0.55), type: 'slash', attack: true });
     expect(thrall.mem.rebel).toBe(1);
     expect(thrall.intent?.move).toBe('revolt');

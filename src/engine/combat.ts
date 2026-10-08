@@ -66,6 +66,52 @@ export function weakMult(insight: number): number {
   return 1 + WEAK_BONUS + INSIGHT_WEAK * Math.max(0, Math.min(INSIGHT_WEAK_CAP, insight));
 }
 
+// ───────────── 버팀과 붕괴 (2026-10 붕괴 개편, 붕괴: 스타레일의 강인성 참고) ─────────────
+// 버팀이 남은 적은 내 쪽에서 오는 피해(공격·지속 피해·가시)를 덜 받는다. 붕괴시켜야 제대로 들어간다.
+// 약점으로 치면 버팀 -1. 약점을 못 치는 덱도 막히지 않게, 약점이 아닌 공격도 GUARD.chip번 맞히면 버팀 -1.
+// 붕괴하면 등급마다 다르게 무너진다: 일반은 오래 쉬고, 수호자는 하던 행동 하나만 끊기는 대신 받는 피해가 더 크다.
+
+/**
+ * 버팀. 시뮬(시드 네 묶음 × 출신 셋 × 80판): 개편 전 58.3% → 처음 안(chip 3, poise 1) 54.8% → 최종 44.5%.
+ * 버팀이 남은 적의 배율보다 붕괴가 얼마나 잦은지가 난이도를 정했다 — 처음 안은 붕괴가 전투당 0.6번에서 1.8번으로 늘어
+ * 적이 차례의 40%를 쉬었다(mult 0.4로 낮춰도 54.2%). 버팀을 1.2배로 늘리자 44.5%, 1.5배면 29.8%
+ */
+export const GUARD = {
+  /** 버팀이 남은 적이 내 쪽에서 받는 피해 배율 (버팀이 없는 하수인·기믹 물건은 그대로) */
+  mult: 0.5,
+  /** 약점이 아닌 공격을 이만큼 맞히면 버팀 -1 (타격마다 센다) */
+  chip: 4,
+  /** 적의 버팀 배율 (EnemyDef.poise × 이 값, 반올림) */
+  poise: 1.2,
+};
+
+/** 적의 최대 버팀 (EnemyDef.poise·변신 형태의 버팀에 GUARD.poise를 곱한다. 0이면 버팀 없음) */
+export function scaledPoise(n: number): number {
+  return n > 0 ? Math.max(1, Math.round(n * GUARD.poise)) : 0;
+}
+
+/** 붕괴 (등급 기본값 — 적마다 EnemyDef.brk로 바꾼다). stun: 행동을 건너뛰는 횟수 · vuln: 붕괴 중 받는 피해 배율 */
+export const BREAK: Record<EnemyDef['tier'], { stun: number; vuln: number }> = {
+  normal: { stun: 2, vuln: 1.5 },
+  elite: { stun: 1, vuln: 1.5 },
+  boss: { stun: 1, vuln: 2 },
+  minion: { stun: 1, vuln: 1.5 },
+};
+
+/** 이 적이 붕괴하면: 행동을 건너뛰는 횟수와 받는 피해 배율 */
+export function breakProfile(def: Pick<EnemyDef, 'tier' | 'brk'>): { stun: number; vuln: number } {
+  const base = BREAK[def.tier] ?? BREAK.normal;
+  return { stun: Math.max(1, def.brk?.stun ?? base.stun), vuln: def.brk?.vuln ?? base.vuln };
+}
+
+/**
+ * 버팀에 깎이기 전 피해 (퍼즐 목표처럼 '피해 N'을 채우는 셈은 버팀과 상관없이 센다 — 버팀이 수치를 두 배로 늘리지 않게).
+ * 붕괴 중에 더 받은 몫은 그대로 센다. 적이 받은 피해에서만 쓴다 (방어도에 막힌 몫 포함 = d.amount)
+ */
+export function unguarded(d: Pick<DamageCtx, 'guard' | 'bare' | 'amount'>): number {
+  return d.guard < 1 ? d.bare : d.amount;
+}
+
 /** 보이는 의도: 속임수 의도(disguise)는 통찰이 reveal(기본 DISGUISE_REVEAL) 미만이면 가짜 모습으로. 속은 의도는 move가 '_disguise' */
 export function shownIntentOf(it: Intent | null | undefined, insight: number): Intent | null {
   if (!it) return null;
@@ -116,6 +162,10 @@ export interface Snap {
     poise: number;
     maxPoise: number;
     broken: number;
+    /** 약점이 아닌 공격을 맞은 횟수 (GUARD.chip번이면 버팀 -1) */
+    chip: number;
+    /** 붕괴해 앞으로 건너뛸 행동 수 (붕괴 중이 아니면 0) */
+    stun: number;
     intent: Intent | null;
     dead: boolean;
     row: 0 | 1;
@@ -149,7 +199,8 @@ export type CombatEvent = (
   | { t: 'heal'; uid: string; amount: number }
   | { t: 'status'; uid: string; id: string; n: number }
   | { t: 'reveal'; uid: string; dtype: DmgType }
-  | { t: 'break'; uid: string }
+  /** 붕괴. turns: 행동을 건너뛰는 횟수 · vuln: 붕괴 중 받는 피해 배율 */
+  | { t: 'break'; uid: string; turns: number; vuln: number }
   | { t: 'recover'; uid: string }
   | { t: 'death'; uid: string }
   | { t: 'flee'; uid: string }
@@ -355,6 +406,8 @@ export class Combat {
         poise: e.poise,
         maxPoise: e.maxPoise,
         broken: e.broken,
+        chip: e.chip ?? 0,
+        stun: e.broken === 2 ? (e.mem.bk ?? 1) : 0,
         intent: e.intent ? { ...e.intent } : null,
         dead: e.dead,
         row: e.row,
@@ -472,8 +525,10 @@ export class Combat {
       move: o.move,
       ignoreBlock: o.ignoreBlock,
       poiseBonus: o.poise ?? 0,
+      guard: 1,
       tags: o.tags ?? [],
       amount: 0,
+      bare: 0,
       blocked: 0,
       hpLoss: 0,
       killed: false,
@@ -518,7 +573,6 @@ export class Combat {
       if (tgtKnown) {
         this.fire(d.tgt, 'modDamageIn', d);
         if (isEnemy(d.tgt)) {
-          if (d.tgt.broken > 0) d.mult *= 1.5;
           const r = d.tgt.resist[d.type];
           if (r !== undefined) d.mult *= r;
           // 약점: 약점을 찌르는 내 공격 피해 +25%, 통찰 1당 +6% 더 — 미리보기에는 알아낸 약점만 (모르는 약점을 숫자로 흘리지 않게)
@@ -528,8 +582,32 @@ export class Combat {
         }
       }
     }
-    d.amount = Math.max(0, Math.floor((d.base + d.add) * d.mult));
-    if (d.cap !== undefined) d.amount = Math.min(d.amount, d.cap);
+    // 버팀: 버팀이 남은 적은 덜 받고, 붕괴하면 더 받는다. 속성 없는 피해(지속 피해·가시)도 — 상태이상만 쌓아 버팀을 건너뛰지 못하게
+    const pre = (d.base + d.add) * d.mult;
+    if (tgtKnown && isEnemy(d.tgt)) {
+      d.guard = this.guardOf(d.tgt, d);
+      d.mult *= d.guard;
+    }
+    const raw = pre * d.guard;
+    d.amount = Math.max(0, Math.floor(raw));
+    // 버팀에 깎여 0이 되는 작은 피해(출혈 1 등)도 1은 들어간다
+    if (d.guard < 1 && d.amount === 0 && raw > 0) d.amount = 1;
+    d.bare = Math.max(0, Math.floor(pre));
+    if (d.cap !== undefined) {
+      d.amount = Math.min(d.amount, d.cap);
+      d.bare = Math.min(d.bare, d.cap);
+    }
+  }
+
+  /**
+   * 이 피해에 걸리는 버팀 배율: 버팀이 남았으면 GUARD.mult, 붕괴 중이면 붕괴 배율(breakProfile), 아니면 1.
+   * 내 쪽에서 온 피해(내 공격·가시·반격·지속 피해)에만 — 적끼리 주고받는 피해(광란·기믹)와 대가로 잃는 체력은 그대로
+   */
+  guardOf(e: EnemyUnit, d?: Pick<DamageCtx, 'src' | 'tags'>): number {
+    if (d && !(d.src === this.p || (d.src === null && d.tags.includes('dot')))) return 1;
+    if (e.broken > 0) return breakProfile(this.defOf(e)).vuln;
+    if (e.maxPoise > 0 && e.poise > 0) return GUARD.mult;
+    return 1;
   }
 
   /**
@@ -571,7 +649,16 @@ export class Combat {
         }
       }
       if (counts && t.broken === 0 && t.maxPoise > 0) {
-        const dec = (d.weakHit ? 1 : 0) + d.poiseBonus;
+        let dec = (d.weakHit ? 1 : 0) + d.poiseBonus;
+        // 약점이 아닌 내 공격도 GUARD.chip번 맞히면 버팀 -1 (약점을 못 치는 덱도 붕괴시킬 수 있게). 약점 타격처럼 타격마다 센다
+        // (기술 사용마다 세 보니 여러 번 때리는 사냥꾼만 크게 약해졌다: 승률 군인 57 · 사냥꾼 41 · 학자 41%)
+        if (!d.weakHit && d.attack && d.src === this.p) {
+          const k = (t.chip ?? 0) + 1;
+          if (k >= GUARD.chip) {
+            t.chip = 0;
+            dec += 1;
+          } else t.chip = k;
+        }
         if (dec > 0) {
           t.poise = Math.max(0, t.poise - dec);
           if (t.poise === 0) d.broke = true;
@@ -719,14 +806,28 @@ export class Combat {
     this.emit({ t: 'flee', uid: e.uid });
   }
 
+  /** 붕괴: 하던 행동이 끊기고 breakProfile의 stun번 행동을 건너뛴다. 그동안과 그다음 내 턴까지 받는 피해가 vuln배 */
   breakEnemy(e: EnemyUnit) {
+    const b = breakProfile(this.defOf(e));
     e.broken = 2;
     e.poise = 0;
+    e.chip = 0;
+    e.mem.bk = b.stun;
     e.intent = { move: '_broken', kind: 'stunned', label: '붕괴' };
     delete e.mem.charge;
-    this.emit({ t: 'break', uid: e.uid });
+    this.emit({ t: 'break', uid: e.uid, turns: b.stun, vuln: b.vuln });
     this.fire(this.p, 'onBreak', e);
     this.run.stats.breaks++;
+  }
+
+  /** 버팀이 돌아온다 (붕괴가 끝나거나 콘텐츠가 되살릴 때). emit: 회복 연출을 낼지 */
+  restorePoise(e: EnemyUnit, emit = true) {
+    const was = e.broken;
+    e.broken = 0;
+    e.poise = e.maxPoise;
+    e.chip = 0;
+    delete e.mem.bk;
+    if (emit && was) this.emit({ t: 'recover', uid: e.uid });
   }
 
   /** 방어도 미리보기 (상태를 바꾸지 않음) */
@@ -948,8 +1049,8 @@ export class Combat {
       block: 0,
       st: {},
       row: r,
-      poise: def.poise,
-      maxPoise: def.poise,
+      poise: scaledPoise(def.poise),
+      maxPoise: scaledPoise(def.poise),
       broken: 0,
       weak: [...def.weak],
       known: def.weak.filter((w) => this.run.knownWeak?.[def.id]?.includes(w)),
@@ -1260,18 +1361,20 @@ export class Combat {
       // 수호자는 행동을 건너뛰면(붕괴·기절) 한 번 행동하기 전까지 기절하지 않는다 (붕괴와 기절을 번갈아 영원히 묶는 것 방지)
       const boss = this.defOf(e).tier === 'boss';
       if (e.broken === 2) {
-        e.broken = 1;
+        // 붕괴: 남은 횟수만큼 건너뛴다. 마지막으로 건너뛰면 회복 중(1)이 되어 다음 차례를 정한다
+        const left = (e.mem.bk ?? 1) - 1;
+        if (left > 0) e.mem.bk = left;
+        else {
+          delete e.mem.bk;
+          e.broken = 1;
+        }
         if (boss) {
           e.mem.stunGuard = 1;
           // 붕괴로 건너뛴 차례가 걸려 있던 기절도 함께 쓴다 (붕괴 직전에 건 기절로 한 번 더 묶지 못하게)
           if ((e.st.stun ?? 0) > 0) this.apply(e, 'stun', -1);
         }
       } else {
-        if (e.broken === 1) {
-          e.broken = 0;
-          e.poise = e.maxPoise;
-          this.emit({ t: 'recover', uid: e.uid });
-        }
+        if (e.broken === 1) this.restorePoise(e);
         if ((e.st.stun ?? 0) > 0) {
           this.apply(e, 'stun', -1);
           this.emit({ t: 'text', uid: e.uid, text: '기절', tone: 'info' });

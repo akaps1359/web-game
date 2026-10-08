@@ -107,8 +107,10 @@ export interface EnemyUnit extends Unit {
   row: 0 | 1;
   poise: number;
   maxPoise: number;
-  /** 2: 방금 붕괴(다음 행동 취소), 1: 회복 중(받는 피해 증가), 0: 정상 */
+  /** 2: 붕괴해 행동하지 못한다(남은 횟수는 mem.bk), 1: 회복 중(받는 피해 증가, 다음 차례에 버팀이 돌아온다), 0: 정상 */
   broken: number;
+  /** 약점이 아닌 공격을 맞은 횟수 (GUARD.chip번이면 버팀 -1, 0으로 돌아간다). 예전 저장에는 없다 */
+  chip?: number;
   weak: DmgType[];
   known: DmgType[];
   resist: Partial<Record<DmgType, number>>;
@@ -238,9 +240,13 @@ export interface DamageCtx {
   ignoreBlock?: boolean;
   /** 버팀 추가 감소 */
   poiseBonus: number;
+  /** 대상의 버팀이 이 피해에 건 배율 (버팀이 남았으면 GUARD.mult, 붕괴 중이면 붕괴 배율, 없으면 1) — 엔진이 채운다 */
+  guard: number;
   tags: string[];
   // 결과
   amount: number;
+  /** 버팀 배율(guard)을 걸기 전 피해 — 퍼즐 목표의 셈 (engine/combat.ts unguarded) */
+  bare: number;
   blocked: number;
   hpLoss: number;
   killed: boolean;
@@ -541,6 +547,11 @@ export interface EnemyDef {
   tier: 'normal' | 'elite' | 'boss' | 'minion';
   hp: [number, number];
   poise: number;
+  /**
+   * 붕괴했을 때: stun 행동을 건너뛰는 횟수, vuln 붕괴 중 받는 피해 배율.
+   * 없으면 등급 기본값 (engine/combat.ts의 BREAK — 일반은 오래 쉬고, 수호자는 짧게 끊기는 대신 더 아프다)
+   */
+  brk?: { stun?: number; vuln?: number };
   weak: DmgType[];
   resist?: Partial<Record<DmgType, number>>;
   row?: 0 | 1;

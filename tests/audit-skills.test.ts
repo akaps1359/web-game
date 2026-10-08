@@ -28,7 +28,7 @@ const SKILL_FILE_IDS = [
 
 /**
  * 스킬 하나만 든 깨끗한 주인공으로 「깡패(전열) + 입문자 둘(후열)」 전투를 연다.
- * 유물·장비·층의 법칙·약점·저항을 지워 피해 계산을 그대로 볼 수 있게 한다.
+ * 유물·장비·층의 법칙·약점·저항·버팀을 지워 피해 계산을 그대로 볼 수 있게 한다 (버팀이 남은 적은 덜 받는다).
  */
 function arena(id: string, o: { lvl?: number; runes?: string[]; enc?: string } = {}): Combat {
   const run = newRun({ seed: 2026, origin: 'soldier' });
@@ -47,6 +47,7 @@ function arena(id: string, o: { lvl?: number; runes?: string[]; enc?: string } =
     e.weak = [];
     e.resist = {};
     e.st = {};
+    e.maxPoise = e.poise = 0;
   }
   c.drain();
   return c;

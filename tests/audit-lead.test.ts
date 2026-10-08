@@ -299,6 +299,8 @@ describe('지속 피해 밸런스', () => {
     const c = startCombat(run, 'a1-cult', { anomaly: null });
     const e = c.alive[0];
     e.hp = e.maxHp = 999;
+    // 버팀 배율(절반) 없이 화상 수치만 본다
+    e.maxPoise = e.poise = 0;
     for (const x of c.alive) x.st.stun = 9;
     e.st.burn = 3;
     const hp = e.hp;

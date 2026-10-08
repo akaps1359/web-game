@@ -198,8 +198,7 @@ export function reviveAlly(c: Combat, by: EnemyUnit, pct: number): EnemyUnit | n
   t.hp = Math.max(1, Math.ceil(t.maxHp * pct));
   t.block = 0;
   t.st = {};
-  t.broken = 0;
-  t.poise = t.maxPoise;
+  c.restorePoise(t, false);
   t.mem.rebuilt = 1;
   delete t.mem.charge;
   delete t.mem.doomDmg;

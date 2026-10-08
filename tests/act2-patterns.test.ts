@@ -173,6 +173,7 @@ describe('대사제 — 꺼지지 않는 불', () => {
     const c = fight('a2-boss-priest');
     const priest = one(c, 'high-priest');
     expect(c.alive.filter((x) => x.def === 'offering').length).toBe(2);
+    priest.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
     c.damage({ src: c.p, tgt: priest, base: priest.hp + 50, type: 'true' });
     expect(priest.dead).toBe(false);
     expect(priest.hp).toBe(Math.ceil(priest.maxHp * RISE_PCT));
@@ -180,7 +181,8 @@ describe('대사제 — 꺼지지 않는 불', () => {
     expect(c.alive.filter((x) => x.def === 'offering').length).toBe(1);
     expect(c.s.enemies.filter((x) => x.def === 'offering' && x.dead && !x.fled).length).toBe(0);
     expect(cinesOf(c.drain()).some((x) => x.name === 'shatter')).toBe(true);
-    // 두 번째는 없다 — 남은 제물은 풀려나 달아난다
+    // 두 번째는 없다 — 남은 제물은 풀려나 달아난다 (다시 일어서며 버팀이 돌아왔다)
+    priest.poise = 0;
     c.damage({ src: c.p, tgt: priest, base: priest.hp + 50, type: 'true' });
     expect(priest.dead).toBe(true);
     // 남은 제물은 풀려나 달아난다 (전투가 끝난다)
@@ -191,6 +193,7 @@ describe('대사제 — 꺼지지 않는 불', () => {
     const c = fight('a2-boss-priest');
     const priest = one(c, 'high-priest');
     for (const o of c.alive.filter((x) => x.def === 'offering')) c.kill(o);
+    priest.poise = 0;
     c.damage({ src: c.p, tgt: priest, base: priest.hp + 50, type: 'true' });
     expect(priest.dead).toBe(true);
     // 남은 제물은 풀려나 달아난다 (전투가 끝난다)

@@ -357,6 +357,7 @@ describe('계층군주 꿈을 먹는 자 — 삼켜진 기억', () => {
     const c = startCombat(floor5(), 'lord-a5');
     const eater = find(c, 'dream-eater');
     c.drain();
+    eater.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
     c.damage({ src: c.p, tgt: eater, base: Math.ceil(eater.maxHp * 0.6), type: 'true' });
     expect(eater.form).toBe(1);
     const ev = c.drain();
@@ -516,6 +517,8 @@ describe('5층 정예 — 새 패턴', () => {
     const e = find(c, 'liminal');
     expect(e.st['a5-phase-real']).toBe(1);
     const need = Math.ceil(e.maxHp * FLIP_AT);
+    // 문턱은 잃은 체력으로 센다 — 버팀 없는 몸으로 (버팀이 남은 적은 절반만 받는다)
+    e.maxPoise = e.poise = 0;
     c.drain();
     // 현실에선 참격이 그대로 들어간다 — 문턱 아래로는 그대로
     c.damage({ src: c.p, tgt: e, base: Math.floor(need / 2) - 20, type: 'slash', attack: true });

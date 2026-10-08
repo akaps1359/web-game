@@ -1,5 +1,5 @@
 import { reg } from '../../engine/registry';
-import { isEnemy } from '../../engine/combat';
+import { isEnemy, unguarded } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import { DMG_TYPES, type EnemyUnit } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
@@ -221,7 +221,7 @@ reg.traits([
     desc: `내 체력 비율이 방랑자보다 ${Math.round(SWAP_GAP * 100)}%p 이상 높으면 「몸 바꾸기」를 준비한다. 다음 차례에 체력 비율이 최대 ${Math.round(SWAP_CAP * 100)}%p만큼 서로 뒤바뀐다. 방어도로는 막을 수 없다. 준비하는 동안 붕괴시키거나 최대 체력의 ${Math.round(SWAP_BREAK * 100)}%만큼 피해(지속 피해 포함)를 주면 끊긴다. 전투마다 ${SWAP_MAX}번까지`,
     hooks: {
       onDamageTaken(c, s, d) {
-        if (isEnemy(s.unit) && d.tgt === s.unit) shakeReach(c, s.unit, d.hpLoss + d.blocked);
+        if (isEnemy(s.unit) && d.tgt === s.unit) shakeReach(c, s.unit, unguarded(d));
       },
     },
   },
