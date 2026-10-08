@@ -3,7 +3,7 @@ import { garbleStable, mountWatcher, realWorld, staticCracks } from '../cinema';
 import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
 import { BUILTIN_MOVES, DISGUISE_REVEAL, GUARD, HIDDEN_REVEAL, breakProfile, lvlVal, shownIntentOf, toleranceGain } from '../../engine/combat';
-import { DEPTH, MUTATION, aegisCap, aegisLeft, canAwaken } from '../../content/depth';
+import { DEPTH, MUTATION, aegisCap, aegisLeft, aegisPoiseCap, canAwaken } from '../../content/depth';
 import type { CombatChoice, EnemyUnit, Intent, IntentKind, Objective, SkillDef } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
@@ -831,7 +831,7 @@ function GuardLegend() {
       </div>
       <p class="legend-note">{breakGlossary()} 붕괴한 적은 체력 막대가 붉게 빛나고, 숫자는 남은 쉬는 차례다.</p>
       <p class="legend-note">
-        깊은 층(3층부터)의 존재는 붕괴를 겪을수록 버팀이 두꺼워지고(붕괴 내성), 정예·수호자는 한 턴에 받는 피해에 상한이 있다(가호 — 붕괴시키면 두 배). 이름표 아래 보라 테두리는
+        깊은 층(3층부터)의 존재는 붕괴를 겪을수록 버팀이 두꺼워지고(붕괴 내성), 정예·수호자는 한 턴에 받는 피해와 깎이는 버팀에 상한이 있다(가호 — 붕괴시키면 피해 상한 두 배). 이름표 아래 보라 테두리는
         변이다.
       </p>
     </div>
@@ -1030,7 +1030,7 @@ function enemyTip(e: EnemyUnit) {
             { label: '붕괴하면', value: gain > 0 ? `${breakSay(def)} · 내성 버팀 +${gain}` : breakSay(def) },
           ]
         : []),
-      ...(cap > 0 && store.combat ? [{ label: '가호', value: `한 턴 피해 상한 ${cap}${e.broken ? ' (붕괴로 두 배)' : ''} · 남은 ${aegisLeft(store.combat, e)}` }] : []),
+      ...(cap > 0 && store.combat ? [{ label: '가호', value: `한 턴 피해 상한 ${cap}${e.broken ? ' (붕괴로 두 배)' : ''} · 남은 ${aegisLeft(store.combat, e)}${aegisPoiseCap(e) > 0 ? ` · 버팀은 한 턴에 ${aegisPoiseCap(e)}까지` : ''}` }] : []),
       ...(canAwaken(e) ? [{ label: '각성', value: e.mem.awk ? '깨어났다 — 평범한 차례에 심연 강타를 모은다' : `체력이 ${Math.round(DEPTH.awakenAt * 100)}% 아래로 내려가면 깨어난다` }] : []),
       {
         label: '약점',

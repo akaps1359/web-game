@@ -48,6 +48,7 @@ export function useOmen(run: RunState, id: string): boolean {
   const i = omensOf(run).indexOf(id);
   if (i < 0) return false;
   run.omens!.splice(i, 1);
+  run.stats.omensUsed = (run.stats.omensUsed ?? 0) + 1;
   const d = OMENS.get(id);
   if (d) log(run, `징조가 이루어졌다: ${d.name}`);
   return true;
@@ -59,6 +60,7 @@ export function gainOmen(run: RunState, id: string): boolean {
   run.omens ??= [];
   if (run.omens.length >= GROWTH.omenCap) return false;
   run.omens.push(id);
+  run.stats.omens = (run.stats.omens ?? 0) + 1;
   log(run, `징조를 얻었다: ${OMENS.get(id)!.name}`);
   return true;
 }
@@ -226,6 +228,7 @@ export function evolveRelic(run: RunState, id: string): string | null {
   if (!evolutionsReady(run).includes(id)) return '짝이 되는 유물이 없다';
   run.relics = run.relics.filter((r) => !d.evolve!.includes(r.id));
   gainRelic(run, id);
+  run.stats.evolved = (run.stats.evolved ?? 0) + 1;
   log(run, `유물이 진화했다: ${d.name}`);
   return null;
 }

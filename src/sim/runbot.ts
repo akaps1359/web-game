@@ -18,7 +18,7 @@ import {
 } from '../engine/run';
 import { continueRift, distances, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
 import { chooseEvent, eventView, leaveEvent } from '../engine/events';
-import { forgoChoice, shrinePacts, signShrinePact } from '../engine/growth';
+import { GROWTH, forgoChoice, omensOf, shrinePacts, signShrinePact } from '../engine/growth';
 import { camp, campRefuel, cureMadness, inn, inscribeFlask, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
 import { buy, priceOf } from '../engine/shop';
 import { endRun, winRun } from '../engine/run';
@@ -72,6 +72,8 @@ export interface SimResult {
   endSchools: number;
   endOffOrigin: number;
   endBridges: number;
+  /** 성장 개편 (engine/growth.ts): 받은 징조 · 이룬 징조 · 고르는 보상을 지나친 횟수 · 맺은 계약 · 이루어진 축복 · 진화 · 판 끝 장착 장비의 접사 수 */
+  growth: { omens: number; omenUsed: number; skipped: number; pacts: number; boons: number; evolved: number; affixes: number };
   /** 막 시작 시점의 상태 */
   actStart: { act: number; hp: number; maxHp: number; level: number; sanity: number; str: number; dex: number; ap: number; relics: number; essences: number; skills: number; upgrades: number; insight: number; relicIds: string[] }[];
 }
@@ -417,8 +419,10 @@ function handleReward(run: RunState, res: SimResult) {
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'upgrade');
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'equip');
     // 쓸 만한 것이 없으면 고르지 않고 지나쳐 징조를 받는다 (성장 개편 — 사람은 4층쯤부터 이렇게 했다)
-    if (idx < 0 && rw.omen && forgoChoice(run)) idx = -1;
-    else if (idx < 0) idx = 0;
+    if (idx < 0 && rw.omen && omensOf(run).length < GROWTH.omenCap && forgoChoice(run)) {
+      res.growth.skipped++;
+      idx = -1;
+    } else if (idx < 0) idx = 0;
     const it = idx >= 0 ? rw.choice[idx] : null;
     if (!it) {
       // 지나쳤다
@@ -479,8 +483,10 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
     endSchools: 0,
     endOffOrigin: 0,
     endBridges: 0,
+    growth: { omens: 0, omenUsed: 0, skipped: 0, pacts: 0, boons: 0, evolved: 0, affixes: 0 },
     actStart: [snapStart(run)],
   };
+
   let lastAct = 1;
   for (let step = 0; step < maxSteps && !run.over; step++) {
     if (run.act !== lastAct) {
@@ -645,6 +651,12 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
   res.rooms = run.stats.rooms;
   res.hours = run.stats.hours;
   res.genesis = run.genesis;
+  res.growth.omens = run.stats.omens ?? 0;
+  res.growth.omenUsed = run.stats.omensUsed ?? 0;
+  res.growth.evolved = run.stats.evolved ?? 0;
+  res.growth.pacts = run.pacts?.length ?? 0;
+  res.growth.boons = run.pacts?.filter((p) => p.left <= 0).length ?? 0;
+  res.growth.affixes = Object.values(run.equip).reduce((s, it) => s + (it?.aff?.length ?? 0), 0);
   Object.assign(res, endMix(run));
   return res;
 }
@@ -778,6 +790,10 @@ export function summarize(results: SimResult[]): string {
     const st = results.flatMap((r) => r.actStart.filter((x) => x.act === a));
     const av = (k: 'level' | 'maxHp' | 'str' | 'dex' | 'ap' | 'relics' | 'essences' | 'skills' | 'upgrades' | 'insight') => (st.reduce((s, x) => s + x[k], 0) / Math.max(1, st.length)).toFixed(1);
     if (st.length) lines.push(`  ${a}층 시작: Lv ${av('level')} · 체력 ${av('maxHp')} · 힘 ${av('str')} · 민첩 ${av('dex')} · AP ${av('ap')} · 유물 ${av('relics')} · 정수 ${av('essences')} · 스킬 ${av('skills')}(강화 ${av('upgrades')}) · 통찰 ${av('insight')}`);
+  }
+  {
+    const per = (f: (g: SimResult['growth']) => number) => (results.reduce((s, r) => s + f(r.growth), 0) / n).toFixed(2);
+    lines.push(`  성장: 판당 징조 받음 ${per((g) => g.omens)} · 이룸 ${per((g) => g.omenUsed)} · 보상 지나침 ${per((g) => g.skipped)} · 계약 ${per((g) => g.pacts)}(축복 ${per((g) => g.boons)}) · 진화 ${per((g) => g.evolved)} · 판 끝 장착 장비 접사 ${per((g) => g.affixes)}`);
   }
   void ENCOUNTERS;
   void RELICS;

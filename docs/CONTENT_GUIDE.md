@@ -99,10 +99,17 @@ id는 게임 전체에서 유일해야 한다 (적·스킬·특성·이벤트). 
 
 ## 6. 이벤트
 
-`stages.start(run, ev) => { text, choices }`. 선택지 `go(run, ev)`에서 `finish(ev, '결과 문장', { fight?, loot? })` 또는 `ev.stage = '다음'`. 헬퍼: `healRun, hurtRun, gainSanityRun, loseSanityRun(→ 붕괴 처리), learnSkill, rollRelic, rollEquip, rollRune, rollConsumable, rollForbidden, upgradeSkill, rng(run,'event')`. 1층 `events.ts`의 `sanity()`, `relicLoot()` 패턴 참고. 선택에는 대가와 이득이 함께 있어야 한다.
+`stages.start(run, ev) => { text, choices }`. 선택지 `go(run, ev)`에서 `finish(ev, '결과 문장', { fight?, loot? })`. **모든 선택은 이벤트를 끝낸다** (단계를 넘기는 `ev.stage = '다음'`은 쓰지 않는다 — 고를 것이 여럿이면 처음 화면에 선택지로 늘어놓는다). **화면을 그리는 stage 함수는 판을 바꾸지 않는다** — 후보를 굴려 보여 줘야 하면 `placeRng(run, '이벤트id')`(이 층·이 방에서 늘 같은 난수, `engine/growth.ts`)로 (`tests/exploit-economy.test.ts`가 둘 다 검사). `when`이 거짓인 상황에서 stage가 불려도 터지지 않게 (나가기 하나라도). 헬퍼: `healRun, hurtRun, gainSanityRun, loseSanityRun(→ 붕괴 처리), learnSkill, rollRelic, rollEquip, rollRune, rollConsumable, rollForbidden, upgradeSkill, rng(run,'event')`. 1층 `events.ts`의 `sanity()`, `relicLoot()` 패턴 참고. 선택에는 대가와 이득이 함께 있어야 한다.
 
 - **통찰은 귀하다** (`src/content/eventkit.ts`): 통찰을 주는 선택지는 층마다(공용 이벤트 포함) 많아야 1~2개, 언제나 +1, 그리고 영구 대가 — `INSIGHT_PRICE`(최대 정신력 -8 또는 최대 체력 -10) 또는 광기 하나(`canTakeMadness`/`takeMadness`). hint와 결과 문장에 그대로 적는다 (`tests/insight.test.ts`가 모든 선택지를 골라 보며 검사).
 - '들여다보는' 선택지의 보상은 통찰 대신 앎: `learnWeak(run, floorFoes(run))`(이 층 적들의 약점 — 이번 판 전투에 바로 보이고 도감에도 남는다), `floorGuardian(run)`, 지도, 의지 등. 새로 안 것이 없으면 대가도 받지 않는다 (`weakNote`).
+
+## 6-1. 성장 콘텐츠 (`src/content/growth/`, `docs/GDD.md` 7.1)
+
+- **장비 접사** (`affixes.ts`, `reg.affixes`): `{ id: 'aff-…', name, icon, tier: 1|2, slots?, desc, hooks }`. `name`은 장비 이름 앞에 붙는 꾸밈말('날선', '피를 부르는'). 훅은 플레이어 쪽에서만 돈다(`HookSelf.kind` 'affix', `s.n` = 장비 강화 단계) — 적의 훅(`modPoiseLoss` 등)에는 닿지 않으니 내 쪽 훅으로 (`d.poiseBonus` 등). 한 턴에 한 번 도는 효과는 `c.s.vars`에 턴을 적는다 (미리보기 중에는 적지 않는다). 세기는 흔한 유물 하나보다 약하게 — 장비 하나에 둘셋이 붙는다. 2단계(3층부터)는 깊은 층의 장치(가호·변이·붕괴 내성)를 다루는 것.
+- **징조** (`omens.ts`, `reg.omens`): 이루어지는 곳을 엔진이 id로 부른다 (`useOmen(run, id)`) — 새 징조는 엔진에 부르는 자리를 함께 넣고 `tests/growth.test.ts`의 목록에 더한다. 한 번 쓰고 사라지는 옆 방향의 이득만 (오래 남는 힘은 계약·유물의 몫).
+- **계약** (`pacts.ts`, `reg.pacts`): 저주(`kind: 'curse'`, `hooks`)는 이긴 전투 `GROWTH.pactFights`번 동안, 축복(`kind: 'boon'`, `onGain` 영구 스탯 또는 `hooks`)은 그 뒤로 영원히. 축복은 통찰을 주지 않는다 (통찰은 영구 대가와 함께만 — `tests/insight.test.ts`). 저주는 3전투를 견딜 만한 크기로.
+- **유물 진화** (`evolutions.ts`, `reg.relics`에 `evolve: [재료1, 재료2]`): `rarity: 'rare'`, 재료는 보통 보상에서 나오는 유물(흔함·드묾·희귀, 수호자·특별 유물 아님)이고 한 재료는 진화 한 곳에만. 효과는 두 재료의 효과를 이어받아 더 세게 — 재료의 훅을 옮겨 적는다 (재료는 사라진다). 이름의 번호는 두 재료의 번호를 잇는다 ('No.52·43'). 보통 보상·상점에는 나오지 않는다 (`rollRelic`이 뺀다).
 
 ## 7. 아이콘
 

@@ -101,17 +101,21 @@ function GrowthChip() {
         .filter(Boolean)
         .join('\n'),
     });
+  // 좁은 화면에서 줄을 넘치지 않게: 징조는 하나의 표시 + 개수, 계약은 가장 먼저 이루어질 것까지 남은 전투
   return (
     <button class="hud-omens" onClick={tip} aria-label="징조와 계약">
-      {omens.map((id) => (
-        <Icon name={OMENS.get(id)?.icon ?? 'gi:crystal-ball'} size={14} color="#d9c2ff" />
-      ))}
-      {pacts.map((p) => (
+      {omens.length > 0 && (
+        <>
+          <Icon name={omens.length === 1 ? (OMENS.get(omens[0])?.icon ?? 'gi:crystal-ball') : 'gi:crystal-ball'} size={14} color="#d9c2ff" />
+          {omens.length > 1 && <span class="num omen">{omens.length}</span>}
+        </>
+      )}
+      {pacts.length > 0 && (
         <>
           <Icon name="gi:quill-ink" size={14} color="#ff9a8a" />
-          <span class="num">{p.left}</span>
+          <span class="num">{Math.min(...pacts.map((p) => p.left))}</span>
         </>
-      ))}
+      )}
     </button>
   );
 }

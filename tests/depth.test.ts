@@ -4,7 +4,7 @@ import { ACT_POISE_MULT, Combat, GUARD, TOLERANCE, toleranceGain } from '../src/
 import { ENEMIES } from '../src/engine/registry';
 import { newRun } from '../src/engine/run';
 import type { EncounterDef, EnemyUnit } from '../src/engine/types';
-import { DEPTH, MUTATION, MUTATIONS, STEADFAST, TOLL, VOLATILE, aegisCap, canAwaken } from '../src/content/depth';
+import { DEPTH, MUTATION, MUTATIONS, STEADFAST, TOLL, VOLATILE, aegisCap, aegisPoiseCap, canAwaken } from '../src/content/depth';
 
 /*
  * 심연 압력 (2026-10): 깊은 층의 장치 — 층별 버팀, 붕괴 내성, 가호(한 턴 피해 상한), 각성(심연 강타), 변이.
@@ -136,6 +136,38 @@ describe('가호: 한 턴에 받는 피해 상한', () => {
     const hp = e.hp;
     hit(c, e, aegisCap(e) * 2);
     expect(hp - e.hp).toBe(aegisCap(e) * 2);
+  });
+
+  it('가호는 버팀도 지킨다: 한 턴에 깎이는 버팀에 상한 (올림) — 내 턴이 시작되면 다시. 일반 적·1·2층은 없다', () => {
+    const c = fight(['shantak'], { kind: 'elite' });
+    const e = c.alive[0];
+    const cap = aegisPoiseCap(e);
+    expect(cap).toBe(Math.ceil(e.maxPoise * DEPTH.aegisPoiseElite[3]));
+    expect(cap).toBeLessThan(e.maxPoise);
+    const w = e.weak[0];
+    const tap = () => c.damage({ src: c.p, tgt: e, base: 1, type: w, attack: true });
+    for (let i = 0; i < e.maxPoise + 3; i++) tap();
+    expect(e.maxPoise - e.poise).toBe(cap);
+    expect(e.broken).toBe(0);
+    c.endTurn();
+    c.drain();
+    for (let i = 0; i < e.maxPoise + 3 && e.broken === 0; i++) tap();
+    expect(e.broken).toBeGreaterThan(0);
+    // 일반 적·2층 정예에는 없다
+    expect(aegisPoiseCap(fight(['outer-servitor']).alive[0])).toBe(0);
+    expect(aegisPoiseCap(fight(['flagellant'], { kind: 'elite' }).alive[0])).toBe(0);
+  });
+
+  it('심연을 모으는 수호자에게는 버팀 상한이 없다 (붕괴시켜 끊을 수 있게 — 두 배로 깎인다)', () => {
+    const c = fight(['shoggoth'], { kind: 'boss' });
+    const b = one(c, 'shoggoth');
+    expect(aegisPoiseCap(b)).toBeGreaterThan(0);
+    b.mem.abc = 1;
+    const w = b.weak[0];
+    const p0 = b.poise;
+    const n = aegisPoiseCap(b) + 1;
+    for (let i = 0; i < n; i++) c.damage({ src: c.p, tgt: b, base: 1, type: w, attack: true });
+    expect(b.broken > 0 || p0 - b.poise === n * 2).toBe(true);
   });
 
   it('내 쪽에서 오지 않은 피해(적끼리·대가)는 세지 않는다', () => {

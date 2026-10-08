@@ -1032,4 +1032,8 @@
   font-size: 10px;
   color: #ff9a8a;
   margin-left: 1px;
+  margin-right: 2px;
+}
+.hud-omens .num.omen {
+  color: #d9c2ff;
 }

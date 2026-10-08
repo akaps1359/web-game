@@ -88,7 +88,7 @@ reg.pacts([
   {
     id: 'boon-vigor',
     kind: 'boon',
-    name: '활력',
+    name: '강건함',
     icon: 'gi:heart-plus',
     desc: '최대 체력 +12',
     onGain(run) {

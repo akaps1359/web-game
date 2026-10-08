@@ -35,10 +35,9 @@ import type { EventState } from './events';
 import type { ShopState } from './shop';
 import { abyssAmbushStrike, abyssEssenceDrop, abyssGold, abyssFloor, abyssSlotCut, abyssStart, abyssWhisper, type AbyssState } from './abyss';
 import { CLUE, clueLinks, clueMult, clueSources, crossesSchools } from './keywords';
-
-/** 저장 형식 버전. 층 구성이 바뀌면 올린다 (이전 판은 이어하기 불가) — 2: 3층/5층 개편, 5층이 정식 탐험 층으로 */
 import { affixHooks, evolutionsReady, evolveRelic, moreAffixes, pactHooks, rollAffixes, rollOmen, tickPacts, useOmen } from './growth';
 
+/** 저장 형식 버전. 층 구성이 바뀌면 올린다 (이전 판은 이어하기 불가) — 2: 3층/5층 개편, 5층이 정식 탐험 층으로 */
 export const SAVE_VERSION = 2;
 
 /** 마지막 층. 이 층의 수호자(포탈 비석)를 쓰러뜨리면 승리 */
@@ -108,6 +107,10 @@ export interface RunStats {
   essences: number;
   startedAt: number;
   playMs: number;
+  /** 성장 개편 (engine/growth.ts): 받은 징조 · 이룬 징조 · 진화한 유물. 예전 저장에는 없다 */
+  omens?: number;
+  omensUsed?: number;
+  evolved?: number;
 }
 
 export interface RunState {

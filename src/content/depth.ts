@@ -36,6 +36,12 @@ export const DEPTH = {
   aegisBoss: [0, 0, 0, 0.25, 0.2, 0.18],
   /** 붕괴해 있는 동안 상한 배율 */
   aegisBroken: 2,
+  /**
+   * 가호는 버팀도 지킨다: 한 턴에 깎이는 버팀 상한 (최대 버팀 비율, 올림, 층 인덱스).
+   * 강한 덱이 여러 번 때려 첫 턴에 무너뜨리던 것 — 피해 상한처럼 몰아치는 덱에만 걸린다 (심연을 모으는 동안은 지키지 못한다)
+   */
+  aegisPoiseElite: [0, 0, 0, 0.6, 0.5, 0.5],
+  aegisPoiseBoss: [0, 0, 0, 0.5, 0.4, 0.4],
   /** 각성: 이 층부터, 체력이 이 비율 아래로 내려가면 */
   awakenFrom: 3,
   awakenAt: 0.6,
@@ -71,6 +77,15 @@ export function aegisCap(e: EnemyUnit): number {
   const r = def.tier === 'boss' ? DEPTH.aegisBoss[act] : def.tier === 'elite' ? DEPTH.aegisElite[act] : 0;
   if (!r) return 0;
   return Math.max(1, Math.round(e.maxHp * r * (e.broken > 0 ? DEPTH.aegisBroken : 1)));
+}
+
+/** 가호: 이 적이 한 턴에 잃을 수 있는 버팀 (없으면 0 = 상한 없음) */
+export function aegisPoiseCap(e: EnemyUnit): number {
+  const def = defOf(e);
+  if (!def || e.minion || e.mem.agOff || ownDesign(def) || e.maxPoise <= 0) return 0;
+  const act = Math.min(5, def.act);
+  const r = def.tier === 'boss' ? DEPTH.aegisPoiseBoss[act] : def.tier === 'elite' ? DEPTH.aegisPoiseElite[act] : 0;
+  return r ? Math.max(1, Math.ceil(e.maxPoise * r)) : 0;
 }
 
 /** 이번 턴에 이 적이 받은 피해 (가호에 센 것) */
@@ -459,7 +474,7 @@ reg.statuses([
     name: '가호',
     icon: 'gi:shield-reflect',
     kind: 'buff',
-    desc: '이번 턴에 더 받을 수 있는 피해 {n}. 한 턴에 받는 피해에 상한이 있다 — 붕괴하면 상한이 두 배, 내 턴이 시작되면 다시 찬다',
+    desc: '이번 턴에 더 받을 수 있는 피해 {n}. 한 턴에 받는 피해에 상한이 있다 — 붕괴하면 상한이 두 배, 내 턴이 시작되면 다시 찬다. 한 턴에 깎이는 버팀에도 상한이 있다 (한 번에 무너뜨리지 못한다)',
   },
   {
     id: 'mut-wound',
@@ -532,9 +547,19 @@ reg.rules([
           c.emit({ t: 'text', uid: e.uid, text: '모으던 심연이 흩어졌다', tone: 'good' });
         }
       },
-      // 심연을 모으는 동안 버팀이 두 배로 깎인다
-      modPoiseLoss(_c, s, t, dec) {
-        return t === s.unit && t.mem.abc ? dec * 2 : dec;
+      modPoiseLoss(c, s, t, dec) {
+        if (t !== s.unit) return dec;
+        // 심연을 모으는 동안 버팀이 두 배로 깎인다 (가호도 이때는 버팀을 지키지 못한다 — 끊을 수 있게)
+        if (t.mem.abc) return dec * 2;
+        // 가호: 한 턴에 깎이는 버팀 상한 (퍼즐 중에는 쉰다)
+        const cap = aegisPoiseCap(t);
+        if (cap <= 0 || dec <= 0 || puzzling(c)) return dec;
+        const used = t.mem.apR === c.s.turn ? (t.mem.apN ?? 0) : 0;
+        const n = Math.min(dec, Math.max(0, cap - used));
+        t.mem.apR = c.s.turn;
+        t.mem.apN = used + n;
+        if (n < dec) sayOnce(c, t, 'apSaid', '가호가 흔들림을 막는다');
+        return n;
       },
       // 모은 심연은 반드시 터뜨린다 (그 차례엔 AI를 부르지 않는다)
       planOverride(_c, s, e) {
