@@ -997,3 +997,39 @@
     box-shadow: 0 0 0 1.5px #ff5a4a, 0 0 14px rgba(255, 90, 74, 0.85);
   }
 }
+
+/* 징조: 고르지 않고 떠나면 받는 것 (성장 개편) */
+.omen-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 2px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(60, 30, 90, 0.35);
+  border: 1px dashed rgba(200, 160, 255, 0.45);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #d9cdee;
+}
+.omen-note b {
+  color: #e3ccff;
+}
+.omen-note em {
+  font-style: normal;
+  color: var(--ink-3);
+}
+.hud-omens {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(40, 18, 60, 0.6);
+  border: 1px solid rgba(200, 160, 255, 0.35);
+}
+.hud-omens .num {
+  font-size: 10px;
+  color: #ff9a8a;
+  margin-left: 1px;
+}

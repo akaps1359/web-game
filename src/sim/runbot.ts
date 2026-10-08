@@ -18,6 +18,7 @@ import {
 } from '../engine/run';
 import { continueRift, distances, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
 import { chooseEvent, eventView, leaveEvent } from '../engine/events';
+import { forgoChoice, shrinePacts, signShrinePact } from '../engine/growth';
 import { camp, campRefuel, cureMadness, inn, inscribeFlask, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
 import { buy, priceOf } from '../engine/shop';
 import { endRun, winRun } from '../engine/run';
@@ -344,6 +345,9 @@ function inscribeAll(run: RunState) {
  */
 export const botEssence: { mode: 'skill' | 'core' | 'auto' } = { mode: 'auto' };
 
+/** 봇의 성장 개편 행동 (SIM_GROWTH로 끈다): 계약을 맺는가 */
+export const botGrowth = { pacts: true };
+
 /** 봇이 도전하는 심연 단계 (밸런스 시뮬레이션의 SIM_ASC) */
 export const botAsc = { value: 0 };
 
@@ -401,7 +405,9 @@ function handleReward(run: RunState, res: SimResult) {
   }
   if (rw.choice && !rw.chosen) {
     const emptySlot = run.slots.includes(null);
-    let idx = rw.choice.findIndex((c) => c.kind === 'relic');
+    // 유물 진화가 나왔으면 그것부터 (engine/growth.ts)
+    let idx = rw.choice.findIndex((c) => c.kind === 'evolve');
+    if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'relic');
     // 창세는 무엇보다 먼저 (빈 칸이 없으면 가장 약한 스킬과 바꿔 낀다 — equipGenesis)
     if (idx < 0) idx = genesisPick(run, rw.choice);
     // 빈 칸이 있으면 등급·실마리 점수가 가장 높은 스킬, 없으면 확실히 나은 실마리 스킬만 (더 약한 스킬과 바꿔 낀다 — equipClue)
@@ -410,9 +416,13 @@ function handleReward(run: RunState, res: SimResult) {
     if (idx < 0 && botClue.take) idx = clue = cluePick(run, rw.choice);
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'upgrade');
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'equip');
-    if (idx < 0) idx = 0;
-    const it = rw.choice[idx];
-    if (it.kind === 'upgrade') {
+    // 쓸 만한 것이 없으면 고르지 않고 지나쳐 징조를 받는다 (성장 개편 — 사람은 4층쯤부터 이렇게 했다)
+    if (idx < 0 && rw.omen && forgoChoice(run)) idx = -1;
+    else if (idx < 0) idx = 0;
+    const it = idx >= 0 ? rw.choice[idx] : null;
+    if (!it) {
+      // 지나쳤다
+    } else if (it.kind === 'upgrade') {
       const s = run.skills.find((x) => run.slots.includes(x.uid) && canUpgradeSkill(run, x)) ?? run.skills.find((x) => canUpgradeSkill(run, x));
       if (s) chooseLoot(run, idx, s.uid);
     } else {
@@ -423,13 +433,14 @@ function handleReward(run: RunState, res: SimResult) {
       }
     }
   }
-  // 더 좋은 장비 장착
+  // 더 좋은 장비 장착 (등급, 그리고 접사 수 — 성장 개편)
+  const gearValue = (x: { id: string; aff?: string[] }) => RANK[EQUIPS.get(x.id)!.rarity] + 0.6 * (x.aff?.length ?? 0);
   for (const it of [...run.bag]) {
     const def = EQUIPS.get(it.id)!;
     const slot = def.slot === 'trinket' ? (!run.equip.trinket1 ? 'trinket1' : !run.equip.trinket2 ? 'trinket2' : null) : def.slot;
     if (!slot) continue;
     const cur = run.equip[slot];
-    if (!cur || RANK[def.rarity] > RANK[EQUIPS.get(cur.id)!.rarity]) equipFromBag(run, it.uid, slot);
+    if (!cur || gearValue(it) > gearValue(cur)) equipFromBag(run, it.uid, slot);
   }
   equipGenesis(run);
   const next = rw.next;
@@ -534,11 +545,17 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
       }
       case 'camp': {
         const p = run.player;
-        const upg = run.skills.find((x) => run.slots.includes(x.uid) && canUpgradeSkill(run, x));
-        if (p.hp < p.maxHp * 0.65) camp(run, 'sleep');
-        else if (p.sanity < 45) camp(run, 'meditate');
-        else if (upg) camp(run, 'train', upg.uid);
-        else camp(run, 'sleep');
+        const act = () => {
+          const upg = run.skills.find((x) => run.slots.includes(x.uid) && canUpgradeSkill(run, x));
+          if (p.hp < p.maxHp * 0.65) camp(run, 'sleep');
+          else if (p.sanity < 45) camp(run, 'meditate');
+          else if (upg) camp(run, 'train', upg.uid);
+          else camp(run, 'sleep');
+        };
+        act();
+        // 휴식의 징조: 방이 아직 열려 있으면 한 번 더
+        const room = run.floor?.rooms[run.floor.pos];
+        if (room && !room.cleared) act();
         campRefuel(run);
         leavePlace(run);
         break;
@@ -567,6 +584,11 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
       }
       case 'shrine': {
         shrinePray(run);
+        // 계약: 체력이 넉넉하면 첫째 것을 맺는다 (성장 개편)
+        if (botGrowth.pacts && run.player.hp > run.player.maxHp * 0.6) {
+          const offers = shrinePacts(run);
+          if (typeof offers !== 'string' && offers.length) signShrinePact(run, 0);
+        }
         inscribeAll(run);
         const bad = run.madness.find((m) => !MADNESS.get(m)?.virtue);
         if (bad && run.player.gold >= 120) cureMadness(run, bad);

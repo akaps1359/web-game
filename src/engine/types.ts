@@ -194,6 +194,8 @@ export interface OwnedItem {
   id: string;
   /** 강화 단계 0~2 */
   lvl: number;
+  /** 접사 id (2026-10 성장 개편 — 얻을 때 층에 따라 무작위로). 예전 저장·시작 장비에는 없다 */
+  aff?: string[];
   /** 처음부터 가진 기본 장비 (팔아도 0골드) */
   starter?: boolean;
 }
@@ -209,7 +211,7 @@ export type EquipSlot = 'weapon' | 'armor' | 'trinket1' | 'trinket2';
 // ───────────── 훅 (유물·상태이상·장비·특성·광기·적 특성 공용) ─────────────
 
 export interface HookSelf {
-  kind: 'status' | 'relic' | 'equip' | 'perk' | 'madness' | 'trait' | 'anomaly' | 'rune' | 'essence';
+  kind: 'status' | 'relic' | 'equip' | 'perk' | 'madness' | 'trait' | 'anomaly' | 'rune' | 'essence' | 'affix' | 'pact';
   id: string;
   /** 소유자 */
   unit: Unit;
@@ -431,6 +433,11 @@ export interface RelicDef {
   onGain?(run: import('./run').RunState): void;
   /** 카운터 표시 */
   counter?: boolean;
+  /**
+   * 진화한 유물 (2026-10 성장 개편, 뱀파이어 서바이버즈의 무기 진화 참고): 이 두 유물을 함께 지니고 층 수호자를 쓰러뜨리면
+   * 보상에 진화가 나온다 (두 유물을 내주고 이것을 얻는다). 보통 보상·상점에는 나오지 않는다
+   */
+  evolve?: [string, string];
 }
 
 export interface StatusDef {

@@ -39,6 +39,7 @@ import type {
 } from './types';
 import type { RunState } from './run';
 import { abyssDmgMult, abyssHpMult, abyssRise, abyssSources } from './abyss';
+import { affixHooks, pactHooks } from './growth';
 
 // ───────────── 통찰 ─────────────
 // 대가 없이 들어오지 않는다(영구 대가를 치르는 선택·금기·수호자 유물). 1점마다 보이는 것이 늘어난다.
@@ -488,6 +489,9 @@ export class Combat {
         const d = ESSENCES.get(es.id);
         if (d?.passive.hooks) yield [d.passive.hooks, { kind: 'essence', id: es.id, unit: p, n: es.guardian ? 2 : 1 }];
       }
+      // 성장 개편: 장비 접사·계약의 저주와 축복 (engine/growth.ts)
+      yield* affixHooks(run);
+      yield* pactHooks(run);
     }
     for (const e of this.s.enemies) {
       if (e.dead) continue;

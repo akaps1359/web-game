@@ -1,4 +1,6 @@
 import { store } from '../state/store';
+import { OMENS, PACTS } from '../engine/registry';
+import { GROWTH, omensOf } from '../engine/growth';
 import { essenceCap, essenceUsed, xpToNext } from '../engine/run';
 import { Icon, showTip, Stat } from './components';
 import { INSIGHT_SOURCES, insightText } from './text';
@@ -52,6 +54,7 @@ export function RunHud({ compact }: { compact?: boolean }) {
         }
       />
       {!compact && <Stat icon="gi:two-coins" color="var(--brass-2)" value={p.gold} />}
+      <GrowthChip />
       <div class="grow" />
       <button class="stat hud-char" onClick={openChar} aria-label="캐릭터">
         <span class="chip" style={{ padding: '3px 8px', color: 'var(--brass-2)' }}>
@@ -76,5 +79,39 @@ export function XpBar() {
     <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', margin: '0 10px' }}>
       <div style={{ height: '100%', width: `${(p.xp / need) * 100}%`, background: 'linear-gradient(90deg, #8a7030, #f0cf7a)', transition: 'width 0.5s' }} />
     </div>
+  );
+}
+
+/** 징조·계약 (2026-10 성장 개편): 지닌 것이 있으면 작은 표시, 누르면 무엇인지 */
+function GrowthChip() {
+  const run = store.run!;
+  const omens = omensOf(run);
+  const pacts = (run.pacts ?? []).filter((p) => p.left > 0);
+  if (!omens.length && !pacts.length) return null;
+  const tip = () =>
+    showTip({
+      title: '징조와 계약',
+      icon: 'gi:crystal-ball',
+      color: '#c8a0ff',
+      body: [
+        ...omens.map((id) => `【${OMENS.get(id)?.name}】 ${OMENS.get(id)?.desc}`),
+        ...pacts.map((p) => `【계약 · ${PACTS.get(p.curse)?.name} → ${PACTS.get(p.boon)?.name}】 저주가 ${p.left}전투 남았다: ${PACTS.get(p.curse)?.desc}. 그 뒤로 ${PACTS.get(p.boon)?.desc}`),
+        omens.length ? `징조는 ${GROWTH.omenCap}개까지 지닌다. 보상을 고르지 않고 떠나면 얻는다.` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    });
+  return (
+    <button class="hud-omens" onClick={tip} aria-label="징조와 계약">
+      {omens.map((id) => (
+        <Icon name={OMENS.get(id)?.icon ?? 'gi:crystal-ball'} size={14} color="#d9c2ff" />
+      ))}
+      {pacts.map((p) => (
+        <>
+          <Icon name="gi:quill-ink" size={14} color="#ff9a8a" />
+          <span class="num">{p.left}</span>
+        </>
+      ))}
+    </button>
   );
 }

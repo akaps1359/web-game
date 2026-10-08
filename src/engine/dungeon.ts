@@ -14,6 +14,7 @@ import {
   rollEquip,
   winRun,
 } from './run';
+import { forgoChoice, rollAffixes } from './growth';
 import { startEvent } from './events';
 import { openShop, type ShopState } from './shop';
 import type { EncounterDef } from './types';
@@ -537,17 +538,21 @@ export function startGuardian(run: RunState): string | null {
   return '여기에는 수호자가 없다';
 }
 
+/** 보물상자에서 유물이 나올 확률 (아니면 장비) */
+export const TREASURE_RELIC = 0.25;
+
 function treasureReward(run: RunState): RewardState {
   const r = rng(run, 'loot');
   const items: RewardState['items'] = [];
   const gold = r.int(20, 40);
   run.player.gold += gold;
-  if (r.chance(0.45)) {
+  // 성장 개편 (2026-10): 유물 45% → 25% (판마다 유물 17개 — 정예·수호자가 주된 길)
+  if (r.chance(TREASURE_RELIC)) {
     const relic = rollRelic(run);
     if (relic) items.push({ kind: 'relic', id: relic });
   } else {
     const eq = rollEquip(run, 'elite');
-    if (eq) items.push({ kind: 'equip', id: eq });
+    if (eq) items.push({ kind: 'equip', id: eq, aff: rollAffixes(run, eq) });
   }
   if (r.chance(0.5)) {
     const c = rollConsumable(run);
@@ -587,6 +592,8 @@ export function enterRift(run: RunState): string | null {
  */
 export function closeReward(run: RunState): boolean {
   if (run.screen !== 'reward') return false;
+  // 고르지 않고 떠나면 미리 보인 징조를 받는다 (engine/growth.ts)
+  forgoChoice(run);
   const rw = run.reward;
   run.reward = null;
   switch (rw?.next) {

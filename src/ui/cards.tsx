@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
-import { CONSUMABLES, EQUIPS, ESSENCES, RELICS, RUNES, SKILLS } from '../engine/registry';
+import { AFFIXES, CONSUMABLES, EQUIPS, ESSENCES, RELICS, RUNES, SKILLS } from '../engine/registry';
+import { equipName } from '../engine/growth';
 import { essenceActives, essenceStats, isGenesisLoot, type LootItem, type RunState } from '../engine/run';
 import { lvlVal } from '../engine/combat';
 import { clueReason, keywordNames } from '../engine/keywords';
@@ -251,7 +252,7 @@ export function lootName(it: LootItem): string {
     case 'relic':
       return RELICS.get(it.id)?.name ?? it.id;
     case 'equip':
-      return EQUIPS.get(it.id)?.name ?? it.id;
+      return equipName(it);
     case 'rune':
       return RUNES.get(it.id)?.name ?? it.id;
     case 'consumable':
@@ -264,7 +265,18 @@ export function lootName(it: LootItem): string {
       return `등유 (등불 +${it.n ?? 30})`;
     case 'upgrade':
       return '기술 연마';
+    case 'evolve':
+      return `진화: ${RELICS.get(it.id)?.name ?? it.id}`;
   }
+}
+
+/** 장비 접사 줄: '【날선】 약점을 찌르는 공격 피해 +15%' (없으면 빈 문자열) */
+export function affixLines(aff?: string[]): string {
+  return (aff ?? [])
+    .map((a) => AFFIXES.get(a))
+    .filter(Boolean)
+    .map((a) => `【${a!.name}】 ${a!.desc}`)
+    .join('\n');
 }
 
 /** 전리품의 아이콘·색·분류·설명 (카드와 확인 창이 같이 쓴다) */
@@ -296,6 +308,16 @@ export function lootInfo(it: LootItem): { icon: string; color: string; meta: str
         const s = SKILLS.get(d.skill);
         if (s) desc += `\n${s.name}: ${skillDesc(s, it.n ?? 0).map((x) => x.t).join('')}`;
       }
+      if (it.aff?.length) desc += `\n${affixLines(it.aff)}`;
+      break;
+    }
+    case 'evolve': {
+      const d = RELICS.get(it.id)!;
+      const [a, b] = d.evolve ?? ['', ''];
+      icon = d.icon;
+      color = '#ffcf6a';
+      meta = '유물 진화 · 두 유물을 내주고 얻는다';
+      desc = `${RELICS.get(a)?.name ?? a} + ${RELICS.get(b)?.name ?? b} → ${d.name}\n${d.desc}`;
       break;
     }
     case 'rune': {

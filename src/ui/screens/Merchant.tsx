@@ -20,12 +20,12 @@ export function ShopList() {
         const afford = run.player.gold >= cost;
         return (
           <LootCard
-            it={{ kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined }}
+            it={{ kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined, aff: it.aff }}
             off={it.sold}
             clue={lootClue(run, it, !it.sold)}
             onClick={() => {
               if (it.sold) return;
-              const loot = { kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined } as Parameters<typeof lootInfo>[0];
+              const loot = { kind: it.kind === 'oil' ? 'oil' : it.kind, id: it.id, n: it.kind === 'oil' ? 30 : undefined, aff: it.aff } as Parameters<typeof lootInfo>[0];
               const info = lootInfo(loot);
               if (!afford) return void store.toast('골드가 모자라다', 'bad');
               const clue = lootClue(run, it);
@@ -56,7 +56,7 @@ export function SellList() {
       <div class="list">
         {run.bag.map((it) => (
           <LootCard
-            it={{ kind: 'equip', id: it.id, n: it.lvl }}
+            it={{ kind: 'equip', id: it.id, n: it.lvl, aff: it.aff }}
             onClick={() => applyAsk({ title: `${EQUIPS.get(it.id)?.name} 판매`, icon: EQUIPS.get(it.id)?.icon, lines: [{ label: '받는 골드', value: `+${sellPrice(run, it.uid)} 골드` }], ok: '판다' }, (r) => sell(r, it.uid), `${EQUIPS.get(it.id)?.name} 판매`)}
             right={<span class="chip num" style={{ color: 'var(--good)' }}>+{sellPrice(run, it.uid)}G</span>}
           />

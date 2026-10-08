@@ -3,6 +3,7 @@ import { INSIGHT_WEAK, MAX_MADNESS, WEAK_BONUS } from '../engine/combat';
 import { INSIGHT_SOURCES, INTENT_COLOR, INTENT_ICON, INTENT_MEANING, SCHOOL_NAME, insightBrief } from './text';
 import { GAP_RULE, GAP_RULE_MORE, gapBonusText } from '../content/gap';
 import { DEPTH } from '../content/depth';
+import { GROWTH } from '../engine/growth';
 import { HUMAN_SCHOOLS } from '../engine/schools';
 import { GUARD } from '../engine/combat';
 import { breakGlossary, guardWord } from './guard';
@@ -52,6 +53,31 @@ const TERMS: Keyword[] = [
     icon: 'gi:evil-moon',
     color: '#c8a0ff',
     desc: `3층부터 층 수호자·계층군주는 체력이 ${Math.round(DEPTH.awakenAt * 100)}% 아래로 내려가면 깨어난다. 버팀 최대치가 ${DEPTH.awakenPoise}배가 되고 결계를 두르며, 평범한 행동을 하려던 차례에 심연을 모아 층마다 다른 일격(얼어붙은 심연·별의 낙인·꿈의 붕락)을 준비한다. 모으는 동안 붕괴시키면 끊기고, 그동안은 버팀이 두 배로 깎인다.`,
+  },
+  // ── 성장 (engine/growth.ts) ──
+  {
+    name: '징조',
+    icon: 'gi:crystal-ball',
+    color: '#c8a0ff',
+    desc: `보상을 고르지 않고 떠나면 받는 것 (보상 화면에 미리 보인다). 다음 보상·다음 전투·다음 상점·다음 야영지·다음 장비에서 한 번 이루어진다. ${GROWTH.omenCap}개까지 지닌다 — 위쪽 보랏빛 표시를 누르면 지닌 징조가 나온다.`,
+  },
+  {
+    name: '접사',
+    icon: 'gi:anvil',
+    color: '#c8a0ff',
+    desc: '장비를 얻을 때 무작위로 붙는 특성 (이름 앞의 보랏빛 말). 깊은 층에서 얻은 장비일수록 많이 붙고, 3층부터는 깊은 층의 장치(가호·변이·붕괴 내성)를 다루는 접사가 섞인다. 떠돌이 대장장이가 다시 두드려 준다.',
+  },
+  {
+    name: '계약',
+    icon: 'gi:quill-ink',
+    color: '#c8a0ff',
+    desc: `저주를 ${GROWTH.pactFights}전투(이긴 전투) 견디면 그 뒤로 축복이 영원히 남는다. 신전의 제단과 심연의 공증인이 둘 중 하나를 내민다.`,
+  },
+  {
+    name: '유물 진화',
+    icon: 'gi:ouroboros',
+    color: '#ffcf6a',
+    desc: '짝이 되는 두 유물을 함께 지니고 층 수호자를 쓰러뜨리면, 보상에 진화가 나온다 — 두 유물을 내주고 더 강한 하나를 얻는다. 짝은 수집가가 알려 준다.',
   },
   // ── 의도 (적 머리 위의 표시) ──
   {

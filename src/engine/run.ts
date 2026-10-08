@@ -37,6 +37,8 @@ import { abyssAmbushStrike, abyssEssenceDrop, abyssGold, abyssFloor, abyssSlotCu
 import { CLUE, clueLinks, clueMult, clueSources, crossesSchools } from './keywords';
 
 /** 저장 형식 버전. 층 구성이 바뀌면 올린다 (이전 판은 이어하기 불가) — 2: 3층/5층 개편, 5층이 정식 탐험 층으로 */
+import { affixHooks, evolutionsReady, evolveRelic, moreAffixes, pactHooks, rollAffixes, rollOmen, tickPacts, useOmen } from './growth';
+
 export const SAVE_VERSION = 2;
 
 /** 마지막 층. 이 층의 수호자(포탈 비석)를 쓰러뜨리면 승리 */
@@ -54,11 +56,13 @@ export type Screen =
   | 'gameover'
   | 'victory';
 
-export type LootKind = 'skill' | 'relic' | 'equip' | 'rune' | 'consumable' | 'gold' | 'oil' | 'essence' | 'upgrade';
+export type LootKind = 'skill' | 'relic' | 'equip' | 'rune' | 'consumable' | 'gold' | 'oil' | 'essence' | 'upgrade' | 'evolve';
 
 export interface LootItem {
   kind: LootKind;
   id: string;
+  /** 장비의 접사 (보상에 보일 때 이미 정해져 있다) */
+  aff?: string[];
   n?: number;
   color?: number;
   guardian?: boolean;
@@ -76,6 +80,8 @@ export interface RewardState {
   /** 하나만 고르는 전리품 */
   choice: LootItem[] | null;
   chosen: boolean;
+  /** 고르지 않고 지나치면 받는 징조 (engine/growth.ts — 미리 보인다) */
+  omen?: string;
   next: 'dungeon' | 'haven' | 'rift' | 'final';
 }
 
@@ -155,6 +161,10 @@ export interface RunState {
   gazed?: number;
   /** 심연 단계의 특별한 규칙이 남기는 상태 (engine/abyss.ts). 예전 저장에는 없다 */
   abyss?: AbyssState;
+  /** 지닌 징조 id (engine/growth.ts, 최대 OMEN_CAP). 예전 저장에는 없다 */
+  omens?: string[];
+  /** 맺은 계약: 저주가 left전투 남았다 (0이면 축복이 이루어졌다). 예전 저장에는 없다 */
+  pacts?: { curse: string; boon: string; left: number }[];
 }
 
 export const MAX_SLOTS = 7;
@@ -271,8 +281,13 @@ export function log(run: RunState, msg: string) {
 
 // ───────────── 레벨 / 경험치 ─────────────
 
+/**
+ * 다음 레벨까지 경험치. 성장 개편 (2026-10, engine/growth.ts): 20 + 20(L-1) → 20 + 30(L-1).
+ * 스킬 칸이 열리는 3·6·9레벨이 늦어진다 (예전엔 4층 시작에 9레벨 — 칸이 다 열려 그 뒤 보상이 의미를 잃었다)
+ */
+export const XP_STEP = { base: 20, per: 30 };
 export function xpToNext(level: number): number {
-  return 20 + 20 * (level - 1);
+  return XP_STEP.base + XP_STEP.per * (level - 1);
 }
 
 /** 레벨업 횟수 반환 */
@@ -606,10 +621,16 @@ export function addConsumable(run: RunState, id: string): boolean {
   return true;
 }
 
-export function gainEquip(run: RunState, id: string, lvl = 0): boolean {
+/**
+ * 장비를 가방에. aff: 이미 정해진 접사 (보상·상점에 보인 그대로) — 없으면 지금 층에 맞게 굴린다 (engine/growth.ts).
+ * 대장장이의 징조가 있으면 접사 하나를 더한다
+ */
+export function gainEquip(run: RunState, id: string, lvl = 0, aff?: string[]): boolean {
   need(EQUIPS, id, '장비');
   if (run.bag.length >= BAG_SIZE) return false;
-  run.bag.push({ uid: uid(run), id, lvl });
+  let a = aff ?? rollAffixes(run, id);
+  if (useOmen(run, 'omen-smith')) a = moreAffixes(run, id, a, 1);
+  run.bag.push({ uid: uid(run), id, lvl, ...(a.length ? { aff: a } : {}) });
   return true;
 }
 
@@ -707,6 +728,9 @@ function* runHooks(run: RunState): Generator<[Hooks, HookSelf]> {
     const d = ESSENCES.get(es.id);
     if (d?.passive.hooks) yield [d.passive.hooks, { kind: 'essence', id: es.id, unit: p, n: es.guardian ? 2 : 1 }];
   }
+  // 성장 개편: 장비 접사·계약 (engine/growth.ts)
+  yield* affixHooks(run);
+  yield* pactHooks(run);
   // 심연 「아래의 목소리」: 이 층에서 들리는 목소리 (광기)
   yield* abyssWhisper(run);
 }
@@ -747,6 +771,32 @@ const RARITY_W: Record<string, Partial<Record<Rarity, number>>> = {
  */
 export const ORIGIN_WEIGHT = { early: 2, late: 1.5 };
 
+/**
+ * 성장 개편 (2026-10, engine/growth.ts): 층이 깊을수록 보상은 흔한 것보다 귀한 것. 등급 가중치에 곱한다 (층 인덱스).
+ * 4·5층에서도 '최대 체력 +8'·'첫 타 +3' 같은 흔한 것이 계속 나와 건너뛰게 되던 것
+ */
+export const RARITY_ACT: Record<'common' | 'uncommon' | 'rare', number[]> = {
+  common: [1, 1, 1, 0.75, 0.55, 0.4],
+  uncommon: [1, 1, 1, 1.1, 1.2, 1.25],
+  rare: [1, 1, 1.1, 1.35, 1.7, 2],
+};
+/** 지금 층에서 이 등급에 곱하는 값 */
+export function actRarity(run: RunState, rarity: string): number {
+  return RARITY_ACT[rarity as 'common']?.[Math.min(5, run.act)] ?? 1;
+}
+
+/**
+ * 전투 골드 배율 (층 인덱스). 성장 개편: 예전엔 ACT_MULT(5층 3배)였는데 물건 값은 1.4배만 올라 4층부터 골드가 남아돌았다.
+ * 값은 1.6배까지 오르고(shop.ts) 골드는 2.2배까지
+ */
+export const GOLD_MULT = [1, 1, 1.3, 1.6, 1.9, 2.2];
+
+/**
+ * 일반 전투에서 고르는 보상(스킬 둘 + 하나)이 나올 확률 (층 인덱스). 성장 개편: 예전엔 모든 전투가 셋 중 하나를 줬다 —
+ * 판마다 스물다섯 번 넘게 골라 4층이면 칸이 다 찼다. 정예·수호자는 늘 준다
+ */
+export const CHOICE_RATE = [1, 0.85, 0.7, 0.6, 0.55, 0.5];
+
 /** 지금 층에서 출신 계열이 받는 가중치 */
 export function originWeight(run: RunState): number {
   return run.act <= 1 ? ORIGIN_WEIGHT.early : ORIGIN_WEIGHT.late;
@@ -784,7 +834,7 @@ export function rollSkills(run: RunState, n: number, tier: keyof typeof RARITY_W
   const w = RARITY_W[tier];
   const sources = clueSources(run);
   const forbidden = run.skills.some((s) => SKILLS.get(s.id)?.school === 'forbidden');
-  const rw = (s: SkillDef) => (s.rarity === 'forbidden' ? w.uncommon : w[s.rarity]) ?? 0;
+  const rw = (s: SkillDef) => ((s.rarity === 'forbidden' ? w.uncommon : w[s.rarity]) ?? 0) * actRarity(run, s.rarity === 'forbidden' ? 'uncommon' : s.rarity);
   const pool = [...SKILLS.values()].filter((s) => {
     if (s.pool === false || s.school === 'essence' || known.has(s.id) || !rw(s)) return false;
     return s.school !== 'forbidden' || (forbidden && crossesSchools(s));
@@ -832,8 +882,10 @@ export function rollRelic(run: RunState, tier: 'common' | 'uncommon' | 'rare' | 
       if (exact.length) pool = exact;
     }
   }
+  // 진화한 유물은 짝을 맞춰야만 (engine/growth.ts evolveRelic)
+  pool = pool.filter((x) => !x.evolve);
   if (!pool.length) return null;
-  return r.weighted(pool, (x) => ({ common: 55, uncommon: 33, rare: 12 })[x.rarity as 'common'] ?? 10).id;
+  return r.weighted(pool, (x) => (({ common: 55, uncommon: 33, rare: 12 })[x.rarity as 'common'] ?? 10) * actRarity(run, x.rarity)).id;
 }
 
 /** 보스 유물 선택지: 행동력 유물은 최대 1개 (행동력 5 이상이면 제외) */
@@ -859,7 +911,7 @@ export function rollEquip(run: RunState, tier: 'normal' | 'elite' | 'shop' = 'no
   const pool = [...EQUIPS.values()].filter((x) => !have.has(x.id) && x.rarity !== 'basic' && x.rarity !== 'special' && x.rarity !== 'genesis');
   if (!pool.length) return null;
   const w = RARITY_W[tier];
-  return r.weighted(pool, (x) => w[x.rarity] ?? 2).id;
+  return r.weighted(pool, (x) => (w[x.rarity] ?? 2) * actRarity(run, x.rarity)).id;
 }
 
 export function rollRune(run: RunState): string | null {
@@ -885,7 +937,7 @@ export function rollChoice(run: RunState, tier: 'normal' | 'elite' | 'boss'): Lo
     let wild: LootItem | null = null;
     if (roll < 0.35) {
       const id = rollEquip(run, tier);
-      if (id) wild = { kind: 'equip', id };
+      if (id) wild = { kind: 'equip', id, aff: rollAffixes(run, id) };
     } else if (roll < 0.55) {
       const id = rollRune(run);
       if (id) wild = { kind: 'rune', id };
@@ -978,8 +1030,32 @@ export function startCombat(run: RunState, encId: string, opts: { anomaly?: stri
     c.emit({ t: 'heal', uid: 'p', amount: opts.rested });
     c.emit({ t: 'text', uid: 'p', text: `숨을 고르고 수호자 앞에 섰다 (체력 +${opts.rested})`, tone: 'good' });
   }
+  if (!c.over) startOmens(run, c);
   beginEvents.set(run, [...c.events]);
   return c;
+}
+
+/** 전투를 시작할 때 이루어지는 징조 (engine/growth.ts — 수호·간파·선수) */
+function startOmens(run: RunState, c: Combat) {
+  const act = Math.min(5, run.act);
+  if (useOmen(run, 'omen-ward')) {
+    c.gainBlock(c.p, 10 + 3 * act);
+    c.emit({ t: 'text', uid: 'p', text: '수호의 징조', tone: 'good' });
+  }
+  if (useOmen(run, 'omen-sight')) {
+    for (const e of c.alive) {
+      for (const w of e.weak) {
+        if (e.known.includes(w)) continue;
+        e.known.push(w);
+        c.emit({ t: 'reveal', uid: e.uid, dtype: w });
+      }
+    }
+    c.emit({ t: 'text', text: '간파의 징조: 약점이 모두 드러났다', tone: 'good' });
+  }
+  if (useOmen(run, 'omen-haste')) {
+    c.s.ap += 1;
+    c.emit({ t: 'text', uid: 'p', text: '선수의 징조 (행동력 +1)', tone: 'good' });
+  }
 }
 
 /** 승리 후 보상 화면으로 */
@@ -1006,7 +1082,9 @@ export function finishCombat(run: RunState): RewardState | null {
   const stalker = cs.enc.startsWith('stalker');
   const goldBase = cs.kind === 'boss' ? r.int(60, 80) : cs.kind === 'elite' ? r.int(25, 35) : r.int(10, 18);
   // 심연 「인색한 심연」: 전투 골드가 준다
-  const gold = Math.round(goldBase * ACT_MULT[act] * (run.light < 25 ? 1.25 : 1) * abyssGold(run)) + cs.bonusGold;
+  // 성장 개편: 골드는 GOLD_MULT로 (ACT_MULT는 경험치에만). 황금의 징조는 이번 골드 두 배
+  const goldOmen = useOmen(run, 'omen-gold') ? 2 : 1;
+  const gold = Math.round(goldBase * GOLD_MULT[act] * goldOmen * (run.light < 25 ? 1.25 : 1) * abyssGold(run)) + cs.bonusGold;
 
   const reward: RewardState = {
     source: lordFight ? 'lord' : stalker ? 'stalker' : run.rift ? 'rift' : cs.kind,
@@ -1019,7 +1097,8 @@ export function finishCombat(run: RunState): RewardState | null {
   };
   reward.items.push(...rollEssenceDrops(run, killed, isRiftBoss));
   if (cs.kind === 'elite' || isRiftBoss || stalker) {
-    const relic = rollRelic(run);
+    // 심연의 징조: 다음 정예의 유물이 희귀 등급
+    const relic = rollRelic(run, useOmen(run, 'omen-relic') ? 'rare' : 'any');
     if (relic) reward.items.push({ kind: 'relic', id: relic });
     run.stats.elites++;
   }
@@ -1027,9 +1106,24 @@ export function finishCombat(run: RunState): RewardState | null {
     run.stats.bosses++;
     reward.choice = rollBossRelics(run, 3).map((id) => ({ kind: 'relic', id }));
     if (!reward.choice.length) reward.choice = rollChoice(run, 'boss');
+    // 유물 진화 (engine/growth.ts): 짝이 되는 두 유물을 지녔으면 수호자 보상에 진화가 함께 나온다
+    for (const id of evolutionsReady(run)) reward.choice.push({ kind: 'evolve', id });
     reward.next = run.act >= FINAL_ACT ? 'final' : 'haven';
-  } else {
-    reward.choice = rollChoice(run, cs.kind === 'elite' ? 'elite' : 'normal');
+  } else if (cs.kind !== 'normal' || kind === 'rift' || r.chance(CHOICE_RATE[act] ?? 1)) {
+    // 희귀의 징조: 한 등급 귀한 후보 (일반 → 정예, 정예 → 수호자 가중치)
+    const rare = useOmen(run, 'omen-rare');
+    const tier = cs.kind === 'elite' ? (rare ? 'boss' : 'elite') : rare ? 'elite' : 'normal';
+    reward.choice = rollChoice(run, tier);
+    // 풍요의 징조: 후보 하나 더 (스킬)
+    if (useOmen(run, 'omen-plenty')) {
+      const more = rollSkills(run, 1, tier).filter((id) => !reward.choice!.some((c) => c.kind === 'skill' && c.id === id));
+      reward.choice.push(...more.map((id) => ({ kind: 'skill' as const, id })));
+    }
+    // 각인의 징조: 후보에 각인 하나
+    if (useOmen(run, 'omen-rune')) {
+      const id = rollRune(run);
+      if (id) reward.choice.push({ kind: 'rune', id });
+    }
   }
   if (lordFight) {
     const relic = rollRelic(run, 'rare');
@@ -1054,6 +1148,10 @@ export function finishCombat(run: RunState): RewardState | null {
     }
   }
 
+  // 고르지 않고 지나치면 받을 징조 (미리 보인다 — engine/growth.ts)
+  if (reward.choice?.length) reward.omen = rollOmen(run);
+  // 계약: 이긴 전투마다 저주가 하나씩 준다
+  tickPacts(run);
   run.player.gold += gold;
   gainXp(run, xp);
   run.reward = reward;
@@ -1084,8 +1182,13 @@ export function takeLoot(run: RunState, item: LootItem, pick: string | null = nu
       if (!addConsumable(run, item.id)) return '소모품 칸이 가득 찼다';
       break;
     case 'equip':
-      if (!gainEquip(run, item.id, item.n ?? 0)) return '가방이 가득 찼다';
+      if (!gainEquip(run, item.id, item.n ?? 0, item.aff)) return '가방이 가득 찼다';
       break;
+    case 'evolve': {
+      const why = evolveRelic(run, item.id);
+      if (why) return why;
+      break;
+    }
     case 'rune':
       run.runes.push(item.id);
       break;
