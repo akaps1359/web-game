@@ -24,6 +24,7 @@ import {
   stealInsight,
   swapRows,
   TORN,
+  TORN_LOSS,
   veiledHorror,
   watchBlock,
 } from './common';
@@ -652,7 +653,7 @@ reg.traits([
   {
     id: 'a3-stitches',
     name: '터지는 실밥',
-    desc: `체력이 처음 절반 아래로 떨어지면 꿰맨 배가 터져 미쳐 날뛴다: 공격 피해 +${TORN_N}, 대신 자기 차례가 끝날 때마다 체력 ${TORN_N}을 잃는다. 다른 썰매개가 곁에 있으면 함께 몰아붙인다`,
+    desc: `체력이 처음 절반 아래로 떨어지면 꿰맨 배가 터져 미쳐 날뛴다: 공격 피해 +${TORN_N}, 대신 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}를 잃는다. 다른 썰매개가 곁에 있으면 함께 몰아붙인다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -837,7 +838,7 @@ reg.enemies([
         },
       },
       bite: mv.attack('푸른 이빨', 9, { then: (c, e) => corrode(c, e), desc: '부식 1 (최대 3)' }),
-      maul: mv.attack('물고 늘어지기', 4, { hits: 2, type: 'slash', then: (c, e) => corrode(c, e), desc: '피 냄새를 따라 두 번 문다. 부식 1 (최대 3)' }),
+      maul: mv.attack('물고 늘어지기', 5, { hits: 2, type: 'slash', then: (c, e) => corrode(c, e), desc: '피 냄새를 따라 두 번 문다. 부식 1 (최대 3)' }),
       vanish: {
         name: '각도 속으로',
         intent: 'retreat',
@@ -851,10 +852,10 @@ reg.enemies([
     ai: (c, e) => {
       const l = last(e);
       if (e.row === 1) return l === 'lurk' || l === 'vanish' ? 'pounce' : 'lurk';
-      // 피 냄새를 맡으면 물고 늘어지고, 물고 나면 각도 속으로 숨는다 (다칠수록 서둘러)
-      const bleeding = (c.p.st.bleed ?? 0) > 0;
-      const struck = l === 'bite' || l === 'maul';
-      return pick(c, e, { bite: bleeding ? 1 : 3, maul: bleeding ? 3 : 0, vanish: struck ? (hpPct(e) < 0.5 ? 4 : 2) : 0 }, 1);
+      // 치고 빠진다: 물고 나면 대개 각도 속으로 숨고 (다쳤으면 반드시), 가끔은 한 번 더 문다. 피 냄새를 맡으면 물고 늘어진다
+      const strike = (c.p.st.bleed ?? 0) > 0 ? 'maul' : 'bite';
+      if (l !== 'bite' && l !== 'maul') return strike;
+      return hpPct(e) < 0.5 ? 'vanish' : pick(c, e, { vanish: 4, [strike]: 1 }, 1);
     },
     visual: { tint: 0x2a3550, glow: 0x40a0ff, fx: ['flicker'] },
   },
@@ -1052,18 +1053,19 @@ reg.enemies([
       flare: mv.attack('조명탄 권총', 6, { melee: false, type: 'fire', then: (c, e) => void c.apply(c.p, 'burn', 2, e), desc: '화상 2 (불꽃이 동상을 녹인다)' }),
       journal: mv.horror('마지막 일지', 8, { desc: '얼어붙은 입술로 일지의 마지막 장을 읽는다' }),
       // 탐사대의 썰매개를 부른다 (특성 a3-whistle). 휘파람은 겹치지 않는다
-      whistle: mv.buff(
-        '썰매개를 부르는 휘파람',
-        (c, e) => {
+      whistle: mv.attack('휘파람과 도끼질', 6, {
+        type: 'slash',
+        extra: ['buff'],
+        then: (c, e) => {
           for (const d of c.alive) {
             const add = d.def === 'sled-dog' ? CALL_DMG - (d.st[CALLED] ?? 0) : 0;
             if (add > 0) c.apply(d, CALLED, add, e);
           }
         },
-        { desc: `썰매개 모두 다음 공격 피해 +${CALL_DMG}` },
-      ),
+        desc: `휘파람을 불며 도끼를 휘두른다. 썰매개 모두 다음 공격 피해 +${CALL_DMG}`,
+      }),
       // 다시 일어선 몸 (특성 a3-refreeze)
-      grip: mv.attack('얼어붙은 손아귀', 8, { then: (c, e) => frost(c, c.p, 2, e), desc: '얼어붙은 손으로 붙잡는다. 동상 2' }),
+      grip: mv.attack('얼어붙은 손아귀', 9, { then: (c, e) => frost(c, c.p, 2, e), desc: '얼어붙은 손으로 붙잡는다. 동상 2' }),
     },
     ai: (c, e) => {
       // 다시 일어선 몸: 조명탄 권총은 얼어붙었다

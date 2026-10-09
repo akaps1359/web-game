@@ -7,7 +7,7 @@ import { generateFloor } from '../src/engine/dungeon';
 import { autoTurn, incoming } from '../src/sim/bot';
 import type { DmgType, EnemyUnit, MoveDef } from '../src/engine/types';
 import { DEPTH } from '../src/content/depth';
-import { CALLED, END_BLOCK, FROST, HEIGHT, TORN, WATCH } from '../src/content/act3/common';
+import { CALLED, END_BLOCK, FROST, HEIGHT, TORN, TORN_LOSS, WATCH } from '../src/content/act3/common';
 import { FROZEN_ROOM } from '../src/content/act3/anomalies';
 import {
   BLAST_DMG,
@@ -1577,7 +1577,7 @@ describe('3층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     expect(picks(c, a).has('harry')).toBe(false);
   });
 
-  it('해부된 썰매개: 체력이 처음 절반 아래로 떨어지면 실밥이 터진다 — 공격 피해 +3 (의도 숫자에도), 자기 차례가 끝날 때마다 체력 3', () => {
+  it(`해부된 썰매개: 체력이 처음 절반 아래로 떨어지면 실밥이 터진다 — 공격 피해 +${TORN_N} (의도 숫자에도), 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}`, () => {
     const { c } = fight('a3-e-dogs');
     const [a] = all(c, 'sled-dog');
     const boosted = c.preview(a, c.p, 9 + TORN_N, 'blunt');
@@ -1587,7 +1587,7 @@ describe('3층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     expect(c.preview(a, c.p, 9, 'blunt')).toBe(boosted);
     const hp = a.hp;
     endWith(c);
-    expect(a.hp).toBe(hp - TORN_N);
+    expect(a.hp).toBe(hp - TORN_LOSS);
     expect(picks(c, a).has('howl')).toBe(false);
   });
 

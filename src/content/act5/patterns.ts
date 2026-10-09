@@ -75,8 +75,8 @@ export const TWIST_CAP = 8;
 
 export const HEAT = 'a5-star-heat';
 export const HEAT_MAX = 3;
-export const RETCH_DMG = 26;
-export const RETCH_BURN = 3;
+export const RETCH_DMG = 22;
+export const RETCH_BURN = 2;
 export const DEVOUR_HEAL = 20;
 export const DEVOUR_HEAT = 2;
 /** 내가 이만큼 방어도를 쌓고 턴을 마치는 걸 보면 빛을 더 자주 빨아들인다 */
@@ -108,7 +108,7 @@ export const DEVOTION_BLESS = 2;
 /** 마지막으로 쓴 두 기술을 지켜보는 숨은 상태 (c.s.vars.a5T1 = 마지막, a5T2 = 그 앞 — 칸 번호 + 1) */
 export const THREADS = 'a5-threads';
 /** 「꿈실 엉키기」의 꿈바늘 피해 */
-export const TANGLE_DMG = 10;
+export const TANGLE_DMG = 12;
 
 // ───────────── 꺼진 별 ─────────────
 
@@ -338,7 +338,7 @@ reg.traits([
   {
     id: 'a5-nightmare-eater',
     name: '악몽을 먹는 짐승',
-    desc: `악몽(${NIGHTMARE_NAMES})이 가장 깊은 적 하나(자신 포함)의 악몽을 먹어 치우고 상처를 아물린다. 내가 건 악몽이 한 적에게 ${SCENT_AT}겹 이상 쌓이면 냄새를 맡고 하려던 공격을 멈춘 채 먹으러 간다 (연달아 먹지는 않는다). 먹을 때마다 배가 불러 ${GORGE_MAX}번째 끼니 다음 차례에 나에게 게워 낸다. 붕괴시키면 배 속의 악몽이 흩어진다`,
+    desc: `악몽(${NIGHTMARE_NAMES})이 가장 깊은 적 하나(자신 포함)의 악몽을 먹어 치우고 상처를 아물린다. 내가 건 악몽이 한 적에게 ${SCENT_AT}겹 이상 쌓이면 냄새를 맡고 하려던 공격을 멈춘 채 먹으러 간다 (연달아 먹지는 않는다). 먹을 때마다 배가 불러 ${GORGE_MAX}번 먹으면 다음 차례에 나에게 게워 낸다. 붕괴시키면 배 속의 악몽이 흩어진다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;

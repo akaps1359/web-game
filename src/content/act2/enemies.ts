@@ -1240,7 +1240,7 @@ reg.enemies([
         }),
       ),
       // 비빈 날개를 맞혀 가루를 흩었다 (특성 a2-dust)
-      scatter: mv.attack('흩날린 가루', 7, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '마비의 가루가 흩어졌다. 침묵 대신 약화 1' }),
+      scatter: mv.attack('흩날린 가루', 9, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '마비의 가루가 흩어졌다. 침묵 대신 약화 1' }),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'burst';

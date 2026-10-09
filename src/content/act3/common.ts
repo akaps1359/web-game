@@ -168,8 +168,9 @@ export const covered = (c: Combat, e: EnemyUnit): boolean => c.row(0).some((x) =
 export const HEIGHT = 'a3-height';
 /** 썰매개가 들은 탐사대원의 휘파람 = 다음 공격 추가 피해 */
 export const CALLED = 'a3-called';
-/** 썰매개의 터진 실밥 = 공격 추가 피해이자 자기 차례마다 잃는 체력 */
+/** 썰매개의 터진 실밥 = 공격 추가 피해 ({n}). 자기 차례가 끝날 때마다 TORN_LOSS를 잃는다 */
 export const TORN = 'a3-torn';
+export const TORN_LOSS = 2;
 /** 숨은 상태: 내 턴이 끝날 때의 방어도를 기억한다 (쇼고스 유충이 배운다) */
 export const WATCH = 'a3-watch';
 /** WATCH가 적어 두는 값: 지난 내 턴을 마친 방어도 */
@@ -328,16 +329,16 @@ reg.statuses([
     name: '터진 실밥',
     icon: 'gi:stitched-wound',
     kind: 'buff',
-    desc: '꿰맨 배가 터져 미쳐 날뛴다. 공격 피해 +{n}. 자기 차례가 끝날 때마다 체력 {n}을 잃는다',
+    desc: `꿰맨 배가 터져 미쳐 날뛴다. 공격 피해 +{n}. 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}를 잃는다`,
     hooks: {
       modDamageOut(_c, s, d) {
         if (d.attack && d.src === s.unit) d.add += s.n;
       },
     },
-    tickEnd(c, u, n) {
+    tickEnd(c, u) {
       if (!isEnemy(u)) return;
       c.emit({ t: 'text', uid: u.uid, text: '터진 배에서 피가 쏟아진다', tone: 'good' });
-      c.loseHp(u, n, 'torn');
+      c.loseHp(u, TORN_LOSS, 'torn');
     },
   },
   {
