@@ -251,9 +251,16 @@ function bfsPath(run: RunState, to: number): number[] | null {
 }
 
 /** 다음 목표 방 고르기 */
+/**
+ * 서두르는 봇 (SIM_BOT_RUSH): 이 층까지는 포탈을 보는 대로 내려가고 고를 수 있는 싸움(일반·정예)을 피한다.
+ * 저층에서 착실히 쌓지 않은 판이 고층에서 말라 죽는지 볼 때 (2026-10 성장 억제). 0이면 끈다
+ */
+export const botRush = { upTo: 0 };
+
 function pickTarget(run: RunState): number {
   const f = run.floor!;
   const p = run.player;
+  const rush = run.act <= botRush.upTo;
   const hpPct = p.hp / p.maxHp;
   const portal = f.rooms[f.portal];
   const d = distances(f, f.pos);
@@ -269,7 +276,7 @@ function pickTarget(run: RunState): number {
     f.vars.botTarget = id;
     return id;
   };
-  const wantPortal = portal.seen && (f.tide >= 2 || run.light < 25 || f.rooms.filter((x) => x.visited).length > 14);
+  const wantPortal = portal.seen && (rush || f.tide >= 2 || run.light < 25 || f.rooms.filter((x) => x.visited).length > 14);
   if (wantPortal) {
     const camp = f.rooms.find((x) => x.type === 'camp' && !x.cleared && x.seen);
     if (hpPct < 0.55 && camp) return commit(camp.id);
@@ -287,10 +294,10 @@ function pickTarget(run: RunState): number {
     else
       switch (r.type) {
         case 'combat':
-          s = hpPct > 0.4 ? 4 : -2;
+          s = rush ? -3 : hpPct > 0.4 ? 4 : -2;
           break;
         case 'elite':
-          s = hpPct > 0.7 ? 6 : -5;
+          s = rush ? -6 : hpPct > 0.7 ? 6 : -5;
           break;
         case 'treasure':
           s = 7;
