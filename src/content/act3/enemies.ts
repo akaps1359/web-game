@@ -837,7 +837,7 @@ reg.enemies([
         },
       },
       bite: mv.attack('푸른 이빨', 9, { then: (c, e) => corrode(c, e), desc: '부식 1 (최대 3)' }),
-      maul: mv.attack('물고 늘어지기', 5, { hits: 2, type: 'slash', desc: '피 냄새를 따라 두 번 문다' }),
+      maul: mv.attack('물고 늘어지기', 4, { hits: 2, type: 'slash', then: (c, e) => corrode(c, e), desc: '피 냄새를 따라 두 번 문다. 부식 1 (최대 3)' }),
       vanish: {
         name: '각도 속으로',
         intent: 'retreat',

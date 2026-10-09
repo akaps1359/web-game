@@ -12,11 +12,11 @@ import { chipPoise, isIllusion, setIntent, setSt, uidNum, vanish } from './dream
  *  - 주그: 하나가 신호를 보내면 나머지가 다음 차례에 일제히 덤빈다. 신호를 보낸 주그를 쓰러뜨리거나 붕괴시키면 머뭇거린다.
  *          체력이 줄면 갉아먹은 등불을 물고 달아난다 (등불도 보상도 없다).
  *  - 구그: 거대한 발을 들어 올린다 → 내리찍기. 방어도로 받아 내면 피해 절반·버팀 -3. 화염에 움찔해 얼굴을 가리고 다음 차례에 성낸다.
- *  - 몽유병자: 비전·공허 피해로는 깨지 않는다. 하품(졸음). 체력이 줄면 다시 잠들어 상처를 아물린다.
+ *  - 몽유병자: 비전·공허 피해에는 놀라지 않고 조용히 깬다. 하품(졸음). 체력이 줄면 (동료가 있을 때) 다시 잠들어 상처를 아물린다.
  *  - 달짐승: 「붙잡아라!」 노예가 곧바로 붙잡는다 (취약). 출혈이 깊은 상대의 상처를 비튼다.
  *  - 별을 삼킨 것: 삼킨 별이 달아오른다 (빨아들인 방어도·삼킨 아기 별로 더). 다 차면 나에게 게워 내고, 그 전에 붕괴시키면 동료들에게.
  *  - 성운 해파리: 붕괴시키면 잉태가 흩어진다. 갓 태어난 별에게 빛을 먹인다. 체력이 절반 아래면 서둘러 낳는다.
- *  - 별빛 순례자: 아무도 막지 않으면 두 걸음씩 걷는다. 앞줄에서는 길이 막혀 지팡이를 든다. 요람이 가까우면 노래가 바뀐다.
+ *  - 별빛 순례자: 아무도 막지 않으면 기도가 깊어진다 (맞으면 흐트러진다). 앞줄에서는 길이 막혀 지팡이를 든다. 요람이 가까우면 노래가 바뀐다.
  *  - 장막 직조자: 마지막으로 쓴 두 기술의 꿈실을 엉킨다. 짠 환영을 깨뜨리면 비틀거린다. 앞줄로 끌려 나오면 제 환영 사이로 숨는다.
  *  - 새 일반 적 꺼진 별: 쏘아 보낸 빛은 내 턴이 두 번 끝날 때 닿는다. 쓰러뜨려도 멈추지 않고, 붕괴시키면 흩어지고, 다 막아 내면 흔들린다.
  *  - 새 일반 적 악몽 먹는 맥: 적들에게 걸린 해로운 상태를 먹어 치운다 (쌓이면 냄새를 맡고 공격을 멈춘다). 배가 차면 게워 낸다.
@@ -52,9 +52,12 @@ export const FURY_HITS = 4;
 
 // ───────────── 몽유병자 ─────────────
 
-/** 이 속성의 피해로는 깨지 않는다 (꿈속의 일인 줄 안다) */
+/** 이 속성의 피해에는 꿈속의 일인 줄 알아 놀라지 않는다 (깨어나도 힘이 오르지 않는다) */
 export const DREAMY_TYPES: DmgType[] = ['arcane', 'void'];
-/** 체력이 이 비율 아래로 떨어지면 한 번 다시 잠든다 / 잠든 차례 수 / 잠든 차례마다 회복 (최대 체력 비율) */
+/** 하품하며 허우적거리기 (졸음 +1) */
+export const YAWN_DMG = 6;
+export const YAWN_HITS = 2;
+/** 체력이 이 비율 아래로 떨어지면 한 번 다시 잠든다 (동료가 남아 있을 때만) / 잠든 차례 수 / 잠든 차례마다 회복 (최대 체력 비율) */
 export const RELAPSE_AT = 0.4;
 export const RELAPSE_TURNS = 2;
 export const RELAPSE_HEAL = 0.1;
@@ -94,11 +97,18 @@ export const HURRY_AT = 0.5;
 /** 요람까지 이만큼 남으면 노래가 바뀐다 (「요람의 노래」: 다른 모든 적 보호막) */
 export const NEAR_CRADLE = 2;
 export const HYMN_BARRIER = 10;
+/** 깊어지는 기도: 방해받지 않은 걸음마다 +1 (최대). 깊이 1마다 별 부스러기 피해·별빛의 축복 보호막 +. 피해를 받으면 흐트러진다 */
+export const DEVOTION = 'a5-devotion';
+export const DEVOTION_MAX = 3;
+export const DEVOTION_SHARD = 2;
+export const DEVOTION_BLESS = 2;
 
 // ───────────── 장막 직조자 ─────────────
 
 /** 마지막으로 쓴 두 기술을 지켜보는 숨은 상태 (c.s.vars.a5T1 = 마지막, a5T2 = 그 앞 — 칸 번호 + 1) */
 export const THREADS = 'a5-threads';
+/** 「꿈실 엉키기」의 꿈바늘 피해 */
+export const TANGLE_DMG = 10;
 
 // ───────────── 꺼진 별 ─────────────
 
@@ -107,7 +117,7 @@ export const DEAD_STAR = 'dead-star';
 export const LIGHT_FAR = 'a5-light-far';
 export const LIGHT_NEAR = 'a5-light-near';
 export const BEAM_DMG = 14;
-export const LAST_BEAM_DMG = 26;
+export const LAST_BEAM_DMG = 20;
 /** 닿은 빛을 방어도로 모두 막아 내면 별의 버팀이 이만큼 깎인다 */
 export const LIGHT_STAGGER = 2;
 /** 체력이 이 비율 아래로 떨어지면 마지막 빛을 쏘아 보낸다 (전투마다 한 번) */
@@ -124,12 +134,12 @@ export const NIGHTMARES = ['bleed', 'poison', 'burn', 'mark', 'weak', 'vuln', 'c
 const NIGHTMARE_NAMES = '출혈·독·화상·인장·약화·취약·부식·파멸';
 /** 먹은 악몽 한 겹마다 회복 (최대) */
 export const EAT_HEAL = 2;
-export const EAT_HEAL_MAX = 20;
+export const EAT_HEAL_MAX = 16;
 export const GORGE_MAX = 3;
-/** 적들에게 걸린 악몽이 이만큼 쌓이면 냄새를 맡고 공격을 멈춘 채 먹으러 간다 */
-export const SCENT_AT = 5;
+/** 적 하나에게 악몽이 이만큼 쌓이면 냄새를 맡고 공격을 멈춘 채 먹으러 간다 (연달아 먹지는 않는다) */
+export const SCENT_AT = 6;
 export const BAKU_RETCH_SAN = 16;
-export const BAKU_RETCH_DREAD = 2;
+export const BAKU_RETCH_DREAD = 1;
 
 // ───────────── 상태 ─────────────
 
@@ -166,6 +176,13 @@ reg.statuses([
     icon: 'gi:sun',
     kind: 'buff',
     desc: `삼킨 별이 달아오른다 ({n}/${HEAT_MAX}). 자기 차례가 끝날 때마다 +1, 방어도를 빨아들이거나 갓 태어난 별을 삼키면 더 오른다. 다 차면 다음 차례에 삼킨 별을 나에게 게워 낸다. 그 전에 붕괴시키면 동료들에게 토해 낸다`,
+  },
+  {
+    id: DEVOTION,
+    name: '깊어지는 기도',
+    icon: 'gi:prayer',
+    kind: 'buff',
+    desc: `방해받지 않고 걸을 때마다 기도가 깊어진다 ({n}/${DEVOTION_MAX}). 깊이 1마다 별 부스러기 피해 +${DEVOTION_SHARD}, 별빛의 축복 보호막 +${DEVOTION_BLESS}. 피해를 받으면 흐트러진다`,
   },
   {
     id: FED,
@@ -233,7 +250,7 @@ reg.statuses([
     name: '배부름',
     icon: 'gi:stomach',
     kind: 'buff',
-    desc: `먹은 악몽이 배 속에 쌓였다 ({n}/${GORGE_MAX}). 다 차면 다음 차례에 나에게 게워 낸다. 붕괴시키면 흩어진다`,
+    desc: `먹은 악몽이 배 속에 쌓였다 ({n}/${GORGE_MAX}). 먹을 때마다 +1. 다 차면 다음 차례에 나에게 게워 낸다. 붕괴시키면 흩어진다`,
   },
   {
     id: SCENT,
@@ -303,7 +320,7 @@ reg.traits([
   {
     id: 'a5-weaver',
     name: '꿈실 직조',
-    desc: '「꿈실 엉키기」는 그 턴에 내가 마지막으로 쓴 두 기술(기본 공격·방어 제외)의 재사용 대기를 둘 중 더 긴 쪽에 맞춘다. 직조자가 짠 환영을 깨뜨리면 실이 끊어져 직조자가 비틀거린다 (버팀 -1). 앞줄로 끌려 나오면 제 환영 둘을 짜 그 사이로 숨는다',
+    desc: '「꿈실 엉키기」는 그 턴에 내가 마지막으로 쓴 두 기술(기본 공격·방어 제외)의 재사용 대기를 둘 중 더 긴 쪽에 맞춘다. 직조자가 짠 환영을 깨뜨리면 실이 끊어져 직조자가 비틀거린다 (버팀 -1, 내 턴마다 한 번). 앞줄로 끌려 나오면 제 환영 둘을 짜 그 사이로 숨는다',
     hooks: {},
   },
   {
@@ -321,7 +338,7 @@ reg.traits([
   {
     id: 'a5-nightmare-eater',
     name: '악몽을 먹는 짐승',
-    desc: `적들에게 걸린 악몽(${NIGHTMARE_NAMES})을 먹어 치우고 상처를 아물린다. 내가 건 악몽이 적들에게 ${SCENT_AT}겹 이상 쌓이면 냄새를 맡고 하려던 공격을 멈춘 채 먹으러 간다. 먹은 악몽은 배 속에 쌓여 ${GORGE_MAX}이 차면 다음 차례에 나에게 게워 낸다. 붕괴시키면 배 속의 악몽이 흩어진다`,
+    desc: `악몽(${NIGHTMARE_NAMES})이 가장 깊은 적 하나(자신 포함)의 악몽을 먹어 치우고 상처를 아물린다. 내가 건 악몽이 한 적에게 ${SCENT_AT}겹 이상 쌓이면 냄새를 맡고 하려던 공격을 멈춘 채 먹으러 간다 (연달아 먹지는 않는다). 먹을 때마다 배가 불러 ${GORGE_MAX}번째 끼니 다음 차례에 나에게 게워 낸다. 붕괴시키면 배 속의 악몽이 흩어진다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -519,19 +536,28 @@ function landLight(c: Combat, n: number) {
 
 // ───────────── 악몽 먹는 맥 ─────────────
 
-/** 적들에게 걸린 악몽(해로운 상태)의 겹 수 */
-export function nightmareStacks(c: Combat): number {
+/** 이 적에게 걸린 악몽(해로운 상태)의 겹 수 */
+export function hauntOf(e: Unit): number {
   let n = 0;
-  for (const a of c.alive) if (!isIllusion(a)) for (const id of NIGHTMARES) n += a.st[id] ?? 0;
+  for (const id of NIGHTMARES) n += e.st[id] ?? 0;
   return n;
 }
 
-/** 내 턴에 내가 적에게 악몽을 걸 때: 쌓인 악몽이 SCENT_AT 이상이면 맥이 공격을 멈추고 먹으러 간다 (의도가 바로 바뀐다) */
+/** 악몽이 가장 깊은 적 (자신 포함, 환영 제외). 아무도 없으면 null */
+export function mostHaunted(c: Combat): EnemyUnit | null {
+  let best: EnemyUnit | null = null;
+  for (const a of c.alive) if (!isIllusion(a) && hauntOf(a) > 0 && (!best || hauntOf(a) > hauntOf(best))) best = a;
+  return best;
+}
+
+/** 내 턴에 내가 적에게 악몽을 걸 때: 그 적에게 쌓인 악몽이 SCENT_AT 이상이면 맥이 공격을 멈추고 먹으러 간다 (의도가 바로 바뀐다) */
 function smellNightmares(c: Combat, target: Unit, id: string) {
   if (c.s.phase !== 'player' || !isEnemy(target) || !NIGHTMARES.includes(id)) return;
-  if (nightmareStacks(c) < SCENT_AT) return;
+  if (hauntOf(target) < SCENT_AT) return;
   for (const b of c.alive) {
     if (b.def !== BAKU || isIllusion(b) || b.broken === 2 || (b.st.stun ?? 0) > 0 || b.mem.scentT === c.s.turn) continue;
+    // 방금 먹었으면 배가 차 있어 연달아 먹으러 가지는 않는다
+    if (b.hist[b.hist.length - 1] === 'eat') continue;
     const m = b.intent?.move;
     if (m !== 'trample' && m !== 'trunk') continue;
     b.mem.scentT = c.s.turn;
@@ -549,28 +575,24 @@ function gorge(c: Combat, e: EnemyUnit, n: number) {
   if (next >= GORGE_MAX) c.emit({ t: 'text', uid: e.uid, text: '배가 터질 듯 부풀었다', tone: 'bad' });
 }
 
-/** 악몽을 먹는다: 적들에게 걸린 악몽을 모두 먹어 치우고, 한 겹마다 회복, 먹은 종류마다 배부름 +1 */
+/** 악몽을 먹는다: 악몽이 가장 깊은 적 하나(자신 포함)의 악몽을 모두 먹어 치우고, 한 겹마다 회복, 배부름 +1 */
 export function eatNightmares(c: Combat, e: EnemyUnit) {
   if (isIllusion(e)) return;
-  let stacks = 0;
-  const kinds = new Set<string>();
-  for (const a of c.alive) {
-    if (isIllusion(a)) continue;
-    for (const id of NIGHTMARES) {
-      const n = a.st[id] ?? 0;
-      if (n <= 0) continue;
-      stacks += n;
-      kinds.add(id);
-      c.clear(a, id);
-    }
-  }
-  if (!stacks) {
+  const prey = mostHaunted(c);
+  if (!prey) {
     c.emit({ t: 'text', uid: e.uid, text: '먹을 악몽이 없어 입맛만 다신다', tone: 'info' });
     return;
   }
-  c.emit({ t: 'text', uid: e.uid, text: `악몽 ${stacks}겹을 먹어 치웠다`, tone: 'bad' });
+  let stacks = 0;
+  for (const id of NIGHTMARES) {
+    const n = prey.st[id] ?? 0;
+    if (n <= 0) continue;
+    stacks += n;
+    c.clear(prey, id);
+  }
+  c.emit({ t: 'text', uid: prey.uid, text: `맥이 악몽 ${stacks}겹을 먹어 치웠다`, tone: 'bad' });
   c.heal(e, Math.min(EAT_HEAL_MAX, stacks * EAT_HEAL));
-  gorge(c, e, kinds.size);
+  gorge(c, e, 1);
 }
 
 /** 배 속에 쌓인 악몽을 게워 낸다 */

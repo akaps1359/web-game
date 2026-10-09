@@ -5,8 +5,33 @@ import { ENCOUNTERS, ENEMIES } from '../src/engine/registry';
 import { newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
 import { autoTurn } from '../src/sim/bot';
-import type { CineName, EnemyUnit, MoveDef } from '../src/engine/types';
-import { ASH_DARK, LASH_BASE, LASH_MAX, LASH_STEP, RISE_PCT, SNATCH, corpses } from '../src/content/act2/enemies';
+import type { CineName, DmgType, EnemyUnit, MoveDef } from '../src/engine/types';
+import {
+  ASH_DARK,
+  BRICK_BARRIER,
+  FEAST_HEAL,
+  HANDS,
+  HANDS_MAX,
+  KNELL_TOLL_SAN,
+  LAPSE_MAX,
+  LASH_BASE,
+  LASH_MAX,
+  LASH_STEP,
+  LATCH_DRAIN,
+  LATCHED,
+  REPOSSESS_HEAL,
+  RISE_PCT,
+  SEAL_BLOCK,
+  SEAL_HEAL,
+  SIN_DMG,
+  SINS,
+  SNATCH,
+  STAND_BLOCK,
+  VERDICT_DMG,
+  VERSE_SAN,
+  WATCH2,
+  corpses,
+} from '../src/content/act2/enemies';
 import {
   ABSOLVE_SAN,
   CONFESSION,
@@ -1132,6 +1157,344 @@ describe('2층 — 봇이 모든 조우를 이긴다', () => {
           while (!c.over && n++ < 300) autoTurn(c);
           if (c.s.phase !== 'victory') lost.push(`${enc.id} (${origin} #${seed}): ${c.s.phase} ${c.s.turn}턴`);
         }
+      }
+    }
+    expect(lost).toEqual([]);
+  }, 120_000);
+});
+
+/*
+ * 2층 일반 적 패턴 (2026-10): 낮은 층은 위협을 늘리지 않고 갈래만 늘린다.
+ * 반응하는 의도(맞거나 누가 쓰러지거나 무너지면 그 자리에서 바뀌어 보인다)와 상태를 읽는 AI가 실제로 그렇게 움직이는지.
+ */
+describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
+  const WAIT = { move: '_wait', kind: 'unknown' as const, label: '관망' };
+  /** 적의 차례처럼 그 행동을 실행하고 내 턴으로 돌아온다 */
+  const doMove = (c: Combat, e: EnemyUnit, id: string) => {
+    act(c, e, id);
+    c.s.phase = 'player';
+  };
+  /** 내 턴에 내 손으로 때린다 */
+  const strike = (c: Combat, e: EnemyUnit, base: number, type: DmgType | 'true') => c.damage({ src: c.p, tgt: e, base, type, attack: true });
+  /** 이 적의 AI가 n번 고른 행동들 */
+  const picks = (c: Combat, e: EnemyUnit, n = 40) => {
+    const out = new Set<string>();
+    for (let i = 0; i < n; i++) {
+      c.planIntent(e);
+      out.add(e.intent!.move);
+    }
+    return out;
+  };
+  const all = (c: Combat, def: string) => c.alive.filter((x) => x.def === def);
+  /** keep 말고는 이번 차례에 쉬게 하고 턴을 넘긴다 */
+  const endWith = (c: Combat, keep: EnemyUnit[] = []) => {
+    for (const x of c.alive) if (!keep.includes(x)) x.intent = { ...WAIT };
+    c.endTurn();
+  };
+
+  it('재를 토하는 성가대원: 처음 3분의 1 아래로 떨어지면 그 차례에 마지막 소절 (정신 피해 8, 공포 1) — 한 번뿐', () => {
+    const c = fight('a2-choir');
+    const ch = all(c, 'chorister')[0];
+    ch.poise = 0;
+    force(c, ch, 'discord');
+    strike(c, ch, Math.ceil(ch.maxHp * 0.5), 'true');
+    expect(ch.intent?.move).toBe('discord');
+    strike(c, ch, Math.ceil(ch.maxHp * 0.2), 'true');
+    expect(ch.intent?.move).toBe('verse');
+    expect(ch.intent?.sanity).toBe(VERSE_SAN);
+    const san = c.p.sanity;
+    doMove(c, ch, 'verse');
+    expect(c.p.sanity).toBeLessThan(san);
+    expect(c.p.st.dread).toBe(1);
+    // 다음 턴에 또 맞아도 다시 부르지 않는다
+    endWith(c);
+    force(c, ch, 'discord');
+    strike(c, ch, 1, 'true');
+    expect(ch.intent?.move).toBe('discord');
+  });
+
+  it(`향로 사제: 의식을 집전하는 동안 약점(관통·공허)에 맞으면 향로가 흔들려 의식이 끊긴다 — 다시 집전하려 하고, 전투당 ${LAPSE_MAX}번까지`, () => {
+    const c = fight('a2-sermon');
+    const pr = one(c, 'censer-priest');
+    doMove(c, pr, 'rite');
+    expect(pr.st.ritual).toBe(1);
+    force(c, pr, 'smite');
+    strike(c, pr, 2, 'slash');
+    expect(pr.st.ritual).toBe(1);
+    strike(c, pr, 2, 'pierce');
+    expect(pr.st.ritual ?? 0).toBe(0);
+    expect(pr.intent?.move).toBe('rite');
+    for (let i = 0; i < LAPSE_MAX; i++) {
+      doMove(c, pr, 'rite');
+      strike(c, pr, 2, 'pierce');
+    }
+    expect(pr.st.ritual).toBe(1);
+  });
+
+  it('순교자: 후열의 교단 동료가 내 턴에 맞으면 그 차례에 앞을 막아선다 — 방어도 8과 도발 1, 다음 내 턴엔 단일 대상 공격이 순교자에게만 간다', () => {
+    const c = fight('a2-choir');
+    const m = one(c, 'martyr');
+    expect(c.p.st[WATCH2]).toBe(1);
+    force(c, m, 'chain');
+    strike(c, all(c, 'chorister')[0], 3, 'pierce');
+    expect(m.intent?.move).toBe('stand');
+    endWith(c, [m]);
+    expect(m.block).toBe(STAND_BLOCK);
+    expect(m.st.taunt).toBe(1);
+    const gun = c.skillInfo('weapon')!.def;
+    expect(c.validTargets(gun).map((x) => x.uid)).toEqual([m.uid]);
+    // 교단이 아닌 동료(벽에 갇힌 수녀)를 쳐서는 막아서지 않는다
+    const v = fight('a2-vigil');
+    const m2 = one(v, 'martyr');
+    force(v, m2, 'chain');
+    strike(v, one(v, 'walled-nun'), 3, 'pierce');
+    expect(m2.intent?.move).toBe('chain');
+  });
+
+  it(`납골당 구울: 내 턴에 누가 쓰러지면 갓 쓰러진 냄새를 맡고 그 차례에 시체를 덮친다 (체력 ${FEAST_HEAL}, 힘 +2)`, () => {
+    const c = fight('a2-ghouls');
+    const [a, b] = all(c, 'crypt-ghoul');
+    force(c, a, 'claw');
+    c.kill(b);
+    expect(a.intent?.move).toBe('feast');
+    a.hp -= 20;
+    const hp = a.hp;
+    doMove(c, a, 'feast');
+    expect(a.hp).toBe(hp + FEAST_HEAL);
+    expect(a.st.str).toBe(2);
+  });
+
+  it('납골당 구울: 피를 흘리는 상대(출혈 2 이상)에게는 냄새를 쫓아 덤벼든다', () => {
+    const c = fight('a2-ghoul1');
+    const g = one(c, 'crypt-ghoul');
+    expect(picks(c, g).has('lunge')).toBe(false);
+    c.apply(c.p, 'bleed', 2);
+    expect(picks(c, g).has('lunge')).toBe(true);
+  });
+
+  it(`밀랍 수사: 체력이 처음 절반 아래로 떨어지면 촛농을 붓고, 다음 차례에 상처를 봉한다 (체력 ${SEAL_HEAL}·방어도 ${SEAL_BLOCK}) — 한 번뿐`, () => {
+    const c = fight('a2-friar1');
+    const f = one(c, 'wax-friar');
+    f.hp = Math.floor(f.maxHp * 0.4);
+    c.planIntent(f);
+    expect(f.intent?.move).toBe('pour');
+    expect(f.intent?.charging).toBe(true);
+    doMove(c, f, 'pour');
+    c.planIntent(f);
+    expect(f.intent?.move).toBe('seal');
+    const hp = f.hp;
+    doMove(c, f, 'seal');
+    expect(f.hp).toBe(hp + SEAL_HEAL);
+    expect(f.block).toBe(SEAL_BLOCK);
+    expect(f.mem.charge).toBeUndefined();
+    f.hp = Math.floor(f.maxHp * 0.3);
+    expect(picks(c, f).has('pour')).toBe(false);
+  });
+
+  it('밀랍 수사: 촛농을 붓는 사이 화염으로 치면 밀랍이 흘러내려 끊긴다 — 그 차례엔 아무것도 하지 못한다', () => {
+    const c = fight('a2-friar1');
+    const f = one(c, 'wax-friar');
+    f.hp = Math.floor(f.maxHp * 0.4);
+    c.planIntent(f);
+    doMove(c, f, 'pour');
+    c.planIntent(f);
+    strike(c, f, 2, 'pierce');
+    expect(f.intent?.move).toBe('seal');
+    strike(c, f, 2, 'fire');
+    expect(f.intent?.move).toBe('drip');
+    expect(f.mem.charge).toBeUndefined();
+  });
+
+  /** 빙의된 수도사가 악령을 내보내고, 그 악령을 다시 부르는 차례까지 */
+  function beckoned() {
+    const c = fight('a2-monk1', 202, 'hunter');
+    const monk = one(c, 'possessed-monk');
+    monk.poise = 0;
+    strike(c, monk, Math.ceil(monk.maxHp * 0.6), 'true');
+    expect(monk.mem.exorcised).toBe(1);
+    const sp = one(c, 'loose-spirit');
+    let n = 0;
+    while (monk.intent?.move !== 'beckon' && n++ < 60) c.planIntent(monk);
+    expect(monk.intent?.move).toBe('beckon');
+    return { c, monk, sp };
+  }
+
+  it(`빙의된 수도사: 빠져나온 악령을 다시 부른다 — 부르는 동안 악령은 근접으로도 닿고, 막지 못하면 다음 차례에 다시 깃든다 (수도사 체력 ${REPOSSESS_HEAL}·힘 +2)`, () => {
+    const { c, monk, sp } = beckoned();
+    const knife = c.skillInfo('weapon')!.def;
+    expect(knife.range).toBe('melee');
+    expect(sp.row).toBe(1);
+    expect(c.validTargets(knife).map((x) => x.uid)).toContain(sp.uid);
+    endWith(c, [monk]);
+    expect(sp.mem.called).toBe(1);
+    expect(sp.intent?.move).toBe('enter');
+    const hp = monk.hp;
+    const str = monk.st.str ?? 0;
+    endWith(c, [sp]);
+    expect(sp.fled).toBe(true);
+    expect(monk.hp).toBe(hp + REPOSSESS_HEAL);
+    expect(monk.st.str ?? 0).toBe(str + 2);
+  });
+
+  it('빙의된 수도사: 악령이 다시 깃들기 전에 쓰러뜨리면 막는다', () => {
+    const { c, monk, sp } = beckoned();
+    endWith(c, [monk]);
+    expect(sp.intent?.move).toBe('enter');
+    strike(c, sp, 999, 'true');
+    expect(sp.dead).toBe(true);
+    const hp = monk.hp;
+    endWith(c);
+    expect(monk.hp).toBe(hp);
+    expect(monk.mem.repossessed ?? 0).toBe(0);
+  });
+
+  it(`벽에 갇힌 수녀: 동료가 처음 내 손에 무너지면 그 차례에 그 동료를 회벽으로 감싼다 (보호막 ${BRICK_BARRIER}) — 두 번째부터는 감싸지 않는다`, () => {
+    const c = fight('a2-ghoul-nun');
+    const g = one(c, 'crypt-ghoul');
+    const n = one(c, 'walled-nun');
+    // 가장 다친 아군은 수녀 자신 — 그래도 무너진 동료를 감싼다
+    n.hp -= 15;
+    force(c, n, 'touch');
+    g.poise = 1;
+    strike(c, g, 2, 'fire');
+    expect(g.broken).toBe(2);
+    expect(n.intent?.move).toBe('brick');
+    doMove(c, n, 'brick');
+    expect(g.st.barrier).toBe(BRICK_BARRIER);
+    expect(n.st.barrier ?? 0).toBe(0);
+    c.restorePoise(g);
+    force(c, n, 'touch');
+    g.poise = 1;
+    strike(c, g, 2, 'fire');
+    expect(g.broken).toBe(2);
+    expect(n.intent?.move).toBe('touch');
+  });
+
+  it('타종 수련사: 내 턴에 교단 동료가 쓰러지면 그 차례에 조종을 울린다 — 홀로 남으면 작은 종을 울리지 않는다', () => {
+    const c = fight('a2-bells');
+    const a = one(c, 'bell-acolyte');
+    force(c, a, 'clang');
+    c.kill(one(c, 'confessor'));
+    expect(a.intent?.move).toBe('knell');
+    expect(a.intent?.sanity).toBe(KNELL_TOLL_SAN);
+    expect(picks(c, a).has('toll')).toBe(false);
+  });
+
+  it(`뼈지네: 턱 박기가 살에 닿으면 파고든다 — 내 턴이 시작될 때마다 체력 ${LATCH_DRAIN}를 빨아 가고(뼈지네 회복), 그 뼈지네를 공격하면 떨어진다. 방어도에 막히면 파고들지 못한다`, () => {
+    const c = fight('a2-centipedes');
+    const [a, b] = all(c, 'bone-centipede');
+    c.p.block = 0;
+    doMove(c, a, 'latch');
+    expect(a.mem.latched).toBe(1);
+    expect(c.p.st[LATCHED]).toBe(1);
+    c.p.block = 999;
+    doMove(c, b, 'latch');
+    expect(b.mem.latched ?? 0).toBe(0);
+    expect(c.p.st[LATCHED]).toBe(1);
+    // 내 턴이 시작될 때 빨린다
+    c.clear(c.p, 'bleed');
+    a.hp -= 10;
+    const bug = a.hp;
+    c.p.block = 0;
+    const hp = c.p.hp;
+    endWith(c);
+    expect(hp - c.p.hp).toBe(LATCH_DRAIN);
+    expect(a.hp).toBe(bug + LATCH_DRAIN);
+    // 공격하면 떨어진다
+    strike(c, a, 1, 'slash');
+    expect(a.mem.latched).toBe(0);
+    expect(c.p.st[LATCHED] ?? 0).toBe(0);
+  });
+
+  it('시체 나방: 날개를 비빈 사이 공격으로 맞히면 마비의 가루가 흩날린다 — 침묵 대신 약화 1', () => {
+    const c = fight('a2-moth-centipede');
+    const m = one(c, 'corpse-moth');
+    doMove(c, m, 'rub');
+    c.planIntent(m);
+    expect(m.intent?.move).toBe('burst');
+    strike(c, m, 2, 'pierce');
+    expect(m.mem.charge).toBeUndefined();
+    expect(m.intent?.move).toBe('scatter');
+    doMove(c, m, 'scatter');
+    expect(c.p.st.silence ?? 0).toBe(0);
+    expect(c.p.st.weak).toBe(1);
+  });
+
+  it('시체 나방: 생각이 많은 상대(지난 내 턴에 기술 3개 이상)에게 더 자주 날개를 비비고, 이미 침묵한 상대에게는 비비지 않는다', () => {
+    const c = fight('a2-moth-centipede');
+    const m = one(c, 'corpse-moth');
+    const rubs = (used: number) => {
+      c.s.used = used;
+      let k = 0;
+      for (let i = 0; i < 200; i++) {
+        c.planIntent(m);
+        if (m.intent?.move === 'rub') k++;
+      }
+      return k;
+    };
+    expect(rubs(0)).toBeLessThan(rubs(4));
+    c.apply(c.p, 'silence', 1);
+    expect(rubs(4)).toBe(0);
+  });
+
+  it(`고해 신부: 누가 쓰러질 때마다 장부에 죄를 적고, 내 턴에 적으면 그 차례에 판결 — 죄 하나마다 피해 +${SIN_DMG} (의도 그대로), 판결 뒤 장부를 비운다`, () => {
+    const c = fight('a2-cell');
+    const cf = one(c, 'confessor');
+    force(c, cf, 'penance');
+    c.kill(one(c, 'chorister'));
+    expect(cf.st[SINS]).toBe(1);
+    expect(cf.intent?.move).toBe('verdict');
+    expect(cf.intent?.dmg).toBe(VERDICT_DMG + SIN_DMG);
+    c.kill(one(c, 'censer-priest'));
+    expect(cf.st[SINS]).toBe(2);
+    expect(cf.intent?.dmg).toBe(VERDICT_DMG + 2 * SIN_DMG);
+    const shown = c.preview(cf, c.p, cf.intent!.dmg!, 'blunt');
+    c.p.block = 0;
+    const hp = c.p.hp;
+    endWith(c, [cf]);
+    expect(hp - c.p.hp).toBe(shown);
+    expect(cf.st[SINS] ?? 0).toBe(0);
+  });
+
+  it(`성수반의 손: 내 턴에 공격받지 않으면 손이 하나 더 뻗어 나온다 (최대 ${HANDS_MAX}) — 움켜쥐기 횟수가 그만큼 늘고 (의도 그대로), 맞으면 하나가 움츠러든다`, () => {
+    const c = fight('a2-baptism');
+    const f = one(c, 'font-hands');
+    endWith(c);
+    expect(f.st[HANDS]).toBe(1);
+    endWith(c);
+    endWith(c);
+    expect(f.st[HANDS]).toBe(HANDS_MAX);
+    force(c, f, 'clutch');
+    expect(f.intent?.hits).toBe(2 + HANDS_MAX);
+    strike(c, f, 2, 'fire');
+    expect(f.st[HANDS]).toBe(HANDS_MAX - 1);
+    expect(f.intent?.hits).toBe(1 + HANDS_MAX);
+    // 맞은 턴에는 자라지 않는다
+    endWith(c);
+    expect(f.st[HANDS]).toBe(HANDS_MAX - 1);
+  });
+
+  it('2층 일반 조우: 새 상태를 지닌 채 저장했다 불러와도 이어지고 (JSON), 출신 셋의 시작 덱(2층 수준: Lv5, 체력 95)으로 봇이 이긴다', () => {
+    const lost: string[] = [];
+    for (const enc of ENCOUNTERS.filter((x) => x.act === 2 && x.kind === 'normal')) {
+      for (const origin of ['soldier', 'hunter', 'occultist']) {
+        const run = newRun({ seed: 3, origin });
+        run.act = 2;
+        run.floor = generateFloor(run, 2);
+        run.player.level = 5;
+        run.player.maxHp = run.player.hp = 95;
+        run.player.sanity = run.player.maxSanity = 100;
+        run.light = 70;
+        let c = startCombat(run, enc.id, { anomaly: null });
+        c.snapshots = false;
+        for (let i = 0; i < 2 && !c.over; i++) autoTurn(c);
+        const saved: RunState = JSON.parse(JSON.stringify(run));
+        expect(saved.combat, `${enc.id} ${origin}`).toEqual(run.combat);
+        c = new Combat(saved);
+        c.snapshots = false;
+        let n = 0;
+        while (!c.over && n++ < 100) autoTurn(c);
+        if (c.s.phase !== 'victory') lost.push(`${enc.id} ${origin}: ${c.s.phase} ${c.s.turn}턴`);
       }
     }
     expect(lost).toEqual([]);

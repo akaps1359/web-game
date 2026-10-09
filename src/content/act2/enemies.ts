@@ -73,7 +73,7 @@ export const REPOSSESS_HEAL = 12;
 /** 벽에 갇힌 수녀: 「벽돌 쌓기」 보호막 */
 export const BRICK_BARRIER = 8;
 /** 타종 수련사: 「조종」 정신 피해 */
-export const KNELL_TOLL_SAN = 5;
+export const KNELL_TOLL_SAN = 4;
 /** 뼈지네: 파고든 턱이 내 턴마다 빨아 가는 체력 */
 export const LATCH_DRAIN = 2;
 /** 고해 신부: 「판결」 기본 피해, 장부의 죄 하나마다 더하는 피해 */
@@ -1240,7 +1240,7 @@ reg.enemies([
         }),
       ),
       // 비빈 날개를 맞혀 가루를 흩었다 (특성 a2-dust)
-      scatter: mv.attack('흩날린 가루', 5, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '마비의 가루가 흩어졌다. 침묵 대신 약화 1' }),
+      scatter: mv.attack('흩날린 가루', 7, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '마비의 가루가 흩어졌다. 침묵 대신 약화 1' }),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'burst';
@@ -1316,7 +1316,7 @@ reg.enemies([
     traits: ['a2-reaching'],
     desc: '세례반에는 재와 피를 갠 검은 것이 고여 있다. 그 속에서 손들이 뻗어 나와 세례받을 자를 더듬는다.',
     moves: {
-      reach: mv.attack('뻗어 오는 손', 6, { melee: false, type: 'void' }),
+      reach: mv.attack('뻗어 오는 손', 5, { melee: false, type: 'void' }),
       baptize: mv.horror('검은 세례', 4, {
         desc: '부식 1 (받는 피해 +1, 전투 동안)',
         then: (c, e) => void c.apply(c.p, 'corrode', 1, e),

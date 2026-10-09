@@ -237,7 +237,8 @@ export function endCrescendo(c: Combat, e: EnemyUnit) {
 
 /** 고조되는 동안 받은 피해(버팀에 깎이기 전, 지속 피해 포함)가 문턱을 넘으면 피리를 떨어뜨린다 */
 export function shakeCrescendo(c: Combat, e: EnemyUnit, d: DamageCtx) {
-  if (!e.mem.charge || d.tgt !== e || e.hp <= 0 || !fromPlayer(c, d)) return;
+  // 쓰러뜨리는 일격도 센다 (망령 변이로 다시 일어서도 선율은 끊겨 있다)
+  if (!e.mem.charge || d.tgt !== e || e.dead || !fromPlayer(c, d)) return;
   const n = unguarded(d);
   if (n <= 0) return;
   const left = (e.st[CRESCENDO] ?? 0) - n;
@@ -380,9 +381,9 @@ export function clearFuture(c: Combat, text?: string) {
 
 // ───────────── 미고 봉합사: 응급 봉합 · 상처 소독 ─────────────
 
-/** 붕괴한 적을 미고 하나가 맡는다 (붕괴한 미고 자신은 맡지 못한다) */
+/** 붕괴한 적을 미고 하나가 맡는다 (미고끼리는 서로 꿰매지 않는다 — 둘이 번갈아 꿰매면 붕괴가 소용없어진다) */
 function armStitch(c: Combat, victim: EnemyUnit) {
-  if (victim.minion || victim.dead) return;
+  if (victim.minion || victim.dead || victim.def === MIGO) return;
   const idx = idxOf(c, victim);
   if (c.alive.some((m) => m.def === MIGO && m.mem.stIdx === idx)) return;
   const m = c.alive.find((x) => x.def === MIGO && x !== victim && x.broken !== 2 && !x.mem.stIdx);
@@ -561,7 +562,7 @@ export function fadeTint(c: Combat, e: EnemyUnit) {
   for (const t of c.s.enemies) {
     if (t.mem.tintBy !== idx) continue;
     delete t.mem.tintBy;
-    if (t.dead) continue;
+    if (t.dead || !((t.st[TINT] ?? 0) > 0)) continue;
     setSt(c, t, TINT, 0);
     c.emit({ t: 'text', uid: t.uid, text: '물든 빛이 바랬다', tone: 'good' });
   }
@@ -623,7 +624,7 @@ export function releaseGrab(c: Combat, e: EnemyUnit, text?: string) {
 
 /** 붙잡은 동안 받은 피해(버팀에 깎이기 전, 지속 피해 포함)가 문턱을 넘으면 풀려난다 */
 export function shakeGrab(c: Combat, e: EnemyUnit, d: DamageCtx) {
-  if (!e.mem.grab || d.tgt !== e || e.hp <= 0 || !fromPlayer(c, d)) return;
+  if (!e.mem.grab || d.tgt !== e || e.dead || !fromPlayer(c, d)) return;
   const n = unguarded(d);
   if (n <= 0) return;
   const left = (c.p.st[GRABBED] ?? 0) - n;
@@ -724,13 +725,15 @@ export function weave(c: Combat, w: EnemyUnit) {
 /** 실이 끊긴다 (직조자가 무너지거나 쓰러짐): 이어진 적들이 비틀거린다 */
 export function snapThreads(c: Combat, w: EnemyUnit) {
   const idx = idxOf(c, w);
-  const tied = c.s.enemies.filter((t) => t.mem.thr === idx);
-  for (const t of tied) {
+  const live: EnemyUnit[] = [];
+  for (const t of c.s.enemies) {
+    if (t.mem.thr !== idx) continue;
     delete t.mem.thr;
-    if (t.dead) continue;
+    // 쓰러졌거나 (되살아나며) 실이 풀린 적은 비틀거리지 않는다
+    if (t.dead || !((t.st[THREAD] ?? 0) > 0)) continue;
     setSt(c, t, THREAD, 0);
+    live.push(t);
   }
-  const live = tied.filter((t) => !t.dead);
   if (!live.length) return;
   c.emit({ t: 'text', uid: w.uid, text: '별의 실이 끊어졌다', tone: 'good' });
   for (const t of live) stagger(c, t, SNAP_POISE, `실이 끊기며 비틀거린다 (버팀 -${SNAP_POISE})`);
@@ -804,7 +807,18 @@ function onFallen(c: Combat, v: EnemyUnit) {
     if (x.def === PIPER) hearDeath(c, x, v);
     if (x.def === SERVITOR && v.def === PIPER) loseBeat(c, x);
   }
+  // 쓰러지며 하던 일도 흩어진다 (미고의 재조립으로 되살아나도 이어지지 않게 — 재조립은 상태만 지우고 기억은 남긴다)
   switch (v.def) {
+    case PIPER:
+      endCrescendo(c, v);
+      clearDirge(v);
+      break;
+    case YOUNG:
+      delete v.mem.panic;
+      break;
+    case POLYP:
+      delete v.mem.wall;
+      break;
     case WARDEN:
       clearRewind(c, v);
       if (!wardenOf(c)) clearFuture(c, '예정된 상처가 사라졌다');

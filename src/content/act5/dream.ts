@@ -13,8 +13,6 @@ import type { EnemyUnit, MoveDef, Unit } from '../../engine/types';
 export const ILLUSION_SIGHT = 4;
 /** 장막 직조자가 짠 환영을 깨뜨리면 실이 끊어져 직조자의 버팀이 이만큼 깎인다 */
 export const SNAP_POISE = 1;
-/** 별빛 순례자: 지난 차례 뒤로 아무 피해도 받지 않았으면 한 번에 걷는 걸음 */
-export const HURRY_STEPS = 2;
 
 // ───────────── 공용 도구 (2026-10 일반 적 패턴 확장) ─────────────
 
@@ -200,9 +198,11 @@ reg.statuses([
         if (!isEnemy(e) || e.dead || d.src === e) return;
         if (!(d.attack || d.hpLoss > 0 || d.blocked > 0)) return;
         vanish(c, e);
-        // 장막 직조자가 짠 환영을 내가 깨뜨리면 실이 끊어져 직조자가 비틀거린다
+        // 장막 직조자가 짠 환영을 내가 깨뜨리면 실이 끊어져 직조자가 비틀거린다 (내 턴마다 한 번)
         const weaver = d.src === c.p ? byNum(c, e.mem.maker) : undefined;
-        if (weaver && weaver.def === 'veil-weaver' && !isIllusion(weaver)) chipPoise(c, weaver, SNAP_POISE, '환영의 실이 끊어져 비틀거린다');
+        if (!weaver || weaver.def !== 'veil-weaver' || isIllusion(weaver) || weaver.mem.snapT === c.s.turn) return;
+        weaver.mem.snapT = c.s.turn;
+        chipPoise(c, weaver, SNAP_POISE, '환영의 실이 끊어져 비틀거린다');
       },
     },
     tickEnd(c, u, n) {
@@ -216,14 +216,14 @@ reg.statuses([
     name: '잠듦',
     icon: 'gi:sleepy',
     kind: 'debuff',
-    desc: '행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3. 비전·공허 피해로는 깨지 않는다 (꿈속의 일인 줄 안다). {n}턴 뒤 스스로 깨어난다 (꿈을 먹는 자의 곁에서는 깨어나지 못한다). 다시 잠든 몽유병자는 잠든 동안 상처가 아문다',
+    desc: '행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3. 비전·공허 피해에는 놀라지 않고 조용히 깬다. {n}턴 뒤 스스로 깨어난다 (꿈을 먹는 자의 곁에서는 깨어나지 못한다). 다시 잠든 몽유병자는 잠든 동안 상처가 아문다',
   },
   {
     id: 'a5-pilgrimage',
     name: '순례',
     icon: 'gi:pilgrim-hat',
     kind: 'buff',
-    desc: `요람까지 {n}걸음. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료는 힘 +2, 체력 20 회복. 지난 차례 뒤로 아무 피해도 받지 않았으면 ${HURRY_STEPS}걸음씩 걷는다. 앞줄에 서거나 붕괴·기절 중에는 걷지 못한다`,
+    desc: '요람까지 {n}걸음. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료는 힘 +2, 체력 20 회복. 앞줄에 서거나 붕괴·기절 중에는 걷지 못한다',
   },
   {
     id: 'a5-lives',

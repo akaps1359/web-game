@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
 import { Combat, DISGUISE_REVEAL, GUARD, type CombatEvent } from '../src/engine/combat';
-import { ENCOUNTERS, ENEMIES, SKILLS } from '../src/engine/registry';
+import { ENCOUNTERS, ENEMIES, ESSENCES, SKILLS, STATUSES, TRAITS } from '../src/engine/registry';
 import { finishCombat, newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
 import type { EnemyUnit, MoveDef } from '../src/engine/types';
@@ -899,5 +899,835 @@ describe('4층 — 출신 간 공정성 (시작 덱)', () => {
     autoTurn(c);
     expect(y.hist[y.hist.length - 1]).not.toBe('bodyswap');
     expect(c.s.phase).not.toBe('defeat');
+  });
+});
+
+// ───────────── 4층 일반 적 패턴 (2026-10 패턴 확장, src/content/act4/court.ts) ─────────────
+
+/** 변이·변이가 두른 상태를 걷어 낸다 (패턴 하나씩 볼 때) */
+function calm(...es: EnemyUnit[]) {
+  for (const e of es) {
+    e.affix = [];
+    e.st = {};
+    e.block = 0;
+  }
+}
+
+const ai = (c: Combat, e: EnemyUnit) => ENEMIES.get(e.def)!.ai(c, e);
+const all = (c: Combat, def: string) => c.alive.filter((x) => x.def === def);
+
+/** 근접 기술만 남긴 사냥꾼 (사냥칼·톱니 베기·속베기) */
+function meleeHunter(seed = 404): RunState {
+  const run = starter4('hunter', seed);
+  run.slots = run.slots.map((uid) => {
+    const id = run.skills.find((s) => s.uid === uid)?.id;
+    return id && SKILLS.get(id)!.range === 'melee' ? uid : null;
+  });
+  return run;
+}
+
+/** 이 적에게 시작 덱의 공격 기술을 행동력이 다할 때까지 쓴다 (until이 참이 되면 멈춘다) */
+function pummel(c: Combat, e: EnemyUnit, until: () => boolean) {
+  for (const ref of ['weapon', ...(c.run.slots.filter(Boolean) as string[]), 'weapon', 'weapon', 'weapon']) {
+    if (until() || c.s.ap <= 0 || e.dead) break;
+    const info = c.skillInfo(ref)!;
+    if (!info.def.tags.includes('attack') || c.blockReason(ref)) continue;
+    if (!c.validTargets(info.def).includes(e)) continue;
+    c.useSkill(ref, e.uid);
+  }
+}
+
+describe('4층 일반 적 — 별의 자손 · 무형의 피리꾼', () => {
+  it('별의 자손: 내 턴에 맞지 않으면 꿈이 깊어지고, 가득 차면 「꿈의 범람」 — 피해를 주면 얕아져 범람이 멎고, 붕괴하면 흩어진다', () => {
+    const c = startCombat(floor4(), 'a4-faceless', { anomaly: null });
+    const s = find(c, 'star-spawn');
+    calm(s);
+    c.endTurn();
+    expect(s.st[DREAM]).toBe(1);
+    // 때리면 내 턴마다 한 번 얕아지고, 그 차례 끝엔 깊어지지 않는다
+    c.damage({ src: c.p, tgt: s, base: 5, type: 'true', attack: true });
+    c.damage({ src: c.p, tgt: s, base: 5, type: 'true', attack: true });
+    expect(s.st[DREAM]).toBeUndefined();
+    c.endTurn();
+    expect(s.st[DREAM]).toBeUndefined();
+
+    // 가득 차면 범람을 준비한다 — 맞으면 꿈이 얕아지며 의도가 바로 바뀐다
+    delete s.mem.charge;
+    setSt(c, s, DREAM, DREAM_MAX);
+    c.planIntent(s);
+    expect(s.intent!.move).toBe('flood');
+    c.damage({ src: c.p, tgt: s, base: 5, type: 'true', attack: true });
+    expect(s.st[DREAM]).toBe(DREAM_MAX - 1);
+    expect(s.intent!.move).not.toBe('flood');
+
+    // 범람: 정신 피해, 공포 2, 꿈이 비워진다
+    setSt(c, s, DREAM, DREAM_MAX);
+    delete c.p.st.dread;
+    const san = c.p.sanity;
+    act(c, s, 'flood');
+    expect(c.p.sanity).toBeLessThan(san);
+    expect(c.p.st.dread).toBe(2);
+    expect(s.st[DREAM]).toBeUndefined();
+
+    // 붕괴하면 꿈이 흩어진다
+    setSt(c, s, DREAM, 2);
+    c.breakEnemy(s);
+    expect(s.st[DREAM]).toBeUndefined();
+  });
+
+  it('별의 자손: 체력이 절반 아래로 떨어지면 꿈에서 깨어나 꿈을 보내는 대신 갈라진 촉수를 휘두른다', () => {
+    const c = startCombat(floor4(), 'a4-starfall', { anomaly: null });
+    const s = find(c, 'star-spawn');
+    calm(s);
+    setSt(c, s, DREAM, 2);
+    s.poise = 0;
+    c.damage({ src: c.p, tgt: s, base: s.hp - Math.floor(s.maxHp * 0.45), type: 'true' });
+    expect(s.mem.awake).toBe(1);
+    expect(s.st[DREAM]).toBeUndefined();
+    s.mem.turns = 9;
+    const seq = Array.from({ length: 24 }, () => ai(c, s));
+    expect(seq).toContain('lash');
+    expect(seq).not.toContain('dream');
+    expect(seq).not.toContain('flood');
+    // 깨어난 뒤로는 맞지 않아도 꿈이 깊어지지 않는다
+    c.fire(s, 'onUnitTurnEnd');
+    expect(s.st[DREAM]).toBeUndefined();
+  });
+
+  it('무형의 피리꾼: 선율을 고조시키는 동안 앞으로 떠올라 근접이 닿고, 피해 문턱을 넘기거나 붕괴시키면 끊긴다', () => {
+    const c = startCombat(meleeHunter(), 'a4-chaos-dance', { anomaly: null });
+    const p = find(c, 'formless-piper');
+    calm(p);
+    const knife = SKILLS.get('w-knife')!;
+    expect(p.row).toBe(1);
+    expect(c.validTargets(knife)).not.toContain(p);
+
+    act(c, p, 'crescendo');
+    expect(p.mem.charge).toBe(1);
+    expect(p.st[CRESCENDO]).toBe(crescendoNeed(p));
+    expect(c.validTargets(knife)).toContain(p);
+    c.planIntent(p);
+    expect(p.intent!.move).toBe('climax');
+    // 문턱 아래의 피해(지속 피해 포함)는 남은 양을 줄인다
+    c.damage({ src: null, tgt: p, base: 3, type: 'true', tags: ['dot', 'bleed'] });
+    expect(p.st[CRESCENDO]).toBe(crescendoNeed(p) - 3);
+    expect(p.intent!.move).toBe('climax');
+    // 문턱을 넘기면 피리를 떨어뜨린다 — 의도가 바로 바뀌고 다시 뒤로 숨는다
+    c.damage({ src: null, tgt: p, base: crescendoNeed(p), type: 'true', tags: ['dot', 'bleed'] });
+    expect(p.mem.charge).toBeUndefined();
+    expect(p.st[CRESCENDO]).toBeUndefined();
+    expect(p.intent!.move).not.toBe('climax');
+    expect(c.validTargets(knife)).not.toContain(p);
+
+    // 붕괴시켜도 끊긴다
+    act(c, p, 'crescendo');
+    c.breakEnemy(p);
+    expect(p.mem.charge).toBeUndefined();
+    expect(p.st[CRESCENDO]).toBeUndefined();
+    expect(c.validTargets(knife)).not.toContain(p);
+
+    // 절정: 정신 피해, 공포 1, 다른 적 모두 힘 +1
+    const c2 = startCombat(floor4(), 'a4-chaos-dance', { anomaly: null });
+    const p2 = find(c2, 'formless-piper');
+    const servitors = all(c2, 'outer-servitor');
+    const str = servitors.map((x) => x.st.str ?? 0);
+    act(c2, p2, 'crescendo');
+    const san = c2.p.sanity;
+    act(c2, p2, 'climax');
+    expect(c2.p.sanity).toBeLessThan(san);
+    expect(c2.p.st.dread ?? 0).toBeGreaterThanOrEqual(1);
+    servitors.forEach((x, i) => expect(x.st.str ?? 0).toBe(str[i] + 1));
+    expect(p2.mem.charge).toBeUndefined();
+
+    // 쓰러뜨리는 일격도 센다: 망령 변이로 다시 일어서도 선율은 끊겨 있다
+    const c3 = startCombat(floor4(), 'a4-chaos-dance', { anomaly: null });
+    const p3 = find(c3, 'formless-piper');
+    calm(p3);
+    p3.affix = ['mut-undying'];
+    act(c3, p3, 'crescendo');
+    c3.damage({ src: c3.p, tgt: p3, base: 9999, type: 'true', attack: true });
+    expect(p3.dead).toBe(false);
+    expect(p3.mem.charge).toBeUndefined();
+    expect(p3.st[CRESCENDO]).toBeUndefined();
+    expect(p3.mem.reachable).toBeUndefined();
+    expect(p3.intent!.move).not.toBe('climax');
+  });
+
+  it('무형의 피리꾼: 동료가 쓰러지면 그 적이 하려던 공격을 「장송곡」으로 되풀이한다 (공격이 아니었으면 정신 피해)', () => {
+    const c = startCombat(floor4(), 'a4-chaos-dance', { anomaly: null });
+    const p = find(c, 'formless-piper');
+    const [a, b] = all(c, 'outer-servitor');
+    calm(p, a, b);
+    force(c, a, 'engulf');
+    c.damage({ src: c.p, tgt: a, base: 9999, type: 'true' });
+    expect(a.dead).toBe(true);
+    // 의도에 그 공격의 피해·횟수가 그대로 보인다
+    expect(p.intent!.move).toBe('dirge');
+    expect(p.intent!.dmg).toBe(10);
+    expect(p.intent!.hits ?? 1).toBe(1);
+    c.drain();
+    act(c, p, 'dirge');
+    const evs = hitsOn(c.drain(), 'p', p.uid);
+    expect(evs.length).toBe(1);
+    expect(evs[0].t === 'dmg' && evs[0].dtype).toBe('void');
+    expect(p.mem.dirge).toBeUndefined();
+
+    force(c, b, 'pipe');
+    c.damage({ src: c.p, tgt: b, base: 9999, type: 'true' });
+    expect(p.intent!.move).toBe('lament');
+    const san = c.p.sanity;
+    act(c, p, 'lament');
+    expect(c.p.sanity).toBeLessThan(san);
+  });
+});
+
+describe('4층 일반 적 — 검은 새끼 · 시간의 파수꾼', () => {
+  it('검은 새끼: 화염 공격에 겁을 먹으면 하려던 공격을 멈추고 울부짖는다 — 내 턴마다 한 번, 힘을 모으던 일격은 그대로', () => {
+    const c = startCombat(floor4(404, 'hunter'), 'a4-young', { anomaly: null });
+    const y = find(c, 'dark-young');
+    calm(y);
+    force(c, y, 'lash');
+    c.damage({ src: c.p, tgt: y, base: 5, type: 'fire', attack: true });
+    expect(y.intent!.move).toBe('cower');
+    c.drain();
+    act(c, y, 'cower');
+    expect(hitsOn(c.drain(), 'p', y.uid).length).toBe(0);
+    expect(y.mem.panic).toBeUndefined();
+    // 같은 턴에 또 맞아도 다시 겁먹지 않는다
+    force(c, y, 'grab');
+    c.damage({ src: c.p, tgt: y, base: 5, type: 'fire', attack: true });
+    expect(y.intent!.move).toBe('grab');
+    // 힘을 모은 짓밟기는 화염으로 끊기지 않는다 (붕괴만이 끊는다)
+    c.s.turn++;
+    y.mem.charge = 1;
+    force(c, y, 'trample');
+    c.damage({ src: c.p, tgt: y, base: 5, type: 'fire', attack: true });
+    expect(y.intent!.move).toBe('trample');
+  });
+
+  it('검은 새끼: 체력이 절반 아래로 떨어지면 뿌리를 내린다 — 더는 일어서지 않고, 검은 수액이 두 배로 돈다', () => {
+    const c = startCombat(floor4(), 'a4-young', { anomaly: null });
+    const y = find(c, 'dark-young');
+    calm(y);
+    y.poise = 0;
+    c.damage({ src: c.p, tgt: y, base: y.hp - Math.floor(y.maxHp * 0.45), type: 'true' });
+    expect(y.mem.rooted).toBe(1);
+    expect(y.st[TAPROOT]).toBe(1);
+    y.mem.turns = 9;
+    const seq = Array.from({ length: 24 }, () => ai(c, y));
+    expect(seq).toContain('spines');
+    expect(seq).not.toContain('rear');
+    expect(seq).not.toContain('lash');
+    const hp = y.hp;
+    c.fire(y, 'onUnitTurnEnd');
+    expect(y.hp).toBe(hp + ROOT_SAP);
+  });
+
+  it(`시간의 파수꾼: 내 턴에 한 적이 최대 체력의 ${Math.round(REWIND_PCT * 100)}% 넘게 다치면 그 상처를 되감으려 한다 — 그 적에게 표시, 쓰러뜨리거나 파수꾼을 붕괴시키면 무산`, () => {
+    const c = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    const w = find(c, 'time-warden');
+    const sh = find(c, 'dim-shambler');
+    calm(w, sh);
+    sh.poise = 0;
+    const big = Math.ceil(sh.maxHp * REWIND_PCT) + 2;
+    c.damage({ src: c.p, tgt: sh, base: big, type: 'true', attack: true });
+    expect(sh.st[REWIND_MARK]).toBe(Math.min(REWIND_CAP, big));
+    expect(w.intent!.move).toBe('rewind');
+    const hp = sh.hp;
+    act(c, w, 'rewind');
+    expect(sh.hp).toBe(hp + Math.min(REWIND_CAP, big));
+    expect(sh.st[REWIND_MARK]).toBeUndefined();
+    // 되감은 뒤 REWIND_GAP턴 동안은 다시 되감지 않는다
+    c.damage({ src: c.p, tgt: sh, base: big, type: 'true', attack: true });
+    expect(sh.st[REWIND_MARK]).toBeUndefined();
+    c.s.turn += REWIND_GAP;
+    c.damage({ src: c.p, tgt: sh, base: big, type: 'true', attack: true });
+    expect(sh.st[REWIND_MARK]).toBeGreaterThan(0);
+
+    // 표시된 적을 쓰러뜨리면 되감기가 무산되고 의도도 바뀐다
+    c.damage({ src: c.p, tgt: sh, base: 9999, type: 'true' });
+    expect(w.mem.rwIdx).toBeUndefined();
+    expect(w.intent!.move).not.toBe('rewind');
+
+    // 파수꾼을 붕괴시켜도 무산된다
+    const c2 = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    const w2 = find(c2, 'time-warden');
+    const sh2 = find(c2, 'dim-shambler');
+    calm(w2, sh2);
+    sh2.poise = 0;
+    c2.damage({ src: c2.p, tgt: sh2, base: big, type: 'true', attack: true });
+    expect(sh2.st[REWIND_MARK]).toBeGreaterThan(0);
+    c2.breakEnemy(w2);
+    expect(sh2.st[REWIND_MARK]).toBeUndefined();
+    expect(w2.mem.rwIdx).toBeUndefined();
+  });
+
+  it('시간의 파수꾼: 「다가올 상처」는 다음 내 턴이 끝날 때 열린다 — 방어도가 먼저 막고, 파수꾼을 붕괴시키거나 결계가 있으면 사라진다', () => {
+    const c = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    const w = find(c, 'time-warden');
+    calm(w);
+    act(c, w, 'future');
+    const n = c.p.st[FUTURE];
+    expect(n).toBe(c.preview(w, c.p, FUTURE_DMG, 'arcane'));
+    // act()가 의도를 '다가올 상처'로 정해 두었다 — 이번 적의 차례엔 다른 행동을 하게
+    force(c, w, 'stop');
+    c.p.block = 0;
+    c.drain();
+    c.endTurn();
+    const opened = c.drain().filter((ev) => ev.t === 'dmg' && ev.tgt === 'p' && ev.tags.includes('a4-future'));
+    expect(opened.length).toBe(1);
+    expect(opened[0].t === 'dmg' && opened[0].amount).toBe(n);
+    expect(c.p.st[FUTURE]).toBeUndefined();
+
+    // 방어도가 먼저 막는다
+    const c2 = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    const w2 = find(c2, 'time-warden');
+    calm(w2);
+    act(c2, w2, 'future');
+    force(c2, w2, 'stop');
+    c2.p.block = 999;
+    c2.drain();
+    c2.endTurn();
+    const blocked = c2.drain().find((ev) => ev.t === 'dmg' && ev.tgt === 'p' && ev.tags.includes('a4-future'));
+    expect(blocked && blocked.t === 'dmg' && blocked.hpLoss).toBe(0);
+
+    // 파수꾼을 붕괴시키면 사라진다
+    const c3 = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    const w3 = find(c3, 'time-warden');
+    calm(w3);
+    act(c3, w3, 'future');
+    c3.breakEnemy(w3);
+    expect(c3.p.st[FUTURE]).toBeUndefined();
+
+    // 결계가 막는다
+    const c4 = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    c4.p.st.ward = 1;
+    act(c4, find(c4, 'time-warden'), 'future');
+    expect(c4.p.st[FUTURE]).toBeUndefined();
+    expect(c4.p.st.ward).toBeUndefined();
+  });
+});
+
+describe('4층 일반 적 — 미고 봉합사 · 외신의 시종 · 얼굴 없는 사제', () => {
+  it('미고 봉합사: 동료가 붕괴하면 꿰매어 한 차례 일찍 일으킨다 (그 동료에게 표시) — 미고를 붕괴시키면 무산', () => {
+    const c = startCombat(floor4(), 'a4-surgery', { anomaly: null });
+    const sh = find(c, 'dim-shambler');
+    const migos = all(c, 'migo-stitcher');
+    calm(sh, ...migos);
+    c.breakEnemy(sh);
+    expect(sh.st[STITCH_MARK]).toBe(1);
+    const m = migos.find((x) => x.mem.stIdx)!;
+    expect(m.intent!.move).toBe('stitch');
+    // 적의 차례: 방랑자는 한 번만 쉬고 다음 차례엔 움직인다
+    c.endTurn();
+    expect(sh.broken).toBe(1);
+    expect(sh.st[STITCH_MARK]).toBeUndefined();
+    expect(sh.intent!.kind).not.toBe('stunned');
+
+    // 꿰매 줄 미고가 없으면 두 번 쉰다
+    const c2 = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    const sh2 = find(c2, 'dim-shambler');
+    calm(sh2);
+    c2.breakEnemy(sh2);
+    c2.endTurn();
+    expect(sh2.broken).toBe(2);
+
+    // 미고를 붕괴시키면 봉합이 무산된다 (미고끼리는 서로 꿰매지 않는다)
+    const c3 = startCombat(floor4(), 'a4-surgery', { anomaly: null });
+    const sh3 = find(c3, 'dim-shambler');
+    const [m1, m2] = all(c3, 'migo-stitcher');
+    calm(sh3, m1, m2);
+    c3.breakEnemy(sh3);
+    const doctor = [m1, m2].find((x) => x.mem.stIdx)!;
+    const other = doctor === m1 ? m2 : m1;
+    c3.breakEnemy(doctor);
+    expect(sh3.st[STITCH_MARK]).toBeUndefined();
+    expect(doctor.st[STITCH_MARK]).toBeUndefined();
+    expect(other.mem.stIdx).toBeUndefined();
+  });
+
+  it('미고 봉합사: 동료 몸에 출혈·독·화상이 쌓이면 도려내 씻어 낸다', () => {
+    const c = startCombat(floor4(), 'a4-surgery', { anomaly: null });
+    const sh = find(c, 'dim-shambler');
+    const m = all(c, 'migo-stitcher')[0];
+    calm(sh, m);
+    c.apply(sh, 'bleed', 4, c.p);
+    c.apply(sh, 'poison', 3, c.p);
+    c.planIntent(m);
+    expect(m.intent!.move).toBe('debride');
+    act(c, m, 'debride');
+    expect(sh.st.bleed).toBeUndefined();
+    expect(sh.st.poison).toBeUndefined();
+  });
+
+  it('외신의 시종: 「늘어나 삼키기」로 내 가장 큰 강화 효과를 삼키고, 붕괴시키거나 쓰러뜨리면 토해 낸다', () => {
+    const c = startCombat(floor4(), 'a4-servitor', { anomaly: null });
+    const sv = find(c, 'outer-servitor');
+    calm(sv);
+    c.p.block = 0;
+    c.p.st.barrier = 999;
+    c.p.st.aim = 2;
+    act(c, sv, 'engulf');
+    expect(c.p.st.barrier).toBeUndefined();
+    expect(c.p.st.aim).toBe(2);
+    const n = sv.st[SWALLOWED];
+    expect(n).toBeGreaterThan(900);
+    c.breakEnemy(sv);
+    expect(c.p.st.barrier).toBe(n);
+    expect(sv.st[SWALLOWED]).toBeUndefined();
+
+    // 쓰러뜨려도 돌려준다
+    const c2 = startCombat(floor4(), 'a4-servitor', { anomaly: null });
+    const sv2 = find(c2, 'outer-servitor');
+    calm(sv2);
+    c2.p.st.aim = 3;
+    act(c2, sv2, 'engulf');
+    expect(c2.p.st.aim).toBeUndefined();
+    c2.damage({ src: c2.p, tgt: sv2, base: 9999, type: 'true' });
+    expect(c2.p.st.aim).toBe(3);
+  });
+
+  it(`외신의 시종: 피리꾼이 살아 있으면 박자에 맞춰 몸부림치고, 피리꾼이 쓰러지면 박자를 잃고 비틀거린다 (버팀 -${BEAT_STAGGER})`, () => {
+    const c = startCombat(floor4(), 'a4-chaos-dance', { anomaly: null });
+    const p = find(c, 'formless-piper');
+    const svs = all(c, 'outer-servitor');
+    calm(p, ...svs);
+    svs[0].mem.turns = 9;
+    expect(Array.from({ length: 24 }, () => ai(c, svs[0]))).toContain('reel');
+    force(c, svs[0], 'reel');
+    c.damage({ src: c.p, tgt: p, base: 9999, type: 'true' });
+    for (const x of svs) expect(x.poise).toBe(x.maxPoise - BEAT_STAGGER);
+    expect(svs[0].intent!.move).not.toBe('reel');
+    expect(Array.from({ length: 24 }, () => ai(c, svs[0]))).not.toContain('reel');
+  });
+
+  it(`얼굴 없는 사제: 「얼굴 없는 낙인」은 다음 적의 차례에 받는 공격 피해 +${Math.round((BRAND_MULT - 1) * 100)}% — 새긴 차례엔 아직, 다른 적들이 낙인을 노리고, 사제를 붕괴시키면 사라진다`, () => {
+    const c = startCombat(floor4(), 'a4-faceless', { anomaly: null });
+    const s = find(c, 'star-spawn');
+    const [pr, pr2] = all(c, 'faceless-priest');
+    calm(s, pr, pr2);
+    const before = c.preview(s, c.p, 12, 'blunt');
+    c.s.phase = 'enemy';
+    c.moveDef(pr, 'brand').run(c, pr);
+    expect(c.p.st[BRAND]).toBe(1);
+    // 새긴 그 차례에는 아직 (그 차례에 남은 적들의 피해는 미리 보인 그대로)
+    expect(c.preview(s, c.p, 12, 'blunt')).toBe(before);
+    c.startPlayerTurn();
+    expect(c.p.st[BRAND]).toBe(1);
+    expect(c.preview(s, c.p, 12, 'blunt')).toBeGreaterThan(before);
+    // 다른 적들이 낙인을 노린다: 별의 자손은 꿈을 보내거나 힘을 모으지 않고 곧장 할퀸다
+    s.mem.turns = 9;
+    expect(new Set(Array.from({ length: 12 }, () => ai(c, s)))).toEqual(new Set(['claw']));
+    // 다른 사제가 무너져도 그대로, 새긴 사제가 무너지면 사라진다
+    c.breakEnemy(pr2);
+    expect(c.p.st[BRAND]).toBe(1);
+    c.breakEnemy(pr);
+    expect(c.p.st[BRAND]).toBeUndefined();
+    expect(c.preview(s, c.p, 12, 'blunt')).toBe(before);
+
+    // 그대로 두면 다음 적의 차례가 지나고 사라진다
+    const c2 = startCombat(floor4(), 'a4-faceless', { anomaly: null });
+    const p2 = all(c2, 'faceless-priest')[0];
+    calm(p2);
+    act(c2, p2, 'brand');
+    c2.startPlayerTurn();
+    expect(c2.p.st[BRAND]).toBe(1);
+    c2.startPlayerTurn();
+    expect(c2.p.st[BRAND]).toBeUndefined();
+  });
+
+  it('얼굴 없는 사제: 내가 방어도를 쌓고 턴을 마치면 방어도로 막을 수 없는 「얼굴을 보여준다」를 더 자주 쓴다', () => {
+    const count = (blk: number) => {
+      const c = startCombat(floor4(), 'a4-faceless', { anomaly: null });
+      const pr = all(c, 'faceless-priest')[0];
+      c.p.block = blk;
+      c.fire(c.p, 'onTurnEnd');
+      expect(endBlock(c)).toBe(blk);
+      pr.mem.turns = 9;
+      return Array.from({ length: 200 }, () => ai(c, pr)).filter((m) => m === 'unmask').length;
+    };
+    expect(count(20)).toBeGreaterThan(count(0) + 10);
+  });
+});
+
+describe('4층 일반 적 — 우주에서 온 색 · 비야키 · 차원 방랑자 · 날아다니는 폴립', () => {
+  it(`우주에서 온 색: 빨아들인 생기가 포만으로 쌓이고(방어도로 막으면 쌓이지 않는다), ${SATE}이 차면 부풀어 올랐다가 「색의 개화」`, () => {
+    const c = startCombat(floor4(), 'a4-colours', { anomaly: null });
+    const col = all(c, 'star-colour')[0];
+    calm(col);
+    c.p.block = 0;
+    const hp = c.p.hp;
+    act(c, col, 'drain');
+    expect(col.st[SATIETY]).toBe(Math.min(SATE, hp - c.p.hp));
+    const fed = col.st[SATIETY];
+    c.p.block = 999;
+    act(c, col, 'drain');
+    expect(col.st[SATIETY]).toBe(fed);
+
+    setSt(c, col, SATIETY, SATE);
+    c.planIntent(col);
+    expect(col.intent!.move).toBe('swell');
+    act(c, col, 'swell');
+    c.planIntent(col);
+    expect(col.intent!.move).toBe('bloom');
+    c.p.block = 0;
+    c.drain();
+    const san = c.p.sanity;
+    act(c, col, 'bloom');
+    expect(hitsOn(c.drain(), 'p', col.uid).length).toBe(3);
+    expect(c.p.sanity).toBeLessThan(san);
+    expect(col.st[SATIETY]).toBeUndefined();
+
+    // 부풀어 오르는 동안 붕괴시키면 끊긴다
+    setSt(c, col, SATIETY, SATE);
+    act(c, col, 'swell');
+    c.breakEnemy(col);
+    expect(col.mem.charge).toBeUndefined();
+  });
+
+  it('우주에서 온 색: 「색의 전염」으로 물든 동료는 준 체력 피해의 절반만큼 회복하고, 색을 붕괴시키면 빛이 바랜다', () => {
+    const c = startCombat(floor4(), 'a4-colours', { anomaly: null });
+    const col = all(c, 'star-colour')[0];
+    const sh = find(c, 'dim-shambler');
+    calm(col, sh);
+    act(c, col, 'tint');
+    expect(sh.st[TINT]).toBe(1);
+    sh.hp -= 40;
+    c.p.block = 0;
+    const hp = c.p.hp;
+    const shHp = sh.hp;
+    act(c, sh, 'claw');
+    expect(sh.hp - shHp).toBe(Math.ceil((hp - c.p.hp) / 2));
+    c.breakEnemy(col);
+    expect(sh.st[TINT]).toBeUndefined();
+  });
+
+  it('비야키: 급강하한 뒤 전열에 내려앉아 근접 공격을 그대로 받고, 한 번 후려친 뒤 다시 날아오른다', () => {
+    const c = startCombat(floor4(), 'a4-spawn', { anomaly: null });
+    const b = find(c, 'byakhee');
+    calm(b);
+    const knife = SKILLS.get('w-knife')!;
+    expect(b.row).toBe(1);
+    expect(c.validTargets(knife)).not.toContain(b);
+    const airborne = c.damage({ src: c.p, tgt: b, base: 20, type: 'slash', attack: true, melee: true }).amount;
+    act(c, b, 'dive');
+    expect(b.row).toBe(0);
+    expect(b.st[LANDED]).toBe(1);
+    expect(c.validTargets(knife)).toContain(b);
+    const grounded = c.damage({ src: c.p, tgt: b, base: 20, type: 'slash', attack: true, melee: true }).amount;
+    expect(grounded).toBeGreaterThanOrEqual(airborne * 2 - 1);
+    expect(ai(c, b)).toBe('buffet');
+    b.hist.push('buffet');
+    expect(ai(c, b)).toBe('soar');
+    act(c, b, 'soar');
+    expect(b.row).toBe(1);
+    expect(b.st[LANDED]).toBeUndefined();
+  });
+
+  it('비야키: 날아 있을 때 약점(관통·타격)에 맞으면 날개가 꺾여 전열로 떨어진다 (내 턴마다 한 번)', () => {
+    const c = startCombat(floor4(), 'a4-spawn', { anomaly: null });
+    const b = find(c, 'byakhee');
+    calm(b);
+    force(c, b, 'rend');
+    c.damage({ src: c.p, tgt: b, base: 5, type: 'pierce', attack: true });
+    expect(b.row).toBe(0);
+    expect(b.st[LANDED]).toBe(1);
+    expect(b.intent!.move).toBe('buffet');
+  });
+
+  it('차원 방랑자: 전열과 후열에서 하는 일이 다르다 — 전열에서 붙잡으면 열을 옮기지 않고 근접이 닿으며, 다음 차례에 저편으로 끌고 간다', () => {
+    const c = startCombat(meleeHunter(), 'a4-warden', { anomaly: null });
+    const sh = find(c, 'dim-shambler');
+    const w = find(c, 'time-warden');
+    calm(sh, w);
+    delete c.p.st.ward;
+    sh.mem.turns = 9;
+    expect(sh.row).toBe(0);
+    for (const m of Array.from({ length: 24 }, () => ai(c, sh))) expect(['rake', 'grab', 'tear']).toContain(m);
+    // 방랑자가 후열, 파수꾼이 전열 (근접이 닿는지 보려면 전열이 비면 안 된다)
+    c.moveRow(sh, 1);
+    c.moveRow(w, 0);
+    for (const m of Array.from({ length: 24 }, () => ai(c, sh))) expect(['claw', 'fold', 'tear']).toContain(m);
+    expect(c.validTargets(SKILLS.get('w-knife')!)).not.toContain(sh);
+
+    act(c, sh, 'grab');
+    expect(c.p.st[GRABBED]).toBe(grabNeed(sh));
+    // 붙잡은 동안 후열에 있어도 근접이 닿고, 차례가 끝나도 열을 옮기지 않는다
+    expect(c.validTargets(SKILLS.get('w-knife')!)).toContain(sh);
+    c.fire(sh, 'onUnitTurnEnd');
+    expect(sh.row).toBe(1);
+    expect(ai(c, sh)).toBe('drag');
+    // 끌고 가기: 정신 피해, 공포 2, 허약 2, 그리고 놓아준다
+    delete c.p.st.dread;
+    const san = c.p.sanity;
+    act(c, sh, 'drag');
+    expect(c.p.sanity).toBeLessThan(san);
+    expect(c.p.st.dread).toBe(2);
+    expect(c.p.st.frail).toBe(2);
+    expect(c.p.st[GRABBED]).toBeUndefined();
+    expect(c.validTargets(SKILLS.get('w-knife')!)).not.toContain(sh);
+  });
+
+  it('차원 방랑자: 붙잡힌 동안 방랑자에게 피해(지속 피해 포함)를 주면 풀려나고 의도가 바뀐다 — 붕괴시키거나 결계가 있어도', () => {
+    const c = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    const sh = find(c, 'dim-shambler');
+    calm(sh);
+    act(c, sh, 'grab');
+    c.planIntent(sh);
+    expect(sh.intent!.move).toBe('drag');
+    c.damage({ src: null, tgt: sh, base: 3, type: 'true', tags: ['dot', 'bleed'] });
+    expect(c.p.st[GRABBED]).toBe(grabNeed(sh) - 3);
+    c.damage({ src: c.p, tgt: sh, base: grabNeed(sh), type: 'true', attack: true });
+    expect(c.p.st[GRABBED]).toBeUndefined();
+    expect(sh.mem.grab).toBeUndefined();
+    expect(sh.intent!.move).not.toBe('drag');
+
+    act(c, sh, 'grab');
+    c.breakEnemy(sh);
+    expect(c.p.st[GRABBED]).toBeUndefined();
+
+    const c2 = startCombat(floor4(), 'a4-warden', { anomaly: null });
+    c2.p.st.ward = 1;
+    const sh2 = find(c2, 'dim-shambler');
+    act(c2, sh2, 'grab');
+    expect(c2.p.st[GRABBED]).toBeUndefined();
+    expect(sh2.mem.grab).toBeUndefined();
+  });
+
+  it(`날아다니는 폴립: 약점에 맞아 형체가 드러나면 하려던 공격을 멈추고 바람을 두른다 (${WALL_GAP}턴에 한 번, 힘을 모으는 중이면 그대로)`, () => {
+    const c = startCombat(floor4(), 'a4-polyp', { anomaly: null });
+    const po = find(c, 'flying-polyp');
+    calm(po);
+    force(c, po, 'gust');
+    c.damage({ src: c.p, tgt: po, base: 5, type: 'arcane', attack: true });
+    expect(po.intent!.move).toBe('wall');
+    act(c, po, 'wall');
+    expect(po.block).toBe(12);
+    expect(po.mem.wall).toBeUndefined();
+    // 간격 안에서는 다시 두르지 않는다
+    c.s.turn++;
+    force(c, po, 'gust');
+    c.damage({ src: c.p, tgt: po, base: 5, type: 'arcane', attack: true });
+    expect(po.intent!.move).toBe('gust');
+    // 약점이 아니면 그대로
+    c.s.turn += WALL_GAP;
+    c.damage({ src: c.p, tgt: po, base: 5, type: 'pierce', attack: true });
+    expect(po.intent!.move).toBe('gust');
+    // 바람을 모으던 진공 폭풍은 그대로
+    act(c, po, 'gather');
+    c.planIntent(po);
+    expect(po.intent!.move).toBe('storm');
+    c.damage({ src: c.p, tgt: po, base: 5, type: 'arcane', attack: true });
+    expect(po.intent!.move).toBe('storm');
+    c.drain();
+    act(c, po, 'storm');
+    expect(hitsOn(c.drain(), 'p', po.uid).length).toBe(3);
+    expect(c.p.st.weak ?? 0).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('4층 새 일반 적 — 시간을 갉는 것 · 별자리를 잇는 자', () => {
+  it(`시간을 갉는 것: 다음 내 턴 행동력 1을 빼앗아 삼키고(최대 ${GNAW_MAX}), 삼킨 만큼 세게 문다 — 붕괴시키면 토해 내 다음 턴 행동력이 돌아온다`, () => {
+    const c = startCombat(floor4(), 'a4-hourglass', { anomaly: null });
+    const g = find(c, 'time-gnawer');
+    calm(g);
+    const bite0 = c.preview(g, c.p, 10, 'slash');
+    const fed = c.preview(g, c.p, 10 + GNAW_DMG, 'slash');
+    act(c, g, 'gnaw');
+    expect(c.p.st[TIME_DEBT]).toBe(1);
+    expect(g.st[EATEN]).toBe(1);
+    // 삼킨 시간 하나마다 공격 피해 +GNAW_DMG (의도의 숫자에도 보인다)
+    expect(c.preview(g, c.p, 10, 'slash')).toBeGreaterThan(bite0);
+    expect(c.preview(g, c.p, 10, 'slash')).toBe(fed);
+    c.startPlayerTurn();
+    expect(c.s.ap).toBe(c.p.maxAp - 1);
+    expect(c.p.st[TIME_DEBT]).toBeUndefined();
+    // 최대치에서는 빼앗지 않는다
+    act(c, g, 'gnaw');
+    act(c, g, 'gnaw');
+    expect(g.st[EATEN]).toBe(GNAW_MAX);
+    expect(c.p.st[TIME_DEBT]).toBe(GNAW_MAX - 1);
+    // 붕괴시키면 삼킨 시간을 모두 토해 낸다
+    c.breakEnemy(g);
+    expect(g.st[EATEN]).toBeUndefined();
+    expect(c.p.st.energized).toBe(GNAW_MAX);
+    c.startPlayerTurn();
+    expect(c.s.ap).toBe(c.p.maxAp + GNAW_MAX - (GNAW_MAX - 1));
+
+    // 쓰러뜨려도 토해 낸다 · 결계는 이빨을 막는다
+    const c2 = startCombat(floor4(), 'a4-hourglass', { anomaly: null });
+    const g2 = find(c2, 'time-gnawer');
+    calm(g2);
+    act(c2, g2, 'gnaw');
+    c2.damage({ src: c2.p, tgt: g2, base: 9999, type: 'true' });
+    expect(c2.p.st.energized).toBe(1);
+    const c3 = startCombat(floor4(), 'a4-hourglass', { anomaly: null });
+    c3.p.st.ward = 1;
+    const g3 = find(c3, 'time-gnawer');
+    calm(g3);
+    act(c3, g3, 'gnaw');
+    expect(c3.p.st[TIME_DEBT]).toBeUndefined();
+    expect(g3.st[EATEN]).toBeUndefined();
+  });
+
+  it('시간을 갉는 것: 행동력을 남기고 턴을 마치면 남은 시간을 핥아먹고, 다치면 삼킨 시간을 태워 회복한다 (태운 시간은 돌아오지 않는다)', () => {
+    const c = startCombat(floor4(), 'a4-hourglass', { anomaly: null });
+    const g = find(c, 'time-gnawer');
+    calm(g);
+    c.s.ap = 0;
+    c.fire(c.p, 'onTurnEnd');
+    expect(g.st[EATEN]).toBeUndefined();
+    c.s.ap = 2;
+    c.fire(c.p, 'onTurnEnd');
+    expect(g.st[EATEN]).toBe(1);
+    expect(c.p.st[TIME_DEBT]).toBeUndefined();
+
+    setSt(c, g, EATEN, GNAW_MAX);
+    g.poise = 0;
+    c.damage({ src: c.p, tgt: g, base: g.hp - Math.floor(g.maxHp * 0.4), type: 'true' });
+    g.mem.turns = 9;
+    c.planIntent(g);
+    expect(g.intent!.move).toBe('burn');
+    const hp = g.hp;
+    act(c, g, 'burn');
+    expect(g.hp).toBe(hp + GNAW_MAX * BURN_HEAL);
+    expect(g.st[EATEN]).toBeUndefined();
+    c.breakEnemy(g);
+    expect(c.p.st.energized).toBeUndefined();
+  });
+
+  it('별자리를 잇는 자: 가장 다친 동료를 별의 실로 잇는다 — 이어진 적이 받는 피해의 절반이 실을 따라 넘어오고(미리보기도 같다), 붕괴시키면 실이 끊기며 비틀거린다', () => {
+    const c = startCombat(floor4(), 'a4-constellation', { anomaly: null });
+    const w = find(c, 'star-weaver');
+    const s = find(c, 'star-spawn');
+    const b = find(c, 'byakhee');
+    calm(w, s, b);
+    s.hp -= 40;
+    act(c, w, 'weave');
+    expect(s.st[THREAD]).toBe(1);
+    expect(b.st[THREAD]).toBeUndefined();
+    s.poise = 0;
+    expect(c.preview(c.p, s, 40, 'true')).toBe(20);
+    const sHp = s.hp;
+    const wHp = w.hp;
+    const d = c.damage({ src: c.p, tgt: s, base: 40, type: 'true', attack: true });
+    expect(d.amount).toBe(20);
+    expect(sHp - s.hp).toBe(20);
+    expect(wHp - w.hp).toBe(20);
+    // 실로 이어진 적들과 함께 방어도
+    act(c, w, 'knot');
+    expect(w.block).toBe(8);
+    expect(s.block).toBe(8);
+
+    // 붕괴시키면 실이 끊기며 이어진 적이 비틀거린다
+    s.poise = s.maxPoise;
+    c.breakEnemy(w);
+    expect(s.st[THREAD]).toBeUndefined();
+    expect(s.poise).toBe(s.maxPoise - SNAP_POISE);
+    expect(c.preview(c.p, s, 40, 'true')).toBe(Math.floor(40 * GUARD.mult));
+
+    // 쓰러뜨려도 실이 사라진다
+    const c2 = startCombat(floor4(), 'a4-constellation', { anomaly: null });
+    const w2 = find(c2, 'star-weaver');
+    const s2 = find(c2, 'star-spawn');
+    calm(w2, s2);
+    act(c2, w2, 'weave');
+    expect(s2.st[THREAD]).toBe(1);
+    c2.damage({ src: c2.p, tgt: w2, base: 9999, type: 'true' });
+    expect(s2.st[THREAD]).toBeUndefined();
+  });
+});
+
+describe('4층 일반 적 — 출신 간 공정성 · 저장', () => {
+  it('고조되는 선율·붙잡기: 세 출신 모두 시작 덱으로 한 턴 안에 끊는다 (후열의 피리꾼도 고조되는 동안 근접이 닿는다)', () => {
+    for (const origin of ORIGINS3) {
+      const c = startCombat(starter4(origin), 'a4-chaos-dance', { anomaly: null });
+      const p = find(c, 'formless-piper');
+      calm(p);
+      act(c, p, 'crescendo');
+      pummel(c, p, () => !p.mem.charge);
+      expect(p.mem.charge, origin).toBeUndefined();
+
+      const c2 = startCombat(starter4(origin), 'a4-warden', { anomaly: null });
+      const sh = find(c2, 'dim-shambler');
+      calm(sh);
+      delete c2.p.st.ward;
+      act(c2, sh, 'grab');
+      expect(c2.p.st[GRABBED], origin).toBeGreaterThan(0);
+      pummel(c2, sh, () => !c2.p.st[GRABBED]);
+      expect(c2.p.st[GRABBED], origin).toBeUndefined();
+    }
+  });
+
+  it('붙잡힘·낙인·삼킨 시간·별의 실은 저장했다 불러와도 그대로 이어진다', () => {
+    const run = floor4();
+    const c = startCombat(run, 'a4-hourglass', { anomaly: null });
+    const g = find(c, 'time-gnawer');
+    calm(g);
+    act(c, g, 'gnaw');
+    const c2 = new Combat(JSON.parse(JSON.stringify(run)) as RunState);
+    const g2 = find(c2, 'time-gnawer');
+    expect(g2.st[EATEN]).toBe(1);
+    c2.startPlayerTurn();
+    expect(c2.s.ap).toBe(c2.p.maxAp - 1);
+    c2.breakEnemy(g2);
+    expect(c2.p.st.energized).toBe(1);
+
+    const run3 = floor4();
+    const c3 = startCombat(run3, 'a4-constellation', { anomaly: null });
+    const w = find(c3, 'star-weaver');
+    const s = find(c3, 'star-spawn');
+    calm(w, s);
+    act(c3, w, 'weave');
+    const c4 = new Combat(JSON.parse(JSON.stringify(run3)) as RunState);
+    const s4 = find(c4, 'star-spawn');
+    const w4 = find(c4, 'star-weaver');
+    s4.poise = 0;
+    const wHp = w4.hp;
+    c4.damage({ src: c4.p, tgt: s4, base: 40, type: 'true', attack: true });
+    expect(wHp - w4.hp).toBe(20);
+  });
+
+  it('새 조우를 봇이 끝까지 이긴다 (세 출신, 튼튼한 몸)', () => {
+    for (const origin of ORIGINS3) {
+      for (const id of ['a4-hourglass', 'a4-constellation', 'a4-woven-court']) {
+        const c = fightToEnd(startCombat(floor4(31, origin), id, { anomaly: null }));
+        expect(c.s.phase, `${origin} ${id}`).toBe('victory');
+      }
+    }
+  });
+
+  it('새 특성·상태 설명에 긴 줄표가 없고, 수치를 적은 설명은 상수와 맞는다', () => {
+    const ids = [
+      'a4-dreamer',
+      'a4-crescendo',
+      'a4-dirge',
+      'a4-firefear',
+      'a4-taproot',
+      'a4-rewinder',
+      'a4-surgeon',
+      'a4-engulfer',
+      'a4-dancer',
+      'a4-brander',
+      'a4-bloom',
+      'a4-tinter',
+      'a4-wings',
+      'a4-abductor',
+      'a4-time-eater',
+      'a4-weaver',
+    ];
+    for (const id of ids) {
+      const t = TRAITS.get(id)!;
+      expect(t, id).toBeTruthy();
+      expect(t.desc.includes('—'), id).toBe(false);
+    }
+    for (const id of [DREAM, CRESCENDO, TAPROOT, REWIND_MARK, FUTURE, STITCH_MARK, SWALLOWED, BRAND, SATIETY, TINT, LANDED, GRABBED, EATEN, TIME_DEBT, THREAD]) {
+      const st = STATUSES.get(id)!;
+      expect(st, id).toBeTruthy();
+      expect(st.desc.includes('—'), id).toBe(false);
+    }
+    expect(TRAITS.get('a4-abductor')!.desc).toContain(`정신 피해 ${DRAG_SAN}`);
+    // 4층 일반 적은 모두 상태를 읽는 AI를 쓰고(순서만 도는 AI 없음), 새 적에게는 정수가 있다
+    for (const id of ['time-gnawer', 'star-weaver']) expect(ESSENCES.has(id), id).toBe(true);
   });
 });

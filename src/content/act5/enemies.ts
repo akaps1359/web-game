@@ -6,7 +6,7 @@ import { DMG_TYPES, type DmgType, type EnemyUnit, type MoveDef } from '../../eng
 import { cine, setUi } from '../lib';
 import { countDef, mv, others, release } from '../moves';
 import { canDoom, dimLight, doomMove } from '../act4/common';
-import { hid, HURRY_STEPS, isAsleep, isIllusion, realAlive, setIntent, setSt, shuffleGroup, spawnIllusion, stealLight, uidNum, vanish, wake } from './dream';
+import { hid, isAsleep, isIllusion, realAlive, setIntent, setSt, shuffleGroup, spawnIllusion, stealLight, uidNum, vanish, wake } from './dream';
 import { DROWSY_MAX, lull, SLUMBER_AP } from './fetus';
 import {
   addHeat,
@@ -21,6 +21,10 @@ import {
   COVER_BLOCK,
   CRUSH_DMG,
   DEAD_STAR,
+  DEVOTION,
+  DEVOTION_BLESS,
+  DEVOTION_MAX,
+  DEVOTION_SHARD,
   DEVOUR_HEAL,
   DEVOUR_HEAT,
   devourStar,
@@ -44,7 +48,8 @@ import {
   LAST_LIGHT_AT,
   LIGHT_FAR,
   NEAR_CRADLE,
-  nightmareStacks,
+  hauntOf,
+  mostHaunted,
   POUNCE_DMG,
   POUNCE_HITS,
   RALLIED,
@@ -64,6 +69,9 @@ import {
   TWIST_BASE,
   TWIST_CAP,
   TWIST_PER,
+  TANGLE_DMG,
+  YAWN_DMG,
+  YAWN_HITS,
   UNDERFOOT,
   ZOOG_FLEE_AT,
   ZOOG_FLEE_LIGHT,
@@ -346,27 +354,31 @@ reg.traits([
   {
     id: 'a5-sleeping',
     name: '깊은 잠',
-    desc: `잠든 동안은 행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3. 비전·공허 피해로는 깨지 않는다 (꿈속의 일인 줄 안다). 체력이 ${Math.round(RELAPSE_AT * 100)}% 아래로 떨어지면 한 번 다시 잠들어, 잠든 동안 차례마다 최대 체력의 ${Math.round(RELAPSE_HEAL * 100)}%를 회복한다`,
+    desc: `잠든 동안은 행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3. 비전·공허 피해에는 꿈속의 일인 줄 알아 놀라지 않고 조용히 깬다 (힘이 오르지 않는다). 체력이 ${Math.round(RELAPSE_AT * 100)}% 아래로 떨어지면 (싸워 줄 동료가 남아 있을 때) 한 번 다시 잠들어, 잠든 동안 차례마다 최대 체력의 ${Math.round(RELAPSE_HEAL * 100)}%를 회복한다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
         if (!isEnemy(e) || e.dead || e.hp <= 0 || !isAsleep(e)) return;
-        // 꿈결의 피해(비전·공허)는 꿈속의 일인 줄 안다
-        if (d.type !== 'true' && DREAMY_TYPES.includes(d.type)) return;
-        if (d.attack || d.hpLoss > 0) wake(c, e, true);
+        // 꿈결의 피해(비전·공허)는 꿈속의 일인 줄 알아 놀라지 않는다 (조용히 깬다)
+        if (d.attack || d.hpLoss > 0) wake(c, e, !(d.type !== 'true' && DREAMY_TYPES.includes(d.type)));
       },
     },
   },
   {
     id: 'a5-pilgrim',
     name: '순례자',
-    desc: `행동할 때마다 우주 한가운데의 요람에 한 걸음 다가간다. 지난 차례 뒤로 아무 피해도 받지 않았으면 방해받지 않고 ${HURRY_STEPS}걸음씩 걷는다. 앞줄에 서면 길이 막혀 걷지 못하고 지팡이를 든다. 요람이 ${NEAR_CRADLE}걸음 안으로 가까워지면 노래가 바뀐다. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료를 축복한다`,
+    desc: `행동할 때마다 우주 한가운데의 요람에 한 걸음 다가간다. 아무도 막지 않은 걸음마다 기도가 깊어진다 (최대 ${DEVOTION_MAX}, 깊이 1마다 별 부스러기 피해 +${DEVOTION_SHARD}, 별빛의 축복 보호막 +${DEVOTION_BLESS}). 피해를 받으면 기도가 흐트러진다. 앞줄에 서면 길이 막혀 걷지 못하고 지팡이를 든다. 요람이 ${NEAR_CRADLE}걸음 안으로 가까워지면 노래가 바뀐다. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료를 축복한다`,
     hooks: {
-      // 순례를 방해받았다 (스스로 치른 고행은 빼고)
-      onDamageTaken(_c, s, d) {
+      // 순례를 방해받았다: 깊어지던 기도가 흐트러진다 (스스로 치른 고행은 빼고). 준비하던 공격도 곧바로 약해진다
+      onDamageTaken(c, s, d) {
         const e = s.unit;
-        if (!isEnemy(e) || d.tgt !== e || d.tags.includes('cost')) return;
-        if (d.attack || d.hpLoss + d.blocked > 0) e.mem.hit = 1;
+        if (!isEnemy(e) || e.dead || d.tgt !== e || d.tags.includes('cost')) return;
+        if (!(d.attack || d.hpLoss + d.blocked > 0)) return;
+        e.mem.hit = 1;
+        if (!((e.st[DEVOTION] ?? 0) > 0)) return;
+        setSt(c, e, DEVOTION, 0);
+        c.emit({ t: 'text', uid: e.uid, text: '기도가 흐트러졌다', tone: 'good' });
+        if (c.s.phase === 'player' && e.broken !== 2 && (e.intent?.move === 'shard' || e.intent?.move === 'bless')) setIntent(c, e, e.intent.move);
       },
     },
   },
@@ -615,12 +627,14 @@ function pilgrimStep(c: Combat, e: EnemyUnit) {
     }
     return;
   }
-  // 아무도 막지 않으면 걸음이 빨라진다
-  const before = e.mem.steps ?? 5;
-  e.mem.steps = Math.max(0, before - (hit ? 1 : HURRY_STEPS));
-  const k = before - e.mem.steps;
-  if (k > 0 && e.st['a5-pilgrimage']) c.apply(e, 'a5-pilgrimage', -k);
-  if (k > 1) c.emit({ t: 'text', uid: e.uid, text: '아무도 막지 않아 걸음이 빨라진다', tone: 'bad' });
+  e.mem.steps = Math.max(0, (e.mem.steps ?? 5) - 1);
+  if (e.st['a5-pilgrimage']) c.apply(e, 'a5-pilgrimage', -1);
+  // 아무도 막지 않은 걸음: 기도가 깊어진다
+  const dev = e.st[DEVOTION] ?? 0;
+  if (!hit && dev < DEVOTION_MAX) {
+    setSt(c, e, DEVOTION, dev + 1);
+    c.emit({ t: 'text', uid: e.uid, text: '아무도 막지 않은 걸음에 기도가 깊어진다', tone: 'bad' });
+  }
 }
 
 /** 순례자의 행동: 실행할 때마다 한 걸음 */
@@ -834,9 +848,10 @@ reg.enemies([
         mv.buff(
           '별빛의 축복',
           (c, e) => {
-            for (const a of c.alive) if (!isIllusion(a)) c.apply(a, 'barrier', 8, e);
+            const n = 8 + DEVOTION_BLESS * (e.st[DEVOTION] ?? 0);
+            for (const a of c.alive) if (!isIllusion(a)) c.apply(a, 'barrier', n, e);
           },
-          { desc: '모든 적 보호막 8' },
+          { desc: `모든 적 보호막 8 (깊어진 기도 1마다 +${DEVOTION_BLESS})` },
         ),
       ),
       penance: walk(
@@ -850,7 +865,14 @@ reg.enemies([
           { desc: '체력 8을 바쳐 다른 모든 적 힘 +1' },
         ),
       ),
-      shard: walk(mv.attack('별 부스러기', 13, { melee: false, type: 'arcane' })),
+      // 깊어진 기도만큼 세진다 (맞으면 흐트러져 곧바로 약해진다)
+      shard: walk(
+        mv.attack('별 부스러기', (_c, e) => 13 + DEVOTION_SHARD * (e.st[DEVOTION] ?? 0), {
+          melee: false,
+          type: 'arcane',
+          desc: `깊어진 기도 1마다 피해 +${DEVOTION_SHARD}`,
+        }),
+      ),
       // 요람이 가깝다: 노래가 바뀐다
       hymn: walk(
         mv.horror('요람의 노래', 12, {
@@ -1245,13 +1267,17 @@ reg.enemies([
       flail: mv.attack('허우적거림', 5, { hits: 3 }),
       claw: mv.attack('잠결의 손톱', 16, { type: 'slash' }),
       scream: mv.horror('악몽의 비명', 9, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
-      yawn: mv.debuff('하품', (c, e) => lull(c, e, 1), {
-        desc: `길고 느린 하품이 옮는다. 졸음 +1 (${DROWSY_MAX}이 되면 잠에 빠져 다음 턴 행동력 -${SLUMBER_AP}). 적을 붕괴시키거나 쓰러뜨리면 깬다`,
+      // 하품하며 허우적거린다: 졸음이 옮는다
+      yawn: mv.attack('하품', YAWN_DMG, {
+        hits: YAWN_HITS,
+        extra: ['debuff'],
+        then: (c, e) => lull(c, e, 1),
+        desc: `하품하며 허우적거린다. 길고 느린 하품이 옮아 졸음 +1 (${DROWSY_MAX}이 되면 잠에 빠져 다음 턴 행동력 -${SLUMBER_AP}). 적을 붕괴시키거나 쓰러뜨리면 깬다`,
       }),
       relapse: {
         name: '다시 잠든다',
         intent: 'sleep',
-        desc: `상처를 안고 다시 잠든다 (${RELAPSE_TURNS}번의 차례). 잠든 동안 차례마다 최대 체력의 ${Math.round(RELAPSE_HEAL * 100)}%를 회복한다. 피해를 받으면 놀라 깨어난다 (비전·공허 피해로는 깨지 않는다)`,
+        desc: `상처를 안고 다시 잠든다 (${RELAPSE_TURNS}번의 차례). 잠든 동안 차례마다 최대 체력의 ${Math.round(RELAPSE_HEAL * 100)}%를 회복한다. 피해를 받으면 놀라 깨어난다 (비전·공허 피해에는 조용히 깬다)`,
         run(c, e) {
           if (isIllusion(e)) return;
           e.mem.relapsed = 1;
@@ -1264,10 +1290,11 @@ reg.enemies([
     },
     ai: (c, e) => {
       if (isAsleep(e)) return 'doze';
-      // 다친 몸이 버거우면 한 번 다시 잠든다
-      if (!isIllusion(e) && !e.mem.relapsed && hpPct(e) < RELAPSE_AT) return 'relapse';
+      // 다친 몸이 버거우면 한 번 다시 잠든다 (싸워 줄 동료가 남아 있을 때만 — 혼자 남으면 잠들 틈이 없다)
+      const company = c.alive.some((x) => x !== e && !isIllusion(x) && !isAsleep(x));
+      if (!isIllusion(e) && !e.mem.relapsed && company && hpPct(e) < RELAPSE_AT) return 'relapse';
       const slumbering = (c.p.st['a5-slumber'] ?? 0) > 0;
-      return pick(c, e, { flail: 2, claw: 3, scream: (c.p.st.dread ?? 0) > 0 ? 1 : 2, yawn: slumbering || last(e) === 'yawn' ? 0 : 2 });
+      return pick(c, e, { flail: 2, claw: 3, scream: 2, yawn: slumbering || last(e) === 'yawn' ? 0 : 1.5 });
     },
     visual: { tint: 0x8a8aa0, glow: 0xc0d0ff },
   },
@@ -1294,8 +1321,13 @@ reg.enemies([
       weave: mv.summon('환영 짜기', weaveIllusion, '동료 하나의 환영을 만든다. 그 환영을 깨뜨리면 실이 끊어져 직조자가 비틀거린다'),
       needle: mv.attack('꿈바늘', 14, { melee: false, type: 'pierce' }),
       lull: mv.horror('자장가', 9, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
-      tangle: mv.debuff('꿈실 엉키기', tangleThreads, {
-        desc: '이번 턴에 내가 마지막으로 쓴 두 기술(기본 공격·방어 제외)의 꿈실을 엉킨다. 두 기술의 재사용 대기가 둘 중 더 긴 쪽에 맞춰진다',
+      // 꿈바늘로 꿰며 손끝의 실을 엉킨다
+      tangle: mv.attack('꿈실 엉키기', TANGLE_DMG, {
+        melee: false,
+        type: 'pierce',
+        extra: ['debuff'],
+        then: tangleThreads,
+        desc: '꿈바늘로 꿰며 이번 턴에 내가 마지막으로 쓴 두 기술(기본 공격·방어 제외)의 꿈실을 엉킨다. 두 기술의 재사용 대기가 둘 중 더 긴 쪽에 맞춰진다',
       }),
       veilself: mv.summon('장막 뒤로 숨는다', hideSelf, '앞줄로 끌려 나오자 제 환영 둘을 짜 그 사이로 숨는다. 환영을 깨뜨리면 실이 끊어져 직조자가 비틀거린다'),
     },
@@ -1307,7 +1339,7 @@ reg.enemies([
       const illus = c.alive.filter(isIllusion).length;
       return (
         opener(c, e, ['weave']) ??
-        pick(c, e, { weave: illus < 2 && last(e) !== 'weave' ? 2 : 0, needle: 3, lull: 2, tangle: last(e) === 'tangle' ? 0 : 2 })
+        pick(c, e, { weave: illus < 2 && last(e) !== 'weave' ? 2 : 0, needle: 3, lull: 2, tangle: last(e) === 'tangle' ? 0 : 1.5 })
       );
     },
     visual: { tint: 0x3a3050, glow: 0xe0b0ff, fx: ['flicker', 'float'] },
@@ -1387,7 +1419,7 @@ reg.enemies([
         name: '악몽을 먹는다',
         intent: 'heal',
         extra: ['buff'],
-        desc: `적들에게 걸린 악몽(출혈·독·화상·인장·약화·취약·부식·파멸)을 모두 먹어 치운다. 한 겹마다 체력 ${EAT_HEAL} 회복 (최대 ${EAT_HEAL_MAX}), 먹은 종류마다 배부름 +1`,
+        desc: `악몽(출혈·독·화상·인장·약화·취약·부식·파멸)이 가장 깊은 적 하나(자신 포함)의 악몽을 모두 먹어 치운다. 한 겹마다 체력 ${EAT_HEAL} 회복 (최대 ${EAT_HEAL_MAX}), 배부름 +1`,
         run: eatNightmares,
       },
       retch: {
@@ -1404,8 +1436,9 @@ reg.enemies([
       if ((e.st[GORGED] ?? 0) >= GORGE_MAX) return 'retch';
       const o = opener(c, e, ['trample']);
       if (o) return o;
-      // 악몽이 쌓일수록 먹으러 간다
-      const stacks = nightmareStacks(c);
+      // 악몽이 깊은 적이 있을수록 먹으러 간다 (연달아 먹지는 않는다)
+      const prey = mostHaunted(c);
+      const stacks = prey ? hauntOf(prey) : 0;
       return pick(c, e, { eat: stacks >= 3 && last(e) !== 'eat' ? 2 + Math.min(4, stacks / 2) : 0, trample: 3, trunk: 2 });
     },
     visual: { tint: 0x3a3048, glow: 0xd8a0ff, scale: 1.15 },

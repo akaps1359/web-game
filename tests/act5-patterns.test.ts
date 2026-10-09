@@ -51,6 +51,10 @@ import {
   COVER_BLOCK,
   CRUSH_DMG,
   DEAD_STAR,
+  DEVOTION,
+  DEVOTION_BLESS,
+  DEVOTION_MAX,
+  DEVOTION_SHARD,
   DEVOUR_HEAL,
   DEVOUR_HEAT,
   EAT_HEAL,
@@ -88,7 +92,7 @@ import {
   UNDERFOOT,
   ZOOG_FLEE_AT,
 } from '../src/content/act5/patterns';
-import { HURRY_STEPS, isAsleep, isIllusion, SNAP_POISE, uidNum } from '../src/content/act5/dream';
+import { isAsleep, isIllusion, SNAP_POISE, uidNum } from '../src/content/act5/dream';
 import { DEPTH } from '../src/content/depth';
 
 /**
@@ -1140,12 +1144,11 @@ describe('5층 일반 적 — 새 패턴 (2026-10)', () => {
     expect(g.intent?.move).toBe('gape');
   });
 
-  it('몽유병자: 비전·공허 피해로는 깨지 않는다 (꿈속의 일인 줄 안다) — 다른 피해에는 놀라 깬다', () => {
+  it('몽유병자: 비전·공허 피해에는 꿈속의 일인 줄 알아 놀라지 않고 조용히 깬다 — 다른 피해에는 놀라 깨어나 힘 +3', () => {
     const c = startCombat(floor5(), 'a5-e-sleepers');
     const [a, b] = allOf(c, 'sleepwalker');
     c.damage({ src: c.p, tgt: a, base: 5, type: 'void', attack: true });
-    c.damage({ src: c.p, tgt: a, base: 5, type: 'arcane', attack: true });
-    expect(isAsleep(a)).toBe(true);
+    expect(isAsleep(a)).toBe(false);
     expect(a.st.str ?? 0).toBe(0);
     c.damage({ src: c.p, tgt: b, base: 5, type: 'pierce', attack: true });
     expect(isAsleep(b)).toBe(false);
@@ -1305,17 +1308,35 @@ describe('5층 일반 적 — 새 패턴 (2026-10)', () => {
     expect(j.mem.gest).toBe(Math.max(0, GESTATION - 3));
   });
 
-  it(`별빛 순례자: 지난 차례 뒤로 아무 피해도 받지 않았으면 ${HURRY_STEPS}걸음씩 걷는다 — 한 대라도 맞으면 한 걸음 (스스로 치른 고행은 방해가 아니다)`, () => {
+  it(`별빛 순례자: 아무도 막지 않은 걸음마다 기도가 깊어진다 (최대 ${DEVOTION_MAX}) — 맞으면 흐트러져 준비하던 공격이 곧바로 약해진다`, () => {
     const c = startCombat(floor5(), 'a5-gug-pilgrim');
     const p = find(c, 'star-pilgrim');
-    act(c, p, 'shard');
-    expect(p.mem.steps).toBe(5 - HURRY_STEPS);
+    const g = find(c, 'gug');
+    act(c, p, 'chant');
+    expect(p.mem.steps).toBe(4);
+    expect(p.st[DEVOTION]).toBe(1);
+    act(c, p, 'bless');
+    expect(p.st[DEVOTION]).toBe(2);
+    expect(g.st.barrier).toBe(8 + DEVOTION_BLESS);
+    force(c, p, 'shard');
+    expect(p.intent?.dmg).toBe(13 + 2 * DEVOTION_SHARD);
+    // 맞으면 기도가 흐트러지고, 준비하던 별 부스러기도 곧바로 약해진다
     c.damage({ src: c.p, tgt: p, base: 3, type: 'pierce', attack: true });
+    expect(p.st[DEVOTION] ?? 0).toBe(0);
+    expect(p.intent?.dmg).toBe(13);
+    // 맞은 뒤의 걸음은 깊어지지 않는다
     act(c, p, 'shard');
-    expect(p.mem.steps).toBe(5 - HURRY_STEPS - 1);
-    expect(p.st['a5-pilgrimage']).toBe(p.mem.steps);
+    expect(p.st[DEVOTION] ?? 0).toBe(0);
+    expect(p.mem.steps).toBe(2);
+    expect(p.st['a5-pilgrimage']).toBe(2);
+    // 스스로 치른 고행은 방해가 아니다
     act(c, p, 'penance');
-    expect(p.mem.steps).toBe(Math.max(0, 5 - 2 * HURRY_STEPS - 1));
+    expect(p.st[DEVOTION]).toBe(1);
+    for (let i = 0; i < 5; i++) {
+      p.mem.steps = 5;
+      act(c, p, 'chant');
+    }
+    expect(p.st[DEVOTION]).toBe(DEVOTION_MAX);
   });
 
   it('별빛 순례자: 앞줄에 서면 길이 막혀 걷지 못하고 지팡이를 든다 — 요람이 가까우면 노래가 바뀐다', () => {
@@ -1441,7 +1462,7 @@ describe('5층 일반 적 — 새 패턴 (2026-10)', () => {
     expect(plans(c, star)).not.toContain('lastlight');
   });
 
-  it('악몽 먹는 맥: 적들에게 걸린 악몽을 먹어 치우고 아문다 — 먹은 종류마다 배부름, 다 차면 다음 차례에 나에게 게워 낸다', () => {
+  it(`악몽 먹는 맥: 악몽이 가장 깊은 적 하나의 악몽을 먹어 치우고 아문다 — 먹을 때마다 배부름 +1, ${GORGE_MAX}이 차면 다음 차례에 나에게 게워 낸다`, () => {
     const c = startCombat(floor5(), 'a5-baku-gug');
     const b = find(c, BAKU);
     const g = find(c, 'gug');
@@ -1449,6 +1470,7 @@ describe('5층 일반 적 — 새 패턴 (2026-10)', () => {
     c.s.phase = 'enemy';
     c.apply(g, 'bleed', 4, c.p);
     c.apply(g, 'poison', 3, c.p);
+    c.apply(g, 'burn', 2, c.p);
     c.apply(b, 'weak', 2, c.p);
     c.s.phase = 'player';
     b.mem.agOff = 1;
@@ -1457,8 +1479,16 @@ describe('5층 일반 적 — 새 패턴 (2026-10)', () => {
     act(c, b, 'eat');
     expect(g.st.bleed ?? 0).toBe(0);
     expect(g.st.poison ?? 0).toBe(0);
-    expect(b.st.weak ?? 0).toBe(0);
+    expect(g.st.burn ?? 0).toBe(0);
+    // 한 번에 한 적만 (악몽이 덜 깊은 자신의 약화는 남는다)
+    expect(b.st.weak).toBe(2);
     expect(b.hp).toBe(hp + Math.min(EAT_HEAL_MAX, 9 * EAT_HEAL));
+    expect(b.st[GORGED]).toBe(1);
+    // 배가 차기 전에는 게워 내지 않는다
+    expect(plans(c, b)).not.toContain('retch');
+    b.st[GORGED] = GORGE_MAX - 1;
+    act(c, b, 'eat');
+    expect(b.st.weak ?? 0).toBe(0);
     expect(b.st[GORGED]).toBe(GORGE_MAX);
     c.planIntent(b);
     expect(b.intent?.move).toBe('retch');
@@ -1480,6 +1510,13 @@ describe('5층 일반 적 — 새 패턴 (2026-10)', () => {
     c.apply(g, 'poison', 1, c.p);
     expect(b.intent?.move).toBe('eat');
     expect(b.intent?.kind).toBe('heal');
+    // 방금 먹었으면 연달아 먹으러 가지는 않는다
+    const d = startCombat(floor5(), 'a5-baku-gug');
+    const b2 = find(d, BAKU);
+    force(d, b2, 'trunk');
+    b2.hist = ['eat'];
+    d.apply(find(d, 'gug'), 'bleed', SCENT_AT + 2, d.p);
+    expect(b2.intent?.move).toBe('trunk');
     b.st[GORGED] = 2;
     breakIt(c, b);
     expect(b.st[GORGED] ?? 0).toBe(0);
