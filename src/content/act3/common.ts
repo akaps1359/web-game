@@ -329,7 +329,7 @@ reg.statuses([
     name: '터진 실밥',
     icon: 'gi:stitched-wound',
     kind: 'buff',
-    desc: `꿰맨 배가 터져 미쳐 날뛴다. 공격 피해 +{n}. 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}를 잃는다`,
+    desc: `꿰맨 배가 터져 미쳐 날뛴다. 공격 피해 +{n}. 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}${josa(TORN_LOSS, '을')} 잃는다`,
     hooks: {
       modDamageOut(_c, s, d) {
         if (d.attack && d.src === s.unit) d.add += s.n;

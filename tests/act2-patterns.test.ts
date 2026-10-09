@@ -12,7 +12,9 @@ import {
   FEAST_HEAL,
   HANDS,
   HANDS_MAX,
+  HEAR_MAX,
   KNELL_TOLL_SAN,
+  LISTEN_SAN,
   LAPSE_MAX,
   LASH_BASE,
   LASH_MAX,
@@ -1192,14 +1194,14 @@ describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     c.endTurn();
   };
 
-  it('재를 토하는 성가대원: 처음 3분의 1 아래로 떨어지면 그 차례에 마지막 소절 (정신 피해 8, 공포 1) — 한 번뿐', () => {
+  it(`재를 토하는 성가대원: 처음 절반 이하가 되면 그 차례에 마지막 소절 (정신 피해 ${VERSE_SAN}, 공포 1) — 한 번뿐. 그때 붕괴해 있었으면 일어나서 부른다`, () => {
     const c = fight('a2-choir');
-    const ch = all(c, 'chorister')[0];
+    const [ch, ch2] = all(c, 'chorister');
     ch.poise = 0;
     force(c, ch, 'discord');
-    strike(c, ch, Math.ceil(ch.maxHp * 0.5), 'true');
+    strike(c, ch, Math.ceil(ch.maxHp * 0.3), 'true');
     expect(ch.intent?.move).toBe('discord');
-    strike(c, ch, Math.ceil(ch.maxHp * 0.2), 'true');
+    strike(c, ch, Math.ceil(ch.maxHp * 0.25), 'true');
     expect(ch.intent?.move).toBe('verse');
     expect(ch.intent?.sanity).toBe(VERSE_SAN);
     const san = c.p.sanity;
@@ -1211,6 +1213,15 @@ describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     force(c, ch, 'discord');
     strike(c, ch, 1, 'true');
     expect(ch.intent?.move).toBe('discord');
+    // 붕괴해 있는 동안 절반 이하로 다친 성가대원은 일어나 다음 의도를 정할 때 부른다 (한 번뿐)
+    force(c, ch2, 'discord');
+    c.breakEnemy(ch2);
+    strike(c, ch2, Math.ceil(ch2.maxHp * 0.6), 'true');
+    expect(ch2.intent?.move).toBe('_broken');
+    ch2.broken = 0;
+    c.planIntent(ch2);
+    expect(ch2.intent?.move).toBe('verse');
+    expect(picks(c, ch2).has('verse')).toBe(false);
   });
 
   it(`향로 사제: 의식을 집전하는 동안 약점(관통·공허)에 맞으면 향로가 흔들려 의식이 끊긴다 — 다시 집전하려 하고, 전투당 ${LAPSE_MAX}번까지`, () => {
@@ -1264,18 +1275,21 @@ describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     expect(a.st.str).toBe(2);
   });
 
-  it('납골당 구울: 피를 흘리는 상대(출혈 2 이상)에게는 냄새를 쫓아 덤벼든다', () => {
+  it('납골당 구울: 피를 흘리는 상대에게는 냄새를 쫓아 덤벼든다 — 할퀴어 피를 낸 다음 차례에도 (홀로 나와도 보인다)', () => {
     const c = fight('a2-ghoul1');
     const g = one(c, 'crypt-ghoul');
     expect(picks(c, g).has('lunge')).toBe(false);
-    c.apply(c.p, 'bleed', 2);
+    act(c, g, 'claw');
+    expect(c.p.st.bleed).toBe(1);
     expect(picks(c, g).has('lunge')).toBe(true);
   });
 
-  it(`밀랍 수사: 체력이 처음 절반 아래로 떨어지면 촛농을 붓고, 다음 차례에 상처를 봉한다 (체력 ${SEAL_HEAL}·방어도 ${SEAL_BLOCK}) — 한 번뿐`, () => {
+  it(`밀랍 수사: 체력이 처음 4분의 3 아래로 떨어지면 촛농을 붓고, 다음 차례에 상처를 봉한다 (체력 ${SEAL_HEAL}·방어도 ${SEAL_BLOCK}) — 한 번뿐`, () => {
     const c = fight('a2-friar1');
     const f = one(c, 'wax-friar');
-    f.hp = Math.floor(f.maxHp * 0.4);
+    f.hp = Math.floor(f.maxHp * 0.8);
+    expect(picks(c, f).has('pour')).toBe(false);
+    f.hp = Math.floor(f.maxHp * 0.7);
     c.planIntent(f);
     expect(f.intent?.move).toBe('pour');
     expect(f.intent?.charging).toBe(true);
@@ -1305,50 +1319,72 @@ describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     expect(f.mem.charge).toBeUndefined();
   });
 
-  /** 빙의된 수도사가 악령을 내보내고, 그 악령을 다시 부르는 차례까지 */
-  function beckoned() {
+  /** 빙의된 수도사가 악령을 내보내고, 그 악령이 한 번 움직인 뒤 몸으로 돌아가려는 차례까지 */
+  function returning() {
     const c = fight('a2-monk1', 202, 'hunter');
     const monk = one(c, 'possessed-monk');
     monk.poise = 0;
     strike(c, monk, Math.ceil(monk.maxHp * 0.6), 'true');
     expect(monk.mem.exorcised).toBe(1);
     const sp = one(c, 'loose-spirit');
-    let n = 0;
-    while (monk.intent?.move !== 'beckon' && n++ < 60) c.planIntent(monk);
-    expect(monk.intent?.move).toBe('beckon');
+    // 빠져나온 차례에는 아직 떠돈다 (후열이라 근접으로는 닿지 않는다)
+    expect(sp.intent?.move).not.toBe('enter');
+    const knife = c.skillInfo('weapon')!.def;
+    expect(knife.range).toBe('melee');
+    expect(c.validTargets(knife).map((x) => x.uid)).not.toContain(sp.uid);
+    endWith(c, [sp]);
+    // 한 번 움직인 뒤 두 번째 목소리를 따라 돌아가려 한다 — 한 차례 앞서 보이고, 그동안 근접으로도 닿는다
+    expect(sp.intent?.move).toBe('enter');
+    expect(c.validTargets(knife).map((x) => x.uid)).toContain(sp.uid);
     return { c, monk, sp };
   }
 
-  it(`빙의된 수도사: 빠져나온 악령을 다시 부른다 — 부르는 동안 악령은 근접으로도 닿고, 막지 못하면 다음 차례에 다시 깃든다 (수도사 체력 ${REPOSSESS_HEAL}·힘 +2)`, () => {
-    const { c, monk, sp } = beckoned();
-    const knife = c.skillInfo('weapon')!.def;
-    expect(knife.range).toBe('melee');
-    expect(sp.row).toBe(1);
-    expect(c.validTargets(knife).map((x) => x.uid)).toContain(sp.uid);
-    endWith(c, [monk]);
-    expect(sp.mem.called).toBe(1);
-    expect(sp.intent?.move).toBe('enter');
+  it(`빙의된 수도사: 빠져나온 악령은 한 번 움직인 뒤 몸으로 돌아가려 한다 — 그동안 근접으로도 닿고, 막지 못하면 다시 깃든다 (수도사 체력 ${REPOSSESS_HEAL}·힘 +2)`, () => {
+    const { c, monk, sp } = returning();
     const hp = monk.hp;
     const str = monk.st.str ?? 0;
     endWith(c, [sp]);
     expect(sp.fled).toBe(true);
     expect(monk.hp).toBe(hp + REPOSSESS_HEAL);
     expect(monk.st.str ?? 0).toBe(str + 2);
+    expect(monk.mem.repossessed).toBe(1);
   });
 
-  it('빙의된 수도사: 악령이 다시 깃들기 전에 쓰러뜨리면 막는다', () => {
-    const { c, monk, sp } = beckoned();
-    endWith(c, [monk]);
-    expect(sp.intent?.move).toBe('enter');
+  it('빙의된 수도사: 돌아가려는 악령이 깃들기 전에 수도사가 쓰러지면 그 자리에서 다시 떠돈다 — 흩어지지 않고 남은 만큼 싸운다', () => {
+    const { c, monk, sp } = returning();
+    strike(c, monk, 999, 'true');
+    expect(monk.dead).toBe(true);
+    expect(c.over).toBe(false);
+    expect(sp.intent?.move).not.toBe('enter');
+    expect(sp.mem.reachable).toBe(0);
+    endWith(c, [sp]);
+    expect(!!(sp.dead || sp.fled)).toBe(false);
+  });
+
+  it('빙의된 수도사: 악령이 다시 깃들기 전에 쓰러뜨리면 막는다. 수도사가 먼저 쓰러지면 악령은 돌아갈 곳이 없다', () => {
+    const { c, monk, sp } = returning();
     strike(c, sp, 999, 'true');
     expect(sp.dead).toBe(true);
     const hp = monk.hp;
     endWith(c);
     expect(monk.hp).toBe(hp);
     expect(monk.mem.repossessed ?? 0).toBe(0);
+    // 수도사가 먼저 쓰러지면 악령은 떠돌다 흩어진다 (타종 수련사가 남아 싸움은 이어진다)
+    const d = fight('a2-exorcism', 202, 'hunter');
+    const m2 = one(d, 'possessed-monk');
+    m2.poise = 0;
+    strike(d, m2, Math.ceil(m2.maxHp * 0.6), 'true');
+    const sp2 = one(d, 'loose-spirit');
+    strike(d, m2, 999, 'true');
+    expect(m2.dead).toBe(true);
+    endWith(d, [sp2]);
+    expect(d.over).toBe(false);
+    expect(sp2.dead).toBe(false);
+    expect(sp2.intent?.move).not.toBe('enter');
+    expect(sp2.mem.reachable ?? 0).toBe(0);
   });
 
-  it(`벽에 갇힌 수녀: 동료가 처음 내 손에 무너지면 그 차례에 그 동료를 회벽으로 감싼다 (보호막 ${BRICK_BARRIER}) — 두 번째부터는 감싸지 않는다`, () => {
+  it(`벽에 갇힌 수녀: 동료가 처음 내 손에 무너지면 다음 차례에 하던 행동과 함께 그 동료를 회벽으로 감싼다 (보호막 ${BRICK_BARRIER}) — 두 번째부터는 감싸지 않는다`, () => {
     const c = fight('a2-ghoul-nun');
     const g = one(c, 'crypt-ghoul');
     const n = one(c, 'walled-nun');
@@ -1358,8 +1394,14 @@ describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     g.poise = 1;
     strike(c, g, 2, 'fire');
     expect(g.broken).toBe(2);
-    expect(n.intent?.move).toBe('brick');
-    doMove(c, n, 'brick');
+    // 하던 행동(벽 틈의 손길)은 그대로, 의도에 회벽(강화)이 더해진다
+    expect(n.intent?.move).toBe('touch');
+    expect(n.intent?.extra).toContain('buff');
+    c.p.block = 0;
+    const hp = c.p.hp;
+    endWith(c, [n]);
+    expect(c.p.hp).toBeLessThan(hp);
+    expect(c.p.st.frail).toBe(1);
     expect(g.st.barrier).toBe(BRICK_BARRIER);
     expect(n.st.barrier ?? 0).toBe(0);
     c.restorePoise(g);
@@ -1367,7 +1409,33 @@ describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     g.poise = 1;
     strike(c, g, 2, 'fire');
     expect(g.broken).toBe(2);
-    expect(n.intent?.move).toBe('touch');
+    expect(n.intent?.extra ?? []).not.toContain('buff');
+    expect(n.mem.brickT ?? 0).toBe(0);
+  });
+
+  it('벽에 갇힌 수녀: 회벽을 바르려던 차례에 수녀를 붕괴시키면 감싸지 못한다. 벽돌 쌓기를 하려던 참이면 그 벽돌이 무너진 동료에게 간다', () => {
+    const c = fight('a2-ghoul-nun');
+    const g = one(c, 'crypt-ghoul');
+    const n = one(c, 'walled-nun');
+    force(c, n, 'lament');
+    g.poise = 1;
+    strike(c, g, 2, 'fire');
+    expect(n.mem.brickT).toBeTruthy();
+    c.breakEnemy(n);
+    endWith(c);
+    expect(g.st.barrier ?? 0).toBe(0);
+    // 벽돌 쌓기를 하려던 수녀
+    const d = fight('a2-ghoul-nun');
+    const g2 = one(d, 'crypt-ghoul');
+    const n2 = one(d, 'walled-nun');
+    n2.hp -= 15;
+    force(d, n2, 'brick');
+    g2.poise = 1;
+    strike(d, g2, 2, 'fire');
+    expect(n2.intent?.move).toBe('brick');
+    endWith(d, [n2]);
+    expect(g2.st.barrier).toBe(BRICK_BARRIER);
+    expect(n2.st.barrier ?? 0).toBe(0);
   });
 
   it('타종 수련사: 내 턴에 교단 동료가 쓰러지면 그 차례에 조종을 울린다 — 홀로 남으면 작은 종을 울리지 않는다', () => {
@@ -1387,10 +1455,13 @@ describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     doMove(c, a, 'latch');
     expect(a.mem.latched).toBe(1);
     expect(c.p.st[LATCHED]).toBe(1);
+    // 파고든 턱은 피를 흘리게 하는 대신 직접 빤다
+    expect(c.p.st.bleed ?? 0).toBe(0);
     c.p.block = 999;
     doMove(c, b, 'latch');
     expect(b.mem.latched ?? 0).toBe(0);
     expect(c.p.st[LATCHED]).toBe(1);
+    expect(c.p.st.bleed).toBe(2);
     // 내 턴이 시작될 때 빨린다
     c.clear(c.p, 'bleed');
     a.hp -= 10;
@@ -1453,6 +1524,43 @@ describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     const hp = c.p.hp;
     endWith(c, [cf]);
     expect(hp - c.p.hp).toBe(shown);
+    expect(cf.st[SINS] ?? 0).toBe(0);
+  });
+
+  it(`고해 신부: 고해를 들은 다음 내 턴에는 내가 쓰는 기술 하나마다 장부에 죄를 적고 (최대 ${HEAR_MAX}) 그 차례에 판결 — 피해는 의도에 그대로, 붕괴시키면 더 적지 못한다`, () => {
+    const c = fight('a2-confessor1');
+    const cf = one(c, 'confessor');
+    expect(c.p.st[WATCH2]).toBe(1);
+    expect(picks(c, cf).has('listen')).toBe(true);
+    force(c, cf, 'listen');
+    expect(cf.intent?.sanity).toBe(LISTEN_SAN);
+    const san = c.p.sanity;
+    endWith(c, [cf]);
+    expect(c.p.sanity).toBeLessThan(san);
+    expect(cf.mem.hear).toBe(c.s.turn);
+    expect(cf.intent?.move).toBe('verdict');
+    expect(cf.intent?.dmg).toBe(VERDICT_DMG);
+    c.s.ap = 99;
+    for (let i = 0; i < HEAR_MAX + 1; i++) expect(c.useSkill('armor')).toBeNull();
+    expect(cf.st[SINS]).toBe(HEAR_MAX);
+    expect(cf.intent?.dmg).toBe(VERDICT_DMG + HEAR_MAX * SIN_DMG);
+    const shown = c.preview(cf, c.p, cf.intent!.dmg!, 'blunt');
+    c.p.block = 0;
+    const hp = c.p.hp;
+    endWith(c, [cf]);
+    expect(hp - c.p.hp).toBe(shown);
+    expect(cf.st[SINS] ?? 0).toBe(0);
+    // 판결을 내린 뒤에는 더 적지 않는다
+    c.s.ap = 99;
+    expect(c.useSkill('armor')).toBeNull();
+    expect(cf.st[SINS] ?? 0).toBe(0);
+    // 듣는 사이 붕괴시키면 더 적지 못한다
+    force(c, cf, 'listen');
+    endWith(c, [cf]);
+    expect(cf.intent?.move).toBe('verdict');
+    c.breakEnemy(cf);
+    c.s.ap = 99;
+    expect(c.useSkill('armor')).toBeNull();
     expect(cf.st[SINS] ?? 0).toBe(0);
   });
 

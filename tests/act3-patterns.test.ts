@@ -1361,10 +1361,14 @@ describe('3층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     expect(c.p.st.corrode).toBe(1);
   });
 
-  it('쇼고스 유충: 내가 지난 턴을 방어도 10 이상으로 마치면 녹여 삼키기를 노린다 — 방어도를 절반 녹이고 덮친다', () => {
+  it(`쇼고스 유충: 내가 지난 턴을 방어도 ${DISSOLVE_AT} 이상으로 마치면 녹여 삼키기를 노린다 — 방어도를 절반 녹이고 덮친다`, () => {
     const { c, e } = fight('a3-e-spawn');
     const s = e('shoggoth-spawn');
     expect(c.p.st[WATCH]).toBe(1);
+    expect(picks(c, s).has('dissolve')).toBe(false);
+    // 조금 막고 마친 턴은 배우지 않는다
+    c.p.block = DISSOLVE_AT - 1;
+    endWith(c);
     expect(picks(c, s).has('dissolve')).toBe(false);
     c.p.block = DISSOLVE_AT + 4;
     endWith(c);
@@ -1379,7 +1383,7 @@ describe('3층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     expect(c.p.block).toBe(Math.max(0, 10 - amt));
   });
 
-  it('쇼고스 유충: 약점(화염·비전)에 맞은 턴에는 다시 빚지 못한다 — 재형성·흡수가 비명으로 바뀐다', () => {
+  it('쇼고스 유충: 약점(화염·비전)에 맞은 턴에는 다시 빚지 못한다 — 재형성·흡수는 비명으로, 집어삼키기는 위족 채찍으로 바뀐다', () => {
     const { c, e } = fight('a3-e-spawn');
     const s = e('shoggoth-spawn');
     force(c, s, 'reform');
@@ -1388,6 +1392,16 @@ describe('3층 일반 적 — 반응하는 패턴 (2026-10)', () => {
     strike(c, s, 3, 'fire');
     expect(s.intent?.move).toBe('tekeli');
     expect(s.intent?.kind).toBe('horror');
+    // 다음 턴: 집어삼키려던 것도 비전에 그을리면 삼키지 못하고 채찍만 휘두른다. 채찍질은 그대로
+    endWith(c);
+    force(c, s, 'engulf');
+    strike(c, s, 3, 'arcane');
+    expect(s.intent?.move).toBe('lash');
+    expect(s.intent?.extra ?? []).not.toContain('heal');
+    endWith(c);
+    force(c, s, 'lash');
+    strike(c, s, 3, 'arcane');
+    expect(s.intent?.move).toBe('lash');
   });
 
   it('렝의 거미: 새끼 거미가 내 손에 쓰러지면 그 차례에 분노한 독액을 뱉는다. 서릿실 거미줄은 동상도 남긴다', () => {

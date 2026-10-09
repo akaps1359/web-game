@@ -1,4 +1,5 @@
 import { reg } from '../../engine/registry';
+import { josa } from '../../engine/josa';
 import { isEnemy, unguarded, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import type { EnemyUnit, MoveDef } from '../../engine/types';
@@ -146,7 +147,7 @@ export const PERCH_MAX = 8;
 export const BLAST_DMG = 16;
 export const SUTURE_HEAL = 12;
 /** 쇼고스 유충: 지난 내 턴을 이 방어도 이상으로 마치면 「녹여 삼키기」를 노린다 */
-export const DISSOLVE_AT = 10;
+export const DISSOLVE_AT = 6;
 /** 렝의 거미: 「분노한 독액」의 독 */
 export const VENOM_POISON = 4;
 /** 눈먼 펭귄: 「얼음판 발 구르기」 동상 상한 */
@@ -536,7 +537,7 @@ reg.traits([
   {
     id: 'a3-yuggoth-tools',
     name: '유고스의 연장',
-    desc: `앞에 동료가 버티는 동안 얼음 밑 광맥에 발파 장치를 박는다 (다음 차례에 「광맥 발파」). 그 사이 붕괴시키거나 약점(타격·비전)으로 치면 장치가 꺼진다. 쓰러질 듯한 동료를 한 번 꿰매 체력 ${SUTURE_HEAL}을 되살린다`,
+    desc: `앞에 동료가 버티는 동안 얼음 밑 광맥에 발파 장치를 박는다 (다음 차례에 「광맥 발파」). 그 사이 붕괴시키거나 약점(타격·비전)으로 치면 장치가 꺼진다. 쓰러질 듯한 동료를 한 번 꿰매 체력 ${SUTURE_HEAL}${josa(SUTURE_HEAL, '을')} 되살린다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -566,7 +567,7 @@ reg.traits([
   {
     id: 'a3-learner',
     name: '배우는 원형질',
-    desc: `내가 지난 턴을 방어도 ${DISSOLVE_AT} 이상으로 마쳤으면 「녹여 삼키기」(방어도를 절반 녹이고 덮친다)를 노린다. 약점(화염·비전)에 맞은 턴에는 몸을 다시 빚지 못한다: 「재형성」·「흡수」가 비명으로 바뀐다`,
+    desc: `내가 지난 턴을 방어도 ${DISSOLVE_AT} 이상으로 마쳤으면 「녹여 삼키기」(방어도를 절반 녹이고 덮친다)를 노린다. 약점(화염·비전)에 맞은 턴에는 몸을 다시 빚지 못한다: 「재형성」·「흡수」는 비명으로, 「집어삼키기」는 위족 채찍으로 바뀐다`,
     hooks: {
       onCombatStart(c) {
         watchBlock(c);
@@ -576,6 +577,7 @@ reg.traits([
         if (!isEnemy(e) || !d.weakHit || !myHit(c, d)) return;
         const m = e.intent?.move;
         if (m === 'reform' || m === 'absorb') react(c, e, 'tekeli', '그을린 원형질이 굳는다', 'good');
+        else if (m === 'engulf') react(c, e, 'lash', '그을린 원형질이 굳어 삼키지 못한다', 'good');
       },
     },
   },
@@ -653,7 +655,7 @@ reg.traits([
   {
     id: 'a3-stitches',
     name: '터지는 실밥',
-    desc: `체력이 처음 절반 아래로 떨어지면 꿰맨 배가 터져 미쳐 날뛴다: 공격 피해 +${TORN_N}, 대신 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}를 잃는다. 다른 썰매개가 곁에 있으면 함께 몰아붙인다`,
+    desc: `체력이 처음 절반 아래로 떨어지면 꿰맨 배가 터져 미쳐 날뛴다: 공격 피해 +${TORN_N}, 대신 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}${josa(TORN_LOSS, '을')} 잃는다. 다른 썰매개가 곁에 있으면 함께 몰아붙인다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -801,7 +803,7 @@ reg.enemies([
       return pick(c, e, {
         mist: 3,
         extract: (e.mem.brain ?? 0) >= 2 ? 1 : 3,
-        buzz: 2,
+        buzz: 3,
         rig: covered(c, e) && !rigged ? 1 : 0,
         suture: patient ? 4 : 0,
       });
@@ -1137,7 +1139,7 @@ reg.enemies([
       const chilled = (c.p.st[FROST] ?? 0) >= INHALE_AT;
       return pick(c, e, {
         breath: chilled ? 1 : 3,
-        whisper: 2,
+        whisper: 3,
         drain: hpPct(e) < 0.6 && !e.hist.includes('drain') ? 3 : 0,
         inhale: chilled && !e.hist.slice(-3).includes('freeze') ? 4 : 0,
         rime: covered(c, e) && !e.hist.slice(-2).includes('rime') ? 1 : 0,
@@ -1278,7 +1280,7 @@ reg.enemies([
       harry: {
         name: '무리 지어 몰아붙이기',
         intent: 'attack',
-        dmg: 5,
+        dmg: 6,
         hits: (c, e) => packHits(c, e),
         melee: true,
         desc: '다른 썰매개 하나마다 한 번 더 문다 (최대 3번)',

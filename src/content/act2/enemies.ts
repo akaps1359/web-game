@@ -1,4 +1,5 @@
 import { ENEMIES, reg } from '../../engine/registry';
+import { josa } from '../../engine/josa';
 import { isEnemy, unguarded, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import type { DamageCtx, DmgType, EnemyUnit, MoveDef } from '../../engine/types';
@@ -79,6 +80,9 @@ export const LATCH_DRAIN = 2;
 /** 고해 신부: 「판결」 기본 피해, 장부의 죄 하나마다 더하는 피해 */
 export const VERDICT_DMG = 6;
 export const SIN_DMG = 3;
+/** 고해 신부: 「고해를 듣는다」 다음 내 턴에 기술 하나마다 적는 죄의 상한, 고해를 다그치는 정신 피해 */
+export const HEAR_MAX = 3;
+export const LISTEN_SAN = 4;
 /** 성수반의 손: 더 뻗어 나오는 손 상한 */
 export const HANDS_MAX = 2;
 
@@ -216,14 +220,30 @@ function intercede(c: Combat, d: DamageCtx) {
   for (const m of c.alive) if (m.def === 'martyr' && m !== t && m.row === 0) react(c, m, 'stand', '순교자가 앞을 막아선다', 'bad');
 }
 
-/** 동료가 내 턴에 무너졌다(붕괴): 벽에 갇힌 수녀가 그 동료를 회벽으로 감싼다 (수녀마다 전투당 한 번) */
+/**
+ * 동료가 내 턴에 무너졌다(붕괴): 벽에 갇힌 수녀가 다음 차례에 하던 행동과 함께 그 동료를 회벽으로 감싼다 (수녀마다 전투당 한 번).
+ * 의도는 그대로 두고 강화 표시만 더한다 (회벽은 특성 a2-plaster가 수녀의 차례 시작에 바른다)
+ */
 function plaster(c: Combat, victim: EnemyUnit) {
   if (c.s.phase !== 'player') return;
   for (const n of c.alive) {
-    if (n.def !== 'walled-nun' || n === victim || n.mem.plastered) continue;
-    if (!react(c, n, 'brick', '무너진 자를 회벽으로 감싼다', 'bad')) continue;
+    if (n.def !== 'walled-nun' || n === victim || n.mem.plastered || !n.intent) continue;
+    if (n.broken === 2 || (n.st.stun ?? 0) > 0) continue;
     n.mem.plastered = 1;
     n.mem.brickT = Number(victim.uid.slice(1));
+    if (n.intent.move !== 'brick' && !n.intent.extra?.includes('buff')) n.intent = { ...n.intent, extra: [...(n.intent.extra ?? []), 'buff'] };
+    c.emit({ t: 'text', uid: n.uid, text: '무너진 자를 회벽으로 감싸려 한다', tone: 'bad' });
+  }
+}
+
+/** 고해를 듣는 고해 신부가 방금 내가 쓴 기술을 장부에 적는다 (고해 신부마다 HEAR_MAX까지) */
+function hear(c: Combat) {
+  for (const e of c.alive) {
+    if (e.def !== 'confessor' || e.mem.hear !== c.s.turn || e.broken === 2 || (e.mem.heard ?? 0) >= HEAR_MAX) continue;
+    e.mem.heard = (e.mem.heard ?? 0) + 1;
+    c.apply(e, SINS, 1, e);
+    c.emit({ t: 'text', uid: e.uid, text: '장부에 죄를 적는다', tone: 'eldritch' });
+    if (e.intent?.move === 'verdict') refreshIntent(c, e);
   }
 }
 
@@ -241,10 +261,13 @@ reg.statuses([
     icon: 'gi:eye-target',
     kind: 'buff',
     hidden: true,
-    desc: '수도원의 것들이 내 손이 누구를 치는지 지켜본다',
+    desc: '수도원의 것들이 내 손이 누구를 치는지, 무엇을 말하는지 지켜본다',
     hooks: {
       onDamageDealt(c, s, d) {
         if (s.unit === c.p) intercede(c, d);
+      },
+      afterSkill(c, s, u) {
+        if (s.unit === c.p && !u.echo) hear(c);
       },
       onBreak(c, s, victim) {
         if (s.unit === c.p) plaster(c, victim);
@@ -256,7 +279,7 @@ reg.statuses([
     name: '파고든 턱',
     icon: 'gi:insect-jaws',
     kind: 'debuff',
-    desc: `뼈지네 {n}마리가 살을 파고들었다. 내 턴이 시작될 때마다 한 마리당 체력 ${LATCH_DRAIN}를 빨린다 (뼈지네가 회복). 그 뼈지네를 공격하면 떨어진다`,
+    desc: `뼈지네 {n}마리가 살을 파고들었다. 내 턴이 시작될 때마다 한 마리당 체력 ${LATCH_DRAIN}${josa(LATCH_DRAIN, '을')} 빨린다 (뼈지네가 회복). 그 뼈지네를 공격하면 떨어진다`,
     tickStart(c, u) {
       if (isEnemy(u)) return;
       const bugs = c.alive.filter((x) => x.def === 'bone-centipede' && x.mem.latched);
@@ -332,7 +355,8 @@ reg.traits([
     name: '빙의',
     desc:
       '체력이 절반 이하가 되면 몸속의 악령이 빠져나온다. 수도사 힘 -2, 내 정신력 -3. ' +
-      `두 번째 목소리는 빠져나온 악령을 한 번 다시 불러들인다: 다음 차례에 악령이 깃들면 수도사 체력 ${REPOSSESS_HEAL} 회복, 힘 +2. 그 전에 악령을 쓰러뜨리면 막는다`,
+      `두 번째 목소리가 그 악령을 부른다: 빠져나온 악령은 한 번 움직인 뒤 몸으로 돌아가려 하고 (「다시 깃든다」, 한 차례 앞서 보인다), 깃들면 수도사 체력 ${REPOSSESS_HEAL} 회복, 힘 +2. ` +
+      '그 전에 악령을 쓰러뜨리면 막는다. 돌아가려는 악령은 후열에 있어도 근접으로 닿는다',
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -342,6 +366,19 @@ reg.traits([
         c.apply(e, 'str', -2, e);
         c.spawn('loose-spirit', 1);
         c.loseSanity(3, true);
+        c.emit({ t: 'text', uid: e.uid, text: '들어오라. 두 번째 목소리가 부른다', tone: 'eldritch' });
+      },
+      onDeath(c, s) {
+        if (!isEnemy(s.unit)) return;
+        // 깃들 몸이 사라졌다: 돌아가려던 악령은 다시 떠돈다 (내 턴이면 그 자리에서 의도가 바뀐다. 움직인 횟수는 그대로)
+        for (const sp of c.alive) {
+          if (sp.def !== 'loose-spirit' || !sp.mem.called) continue;
+          sp.mem.called = 0;
+          sp.mem.reachable = 0;
+          sp.mem.acts = Math.max(0, (sp.mem.acts ?? 0) - 1);
+          c.emit({ t: 'text', uid: sp.uid, text: '깃들 몸이 사라졌다', tone: 'info' });
+          if (c.s.phase === 'player') c.planIntent(sp);
+        }
       },
     },
   },
@@ -650,11 +687,11 @@ reg.traits([
   {
     id: 'a2-last-verse',
     name: '마지막 소절',
-    desc: `체력이 처음으로 3분의 1 아래로 떨어지면 그 차례에 「마지막 소절」(정신 피해 ${VERSE_SAN}, 공포 1)을 부른다. 부르기 전에 쓰러뜨리면 듣지 않는다`,
+    desc: `체력이 처음으로 절반 이하가 되면 그 차례에 「마지막 소절」(정신 피해 ${VERSE_SAN}, 공포 1)을 부른다 (그때 붕괴해 있었으면 일어나서). 부르기 전에 쓰러뜨리면 듣지 않는다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
-        if (!isEnemy(e) || e.mem.verse || e.hp <= 0 || hpPct(e) > 1 / 3 || !myHit(c, d)) return;
+        if (!isEnemy(e) || e.mem.verse || e.hp <= 0 || hpPct(e) > 0.5 || !myHit(c, d)) return;
         if (react(c, e, 'verse', '마지막 소절을 들이마신다')) e.mem.verse = 1;
       },
     },
@@ -702,7 +739,7 @@ reg.traits([
   {
     id: 'a2-molten',
     name: '녹는 밀랍',
-    desc: `체력이 처음 절반 아래로 떨어지면 촛농을 부어 상처를 봉하려 한다 (다음 차례에 체력 ${SEAL_HEAL} 회복, 방어도 ${SEAL_BLOCK}). 그 사이 붕괴시키거나 화염으로 치면 밀랍이 흘러내려 끊긴다`,
+    desc: `체력이 처음 4분의 3 아래로 떨어지면 촛농을 부어 상처를 봉하려 한다 (다음 차례에 체력 ${SEAL_HEAL} 회복, 방어도 ${SEAL_BLOCK}). 그 사이 붕괴시키거나 화염으로 치면 밀랍이 흘러내려 끊긴다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -716,10 +753,20 @@ reg.traits([
   {
     id: 'a2-plaster',
     name: '회벽',
-    desc: `동료가 처음 내 손에 무너지면(붕괴) 그 차례에 그 동료를 회벽으로 감싼다 (보호막 ${BRICK_BARRIER})`,
+    desc: `동료가 처음 내 손에 무너지면(붕괴) 다음 차례에 하던 행동과 함께 그 동료를 회벽으로 감싼다 (보호막 ${BRICK_BARRIER}). 그 사이 수녀를 붕괴시키면 감싸지 못한다`,
     hooks: {
       onCombatStart(c) {
         watch2(c);
+      },
+      onUnitTurnStart(c, s) {
+        const e = s.unit;
+        // 「벽돌 쌓기」를 하려던 참이면 그 행동이 무너진 동료를 감싼다
+        if (!isEnemy(e) || !e.mem.brickT || e.intent?.move === 'brick') return;
+        const t = c.alive.find((x) => x.uid === `e${e.mem.brickT}`);
+        delete e.mem.brickT;
+        if (!t || e.broken === 2 || (e.st.stun ?? 0) > 0) return;
+        c.apply(t, 'barrier', BRICK_BARRIER, e);
+        c.emit({ t: 'text', uid: t.uid, text: '회벽이 몸을 감싼다', tone: 'info' });
       },
     },
   },
@@ -738,7 +785,7 @@ reg.traits([
   {
     id: 'a2-latch',
     name: '파고드는 턱',
-    desc: `「턱 박기」로 체력 피해를 주면 살을 파고든다: 내 턴이 시작될 때마다 체력 ${LATCH_DRAIN}를 빨아 간다. 이 뼈지네를 공격하면 떨어진다`,
+    desc: `「턱 박기」로 체력 피해를 주면 살을 파고든다: 내 턴이 시작될 때마다 체력 ${LATCH_DRAIN}${josa(LATCH_DRAIN, '을')} 빨아 간다. 이 뼈지네를 공격하면 떨어진다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -766,8 +813,13 @@ reg.traits([
   {
     id: 'a2-ledger',
     name: '죄의 장부',
-    desc: `누가 쓰러질 때마다 장부에 죄를 적는다. 내 턴에 적으면 그 차례에 「판결」을 내린다 (죄 하나마다 피해 +${SIN_DMG})`,
+    desc:
+      `누가 쓰러질 때마다 장부에 죄를 적는다. 내 턴에 적으면 그 차례에 「판결」을 내린다 (죄 하나마다 피해 +${SIN_DMG}). ` +
+      `「고해를 듣는다」 다음 내 턴에는 내가 쓰는 기술 하나마다 죄를 적고 (최대 ${HEAR_MAX}) 그 차례에 판결을 내린다`,
     hooks: {
+      onCombatStart(c) {
+        watch2(c);
+      },
       onAnyDeath(c, s, victim) {
         const e = s.unit;
         if (!isEnemy(e) || e.dead || !isEnemy(victim) || victim === e) return;
@@ -834,6 +886,11 @@ reg.enemies([
       verse: mv.horror('마지막 소절', VERSE_SAN, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '죽어 가는 아이가 마지막 소절을 토한다. 정신 피해, 공포 1' }),
     },
     ai: (c, e) => {
+      // 절반 이하로 다쳤는데 아직 부르지 못했으면 (붕괴해 있었거나 지속 피해로 다쳤다) 이번에 부른다
+      if (!e.mem.verse && hpPct(e) <= 0.5) {
+        e.mem.verse = 1;
+        return 'verse';
+      }
       const h = `hymn${Math.min(3, choirOthers(c, e))}`;
       return pick(c, e, { [h]: 2, discord: 2, harmony: others(c, e).length ? 1 : 0 });
     },
@@ -947,8 +1004,8 @@ reg.enemies([
     },
     ai: (c, e) => {
       if (corpses(c) > 0 && last(e) !== 'feast') return pick(c, e, { feast: hpPct(e) < 0.9 ? 5 : 2, claw: 2, gnaw: 1 });
-      // 피를 흘리는 상대(출혈 2 이상)에게는 냄새를 쫓아 덤벼든다
-      const bleeding = (c.p.st.bleed ?? 0) >= 2;
+      // 피를 흘리는 상대(출혈)에게는 냄새를 쫓아 덤벼든다 (할퀸 다음 차례에 자주 보인다)
+      const bleeding = (c.p.st.bleed ?? 0) > 0;
       return pick(c, e, { claw: bleeding ? 2 : 3, gnaw: 2, lunge: bleeding ? 3 : 0 });
     },
     visual: { tint: 0x6a6a58, glow: 0xc0ff60 },
@@ -1002,8 +1059,8 @@ reg.enemies([
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'seal';
-      // 체력이 절반 아래로 떨어지면 한 번, 촛농을 부어 상처를 봉하려 한다
-      if (hpPct(e) < 0.5 && !e.mem.poured) {
+      // 체력이 4분의 3 아래로 떨어지면 한 번, 촛농을 부어 상처를 봉하려 한다
+      if (hpPct(e) < 0.75 && !e.mem.poured) {
         e.mem.poured = 1;
         return 'pour';
       }
@@ -1030,35 +1087,10 @@ reg.enemies([
       voice: mv.horror('낯선 목소리', 6),
       fist: mv.attack('뒤틀린 주먹', 9),
       pray: mv.block('흐느끼는 기도', 8, { desc: '방어도 8' }),
-      // 두 번째 목소리가 빠져나온 악령을 부른다 (특성 a2-possessed)
-      beckon: {
-        name: '들어오라',
-        intent: 'special',
-        desc: `두 번째 목소리가 빠져나온 악령을 부른다. 다음 차례에 악령이 다시 깃든다 (수도사 체력 ${REPOSSESS_HEAL} 회복, 힘 +2). 그 전에 악령을 쓰러뜨리면 막는다. 부름을 받는 악령은 후열에 있어도 근접으로 닿는다`,
-        run(c, e) {
-          const sp = c.alive.find((x) => x.def === 'loose-spirit' && !x.mem.called);
-          if (!sp) {
-            c.emit({ t: 'text', uid: e.uid, text: '부를 것이 없다', tone: 'info' });
-            return;
-          }
-          sp.mem.called = 1;
-          sp.mem.reachable = 1;
-          c.emit({ t: 'text', uid: e.uid, text: '들어오라. 두 번째 목소리가 부른다', tone: 'eldritch' });
-        },
-      },
     },
-    ai: (c, e) => {
-      // 악령이 다시 깃들었거나 아직 빠져나오지 않았다
-      if (!e.mem.exorcised || e.mem.repossessed) return pick(c, e, { spasm: 2, voice: 2, fist: 2 });
-      // 빠져나온 악령이 아직 떠돌면 한 번, 다시 불러들인다 (부르는 동안 악령은 근접으로도 닿는다)
-      const sp = e.mem.beckoned ? undefined : c.alive.find((x) => x.def === 'loose-spirit' && !x.mem.called);
-      const m = pick(c, e, { fist: 2, pray: 2, spasm: 1, beckon: sp ? 3 : 0 });
-      if (m === 'beckon' && sp) {
-        e.mem.beckoned = 1;
-        sp.mem.reachable = 1;
-      }
-      return m;
-    },
+    // 악령이 빠져나간 동안에는 흐느끼며 기도하고, 다시 깃들면 원래대로 돌아간다
+    ai: (c, e) =>
+      e.mem.exorcised && !e.mem.repossessed ? pick(c, e, { fist: 2, pray: 2, spasm: 1 }) : pick(c, e, { spasm: 2, voice: 2, fist: 2 }),
     visual: { tint: 0x5a5048, glow: 0xff3060, fx: ['flicker'] },
   },
   {
@@ -1085,16 +1117,18 @@ reg.enemies([
           c.flee(e);
         },
       },
-      // 수도사의 두 번째 목소리에 불려 돌아간다 (빙의된 수도사의 「들어오라」)
+      // 수도사의 두 번째 목소리에 불려 돌아간다 (특성 a2-possessed)
       enter: {
         name: '다시 깃든다',
         intent: 'special',
         desc: `빠져나왔던 수도사의 몸으로 돌아간다. 수도사 체력 ${REPOSSESS_HEAL} 회복, 힘 +2. 그 전에 쓰러뜨리면 막는다`,
         run(c, e) {
           const monk = c.alive.find((x) => x.def === 'possessed-monk');
+          e.mem.called = 0;
+          e.mem.reachable = 0;
           if (!monk) {
+            // 깃들 몸이 없으면 다시 떠돈다 (세 번 움직이면 흩어진다)
             c.emit({ t: 'text', uid: e.uid, text: '깃들 몸이 없다', tone: 'info' });
-            c.flee(e);
             return;
           }
           monk.mem.repossessed = 1;
@@ -1105,10 +1139,16 @@ reg.enemies([
         },
       },
     },
-    // 세 번 행동하면 흩어진다 (수도사가 부르면 돌아간다)
-    ai: (_c, e) => {
+    // 세 번 행동하면 흩어진다. 수도사가 살아 있으면 한 번 움직인 뒤 두 번째 목소리를 따라 몸으로 돌아가려 한다 (한 차례 앞서 보인다)
+    ai: (c, e) => {
       if (e.mem.called) return 'enter';
       e.mem.acts = (e.mem.acts ?? 0) + 1;
+      if (e.mem.acts === 2 && c.alive.some((x) => x.def === 'possessed-monk' && x.mem.exorcised && !x.mem.repossessed)) {
+        // 돌아가려는 동안에는 몸 곁을 맴돌아 근접으로도 닿는다
+        e.mem.called = 1;
+        e.mem.reachable = 1;
+        return 'enter';
+      }
       return e.mem.acts > 3 ? 'fade' : cycle(e, ['whisper', 'chill']);
     },
     visual: { tint: 0x2a2630, glow: 0xff3060, scale: 0.6, fx: ['float', 'flicker'] },
@@ -1140,7 +1180,7 @@ reg.enemies([
       ),
       touch: mv.attack('벽 틈의 손길', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
     },
-    ai: (c, e) => pick(c, e, { touch: 4, lament: 2, brick: c.alive.some((a) => hpPct(a) < 0.8) ? 2 : 0 }),
+    ai: (c, e) => pick(c, e, { touch: 3, lament: 2, brick: c.alive.some((a) => hpPct(a) < 0.8) ? 2 : 0 }),
     visual: { tint: 0x6a6460, glow: 0xe8dcc0, fx: ['flicker'] },
   },
   {
@@ -1170,7 +1210,7 @@ reg.enemies([
     ai: (c, e) => {
       // 함께할 신도가 있으면 작은 종과 공명을 번갈아 울린다. 홀로 남으면 공명만
       const flock = c.alive.some((x) => x !== e && hasTag(x, 'cult'));
-      return pick(c, e, { clang: 3, toll: flock && last(e) !== 'toll' ? 2 : 0 });
+      return pick(c, e, { clang: 2, toll: flock && last(e) !== 'toll' ? 1 : 0 });
     },
     visual: { tint: 0x5a4a3a, glow: 0xffc060 },
   },
@@ -1194,19 +1234,19 @@ reg.enemies([
         extra: ['heal'],
         dmg: 5,
         melee: true,
-        desc: `출혈 2. 입힌 피해만큼 회복. 체력 피해를 주면 살을 파고든다 (내 턴이 시작될 때마다 체력 ${LATCH_DRAIN}를 빨린다. 이 뼈지네를 공격하면 떨어진다)`,
+        desc: `입힌 피해만큼 회복. 체력 피해를 주면 살을 파고든다 (내 턴이 시작될 때마다 체력 ${LATCH_DRAIN}${josa(LATCH_DRAIN, '을')} 빨린다. 이 뼈지네를 공격하면 떨어진다). 파고들지 못하면 출혈 2`,
         run(c, e) {
           const ds = c.enemyAttack(e, { type: 'pierce' });
           if (c.over || e.dead) return;
-          c.apply(c.p, 'bleed', 2, e);
           const n = ds.reduce((s, d) => s + d.hpLoss, 0);
-          if (n <= 0) return;
-          c.heal(e, n);
-          // 방어도에 막히지 않고 살에 닿았으면 파고든다 (특성 a2-latch)
-          if (!e.mem.latched && c.apply(c.p, LATCHED, 1, e) > 0) {
+          if (n > 0) c.heal(e, n);
+          // 방어도에 막히지 않고 살에 닿았으면 파고들어 직접 빤다 (특성 a2-latch). 못 파고들면 피를 흘리게 한다
+          if (n > 0 && !e.mem.latched && c.apply(c.p, LATCHED, 1, e) > 0) {
             e.mem.latched = 1;
             c.emit({ t: 'text', uid: e.uid, text: '턱이 살을 파고든다', tone: 'bad' });
+            return;
           }
+          c.apply(c.p, 'bleed', 2, e);
         },
       },
       thrash: mv.attack('몸부림', 3, { hits: 2 }),
@@ -1229,7 +1269,7 @@ reg.enemies([
     traits: ['a2-dust'],
     desc: '향로 연기를 따라 모여드는 창백한 나방. 시체에 알을 슨다. 그 날갯가루를 들이마신 자는 생각이 굳는다.',
     moves: {
-      dust: mv.attack('날갯가루', 5, { melee: false, type: 'arcane' }),
+      dust: mv.attack('날갯가루', 6, { melee: false, type: 'arcane' }),
       rub: { ...mv.charge('날개를 비빈다', 9), desc: '다음 차례에 「마비의 가루」(침묵 1). 그 사이 붕괴시키거나 공격으로 맞히면 가루가 흩날려 침묵을 걸지 못한다' },
       burst: release(
         mv.attack('마비의 가루', 9, {
@@ -1280,23 +1320,45 @@ reg.enemies([
           c.heal(mostHurt(c) ?? e, 10);
         },
       },
+      // 고해를 듣는다 (특성 a2-ledger): 다음 내 턴에 쓰는 기술 하나마다 죄를 적고, 그 차례에 판결을 내린다
+      listen: {
+        ...mv.horror('고해를 듣는다', LISTEN_SAN, {
+          desc: `고해를 다그친다 (정신 피해). 다음 내 턴에 내가 쓰는 기술 하나마다 장부에 죄를 적고 (최대 ${HEAR_MAX}, 죄 하나마다 「판결」 피해 +${SIN_DMG}) 그 차례에 판결을 내린다. 그 사이 붕괴시키면 더 적지 못한다`,
+          then(c, e) {
+            e.mem.hear = c.s.turn + 1;
+            e.mem.heard = 0;
+            c.emit({ t: 'text', uid: e.uid, text: '말하라. 하나도 빠짐없이 적겠다', tone: 'eldritch' });
+          },
+        }),
+        extra: ['special'],
+      },
       // 장부에 적은 죄를 묻는다 (특성 a2-ledger): 피해는 의도에 그대로 보인다
       verdict: {
         name: '판결',
         intent: 'attack',
         dmg: (_c, e) => VERDICT_DMG + SIN_DMG * (e.st[SINS] ?? 0),
         melee: true,
-        desc: `장부에 적은 죄 하나마다 피해 +${SIN_DMG}. 판결을 내리면 장부를 비운다`,
+        desc: `장부에 적은 죄 하나마다 피해 +${SIN_DMG} (고해를 듣는 동안에는 내가 쓰는 기술 하나마다 죄가 하나 는다). 판결을 내리면 장부를 비운다`,
         run(c, e) {
+          delete e.mem.hear;
           c.enemyAttack(e, { type: 'blunt' });
           if (!c.over && !e.dead) c.clear(e, SINS);
         },
       },
     },
     ai: (c, e) => {
-      // 장부에 죄가 쌓였으면 판결을 내린다
+      // 고해를 들었으면 다음 차례에 판결을 내린다 (그 사이 내가 쓰는 기술이 장부에 적힌다)
+      if (e.mem.hear === c.s.turn + 1) return 'verdict';
+      // 장부에 죄가 쌓였으면 판결을 내리고, 장부가 비었으면 이따금 고해를 듣는다 (세 차례 안에 다시 듣지 않는다)
       const sins = e.st[SINS] ?? 0;
-      return pick(c, e, { penance: 3, confess: 2, absolve: c.alive.some((a) => hpPct(a) < 0.7) ? 2 : 0, verdict: sins > 0 ? 2 + sins : 0 });
+      const heard = e.hist.slice(-3).includes('listen');
+      return pick(c, e, {
+        penance: 3,
+        confess: 2,
+        absolve: c.alive.some((a) => hpPct(a) < 0.7) ? 2 : 0,
+        verdict: sins > 0 ? 2 + sins : 0,
+        listen: sins > 0 || heard ? 0 : 2,
+      });
     },
     visual: { tint: 0x2e2a30, glow: 0xd0b070 },
   },
