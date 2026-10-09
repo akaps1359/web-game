@@ -1,261 +1,97 @@
-/* ───────── 심연 단계 (처음 화면의 고르기 · 상태 탭 한 줄) — ui/abyss.tsx ───────── */
+/* ───────── 심연 단계 (처음 화면의 ◀ N단계 ▶ · 상태 탭 한 줄) — ui/abyss.tsx ───────── */
 
-.abyss-panel {
-  padding: 12px;
+/* 처음 화면 아래: 심연 단계 한 줄(◀ N단계 ▶)과 시작 — 출신 목록은 위에서 스크롤된다 */
+.start-foot {
   display: grid;
-  gap: 10px;
+  gap: 8px;
+  padding: 8px 14px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(8, 10, 14, 0.7), rgba(8, 10, 14, 0.96));
 }
-.abyss-head {
-  display: flex;
-  align-items: center;
+
+/* 심연 단계 고르기: 양옆 화살표, 가운데는 단계·이름·새로 켜지는 규칙 (누르면 켜지는 규칙 전부) */
+.abyss-step {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
   gap: 6px;
+  align-items: stretch;
 }
-.abyss-head .t {
-  font-family: var(--serif);
-  font-weight: 800;
-  font-size: 16px;
-  color: #dff7ee;
-}
-.abyss-head .grow {
-  flex: 1;
-}
-.abyss-head .open {
-  font-size: 11.5px;
-  color: var(--ink-3);
-}
-
-/* 단계 고르기: 0~15, 여덟 칸씩 두 줄 */
-.abyss-pips {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 5px;
-}
-.abyss-pip {
-  position: relative;
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(16, 19, 24, 0.85);
-  color: var(--ink-2);
+.abyss-step .arrow {
   display: grid;
   place-items: center;
-  font-family: var(--num);
-  font-size: 15px;
-  transition: transform 0.08s, filter 0.08s, box-shadow 0.15s;
-}
-.abyss-pip:active {
-  transform: scale(0.93);
-  filter: brightness(1.25);
-}
-.abyss-pip.sel {
-  color: #07130f;
-  background: linear-gradient(180deg, #6fffd2, #2fc79a);
-  border-color: #9fffe2;
-  box-shadow: 0 0 14px rgba(79, 255, 196, 0.45);
-  font-weight: 700;
-}
-.abyss-pip.locked {
-  color: var(--ink-3);
-  background: rgba(10, 12, 15, 0.7);
-  border-style: dashed;
-  opacity: 0.6;
-}
-.abyss-pip .mark {
-  position: absolute;
-  top: -7px;
-  right: -3px;
-  font-size: 9.5px;
-  line-height: 1;
-  letter-spacing: -0.12em;
-  font-family: var(--font);
-  pointer-events: none;
-}
-/* 5·10·15단계: 테두리부터 다르다 */
-.abyss-pip.star1 {
-  border-color: rgba(240, 207, 122, 0.75);
-  box-shadow: inset 0 0 10px rgba(240, 207, 122, 0.12);
-}
-.abyss-pip.star1 .mark {
-  color: var(--brass-2);
-}
-.abyss-pip.star2 {
-  border-color: rgba(79, 255, 196, 0.7);
-  box-shadow: inset 0 0 12px rgba(79, 255, 196, 0.16);
-}
-.abyss-pip.star2 .mark {
-  color: var(--eldritch);
-}
-.abyss-pip.star3 {
-  border-color: rgba(255, 214, 246, 0.85);
-  box-shadow: inset 0 0 14px rgba(200, 160, 255, 0.22), 0 0 10px rgba(255, 196, 240, 0.18);
-}
-.abyss-pip.star3 .mark {
-  color: #ffd6f6;
-}
-.abyss-pip.locked.star1,
-.abyss-pip.locked.star2,
-.abyss-pip.locked.star3 {
-  opacity: 0.75;
-}
-
-/* 새로 켜지는 규칙 (고른 단계의 한 줄) */
-.abyss-new {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 10px;
   border-radius: var(--radius);
-  border: 1px solid rgba(111, 255, 210, 0.6);
-  background: linear-gradient(180deg, rgba(20, 60, 50, 0.45), rgba(8, 20, 18, 0.6));
+  border: 1px solid rgba(111, 255, 210, 0.4);
+  background: rgba(20, 60, 50, 0.4);
+  color: #9fffe2;
 }
-.abyss-new .badge {
-  width: 40px;
-  height: 40px;
-  flex: none;
-  border-radius: 10px;
+.abyss-step .arrow:active {
+  transform: scale(0.95);
+}
+.abyss-step .arrow:disabled {
+  opacity: 0.25;
+}
+.abyss-step .arrow .flip {
+  transform: scaleX(-1);
+}
+/* 다음 단계가 잠겼다: 자물쇠 (누르면 그 단계와 여는 법) */
+.abyss-step .arrow.locked {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--ink-3);
+}
+.abyss-step .mid {
   display: grid;
-  place-items: center;
-  background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.35));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.abyss-new .body {
-  flex: 1;
+  gap: 3px;
   min-width: 0;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: var(--radius);
+  border: 1px solid rgba(111, 255, 210, 0.4);
+  background: linear-gradient(180deg, rgba(20, 60, 50, 0.4), rgba(8, 20, 18, 0.6));
 }
-.abyss-new .top {
+.abyss-step .top {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
 }
-.abyss-new .name {
-  font-weight: 800;
+.abyss-step .top b {
+  font-family: var(--serif);
   font-size: 15px;
+  color: #dff7ee;
 }
-.abyss-new .lv {
-  font-family: var(--num);
-  font-size: 12px;
+.abyss-step .name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.abyss-step .desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.abyss-step .foot {
+  font-size: 11px;
   color: var(--ink-3);
 }
-.abyss-new .fresh {
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 999px;
-  color: #07130f;
-  background: #6fffd2;
+.abyss-step.star1 .mid {
+  border-color: rgba(240, 207, 122, 0.75);
+  background: linear-gradient(180deg, rgba(60, 50, 34, 0.55), rgba(20, 17, 12, 0.7));
+  box-shadow: 0 0 14px rgba(240, 207, 122, 0.16);
 }
-.abyss-new .desc {
-  margin-top: 3px;
-  font-size: 13px;
-  color: var(--ink);
-  line-height: 1.5;
-}
-.abyss-new.star1 {
-  border-color: rgba(240, 207, 122, 0.8);
-  background: linear-gradient(180deg, rgba(60, 50, 34, 0.55), rgba(20, 17, 12, 0.65));
-  box-shadow: 0 0 18px rgba(240, 207, 122, 0.18);
-}
-.abyss-new.star1 .fresh {
-  background: var(--brass-2);
-}
-.abyss-new.star2 {
+.abyss-step.star2 .mid {
   border-color: rgba(79, 255, 196, 0.75);
-  background: linear-gradient(180deg, rgba(14, 60, 50, 0.55), rgba(6, 24, 22, 0.7));
-  box-shadow: 0 0 20px rgba(79, 255, 196, 0.2);
+  box-shadow: 0 0 16px rgba(79, 255, 196, 0.18);
 }
-.abyss-new.star2 .fresh {
-  background: var(--eldritch);
-}
-.abyss-new.star3 {
+.abyss-step.star3 .mid {
   border-color: rgba(255, 214, 246, 0.8);
   background: linear-gradient(160deg, rgba(70, 40, 80, 0.6), rgba(20, 30, 50, 0.7));
-  box-shadow: 0 0 24px rgba(220, 180, 255, 0.25);
-}
-.abyss-new.star3 .fresh {
-  background: linear-gradient(90deg, #ffc9ee, #ffe39c, #b8ffda, #aadcff);
+  box-shadow: 0 0 20px rgba(220, 180, 255, 0.22);
 }
 .abyss-stars {
   font-size: 12px;
   letter-spacing: -0.1em;
-}
-
-/* 켜지는 규칙 전부: 한눈에 (아이콘 + 단계 + 이름), 누르면 설명 */
-.abyss-list-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.abyss-list-head .lbl {
-  font-size: 12px;
-  margin-top: 2px;
-  letter-spacing: 0.06em;
-  color: var(--ink-3);
-  flex: 1;
-}
-.abyss-chips {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-}
-.abyss-chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.3);
-  color: var(--ink-2);
-  font-size: 12.5px;
-  text-align: left;
-  min-width: 0;
-  transition: transform 0.08s, filter 0.08s;
-}
-.abyss-chip:active {
-  transform: scale(0.96);
-  filter: brightness(1.2);
-}
-.abyss-chip .n {
-  font-family: var(--num);
-  font-size: 11.5px;
-  color: var(--ink-3);
-  min-width: 14px;
-  text-align: right;
-}
-.abyss-chip .nm {
-  line-height: 1.3;
-  word-break: keep-all;
-}
-/* 새로 켜진 규칙: 고른 단계 칸과 같은 청록빛 */
-.abyss-chip.fresh {
-  border-color: #6fffd2;
-  color: #e6fff6;
-  background: rgba(79, 255, 196, 0.13);
-  box-shadow: 0 0 10px rgba(79, 255, 196, 0.18);
-}
-.abyss-chip.star1 {
-  color: var(--brass-2);
-  border-color: rgba(240, 207, 122, 0.55);
-}
-.abyss-chip.star2 {
-  color: var(--eldritch);
-  border-color: rgba(79, 255, 196, 0.5);
-}
-.abyss-chip.star3 {
-  color: #ffd6f6;
-  border-color: rgba(255, 214, 246, 0.6);
-}
-
-.abyss-none {
-  font-size: 13px;
-  color: var(--ink-2);
-}
-.abyss-foot {
-  font-size: 11.5px;
-  color: var(--ink-3);
-  line-height: 1.5;
 }
 
 /* 진행 중인 판: 상태 탭의 한 줄 */

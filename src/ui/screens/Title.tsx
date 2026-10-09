@@ -7,7 +7,7 @@ import { sound } from '../../sound';
 import { Icon } from '../components';
 import { SCHOOL_COLOR, SCHOOL_NAME, josa } from '../text';
 import { confirmThen } from '../ask';
-import { AbyssPicker } from '../abyss';
+import { AbyssStepper } from '../abyss';
 import { MAX_ASC } from '../../engine/abyss';
 
 export function Title() {
@@ -16,11 +16,23 @@ export function Title() {
   // 처음엔 열린 가장 깊은 단계를 고른다
   const [pick, setAsc] = useState(() => Math.max(0, Math.min(MAX_ASC, meta.abyss)));
   const asc = Math.min(pick, meta.abyss);
+  // 출신은 눌러 고르고, 아래의 「여정 시작」으로 떠난다 (처음엔 열린 출신 중 첫째)
+  const [chosen, setChosen] = useState(() => [...ORIGINS.values()].find((o) => meta.unlocked.includes(o.id))?.id ?? '');
   const unlock = () => void sound.unlock();
 
   if (mode === 'origin') {
-    const picker = <AbyssPicker value={asc} max={Math.min(MAX_ASC, meta.abyss)} onChange={setAsc} />;
-    const startBody = (save: boolean) => [asc > 0 ? `심연 ${asc}단계예요. 규칙 ${asc}개가 켜져요.` : '', save ? '저장된 여정은 사라져요.' : ''].filter(Boolean).join('\n') || undefined;
+    const origin = ORIGINS.get(chosen);
+    const start = () => {
+      if (!origin) return;
+      const go = () => newGame(origin.id, asc);
+      // 저장된 여정이 있을 때만 묻는다 (지워지니까)
+      if (hasSave())
+        confirmThen(
+          { title: `${origin.name}${josa(origin.name, '으로')} 새 여정을 시작할까요?`, icon: origin.icon, body: [asc > 0 ? `심연 ${asc}단계예요. 규칙 ${asc}개가 켜져요.` : '', '저장된 여정은 사라져요.'].filter(Boolean).join('\n'), ok: '시작한다', danger: true },
+          go,
+        );
+      else go();
+    };
     return (
       <div class="screen" onPointerDown={unlock}>
         <div class="sheet-head" style={{ padding: '14px 14px 4px' }}>
@@ -30,13 +42,11 @@ export function Title() {
           <h2 class="title grow">출신 선택</h2>
         </div>
         <div class="scroll" style={{ flex: 1, padding: '6px 14px' }}>
-          {/* 심연 단계가 하나라도 열렸으면 먼저 고른다 (출신을 누르면 바로 시작 확인 창이 뜨므로) */}
-          {meta.abyss > 0 && <div style={{ marginBottom: 12 }}>{picker}</div>}
           <div class="list">
             {[...ORIGINS.values()].map((o) => {
               const locked = !meta.unlocked.includes(o.id);
               return (
-                <button class={`card ${locked ? 'off' : ''}`} style={{ padding: 14 }} onClick={() => !locked && confirmThen({ title: `${o.name}${josa(o.name, '으로')} 여정을 시작할까요?`, icon: o.icon, body: startBody(hasSave()), ok: '시작한다', danger: hasSave() }, () => newGame(o.id, asc))}>
+                <button class={`card ${locked ? 'off' : ''} ${o.id === chosen ? 'sel' : ''}`} style={{ padding: 14 }} aria-pressed={o.id === chosen} onClick={() => !locked && setChosen(o.id)}>
                   <div class="badge" style={{ width: 56, height: 56 }}>
                     <Icon name={locked ? 'gi:padlock' : o.icon} size={34} color={locked ? 'var(--ink-3)' : 'var(--brass-2)'} />
                   </div>
@@ -72,8 +82,14 @@ export function Title() {
               );
             })}
           </div>
-          {/* 아직 아무 단계도 열리지 않았으면 아래에 둔다 (판을 깨면 열린다는 것만 알린다) */}
-          {meta.abyss <= 0 && <div style={{ margin: '14px 0 8px' }}>{picker}</div>}
+        </div>
+        {/* 아래에 붙은 한 줄: 심연 단계 ◀ ▶ 와 시작 */}
+        <div class="start-foot">
+          <AbyssStepper value={asc} max={Math.min(MAX_ASC, meta.abyss)} onChange={setAsc} />
+          <button class="btn wide" disabled={!origin} onClick={start}>
+            <Icon name="gi:dungeon-gate" size={18} />
+            {origin ? `${origin.name}${josa(origin.name, '으로')} 여정 시작` : '출신을 고르세요'}
+          </button>
         </div>
       </div>
     );
