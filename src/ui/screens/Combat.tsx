@@ -4,7 +4,7 @@ import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
 import { BUILTIN_MOVES, DISGUISE_REVEAL, GUARD, HIDDEN_REVEAL, breakProfile, lvlVal, shownIntentOf, toleranceGain } from '../../engine/combat';
 import { DEPTH, MUTATION, aegisCap, aegisLeft, aegisPoiseCap, canAwaken } from '../../content/depth';
-import type { CombatChoice, EnemyUnit, Intent, IntentKind, Objective, SkillDef } from '../../engine/types';
+import type { CombatChoice, EnemyUnit, Intent, IntentKind, Objective, SkillDef, TurnNote } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
 import { stage } from '../../render/stage';
@@ -260,7 +260,7 @@ ${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
                 </span>
               )}
             </div>
-            <StatusRow st={p.st} />
+            <StatusRow st={p.st} notes={turnNotes()} />
           </div>
 
           <InfoBox onIntent={setPeek} />
@@ -424,11 +424,29 @@ function Guard({ icon, n, color, label }: { icon: string; n: number; color: stri
   );
 }
 
-function StatusRow({ st, max, muts }: { st: Record<string, number>; max?: number; muts?: string[] }) {
+/**
+ * 턴마다 바뀌는 효과의 지금 모습 (Hooks.turnNote — 홀짝 턴 보너스, N턴마다 이루어지는 정수·장비·광기 등).
+ * 내 상태 칸 앞에 칩으로: 무엇이 지금 켜져 있고 다음은 언제인지
+ */
+function turnNotes(): TurnNote[] {
+  const c = store.combat;
+  if (!c) return [];
+  const out: TurnNote[] = [];
+  for (const [h, self] of c.sources(c.p)) {
+    const n = h.turnNote?.(c, self);
+    if (n) out.push(n);
+  }
+  return out;
+}
+
+const NOTE_COLOR = { now: '#9fe8ff', idle: '#a8b4bc', bad: '#ff8a7a' };
+
+function StatusRow({ st, max, muts, notes }: { st: Record<string, number>; max?: number; muts?: string[]; notes?: TurnNote[] }) {
   const ids = Object.keys(st).filter((id) => st[id] && STATUSES.has(id) && !STATUSES.get(id)!.hidden);
   // 변이(보라 테두리)는 언제나 앞에 보인다 — 상태는 남은 자리에 (content/depth.ts)
   const ms = (muts ?? []).filter((id) => MUTATION.has(id));
-  if (!ids.length && !ms.length) return null;
+  const ns = notes ?? [];
+  if (!ids.length && !ms.length && !ns.length) return null;
   // 적 이름표 아래는 한 줄만 (두 줄이 되면 아래 내 정보 칸에 가려진다) — 넘치는 것은 「+N」을 눌러 본다
   const cap = max ? Math.max(1, Math.floor((max + 2) / 22) - ms.length) : ids.length;
   const shown = ids.length > cap ? ids.slice(0, cap - 1) : ids;
@@ -442,6 +460,16 @@ function StatusRow({ st, max, muts }: { st: Record<string, number>; max?: number
     });
   return (
     <div class="st-row" style={max ? { maxWidth: max } : { justifyContent: 'flex-start', maxWidth: 'none' }}>
+      {ns.map((n) => {
+        const color = n.bad && n.now ? NOTE_COLOR.bad : n.now ? NOTE_COLOR.now : NOTE_COLOR.idle;
+        const tip = () => showTip({ title: n.title, icon: n.icon, color, body: n.desc });
+        return (
+          <span class={`st tn ${n.now ? 'now' : ''} ${n.bad ? 'bad' : ''}`} style={{ pointerEvents: 'auto' }} {...press(tip, tip)}>
+            <Icon name={n.icon} size={13} color={color} />
+            <b>{n.text}</b>
+          </span>
+        );
+      })}
       {ms.map((id) => {
         const m = MUTATION.get(id)!;
         const tip = () => showTip({ title: `변이 · ${m.name}`, icon: m.icon, color: MUT_COLOR, body: m.desc });
@@ -831,7 +859,7 @@ function GuardLegend() {
       </div>
       <p class="legend-note">{breakGlossary()} 붕괴한 적은 체력 막대가 붉게 빛나고, 숫자는 남은 쉬는 차례다.</p>
       <p class="legend-note">
-        깊은 층(3층부터)의 존재는 붕괴를 겪을수록 버팀이 두꺼워지고(붕괴 내성), 정예·수호자는 한 턴에 받는 피해와 깎이는 버팀에 상한이 있다(가호 — 붕괴시키면 피해 상한 두 배). 이름표 아래 보라 테두리는
+        깊은 층(3층부터)의 존재는 붕괴를 겪을수록 버팀이 두꺼워지고(붕괴 내성), 정예·수호자는 한 턴에 받는 피해와 깎이는 버팀에 상한이 있다(가호 — 붕괴시키면 피해 상한 {DEPTH.aegisBroken}배). 이름표 아래 보라 테두리는
         변이다.
       </p>
     </div>
@@ -1030,7 +1058,7 @@ function enemyTip(e: EnemyUnit) {
             { label: '붕괴하면', value: gain > 0 ? `${breakSay(def)} · 내성 버팀 +${gain}` : breakSay(def) },
           ]
         : []),
-      ...(cap > 0 && store.combat ? [{ label: '가호', value: `한 턴 피해 상한 ${cap}${e.broken ? ' (붕괴로 두 배)' : ''} · 남은 ${aegisLeft(store.combat, e)}${aegisPoiseCap(e) > 0 ? ` · 버팀은 한 턴에 ${aegisPoiseCap(e)}까지` : ''}` }] : []),
+      ...(cap > 0 && store.combat ? [{ label: '가호', value: `한 턴 피해 상한 ${cap}${e.broken ? ` (붕괴로 ${DEPTH.aegisBroken}배)` : ''} · 남은 ${aegisLeft(store.combat, e)}${aegisPoiseCap(e) > 0 ? ` · 버팀은 한 턴에 ${aegisPoiseCap(e)}까지` : ''}` }] : []),
       ...(canAwaken(e) ? [{ label: '각성', value: e.mem.awk ? '깨어났다 — 평범한 차례에 심연 강타를 모은다' : `체력이 ${Math.round(DEPTH.awakenAt * 100)}% 아래로 내려가면 깨어난다` }] : []),
       {
         label: '약점',
@@ -1058,7 +1086,7 @@ function skillTip(
   showTip({
     title: def.name + (lvl > 0 ? '+' : ''),
     nameClass: def.rarity === 'genesis' ? 'genesis-name' : undefined,
-    sub: `${schoolLabel(def)} · ${RANGE_NAME[def.range]} · ${TARGET_NAME[def.target]}${def.type ? ` · ${DMG_NAME[def.type]}` : ''}`,
+    sub: `${schoolLabel(def)} · ${RANGE_NAME[def.range]} · ${TARGET_NAME[def.target]}${typeLabel(def, use)}`,
     icon: def.icon,
     color: SCHOOL_COLOR[def.school],
     body: segs.map((x) => x.t).join('') + (runes.length ? `\n\n각인: ${runes.map((r) => RUNES.get(r)?.name).join(', ')}` : '') + (gap ? `\n\n${harvestSay(gap)}` : ''),
@@ -1067,6 +1095,13 @@ function skillTip(
       { label: '재사용 대기', value: cd >= 99 ? '전투당 1회' : cd > 0 ? `${cd}턴` : '없음' },
     ],
   });
+}
+
+/** 설명의 속성 표시: 턴마다 바뀌는 것(굴절광)은 '이번 턴 화염', 각인으로 바뀐 것은 바뀐 속성 */
+function typeLabel(def: SkillDef, use?: { type?: SkillDef['type'] } | null): string {
+  const t = use?.type ?? def.type;
+  if (!t) return '';
+  return ` · ${def.typeNow ? '이번 턴 ' : ''}${DMG_NAME[t]}`;
 }
 
 /** 두 색을 섞는다 (#rrggbb, t = b 쪽 비율) */
@@ -1096,6 +1131,8 @@ function SkillButton({ r }: { r: string }) {
   const cost = c.costOf(info);
   const sel = s.sel === r;
   const hue = info.basic ? '#a39a88' : SCHOOL_COLOR[def.school];
+  // 턴마다 바뀌는 피해 속성 (굴절광): 이번 턴의 것
+  const now = def.typeNow?.(c);
   // 기억을 빼앗기면 이름이 뒤섞여 보인다 (기본기는 그대로)
   const scrambled = !!(s.snap?.ui ?? c.s.vars)['ui:scramble'] && !info.basic;
   const tap = () => {
@@ -1132,6 +1169,12 @@ function SkillButton({ r }: { r: string }) {
         </span>
       )}
       {info.basic && <span class="basic-tag">{info.basic === 'weapon' ? '무기' : '방어'}</span>}
+      {now && (
+        <span class="dtype-now" style={{ color: DMG_COLOR[now] }} aria-label={`이번 턴 ${DMG_NAME[now]}`}>
+          <Icon name={DMG_ICON[now]} size={11} color={DMG_COLOR[now]} />
+          {DMG_NAME[now]}
+        </span>
+      )}
       <Icon name={def.icon} size={24} color={mix(hue, '#eadcbc', 0.28)} />
       <span class={`sn ${scrambled ? 'scrambled' : ''} ${!scrambled && def.rarity === 'genesis' ? 'genesis-name' : ''}`} style={{ color: def.rarity === 'basic' ? '#e9e3d6' : RARITY_COLOR[def.rarity] === '#cfc8b8' ? '#e9e3d6' : RARITY_COLOR[def.rarity] }}>
         {scrambled ? garbleStable(def.name) : def.name}
@@ -1204,7 +1247,7 @@ function InfoBox({ onIntent }: { onIntent: (uid: string) => void }) {
             {info.owned.lvl > 0 ? '+' : ''}
             <span class="nm-sub">
               {RANGE_NAME[info.def.range]} · {TARGET_NAME[info.def.target]}
-              {info.def.type ? ` · ${DMG_NAME[info.def.type]}` : ''}
+              {typeLabel(info.def, use)}
               {cd > 0 ? ` · 재사용 대기 ${cd >= 99 ? '전투당 1회' : cd + '턴'}` : ''}
             </span>
           </div>

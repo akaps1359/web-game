@@ -1,4 +1,5 @@
 import { reg } from '../engine/registry';
+import { cycleNote } from './lib';
 
 /** 정신력 붕괴로 얻는 광기(단점)와 각성(장점) */
 reg.madness([
@@ -100,6 +101,7 @@ reg.madness([
     icon: 'gi:screaming',
     desc: '3의 배수 턴마다 정신력 -3',
     hooks: {
+      turnNote: (c) => cycleNote(c, { n: 3, on: 0, icon: 'gi:screaming', title: '환청', what: '3의 배수 턴이 시작될 때 정신력 -3', bad: true }),
       onTurnStart(c) {
         if (c.s.turn % 3 === 0) c.loseSanity(3);
       },

@@ -268,7 +268,26 @@ export interface BlockCtx {
   fromSkill?: SkillUse;
 }
 
+/**
+ * 턴마다 바뀌는 효과의 지금 모습 — 내 상태 칸 앞의 칩 (굴절광의 속성, 홀짝 턴 보너스, N턴마다 이루어지는 효과).
+ * 화면에만 쓴다 (상태를 바꾸지 않는다)
+ */
+export interface TurnNote {
+  icon: string;
+  /** 칩에 보이는 짧은 말 ('이번 턴', '2턴 뒤', '물리 +20%') */
+  text: string;
+  /** 누르면 보이는 제목과 풀이 */
+  title: string;
+  desc: string;
+  /** 이번 턴에 이루어졌거나 지금 켜져 있다 (밝게) */
+  now?: boolean;
+  /** 나쁜 것(광기 등)은 붉게 */
+  bad?: boolean;
+}
+
 export interface Hooks {
+  /** 턴마다 바뀌는 효과의 지금 모습 (화면 칩 — TurnNote). 상태를 바꾸지 않는다 */
+  turnNote?(c: Combat, s: HookSelf): TurnNote | null;
   onCombatStart?(c: Combat, s: HookSelf): void;
   /** 플레이어 턴 시작 (AP·방어도 처리 이후) */
   onTurnStart?(c: Combat, s: HookSelf): void;
@@ -354,6 +373,11 @@ export interface SkillDef {
   /** {key} 수치, {D:key} 피해 미리보기, {B:key} 방어도 미리보기 */
   desc: string;
   run(c: Combat, u: SkillUse, target: EnemyUnit | null): void;
+  /**
+   * 턴마다 바뀌는 피해 속성 (굴절광처럼). 쓰는 순간(makeUse)의 SkillUse.type이 되어 피해 미리보기·카드·설명이 이번 턴의 속성을 쓴다
+   * (각인이 속성을 바꾸면 그것이 먼저다)
+   */
+  typeNow?(c: Combat): DmgType;
   /** 사용 불가 사유 (없으면 null) */
   canUse?(c: Combat, u: SkillUse): string | null;
   /** 최대 레벨 (기본 1 = 1회 강화) */

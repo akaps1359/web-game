@@ -1055,6 +1055,14 @@ reg.essences([
       name: '문턱의 걸음',
       desc: '홀수 턴에는 참격·관통·타격, 짝수 턴에는 화염·비전·공허 공격 피해 +40%',
       hooks: {
+        // 이번 턴에 무엇이 강해지는지 (홀짝이 번갈아)
+        turnNote(c, s) {
+          const phys = c.s.turn % 2 === 1;
+          const pct = Math.round(20 * s.n);
+          const now = phys ? '참격·관통·타격' : '화염·비전·공허';
+          const next = phys ? '화염·비전·공허' : '참격·관통·타격';
+          return { icon: 'gi:magic-portal', text: `${phys ? '물리' : '원소'} +${pct}%`, title: '문턱의 걸음', desc: `이번 턴(${phys ? '홀수' : '짝수'}): ${now} 공격 피해 +${pct}%. 다음 턴엔 ${next}`, now: true };
+        },
         modDamageOut(c, s, d) {
           if (!d.attack || d.src !== c.p || d.type === 'true') return;
           const phys = d.type === 'slash' || d.type === 'pierce' || d.type === 'blunt';

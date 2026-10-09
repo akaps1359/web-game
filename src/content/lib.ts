@@ -1,9 +1,26 @@
 import type { Combat } from '../engine/combat';
-import type { CineName, DamageCtx, DmgType, EnemyUnit, Objective, SkillDef, SkillUse, TargetMode } from '../engine/types';
+import type { CineName, DamageCtx, DmgType, EnemyUnit, Objective, SkillDef, SkillUse, TargetMode, TurnNote } from '../engine/types';
 
 /** 스킬 정의 헬퍼 (기본값 채움) */
 export function skill(d: Omit<SkillDef, 'tags' | 'vals'> & { tags?: string[]; vals?: SkillDef['vals'] }): SkillDef {
   return { tags: [], vals: {}, ...d };
+}
+
+/**
+ * 'N턴마다' 효과의 지금 모습 (Hooks.turnNote — 내 상태 칸 앞의 칩). on: 이루어지는 턴의 나머지 (turn % n === on).
+ * 내 턴이 시작될 때 이루어지는 효과라 이번 턴이면 '이번 턴', 아니면 몇 턴 뒤인지 (2026-10 피드백: 턴마다 바뀌는 것이 지금 무엇인지 보이게)
+ */
+export function cycleNote(c: Combat, o: { n: number; on: number; icon: string; title: string; what: string; bad?: boolean }): TurnNote {
+  const t = c.s.turn;
+  const k = (((o.on - t) % o.n) + o.n) % o.n;
+  return {
+    icon: o.icon,
+    text: k === 0 ? '이번 턴' : `${k}턴 뒤`,
+    title: o.title,
+    desc: `${o.what}. ${k === 0 ? '이번 턴에 이루어졌다' : `${k}턴 뒤(${t + k}번째 턴)에 이루어진다`}`,
+    now: k === 0,
+    bad: o.bad,
+  };
 }
 
 /** dmg/hits/poise 값을 써서 공격 */

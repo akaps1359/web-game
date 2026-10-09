@@ -111,12 +111,16 @@ export function toleranceGain(def: Pick<EnemyDef, 'poise' | 'act'>, times: numbe
   return Math.max(1, Math.ceil(scaledPoise(def.poise, def.act) * r));
 }
 
-/** 붕괴 (등급 기본값 — 적마다 EnemyDef.brk로 바꾼다). stun: 행동을 건너뛰는 횟수 · vuln: 붕괴 중 받는 피해 배율 */
+/**
+ * 붕괴 (등급 기본값 — 적마다 EnemyDef.brk로 바꾼다). stun: 행동을 건너뛰는 횟수 · vuln: 붕괴 중 받는 피해 배율.
+ * 2026-10-09 "붕괴로 얻는 것을 조금만 줄이자": 받는 피해 1.5·2 → 1.35·1.75 (쉬는 차례는 그대로 — 적마다 다른 긴 기절).
+ * 시뮬(240판): 봇 25.8 → 20.0%, 1.5배 47.1 → 45.4%, 2.5배 77 → 79% (가호의 붕괴 배율 2 → 1.5와 함께, content/depth.ts)
+ */
 export const BREAK: Record<EnemyDef['tier'], { stun: number; vuln: number }> = {
-  normal: { stun: 2, vuln: 1.5 },
-  elite: { stun: 1, vuln: 1.5 },
-  boss: { stun: 1, vuln: 2 },
-  minion: { stun: 1, vuln: 1.5 },
+  normal: { stun: 2, vuln: 1.35 },
+  elite: { stun: 1, vuln: 1.35 },
+  boss: { stun: 1, vuln: 1.75 },
+  minion: { stun: 1, vuln: 1.35 },
 };
 
 /** 이 적이 붕괴하면: 행동을 건너뛰는 횟수와 받는 피해 배율 */
@@ -1157,6 +1161,8 @@ export class Combat {
       power: mult,
       basic: info.basic,
       primary: null,
+      // 턴마다 바뀌는 속성 (굴절광): 미리보기·카드·설명이 이번 턴의 것을 쓴다. 각인(공허 각인)은 beforeSkill에서 덮어쓴다
+      type: def.typeNow?.(this),
       v(key: string) {
         const raw = def.vals[key];
         if (raw === undefined) return 0;
@@ -1258,7 +1264,7 @@ export class Combat {
     u.primary = target;
     this.fire(this.p, 'beforeSkill', u);
     for (const [h, self] of this.runeHooks(u)) h.beforeSkill?.(this, self, u);
-    this.emit({ t: 'skill', skill: info.def.id, name: info.def.name, target: target?.uid, school: info.def.school, dtype: info.def.type, echo });
+    this.emit({ t: 'skill', skill: info.def.id, name: info.def.name, target: target?.uid, school: info.def.school, dtype: u.type ?? info.def.type, echo });
     info.def.run(this, u, target);
     if (this.over) return;
     this.fire(this.p, 'afterSkill', u);

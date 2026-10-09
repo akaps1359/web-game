@@ -1,6 +1,6 @@
 import { reg } from '../../engine/registry';
 import { isEnemy } from '../../engine/combat';
-import { dealt, guard, hit, skill } from '../lib';
+import { cycleNote, dealt, guard, hit, skill } from '../lib';
 import type { SkillDef } from '../../engine/types';
 import { corpses, eatCorpse, hasTag } from './enemies';
 
@@ -849,6 +849,7 @@ reg.essences([
         onTurnStart(c, s) {
           if (c.s.turn % 3 === 0) c.apply(c.p, 'str', s.n, c.p);
         },
+        turnNote: (c, s) => cycleNote(c, { n: 3, on: 0, icon: 'gi:incense', title: '꺼지지 않는 향', what: `3의 배수 턴이 시작될 때 힘 +${s.n}` }),
       },
     },
     actives: ['ess-censer-priest-rite', 'ess-censer-priest-smite'],
@@ -1073,6 +1074,7 @@ reg.essences([
       name: '지휘',
       desc: '3의 배수 턴이 시작될 때 행동력 +1',
       hooks: {
+        turnNote: (c, s) => cycleNote(c, { n: 3, on: 0, icon: 'gi:music-spell', title: '지휘', what: `3의 배수 턴이 시작될 때 행동력 +${s.n}` }),
         onTurnStart(c, s) {
           if (c.s.turn % 3 !== 0) return;
           c.s.ap += s.n;
@@ -1170,6 +1172,7 @@ reg.essences([
       name: '대종의 울림',
       desc: '3의 배수 턴이 시작될 때 대종이 울려 적 전체에 비전 피해 12, 약화 1',
       hooks: {
+        turnNote: (c, s) => cycleNote(c, { n: 3, on: 0, icon: 'gi:ringing-bell', title: '대종의 울림', what: `3의 배수 턴이 시작될 때 대종이 울려 적 전체에 비전 피해 ${6 * s.n}, 약화 1` }),
         onTurnStart(c, s) {
           if (c.s.turn % 3 !== 0 || !c.alive.length) return;
           c.emit({ t: 'text', text: '어딘가에서 대종이 울린다', tone: 'eldritch' });

@@ -1,4 +1,5 @@
 import { reg } from '../engine/registry';
+import { cycleNote } from './lib';
 import { isEnemy } from '../engine/combat';
 
 /**
@@ -142,6 +143,7 @@ reg.equips([
     rarity: 'uncommon',
     desc: '3의 배수 턴 시작 시 행동력 +1 (강화마다 전투 첫 턴 행동력 +1)',
     hooks: {
+      turnNote: (c) => cycleNote(c, { n: 3, on: 0, icon: 'gi:pocket-watch', title: '멈춘 회중시계', what: '3의 배수 턴이 시작될 때 행동력 +1' }),
       onTurnStart(c, s) {
         if (c.s.turn === 1 && s.n > 0) {
           c.s.ap += s.n;

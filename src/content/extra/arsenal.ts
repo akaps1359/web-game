@@ -116,11 +116,13 @@ export const ANATOMY_PCT = [20, 5];
 // ───────────── 상태 ─────────────
 
 reg.statuses([
+  // 상태 칸에는 숨긴다 (수치 '1'은 뜻이 없다) — 화면에는 장비의 turnNote 칩(이번 턴의 속성)과 카드의 속성 표시가 대신 보인다
   ...PRISM.map((t, i) => ({
     id: prismStatus(t),
     name: `굴절: ${DMG_KO[t]}`,
     icon: DMG_ICON_GI[t],
     kind: 'buff' as const,
+    hidden: true,
     desc: `이번 턴 굴절 프리즘이 ${DMG_KO[t]}${josa(DMG_KO[t], '으로')} 친다. 다음 턴엔 ${DMG_KO[PRISM[(i + 1) % PRISM.length]]}`,
   })),
   {
@@ -165,6 +167,8 @@ reg.skills([
     reads: [],
     vals: { dmg: [5, 7, 9] },
     desc: '이번 턴의 굴절 속성으로 {D:dmg} 피해. 속성은 내 턴마다 참격·화염·관통·비전·타격·공허 순서로 바뀐다',
+    // 카드·미리보기·설명이 이번 턴의 속성을 쓴다 (약점이면 미리보기에 오른 숫자)
+    typeNow: (c) => prismType(c),
     run: (c, u, t) => void hit(c, u, t, { type: prismType(c) }),
   }),
   skill({
@@ -262,6 +266,18 @@ reg.equips([
       },
       onTurnStart(c) {
         showPrism(c);
+      },
+      // 내 상태 칸 앞의 칩: 이번 턴의 속성, 누르면 다음 턴의 속성까지
+      turnNote(c) {
+        const now = prismType(c);
+        const next = PRISM[(PRISM.indexOf(now) + 1) % PRISM.length];
+        return {
+          icon: DMG_ICON_GI[now],
+          text: DMG_KO[now],
+          title: '굴절 프리즘',
+          desc: `이번 턴 굴절광은 ${DMG_KO[now]}${josa(DMG_KO[now], '으로')} 친다. 다음 턴엔 ${DMG_KO[next]} (참격 → 화염 → 관통 → 비전 → 타격 → 공허)`,
+          now: true,
+        };
       },
     },
   },

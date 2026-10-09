@@ -1,6 +1,6 @@
 import { reg } from '../../engine/registry';
 import { isEnemy, lvlVal, type Combat } from '../../engine/combat';
-import { combo, dealt, guard, hit, killed, skill } from '../lib';
+import { combo, cycleNote, dealt, guard, hit, killed, skill } from '../lib';
 import type { SkillDef } from '../../engine/types';
 import { flipRows } from './common';
 import { TIME_DEBT } from './court';
@@ -1058,6 +1058,7 @@ reg.essences([
       name: '보이지 않는 몸',
       desc: '1·4·7…번째 턴 시작 시 회피 1',
       hooks: {
+        turnNote: (c, s) => cycleNote(c, { n: 3, on: 1, icon: 'gi:jellyfish', title: '보이지 않는 몸', what: `1·4·7…번째 턴이 시작될 때 회피 ${s.n}` }),
         onTurnStart(c, s) {
           if (c.s.turn % 3 === 1) c.apply(c.p, 'evasive', s.n, c.p);
         },
