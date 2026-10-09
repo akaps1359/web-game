@@ -36,6 +36,9 @@ import {
 } from '../src/content/act2/enemies';
 import {
   ABSOLVE_SAN,
+  BELFRY_CYCLE,
+  BELFRY_NAME,
+  BELL_RAGE_STR,
   CONFESSION,
   HANGED,
   KNELL,
@@ -381,16 +384,24 @@ describe('종지기 — 종소리에 맞춰라', () => {
     expect(bell.st[RESONANCE]).toBeUndefined();
   });
 
-  it('대종이 깨지면 산산조각 연출 — 종지기는 제 심장을 울린다', () => {
+  it('대종이 깨지면 산산조각 연출 — 종지기는 비틀거리다 격노하고 종탑의 광란에 빠진다 (광란 속에서는 제 심장을 울린다)', () => {
     const c = fight('lord-a2');
     const keeper = one(c, 'bellkeeper');
     const bell = one(c, 'great-bell');
+    const str0 = keeper.st.str ?? 0;
     c.damage({ src: c.p, tgt: bell, base: 9999, type: 'true' });
     expect(bell.dead).toBe(true);
     expect(keeper.st.stun).toBe(1);
+    expect(keeper.st.str ?? 0).toBe(str0 + BELL_RAGE_STR);
+    // 체력이 가득해도 대종이 깨지면 2막 — 첫 행동은 종을 끊는 것
+    expect(keeper.form).toBe(1);
+    expect(keeper.name).toBe(BELFRY_NAME);
+    expect(keeper.intent?.move).toBe('cut');
     expect(cinesOf(c.drain()).some((x) => x.name === 'shatter')).toBe(true);
+    // 광란의 순서에 제 심장을 울리는 차례가 있다
     const seq: string[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < BELFRY_CYCLE.length; i++) {
+      delete keeper.mem.cutDue;
       c.planIntent(keeper);
       seq.push(keeper.intent!.move);
     }

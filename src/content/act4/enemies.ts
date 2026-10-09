@@ -6,6 +6,38 @@ import { countDef, mv, others, release } from '../moves';
 import { cine, setUi } from '../lib';
 import { canDoom, castDoom, dimLight, doomDesc, doomMove, flipRows, lockSkill, mostHurt, reviveAlly, setWeak } from './common';
 import {
+  BEAM_DMG,
+  BEAM_HITS,
+  BLACK_STAR_HP,
+  BLACK_STAR_POISE,
+  BLACK_STAR_RITUAL,
+  BLACKHOLE_AT,
+  BLACKHOLE_STR,
+  COLLAPSE_DMG,
+  COLLAPSED,
+  DEVOUR_LIGHT,
+  DEVOUR_SAN,
+  EYE_HP,
+  EYES_MAX,
+  FEED_HEAL,
+  HAWKING_PCT,
+  HEAL_PER_EYE,
+  HORIZON_MAX,
+  HORIZON_TURNS,
+  JUDGE_DMG,
+  JUDGE_GAP,
+  JUDGE_SAN,
+  JUDGE_TURNS,
+  LENS_PART,
+  SPAG_BASE,
+  SPAG_PER,
+  VOID_EYE,
+  collapseStar,
+  horizonTurn,
+  lensNotice,
+  lensed,
+  spagDmg,
+  syncLens,
   DARK,
   DARK_MAX,
   DARK_REVEAL,
@@ -391,8 +423,8 @@ reg.traits([
     hooks: {},
   },
   {
-    id: 'a4-event-horizon',
-    name: '사건의 지평선',
+    id: 'a4-gravity-well',
+    name: '중력 우물',
     desc: '검은 별의 차례가 시작되면 내 방어도가 절반이 된다',
     hooks: {
       onUnitTurnStart(c) {
@@ -400,6 +432,41 @@ reg.traits([
           c.p.block = Math.floor(c.p.block / 2);
           c.emit({ t: 'text', uid: 'p', text: '방어도가 검은 별로 빨려 들어간다', tone: 'bad' });
         }
+      },
+    },
+  },
+  // 검은 별 (2026-10 계층군주 강화 — 규칙과 상태는 patterns.ts)
+  {
+    id: 'a4-lens',
+    name: '중력 렌즈',
+    desc: `공허의 눈이 하나라도 살아 있으면 빛이 휘어 검은 별을 비껴간다. 검은 별을 겨눈 단일 대상 기술은 피해의 ${Math.round(LENS_PART * 100)}%만 들어간다. 광역·무작위 기술과 지속 피해는 그대로. 눈을 먼저 감겨라`,
+    hooks: {
+      // 미리보기에도 같은 계산이 돈다 (기술 칸의 피해 숫자가 줄어 보인다)
+      modDamageIn(c, s, d) {
+        if (d.tgt !== s.unit || !isEnemy(s.unit) || !lensed(c, d)) return;
+        d.mult *= LENS_PART;
+        lensNotice(c, s.unit);
+      },
+      onAnyDeath(c, _s, victim) {
+        if (isEnemy(victim) && victim.def === VOID_EYE) syncLens(c);
+      },
+    },
+  },
+  {
+    id: 'a4-event-horizon',
+    name: '사건의 지평선',
+    desc: `체력이 ${Math.round(BLACKHOLE_AT * 100)}% 이하가 되면 별이 무너진다 (「블랙홀」). 무너진 별은 차례를 마칠 때마다 재사용 대기가 없는 내 기술 중 가장 무거운 것(행동력이 많은 것) 하나를 지평선 너머로 끌어간다. 무기·방어구 기본기는 끌려가지 않는다. 한꺼번에 ${HORIZON_MAX}개까지, 끌려간 기술은 무너진 별의 차례가 ${HORIZON_TURNS}번 지나면 돌아온다. 붕괴·기절로 쉬는 차례에는 끌어가지 못한다. 무너진 별을 붕괴시키면 모두 한꺼번에 돌아오고 호킹 복사가 터진다: 돌아온 기술 하나마다 별의 최대 체력 ${Math.round(HAWKING_PCT * 100)}% 피해`,
+    hooks: {
+      onUnitTurnStart(_c, s) {
+        const e = s.unit;
+        // 붕괴·기절로 쉬는 차례에는 끌어가지 못한다 (돌아올 기술은 그래도 돌아온다)
+        if (isEnemy(e) && e.form && (e.broken === 2 || (e.st.stun ?? 0) > 0)) e.mem.hzRest = 1;
+      },
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e) || !e.form) return;
+        horizonTurn(c, e, !e.mem.hzRest);
+        delete e.mem.hzRest;
       },
     },
   },
@@ -1501,8 +1568,8 @@ reg.enemies([
     act: 4,
     tier: 'minion',
     reachable: true,
-    desc: '검은 별에게 빛을 먹여 어둠을 쌓는 눈. 쓰러뜨리면 먹힌 빛이 돌아온다(어둠 -1). 후열에 있어도 근접 공격이 닿는다.',
-    hp: [20, 24],
+    desc: '검은 별에게 빛을 먹여 어둠을 쌓는 눈. 살아 있는 동안 빛을 휘어 검은 별을 지킨다(중력 렌즈). 쓰러뜨리면 먹힌 빛이 돌아온다(어둠 -1). 후열에 있어도 근접 공격이 닿는다.',
+    hp: EYE_HP,
     poise: 0,
     weak: ['fire', 'pierce', 'arcane'],
     row: 1,
@@ -1514,13 +1581,15 @@ reg.enemies([
         name: '빛 흡수',
         intent: 'heal',
         extra: ['debuff'],
-        desc: '검은 별 체력 8 회복, 어둠 +1',
+        desc: `검은 별 체력 ${FEED_HEAL} 회복, 어둠 +1`,
         run(c, e) {
-          c.heal(c.alive.find((x) => x.def === 'black-star') ?? e, 8);
+          c.heal(c.alive.find((x) => x.def === 'black-star') ?? e, FEED_HEAL);
           addDark(c, e, 1);
         },
       },
     },
+    // 눈을 뜨면 검은 별의 '중력 렌즈'가 켜진다 (감기면 별의 특성이 끈다)
+    onSpawn: (c) => syncLens(c),
     ai: (_c, e) => cycle(e, ['gaze', 'feed']),
     visual: { tint: 0x14101c, glow: 0xb080ff, scale: 0.6, fx: ['float'] },
   },
@@ -2013,25 +2082,25 @@ reg.enemies([
     icon: 'gi:dripping-star',
     act: 4,
     tier: 'boss',
-    hp: [500, 500],
-    poise: 14,
+    hp: [BLACK_STAR_HP, BLACK_STAR_HP],
+    poise: BLACK_STAR_POISE,
     weak: ['fire', 'arcane'],
     resist: { void: 0.5 },
     row: 0,
     dread: 10,
     eldritch: true,
     tags: ['star'],
-    traits: ['a4-aligned', 'a4-event-horizon', 'a4-judge', 'a4-lighteater'],
-    desc: '빛을 먹는 별. 별들이 제자리를 찾을 때 운석 구덩이 위로 내려앉는다.',
+    traits: ['a4-aligned', 'a4-gravity-well', 'a4-judge', 'a4-lighteater', 'a4-lens', 'a4-event-horizon'],
+    desc: '빛을 먹는 별. 별들이 제자리를 찾을 때 운석 구덩이 위로 내려앉는다. 깊이 다치면 스스로 무너져 빛조차 빠져나가지 못하는 구멍이 된다.',
     moves: {
-      beam: mv.attack('검은 광선', 6, { hits: 2, melee: false, type: 'void' }),
-      devour: mv.horror('빛을 삼킨다', 15, {
+      beam: mv.attack('검은 광선', BEAM_DMG, { hits: BEAM_HITS, melee: false, type: 'void' }),
+      devour: mv.horror('빛을 삼킨다', DEVOUR_SAN, {
         then: (c, e) => {
           c.apply(c.p, 'dread', 2, e);
-          dimLight(c, 10);
+          dimLight(c, DEVOUR_LIGHT);
           addDark(c, e, 1);
         },
-        desc: '정신력 -15, 공포 2, 등불 -10, 어둠 +1',
+        desc: `정신력 -${DEVOUR_SAN}, 공포 2, 등불 -${DEVOUR_LIGHT}, 어둠 +1`,
       }),
       // 어둠이 가득 차면 (어둠 3): 화염·비전으로 어둠을 걷어 내면 흩어진다
       eclipse: {
@@ -2045,43 +2114,62 @@ reg.enemies([
           eclipse(c, e);
         },
       },
-      judgment: doomMove('별의 심판', 3, 36, 10),
+      judgment: doomMove('별의 심판', JUDGE_TURNS, JUDGE_DMG, JUDGE_SAN),
       eyes: mv.summon(
         '공허의 눈을 뜬다',
         (c, e) => {
           e.mem.eyes = (e.mem.eyes ?? 0) + 1;
-          c.spawn('void-eye', 1);
-          c.spawn('void-eye', 1);
+          c.spawn(VOID_EYE, 1);
+          c.spawn(VOID_EYE, 1);
         },
-        '공허의 눈 둘을 뜬다',
+        '공허의 눈 둘을 뜬다. 눈이 살아 있는 동안 중력 렌즈가 별을 지킨다',
       ),
-      rise: mv.charge('중력이 무너진다', 48),
-      collapse: release(mv.attack('중력 붕괴', 48, { melee: false, type: 'void', ultimate: true, cine: 'blackhole' })),
-      nova: mv.buff(
-        '초신성 전조',
-        (c, e) => {
-          e.mem.nova = 1;
-          c.apply(e, 'str', 3, e);
-          c.emit({ t: 'text', uid: e.uid, text: '검은 빛이 부풀어 오른다', tone: 'eldritch' });
+      rise: mv.charge('중력이 무너진다', COLLAPSE_DMG),
+      collapse: release(mv.attack('중력 붕괴', COLLAPSE_DMG, { melee: false, type: 'void', ultimate: true, cine: 'blackhole' })),
+      // 2막 (체력 절반): 한 번뿐인 전환이라 심연의 각성이 건드리지 않는다 (처음 쓰는 특별한 행동)
+      blackhole: {
+        name: '블랙홀',
+        intent: 'special',
+        ultimate: true,
+        cine: 'blackhole',
+        desc: `별이 스스로 무너진다. 남은 공허의 눈을 모두 삼켜 하나당 체력 ${HEAL_PER_EYE} 회복, 힘 +${BLACKHOLE_STR}. 무너진 별은 차례를 마칠 때마다 내 기술 하나를 사건의 지평선 너머로 끌어간다`,
+        run(c, e) {
+          collapseStar(c, e);
         },
-        { desc: '힘 +3' },
-      ),
+      },
+      spaghettify: {
+        name: '스파게티화',
+        intent: 'attack',
+        dmg: (c) => spagDmg(c),
+        melee: false,
+        desc: `중력이 몸을 길게 늘여 찢는다. 공허 피해 ${SPAG_BASE}, 지평선 너머로 끌려간 내 기술 하나마다 +${SPAG_PER}`,
+        run(c, e) {
+          // 의도를 정한 뒤 지평선에서 빼낸 기술은 빼고 센다 (내 턴에는 줄기만 한다)
+          c.enemyAttack(e, { type: 'void', dmg: spagDmg(c) });
+        },
+      },
     },
     onSpawn: (c, e) => {
-      c.apply(e, 'ritual', 1, e);
-      c.spawn('void-eye', 1);
+      c.apply(e, 'ritual', BLACK_STAR_RITUAL, e);
+      c.spawn(VOID_EYE, 1);
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'collapse';
       if ((c.p.st[DARK] ?? 0) >= DARK_MAX) return 'eclipse';
-      if (hpPct(e) <= 0.5 && !e.mem.nova) return 'nova';
+      if (!e.form && hpPct(e) <= BLACKHOLE_AT) return 'blackhole';
+      // 무너진 별: 눈은 더 뜨지 않는다. 끌어간 기술로 몸을 찢는다
+      if (e.form) {
+        if (canDoom(c, e, JUDGE_GAP)) return 'judgment';
+        return cycle(e, ['spaghettify', 'beam', 'rise', 'devour'], 'c2');
+      }
       const o = opener(c, e, ['devour']);
       if (o) return o;
-      if (canDoom(c, e, 7)) return 'judgment';
-      if (countDef(c, 'void-eye') === 0 && (e.mem.eyes ?? 0) < 2 && last(e) !== 'eyes') return 'eyes';
+      if (canDoom(c, e, JUDGE_GAP)) return 'judgment';
+      if (countDef(c, VOID_EYE) === 0 && (e.mem.eyes ?? 0) < EYES_MAX && last(e) !== 'eyes') return 'eyes';
       return cycle(e, ['beam', 'rise', 'beam', 'devour']);
     },
     visual: { tint: 0x08060c, glow: 0x9050ff, scale: 1.55, fx: ['float', 'flicker'] },
+    forms: [{ name: COLLAPSED, icon: 'gi:black-hole-bolas', visual: { tint: 0x030106, glow: 0x6a30ff, scale: 1.7, fx: ['float', 'flicker'] } }],
   },
   {
     id: 'star-walker',

@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "sim": "vitest run --config vitest.sim.config.ts",
+    "sim": "vitest run --config vitest.sim.config.ts sim/balance.sim.ts",
+    "sim:lords": "vitest run --config vitest.sim.config.ts sim/lords.sim.ts",
     "art": "node scripts/ingest-art.mjs"
   },
   "repository": {

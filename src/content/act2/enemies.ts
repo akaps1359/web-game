@@ -1,14 +1,40 @@
 import { ENEMIES, reg } from '../../engine/registry';
 import { josa } from '../../engine/josa';
-import { isEnemy, unguarded, type Combat } from '../../engine/combat';
+import { isEnemy, MAX_ROW, unguarded, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import type { DamageCtx, DmgType, EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
 import { cine, execute, setUi } from '../lib';
 import {
   ABSOLVE_SAN,
+  BELFRY_ACOLYTES,
+  BELFRY_CALL,
+  BELFRY_CYCLE,
+  BELFRY_FRENZY,
+  BELFRY_NAME,
+  BELFRY_PCT,
+  BELL_RAGE_STR,
+  COMBO_DMG,
+  COMBO_HITS,
+  COMBO_SAN,
   CONFESSION,
+  DIRGE_SAN,
+  FALL_AP,
+  FALL_BLOCK,
+  FALL_PCT,
+  FALL_POISE,
+  FALL_RULE,
+  FALL_SELF,
+  FLURRY_DMG,
+  FLURRY_HITS,
   HANGED,
+  HEART_SAN,
+  HUSH,
+  HUSH_RULE,
+  KEEPER_CYCLE,
+  KEEPER_HAMMER,
+  KEEPER_HP,
+  KEEPER_POISE,
   KNELL_DREAD,
   KNELL_HP_PCT,
   KNELL_SAN,
@@ -19,20 +45,30 @@ import {
   RING_MULT,
   SACRILEGE_BLOCK,
   SACRILEGE_SAN,
+  SILENCE_DMG,
   SILENT_MULT,
   TANGLED,
+  TOLL_SAN,
   VOW,
   VOW_STR,
   VOW_STR_TIMES,
   VOW_WORDS,
   REQUIEM_HIT,
   advanceRequiem,
+  belfry,
+  crashKeeper,
+  cutFall,
   cutKnell,
   cutRequiem,
+  cutRope,
+  endFall,
   endKnell,
   endRequiem,
+  hush,
+  hushCost,
   intentNow,
   knellNeed,
+  landFall,
   myHit,
   once,
   react,
@@ -178,7 +214,7 @@ function resonate(c: Combat) {
 /** 종지기의 타종 */
 function toll(step: number): MoveDef {
   return {
-    ...mv.horror(`타종 (${step}/3)`, 6, {
+    ...mv.horror(`타종 (${step}/3)`, TOLL_SAN, {
       desc:
         `종지기 힘 +1. 울린 대종은 다음 턴 동안 공명한다 (받는 피해 +${Math.round((RING_MULT - 1) * 100)}%). ` +
         '세 번 울리면 마지막 종의 카운트다운이 시작된다. 2턴 뒤 네 번째 종소리를 들으면 정신이 무너진다',
@@ -190,7 +226,7 @@ function toll(step: number): MoveDef {
       }
       cine(c, 'bell', { uid: e.uid });
       if (once(c, 'a2-toll')) cine(c, 'sysmsg', { uid: e.uid, text: '음량: 최대. 이 소리는 끌 수 없습니다.' });
-      c.horror(e, 6);
+      c.horror(e, TOLL_SAN);
       if (c.over) return;
       e.mem.tolls = (e.mem.tolls ?? 0) + 1;
       c.apply(e, 'str', 1, e);
@@ -199,6 +235,24 @@ function toll(step: number): MoveDef {
       resonate(c);
     },
   };
+}
+
+/** 종탑의 수련사들: 지금 부를 수 있는 수 (한 번에 BELFRY_CALL, 함께 BELFRY_ACOLYTES까지, 후열 자리만 — 전열로 밀려 나와 종지기보다 먼저 움직이지 않게) */
+function callable(c: Combat): number {
+  return Math.max(0, Math.min(BELFRY_CALL, BELFRY_ACOLYTES - countDef(c, 'bell-acolyte'), MAX_ROW - c.row(1).length));
+}
+
+/**
+ * 종탑의 광란 (2막)의 행동: 끊어 둔 종은 다음 차례에 떨어진다. 끊으려던 밧줄은 기절로 밀려도 다음 차례에 끊는다
+ * (붕괴로 끊기면 mem.cutDue를 지워 순서대로 넘어간다). 나머지는 BELFRY_CYCLE 순서
+ */
+function belfryMove(c: Combat, e: EnemyUnit): string {
+  if (e.mem.fall) return 'fall';
+  if (e.mem.cutDue) return 'cut';
+  const m = cycle(e, BELFRY_CYCLE, 'c2');
+  if (m === 'cut') e.mem.cutDue = 1;
+  if (m === 'call' && callable(c) <= 0) return 'dirge';
+  return m;
 }
 
 /** 등불이 어두울수록 화면도 어둡다 (촛불을 든 것 — 화면에만) */
@@ -557,7 +611,7 @@ reg.traits([
     name: '대종',
     desc:
       `잠잠한 종은 받는 피해 ${Math.round((1 - SILENT_MULT) * 100)}% 감소. 종지기가 타종한 직후엔 공명해서 다음 내 턴 동안 받는 피해 +${Math.round((RING_MULT - 1) * 100)}%. 종소리에 맞춰 쳐야 깨진다. ` +
-      '후열에 있어도 근접으로 닿는다. 종지기는 이 종이 있어야 타종할 수 있다. 종이 깨지면 종지기가 비틀거리다 격노한다: 기절 1, 힘 +3',
+      `후열에 있어도 근접으로 닿는다. 종지기는 이 종이 있어야 타종할 수 있다. 종이 깨지면 종지기가 비틀거리다 격노한다: 기절 1, 힘 +${BELL_RAGE_STR}. 종탑의 광란이 시작된다`,
     hooks: {
       modDamageIn(_c, s, d) {
         d.mult *= (s.unit.st[RESONANCE] ?? 0) > 0 ? RING_MULT : SILENT_MULT;
@@ -578,8 +632,13 @@ reg.traits([
         cine(c, 'shatter', { uid: s.unit.uid });
         c.emit({ t: 'text', uid: bk.uid, text: '대종이 깨지자 종지기가 비틀거린다', tone: 'good' });
         c.apply(bk, 'stun', 1, s.unit);
-        c.apply(bk, 'str', 3, s.unit);
-        cutKnell(c, bk, '깨진 종은 마지막 종을 울리지 못한다');
+        c.apply(bk, 'str', BELL_RAGE_STR, s.unit);
+        if (bk.mem.knell === 1 || bk.mem.knell === 2) {
+          endKnell(c, bk);
+          c.emit({ t: 'text', uid: bk.uid, text: '깨진 종은 마지막 종을 울리지 못한다', tone: 'good' });
+        }
+        // 대종이 깨지면 종탑의 광란 (체력으로 이미 시작됐으면 그대로)
+        belfry(c, bk);
       },
     },
   },
@@ -590,15 +649,47 @@ reg.traits([
       '대종을 울릴 때마다 강해진다. 세 번 울리면 마지막 종의 카운트다운이 시작된다. 2턴 뒤 네 번째 종소리를 들으면 정신이 무너진다 ' +
       `(정신 피해 ${KNELL_SAN}, 공포 ${KNELL_DREAD}, 최대 체력의 ${Math.round(KNELL_HP_PCT * 100)}% 피해, 방어도 무시). ` +
       '그 전에 대종을 깨뜨리거나 종지기를 붕괴시키면 끊긴다. 대종은 근접으로도 닿는다. 종이 울리는 턴에 기술을 하나도 쓰지 않으면 귀를 막아 듣지 않는다 ' +
-      `(대신 먹먹한 종소리에 정신 피해 ${MUFFLE_SAN}, 대종은 남아 다시 울린다). 종을 잃으면 제 심장을 종처럼 울린다`,
+      `(대신 먹먹한 종소리에 정신 피해 ${MUFFLE_SAN}, 대종은 남아 다시 울린다). ` +
+      `때때로 침묵을 명한다. 그다음 내 턴엔 두 번째 기술부터 쓸 때마다 정신력을 잃는다 (${hushCost(2)}, ${hushCost(3)}, ${hushCost(4)} …). ` +
+      `체력이 ${Math.round(BELFRY_PCT * 100)}% 이하가 되거나 대종이 깨지면 종탑의 광란: ${BELFRY_NAME}${josa(BELFRY_NAME, '이')} 되어 새 버팀을 두르고 행동할 때마다 힘 +${BELFRY_FRENZY}. ` +
+      `종탑의 밧줄을 끊어 종을 떨어뜨린다. 방어도 ${FALL_BLOCK} 이상으로 턴을 마치면 종이 종지기를 덮친다. ` +
+      `못 숨으면 방어도를 무시하고 최대 체력의 ${Math.round(FALL_PCT * 100)}% 피해, 다음 턴 행동력 -${FALL_AP}. ` +
+      '수련사를 한 번에 여럿 부르고 제 심장을 종처럼 울린다',
     hooks: {
-      // 카운트다운 중에 붕괴하면 줄을 놓친다
       onDamageTaken(c, s, d) {
-        if (isEnemy(s.unit) && d.broke) cutKnell(c, s.unit, '붕괴로 종지기가 밧줄을 놓쳤다');
+        const e = s.unit;
+        if (!isEnemy(e)) return;
+        // 붕괴하면 줄을 놓친다: 마지막 종의 카운트다운도, 떨어지는 종도, 끊으려던 밧줄도
+        if (d.broke) {
+          cutKnell(c, e, '붕괴로 종지기가 밧줄을 놓쳤다');
+          cutFall(c, e);
+          delete e.mem.cutDue;
+        }
+        // 체력으로 맞는 문턱은 잃은 체력 그대로 (버팀 배율과 상관없이)
+        if (!e.form && !e.dead && e.hp > 0 && e.hp <= e.maxHp * BELFRY_PCT) belfry(c, e);
+      },
+      onUnitTurnStart(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e)) return;
+        const rests = e.broken === 2 || (e.st.stun ?? 0) > 0;
+        e.mem.acts = rests ? 0 : 1;
+        // 끊어 둔 종은 종지기가 기절해 있어도 떨어진다 (붕괴하면 그 전에 끊긴다)
+        if (e.mem.fall && rests && e.broken !== 2) landFall(c, e);
+      },
+      // 광란: 2막에서 행동한 차례가 끝날 때마다 힘이 붙는다 (다음 의도의 숫자에 바로 보인다)
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e) || !e.form || !e.mem.acts || BELFRY_FRENZY <= 0) return;
+        e.mem.acts = 0;
+        c.apply(e, 'str', BELFRY_FRENZY, e);
       },
       onDeath(c, s) {
         if (!isEnemy(s.unit) || !s.unit.dead) return;
         if (s.unit.mem.knell) endKnell(c, s.unit);
+        if (s.unit.mem.fall) endFall(c, s.unit);
+        // 명한 자가 쓰러지면 침묵령도 풀리고, 기울었던 종탑도 바로 선다
+        setSt(c, c.p, HUSH, 0);
+        setUi(c, 'ui:tilt', 0);
         for (const b of c.alive.filter((x) => x.def === 'great-bell')) {
           c.emit({ t: 'text', uid: b.uid, text: '종이 마지막으로 울리고 떨어진다', tone: 'eldritch' });
           c.kill(b, false);
@@ -1962,14 +2053,16 @@ reg.enemies([
   },
 
   // ───────────── 계층군주 ─────────────
+  // 종지기 (2026-10 강화 — 수치는 patterns.ts): 1막은 타종과 마지막 종(대종 퍼즐)·침묵령,
+  // 2막 「종탑의 광란」(체력 절반 또는 대종이 깨지면)은 종을 끊어 떨어뜨리는 방어 퍼즐·공격과 정신 공격을 한 번에·수련사 여럿
   {
     id: 'bellkeeper',
     name: '종지기',
     icon: 'gi:ringing-bell',
     act: 2,
     tier: 'boss',
-    hp: [330, 330],
-    poise: 12,
+    hp: [KEEPER_HP, KEEPER_HP],
+    poise: KEEPER_POISE,
     weak: ['fire', 'void'],
     row: 0,
     dread: 7,
@@ -1978,7 +2071,7 @@ reg.enemies([
     traits: ['a2-bell-bound'],
     desc: '수도원이 재에 묻힌 뒤에도 종을 멈추지 않은 자. 그의 등은 종 모양으로 굽었고 심장은 종추처럼 뛴다.',
     moves: {
-      hammer: mv.attack('종추 내려치기', 13),
+      hammer: mv.attack('종추 내려치기', KEEPER_HAMMER),
       toll1: toll(1),
       toll2: toll(2),
       toll3: toll(3),
@@ -1990,6 +2083,20 @@ reg.enemies([
         },
         '타종 수련사 소환',
       ),
+      // 침묵령: 다음 내 턴, 두 번째 기술부터 정신력을 잃는다 (기술을 막지는 않는다 — 값만 치른다).
+      // 내려치며 거는 행동이라 공격 의도에 약화 표시를 더한다 (등불 강탈·거꾸로 매달기처럼 — 봇도 막을 피해로 센다)
+      silence: {
+        name: '침묵을 명한다',
+        intent: 'attack',
+        extra: ['debuff'],
+        dmg: SILENCE_DMG,
+        melee: true,
+        desc: `종추로 입을 짓누르고 침묵을 명한다. 다음 내 턴 동안 침묵령. ${HUSH_RULE}`,
+        run(c, e) {
+          c.enemyAttack(e, { type: 'blunt' });
+          if (!c.over && !e.dead) hush(c, e);
+        },
+      },
       // 위협 퍼즐 「마지막 종」: 세 번째 타종 → 종을 당긴다 (2턴 남음) → 종말의 종 (1턴 남음, 들으면 정신이 무너진다)
       prepare: {
         name: '마지막 종을 당긴다',
@@ -2037,15 +2144,63 @@ reg.enemies([
           c.horror(e, MUFFLE_SAN);
         },
       },
-      flurry: mv.attack('광란의 종추', 5, { hits: 3 }),
-      dirge: mv.horror('깨진 종의 장송곡', 8, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
-      // 종을 잃은 종지기는 종추처럼 뛰는 제 심장을 울린다
+      // ── 2막: 종탑의 광란 ──
+      // 방어 퍼즐 「떨어지는 종」: 종을 끊는다 (목표 띠, 1턴 남음) → 떨어지는 종 (숨었으면 종지기를, 아니면 나를 덮친다)
+      cut: {
+        name: '종을 끊는다',
+        intent: 'charge',
+        charging: true,
+        desc: `종탑의 밧줄을 끊는다. 다음 차례에 종이 떨어진다. ${FALL_RULE}. 끊기 전에 종지기를 붕괴시키면 밧줄을 놓친다`,
+        run(c, e) {
+          cine(c, 'bell', { uid: e.uid });
+          cutRope(c, e);
+        },
+      },
+      fall: {
+        name: '떨어지는 종',
+        intent: 'charge',
+        ultimate: true,
+        cine: 'impact',
+        desc: `끊어 둔 종이 떨어진다. ${FALL_RULE}. 그 전에 종지기를 붕괴시키면 끊긴다`,
+        run(c, e) {
+          landFall(c, e);
+        },
+      },
+      // 내 턴 끝에 종 그늘 아래 숨었다 (떨어지는 종 상태가 턴 끝에 이 의도로 바꾼다)
+      recoil: {
+        name: '제 종에 깔린다',
+        intent: 'special',
+        cine: 'impact',
+        desc: `종 그늘 아래 숨었다. 떨어진 종이 종지기를 덮친다. 피해 ${FALL_SELF}, 버팀 -${FALL_POISE}`,
+        run(c, e) {
+          crashKeeper(c, e);
+        },
+      },
+      // 한 행동에 공격과 정신 공격을 함께
+      combo: mv.horror('종추 연타와 장송곡', COMBO_SAN, {
+        dmg: COMBO_DMG,
+        hits: COMBO_HITS,
+        melee: true,
+        type: 'blunt',
+        desc: `종추로 ${COMBO_HITS}번 내려치며 장송곡을 부른다. 정신 피해`,
+      }),
+      call: mv.summon(
+        '종탑의 수련사들',
+        (c) => {
+          const n = callable(c);
+          for (let i = 0; i < n; i++) c.spawn('bell-acolyte', 1);
+        },
+        `타종 수련사를 한 번에 ${BELFRY_CALL}명까지 부른다 (함께 ${BELFRY_ACOLYTES}명까지)`,
+      ),
+      flurry: mv.attack('광란의 종추', FLURRY_DMG, { hits: FLURRY_HITS }),
+      dirge: mv.horror('종탑의 장송곡', DIRGE_SAN, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
+      // 광란에 빠진 종지기는 종추처럼 뛰는 제 심장을 울린다
       heart: {
-        ...mv.horror('심장의 종', 7, { desc: '깨진 종 대신 제 심장을 울린다. 정신 피해, 종지기 힘 +1' }),
+        ...mv.horror('심장의 종', HEART_SAN, { desc: '종 대신 제 심장을 울린다. 정신 피해, 종지기 힘 +1' }),
         extra: ['buff'],
         run(c, e) {
           cine(c, 'bell', { uid: e.uid });
-          c.horror(e, 7);
+          c.horror(e, HEART_SAN);
           if (c.over || e.dead) return;
           c.apply(e, 'str', 1, e);
         },
@@ -2053,22 +2208,21 @@ reg.enemies([
     },
     onSpawn: (c) => void c.spawn('great-bell', 1),
     ai: (c, e) => {
-      const bell = countDef(c, 'great-bell') > 0;
-      if (!bell) {
-        if (e.mem.knell) endKnell(c, e);
-        return cycle(e, ['flurry', 'heart', 'hammer', 'dirge'], 'c2');
-      }
+      // 대종 없는 1막은 없다 (대종이 깨지면 대종의 특성이 광란을 부른다 — 이것은 안전망)
+      if (!e.form && countDef(c, 'great-bell') === 0) belfry(c, e);
+      if (e.form) return belfryMove(c, e);
       // 마지막 종의 카운트다운 (기절로 밀리면 그대로 다시)
       if (e.mem.knell === 1) return 'prepare';
       if (e.mem.knell === 2) return 'doom';
       // 귀를 막아 끝났는데 먹먹한 종소리가 밀렸다 (기절 등)
       if (e.mem.knell === 3) endKnell(c, e);
       const tolls = e.mem.tolls ?? 0;
-      let m = cycle(e, ['toll', 'hammer', 'toll', 'summon', 'hammer']);
+      let m = cycle(e, KEEPER_CYCLE);
       if (m === 'summon' && ((e.mem.calls ?? 0) >= 2 || countDef(c, 'bell-acolyte') >= 2 || c.row(1).length >= 3)) m = 'toll';
       return m === 'toll' ? `toll${Math.min(3, tolls + 1)}` : m;
     },
     visual: { tint: 0x4a3a2a, glow: 0xffb040, scale: 1.55, fx: ['flicker'] },
+    forms: [{ name: BELFRY_NAME, icon: 'gi:evil-tower', visual: { tint: 0x2a1612, glow: 0xff4a2a, scale: 1.7, fx: ['flicker', 'float'] } }],
   },
   {
     id: 'great-bell',

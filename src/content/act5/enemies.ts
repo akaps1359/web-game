@@ -1,12 +1,12 @@
 import { josa } from '../../engine/josa';
 import { reg, SKILLS } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
+import { ACT_DMG_MULT, BOSS_DMG_MULT, ELITE_DMG_MULT, isEnemy, unguarded, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
-import { DMG_TYPES, type DmgType, type EnemyUnit, type MoveDef } from '../../engine/types';
-import { cine, setUi } from '../lib';
+import { DMG_TYPES, type DmgType, type EnemyUnit, type MoveDef, type SkillUse } from '../../engine/types';
+import { cine, setObjective, setUi } from '../lib';
 import { countDef, mv, others, release } from '../moves';
 import { canDoom, dimLight, doomMove } from '../act4/common';
-import { hid, isAsleep, isIllusion, realAlive, setIntent, setSt, shuffleGroup, spawnIllusion, stealLight, uidNum, vanish, wake } from './dream';
+import { chipPoise, hid, isAsleep, isIllusion, realAlive, setIntent, setSt, shuffleGroup, spawnIllusion, stealLight, uidNum, vanish, wake } from './dream';
 import { DROWSY_MAX, lull, SLUMBER_AP } from './fetus';
 import {
   addHeat,
@@ -115,6 +115,76 @@ export const MEMORY = 'eaten-memory';
 export const MAX_MEMORIES = 2;
 export const DIGEST_TURNS = 2;
 export const DIGEST_HEAL = 40;
+
+// ── 2026-10 계층군주 강화: 꿈을 먹는 자 (악몽 속의 나 · 굶주림) ──
+// 강한 덱일수록 더 걸리게: 내 기술을 그대로 흉내 내는 나(세게 칠수록 세게 돌려받는다)와, 몇 턴마다 한 턴 몫의 피해를 요구하는 식사 시간.
+// 수치는 군주 측정(봇·1.5배·2.5배)으로 다듬는다 — 설명 문구도 같은 상수를 쓴다.
+/** 기본 체력 / 꿈의 아가리 / 악몽의 난도질 (타격당·횟수) / 악몽 강림 (예고와 같은 값) / 꿈 삼키기 회복 / 꿈 갉아먹기 정신 피해 */
+export const EATER_HP = 1200;
+export const EATER_MAW = 26;
+export const EATER_RAVAGE = 9;
+export const EATER_RAVAGE_HITS = 3;
+export const EATER_NIGHTFALL = 56;
+export const EATER_DEVOUR_HEAL = 30;
+export const EATER_FEED_SAN = 12;
+/** 악몽 속의 나: 깨어난 악몽이 될 때 빚는 내 모습 (하수인) */
+export const DOUBLE = 'nightmare-double';
+/** 체력 = 내 최대 체력 × 이 비율 (상한 DOUBLE_HP_MAX — 체력이 터무니없이 큰 판·시험에서도 잡을 수 있게) / 버팀 (EnemyDef.poise) */
+export const DOUBLE_HP_PCT = 0.3;
+export const DOUBLE_HP_MAX = 150;
+export const DOUBLE_POISE = 2;
+/**
+ * 흉내: 내가 마지막으로 피해를 준 기술의 타격당 피해(버팀·방어도에 깎이기 전)를 그대로 돌려준다 — 타격당 상한 / 타격 수 상한.
+ * 흉내 낸 피해에는 층·수호자 공격 배율을 걸지 않는다 (내가 준 그대로. 조수·심연 배율은 걸린다)
+ */
+export const DOUBLE_CAP = 30;
+export const DOUBLE_HITS = 3;
+/** 아직 흉내 낼 기술이 없을 때의 손톱 (보통 적의 피해처럼 층·수호자 배율이 걸린다) */
+export const DOUBLE_CLAW = 8;
+/** 쓰러지면 악몽이 깨지며 꿈을 먹는 자가 받는 피해 (꿈을 먹는 자 최대 체력 비율, 방어도·버팀·가호 무시) */
+export const DOUBLE_BACKLASH = 0.05;
+/** 쓰러뜨린 뒤 다시 빚기까지 (꿈을 먹는 자의 차례 수) / 전투에서 빚는 횟수 (처음 하나 + 다시 빚기) */
+export const DOUBLE_REFORM = 4;
+export const DOUBLE_FORMS = 2;
+/**
+ * 굶주림 (DPS 시험): 꿈을 먹는 자의 HUNGER_FIRST번째 차례부터 HUNGER_EVERY턴마다 식사 시간.
+ * 그 턴 안에 꿈을 먹는 자에게 피해 HUNGER_NEED_AP × (내 최대 행동력 - 먹힌 행동력)을 주면 굶긴다 (버팀에 깎이기 전, 지속 피해 포함).
+ * 행동력 4면 60 — 5층 힘(10)의 시작 덱 무기 기본 공격 × 행동력 정도 (tests/lord-a5 공정성). 먹힌 만큼 요구량도 준다 (한 번 놓치면 끝없이 놓치는 악순환을 끊는다)
+ */
+export const HUNGER_FIRST = 4;
+export const HUNGER_EVERY = 4;
+export const HUNGER_NEED_AP = 15;
+/** 못 굶기면: 최대 행동력 -HUNGER_AP (이 전투 동안, 모두 HUNGER_MAX_AP까지), 꿈을 먹는 자 최대 체력의 HUNGER_HEAL 회복 */
+export const HUNGER_AP = 1;
+export const HUNGER_MAX_AP = 2;
+export const HUNGER_HEAL = 0.1;
+/** 굶기면: 약화 / 버팀 감소 */
+export const HUNGER_WEAK = 1;
+export const HUNGER_POISE = 2;
+/** 식사 시간의 물어뜯기 (굶기든 못 굶기든 문다 — 굶겼으면 약화로 약해진다) */
+export const HUNGER_BITE = 22;
+/** 상태: 꿈을 먹는 자의 허기(식사 시간까지 남은 턴) · 먹힌 시간(내 행동력) · 다시 빚는 악몽 · 악몽의 거울(숨은 상태 — 내 기술을 지켜본다) */
+export const HUNGER = 'a5-hunger';
+export const GNAWED = 'a5-gnawed';
+export const REFORM = 'a5-reform';
+export const MIRROR = 'a5-mirror';
+/** 악몽이 깨지는 반동 피해의 표식 (굶주림 셈에 든다) */
+const BACKLASH = 'a5-backlash';
+/**
+ * 악몽 속의 나가 흉내 낼 내 기술 (c.s.vars — 숫자만 담는다: 저장·시뮬레이터가 JSON으로 다루게).
+ * 기술 자리(장착 칸 번호 + 1, 무기 기본 공격 -1, 방어구 기본기 -2) / 타격당 피해 / 대상 하나가 맞은 횟수 / 속성(DMG_TYPES 번호 + 1, 속성 없는 피해는 0)
+ */
+const MIM_REF = 'a5MimRef';
+const MIM_DMG = 'a5MimDmg';
+const MIM_HITS = 'a5MimHits';
+const MIM_TYPE = 'a5MimType';
+/** 지금 쓰는 기술이 준 피해를 모으는 칸 (beforeSkill → afterSkill): 모으는 중 / 피해 합 / 타격 수 / 첫 타격 속성 / 첫 대상 번호 / 그 대상이 맞은 횟수 */
+const MIM_ON = 'a5MimOn';
+const MIM_SUM = 'a5MimSum';
+const MIM_N = 'a5MimN';
+const MIM_TY = 'a5MimTy';
+const MIM_T = 'a5MimT';
+const MIM_TN = 'a5MimTn';
 /** 이 이상의 재사용 대기는 이미 잠긴 기술 (표본 채집·쥐기 반사·전투당 1회 기술) */
 const LOCKED = 90;
 /** 요람의 수문장 '쉿': 다음 턴 이만큼까지만 기술을 쓸 수 있다 / 어기면 깨어나는 별 / 지키면 수문장에게 거는 취약 */
@@ -187,6 +257,71 @@ reg.statuses([
     icon: 'gi:brain-leak',
     kind: 'debuff',
     desc: `{n}턴 뒤 꿈을 먹는 자에게 소화된다 (꿈을 먹는 자 체력 ${DIGEST_HEAL} 회복, 힘 +1). 그 전에 쓰러뜨리면 붙들린 기술을 곧바로 되찾는다`,
+  },
+  // ── 꿈을 먹는 자: 굶주림 · 악몽 속의 나 (2026-10 계층군주 강화) ──
+  {
+    id: HUNGER,
+    name: '허기',
+    icon: 'gi:knife-fork',
+    kind: 'buff',
+    desc: `{n}턴 뒤 식사 시간. 그 턴에 꿈을 먹는 자에게 피해를 주어 굶겨야 한다 (내 최대 행동력 1당 ${HUNGER_NEED_AP}). 굶기면 비틀거린다: 약화 ${HUNGER_WEAK}, 버팀 -${HUNGER_POISE}. 못 굶기면 내 시간을 먹는다: 최대 행동력 -${HUNGER_AP}, 꿈을 먹는 자 체력 ${Math.round(HUNGER_HEAL * 100)}% 회복`,
+  },
+  {
+    id: GNAWED,
+    name: '먹힌 시간',
+    icon: 'gi:player-time',
+    kind: 'debuff',
+    desc: `꿈을 먹는 자가 내 시간을 먹었다. 이 전투 동안 턴마다 행동력 -{n} (모두 ${HUNGER_MAX_AP}까지). 꿈을 먹는 자가 쓰러지면 돌아온다`,
+    tickStart(c, u, n) {
+      if (isEnemy(u)) return;
+      c.s.ap = Math.max(0, c.s.ap - n);
+    },
+  },
+  {
+    id: REFORM,
+    name: '다시 빚는 악몽',
+    icon: 'gi:mirror-mirror',
+    kind: 'buff',
+    desc: '{n}턴 뒤 악몽 속의 나를 다시 빚는다 (한 번만)',
+  },
+  {
+    id: MIRROR,
+    name: '악몽의 거울',
+    icon: 'gi:shadow-follower',
+    kind: 'buff',
+    hidden: true,
+    desc: '꿈을 먹는 자의 악몽이 내 손짓을 지켜본다. 마지막으로 피해를 준 기술을 악몽 속의 나가 흉내 낸다',
+    hooks: {
+      // 기술 하나가 준 피해를 모은다 (메아리는 같은 기술의 덤이라 세지 않는다)
+      beforeSkill(c, s, u) {
+        if (s.unit !== c.p || u.echo) return;
+        mimicReset(c);
+        c.s.vars[MIM_ON] = 1;
+      },
+      onDamageDealt(c, s, d) {
+        if (s.unit !== c.p || d.src !== c.p || d.tgt === c.p || !d.skill || d.skill.echo || !c.s.vars[MIM_ON]) return;
+        const n = (c.s.vars[MIM_N] ?? 0) + 1;
+        c.s.vars[MIM_N] = n;
+        c.s.vars[MIM_SUM] = (c.s.vars[MIM_SUM] ?? 0) + d.bare;
+        // 첫 타격의 속성과 대상 (여러 대상을 친 기술은 대상 하나가 맞은 횟수로 센다)
+        if (n === 1) {
+          c.s.vars[MIM_TY] = d.type === 'true' ? 0 : DMG_TYPES.indexOf(d.type) + 1;
+          c.s.vars[MIM_T] = isEnemy(d.tgt) ? uidNum(d.tgt) : 0;
+        }
+        if (isEnemy(d.tgt) && uidNum(d.tgt) === c.s.vars[MIM_T]) c.s.vars[MIM_TN] = (c.s.vars[MIM_TN] ?? 0) + 1;
+      },
+      afterSkill(c, s, u) {
+        if (s.unit !== c.p || u.echo || !c.s.vars[MIM_ON]) return;
+        commitMimic(c, u);
+        // 흉내 낼 기술이 바뀌면 악몽 속의 나의 의도도 곧바로 바뀐다
+        for (const x of doublesOf(c)) planDouble(c, x);
+      },
+      // 라운드 끝에 정한 의도에 흉내 낼 기술 이름을 붙인다
+      onTurnStart(c, s) {
+        if (s.unit !== c.p) return;
+        for (const x of doublesOf(c)) planDouble(c, x);
+      },
+    },
   },
   {
     id: 'a5-hush',
@@ -391,11 +526,14 @@ reg.traits([
   {
     id: 'a5-dream-glutton',
     name: '꿈의 포식자',
-    desc: `잠든 이를 삼켜 회복하고 강해진다. 「기억 포식」으로 내 기술을 삼켜 '삼켜진 기억'으로 붙든다. 기억을 쓰러뜨리면 곧바로 되찾는다. ${DIGEST_TURNS}턴 안에 되찾지 못하면 기억이 소화되어 꿈을 먹는 자가 회복하고 강해진다 (기술은 그때 돌아온다). 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오른다. 일부 행동은 읽을 수 없다 (통찰 3 이상이면 보인다)`,
+    desc: `잠든 이를 삼켜 회복하고 강해진다. 「기억 포식」으로 내 기술을 삼켜 '삼켜진 기억'으로 붙든다. 기억을 쓰러뜨리면 곧바로 되찾는다. ${DIGEST_TURNS}턴 안에 되찾지 못하면 기억이 소화되어 꿈을 먹는 자가 회복하고 강해진다 (기술은 그때 돌아온다). ${HUNGER_EVERY}턴마다 식사 시간: 그 턴에 피해를 주어 굶기지 못하면 내 시간을 먹는다 (최대 행동력 -${HUNGER_AP}). 체력이 절반 아래로 떨어지면 깨어난 악몽이 되어 매 턴 힘이 오르고, 악몽 속의 나를 빚는다. 일부 행동은 읽을 수 없다 (통찰 3 이상이면 보인다)`,
     hooks: {
-      onDamageTaken(c, s) {
+      onDamageTaken(c, s, d) {
         const e = s.unit;
-        if (!isEnemy(e) || e.dead || e.hp <= 0 || e.mem.p2 || hpPct(e) > 0.5) return;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || isIllusion(e)) return;
+        // 굶주림: 식사 시간에 받은 피해 (버팀에 깎이기 전 — 내 공격·지속 피해·악몽이 깨지는 반동)
+        if (e.mem.hunger && (d.src === c.p || d.tags.includes('dot') || d.tags.includes(BACKLASH))) feedHunger(c, e, unguarded(d));
+        if (e.dead || e.mem.p2 || hpPct(e) > 0.5) return;
         e.mem.p2 = 1;
         e.form = 1;
         e.name = '깨어난 악몽';
@@ -407,7 +545,35 @@ reg.traits([
         cine(c, 'whisper', { uid: e.uid, text: EATER_LINE });
         c.apply(e, 'ritual', 1, e);
         c.loseSanity(6, true);
-        if (e.broken !== 2) c.planIntent(e);
+        // 악몽 속에서 내가 걸어 나온다 (내가 마지막으로 휘두른 기술을 흉내 낸다)
+        formDouble(c, e);
+        if (e.broken !== 2 && !c.over) c.planIntent(e);
+      },
+      // 지속 피해가 터진 뒤, 행동하기 전에 식사 시간을 판정한다
+      onUnitTurnStart(c, s) {
+        const e = s.unit;
+        if (isEnemy(e) && !isIllusion(e)) judgeHunger(c, e);
+      },
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || isIllusion(e)) return;
+        // 이번 라운드에 차례를 마쳤다 (라운드 끝에 다음 차례를 정할 때만 식사 시간을 알린다)
+        e.mem.actT = c.s.turn;
+        // 붕괴·기절로 먹지 못한 식사 (못 굶겼어도 시간을 잃지 않는다)
+        if (e.mem.hgFail) {
+          delete e.mem.hgFail;
+          c.emit({ t: 'text', uid: e.uid, text: '휘청이다 식사를 놓쳤다', tone: 'good' });
+        }
+        delete e.mem.hgSt;
+        // 허기: 다음 내 턴에서 식사 시간까지 남은 턴
+        if (!e.mem.hunger) setSt(c, e, HUNGER, Math.max(0, (e.mem.hgAt ?? HUNGER_FIRST) - (c.s.turn + 1)));
+        // 쓰러뜨린 악몽 속의 나를 다시 빚는다
+        if ((e.mem.dblLeft ?? 0) > 0) {
+          e.mem.dblLeft -= 1;
+          // 자리가 없어 못 빚었으면 다음 차례에 다시
+          if (e.mem.dblLeft <= 0 && !formDouble(c, e) && (e.mem.dblN ?? 0) < DOUBLE_FORMS && !countDef(c, DOUBLE)) e.mem.dblLeft = 1;
+          setSt(c, e, REFORM, Math.max(0, e.mem.dblLeft));
+        }
       },
       onDeath(c, s) {
         const e = s.unit;
@@ -418,8 +584,37 @@ reg.traits([
           freeMemory(c, m, '기억이 풀려났다');
           vanish(c, m, '주인을 잃고 흩어졌다');
         }
+        // 악몽 속의 나도 깨어나고, 먹힌 시간이 돌아온다
+        for (const x of doublesOf(c)) vanish(c, x, '악몽이 깨어 흩어졌다');
+        if (c.s.obj?.hit?.uid === e.uid) setObjective(c, null);
+        if ((c.p.st[GNAWED] ?? 0) > 0) {
+          setSt(c, c.p, GNAWED, 0);
+          c.emit({ t: 'text', uid: 'p', text: '먹힌 시간이 돌아왔다', tone: 'good' });
+        }
+        delete c.p.st[MIRROR];
         setUi(c, 'ui:scramble', 0);
         setUi(c, 'ui:eye', 0);
+      },
+    },
+  },
+  {
+    id: 'a5-double',
+    name: '악몽 속의 나',
+    desc: `내가 마지막으로 피해를 준 기술을 흉내 낸다. 타격당 피해는 그 기술이 준 그대로 (최대 ${DOUBLE_CAP}, ${DOUBLE_HITS}번까지). 아직 흉내 낼 기술이 없으면 손톱으로 할퀸다. 쓰러뜨리면 악몽이 깨지며 꿈을 먹는 자가 최대 체력의 ${Math.round(DOUBLE_BACKLASH * 100)}% 피해를 입는다. 쓰러뜨려도 ${DOUBLE_REFORM}턴 뒤 한 번 다시 빚어진다. 후열에 있어도 근접 공격이 닿는다`,
+    hooks: {
+      onDeath(c, s) {
+        const e = s.unit;
+        const eater = isEnemy(e) ? eaterOf(c) : undefined;
+        if (!eater) return;
+        // 다시 빚을 날 (한 번만)
+        if ((eater.mem.dblN ?? 0) < DOUBLE_FORMS) {
+          eater.mem.dblLeft = DOUBLE_REFORM;
+          setSt(c, eater, REFORM, DOUBLE_REFORM);
+        }
+        // 거울이 깨지듯 악몽이 깨진다: 꿈을 먹는 자가 비틀거린다 (방어도·버팀·가호를 거치지 않는다)
+        cine(c, 'crack', { uid: eater.uid, n: 1 });
+        c.emit({ t: 'text', uid: eater.uid, text: '악몽이 깨지며 꿈을 먹는 자가 비틀거린다', tone: 'good' });
+        c.damage({ src: null, tgt: eater, base: Math.ceil(eater.maxHp * DOUBLE_BACKLASH), type: 'true', ignoreBlock: true, tags: [BACKLASH] });
       },
     },
   },
@@ -601,7 +796,7 @@ function openGate(c: Combat, e: EnemyUnit) {
 }
 
 function feedOnDreams(c: Combat, e: EnemyUnit) {
-  const n = c.horror(e, 12);
+  const n = c.horror(e, EATER_FEED_SAN);
   if (!e.dead && n > 0 && !c.over) c.heal(e, n * 2);
 }
 
@@ -611,7 +806,7 @@ function devour(c: Combat, e: EnemyUnit) {
   // 잠든 이가 한 점으로 빨려 들어간다
   cine(c, 'blackhole', { uid: e.uid });
   vanish(c, s, '꿈째로 삼켜졌다');
-  c.heal(e, 30);
+  c.heal(e, EATER_DEVOUR_HEAL);
   c.apply(e, 'str', 1, e);
 }
 
@@ -783,6 +978,194 @@ function digestMemory(c: Combat, m: EnemyUnit) {
     }
   }
   vanish(c, m, eater ? '소화되었다' : '흩어졌다');
+}
+
+/** 이 전투의 꿈을 먹는 자 */
+const eaterOf = (c: Combat): EnemyUnit | undefined => c.alive.find((x) => x.def === 'dream-eater' && !isIllusion(x));
+
+// ── 꿈을 먹는 자: 굶주림 (DPS 시험) ──
+// HUNGER_EVERY턴마다 라운드 끝에 「식사 시간」을 알린다 (의도 + 화면 위 띠 — 늘 온전한 내 턴 하나를 준다).
+// 그 턴에 꿈을 먹는 자에게 피해(버팀에 깎이기 전, 지속 피해·악몽이 깨지는 반동 포함)를 다 채우면 굶긴다: 약화·버팀 감소, 물어뜯기는 굶주린 이빨로.
+// 못 채우면 꿈을 먹는 자의 차례에 (지속 피해가 터진 뒤) 판정하고, 물어뜯은 뒤 내 시간을 먹는다: 최대 행동력 -1(전투 동안) · 체력 회복.
+// 붕괴·기절해 있으면 먹지 못한다. 식사 시간 동안에도 꿈을 먹는 자는 물어뜯는다 (굶주림이 꿈을 먹는 자의 차례를 공짜로 거르지 않게).
+
+/** 이번 식사 시간에 채워야 할 피해: 내 최대 행동력 1당 HUNGER_NEED_AP (먹힌 행동력만큼 준다) */
+export function hungerNeed(c: Combat): number {
+  return HUNGER_NEED_AP * Math.max(1, c.p.maxAp - (c.p.st[GNAWED] ?? 0));
+}
+
+/** 못 굶기면 일어나는 일 (띠를 누르면 보인다) */
+function hungerFail(c: Combat): string {
+  const heal = `꿈을 먹는 자 체력 ${Math.round(HUNGER_HEAL * 100)}% 회복`;
+  return (c.p.st[GNAWED] ?? 0) < HUNGER_MAX_AP ? `내 시간을 먹는다: 최대 행동력 -${HUNGER_AP} (이 전투 동안), ${heal}` : `더 먹을 시간은 없지만 ${heal}`;
+}
+
+/** 목표 띠: 굶겨라 (남은 피해는 맞을 때마다 줄어든다) */
+function hungerObjective(c: Combat, e: EnemyUnit) {
+  const need = Math.max(0, Math.ceil(e.mem.hgNeed ?? 0));
+  setObjective(c, { text: `굶겨라: 이번 턴 꿈을 먹는 자에게 피해 ${need} · 1턴 남음`, hit: { uid: e.uid, need }, fail: hungerFail(c) });
+}
+
+/**
+ * 식사 시간이 되었는가: 라운드가 끝나 다음 차례를 정할 때만 (이번 라운드에 차례를 마친 뒤 — mem.actT).
+ * 내 턴 한가운데서 다시 정할 때(변신 등)는 알리지 않는다 — 띠가 갑자기 떠 한 턴을 다 주지 못하는 일이 없게
+ */
+function hungerDue(c: Combat, e: EnemyUnit): boolean {
+  // 처음 두 턴엔 부르지 않는다 (HUNGER_FIRST를 줄여도)
+  const next = c.s.turn + 1;
+  return !isIllusion(e) && c.s.phase === 'enemy' && e.mem.actT === c.s.turn && next >= 3 && next >= (e.mem.hgAt ?? HUNGER_FIRST);
+}
+
+/** 식사 시간을 알린다 (의도를 정할 때). 처음엔 화면 너머로 */
+export function callHunger(c: Combat, e: EnemyUnit) {
+  e.mem.hunger = 1;
+  e.mem.hgNeed = hungerNeed(c);
+  setSt(c, e, HUNGER, 0);
+  hungerObjective(c, e);
+  c.emit({ t: 'text', uid: e.uid, text: '식사 시간이다. 입맛을 다신다', tone: 'eldritch' });
+  if (!c.s.vars.a5Supper) {
+    c.s.vars.a5Supper = 1;
+    cine(c, 'sysmsg', { uid: e.uid, text: '식사 시간입니다.\n남은 행동력을 확인하십시오.' });
+  }
+}
+
+/** 식사 시간에 꿈을 먹는 자가 받은 피해를 센다. 다 채우면 굶긴다 */
+function feedHunger(c: Combat, e: EnemyUnit, n: number) {
+  if (!e.mem.hunger || n <= 0) return;
+  e.mem.hgNeed = (e.mem.hgNeed ?? 0) - n;
+  if (e.mem.hgNeed > 0) hungerObjective(c, e);
+  else starve(c, e);
+}
+
+/** 굶겼다: 띠가 풀리고 비틀거린다 (약화·버팀 감소 — 규칙이라 결계에 막히지 않는다). 이번 차례의 물어뜯기는 굶주린 이빨로 */
+function starve(c: Combat, e: EnemyUnit) {
+  e.mem.hunger = 0;
+  e.mem.hgNeed = 0;
+  e.mem.hgSt = 1;
+  e.mem.hgAt = c.s.turn + HUNGER_EVERY;
+  e.mem.starved = (e.mem.starved ?? 0) + 1;
+  if (c.s.obj?.hit?.uid === e.uid) setObjective(c, null);
+  c.emit({ t: 'text', uid: e.uid, text: '굶주려 비틀거린다', tone: 'good' });
+  setSt(c, e, 'weak', (e.st.weak ?? 0) + HUNGER_WEAK);
+  chipPoise(c, e, HUNGER_POISE, '굶주림에 휘청인다');
+  if (!e.dead && e.broken !== 2) setIntent(c, e, 'starve');
+}
+
+/** 꿈을 먹는 자의 차례가 왔다 (지속 피해가 터진 뒤, 행동하기 전): 아직 굶기지 못했으면 이번 차례에 내 시간을 먹는다 */
+function judgeHunger(c: Combat, e: EnemyUnit) {
+  if (!e.mem.hunger || c.over) return;
+  e.mem.hunger = 0;
+  e.mem.hgFail = 1;
+  e.mem.hgAt = c.s.turn + HUNGER_EVERY;
+  if (c.s.obj?.hit?.uid === e.uid) setObjective(c, null);
+}
+
+/** 식사: 굶기지 못했으면 내 시간을 먹는다 (최대 행동력 -HUNGER_AP, 모두 HUNGER_MAX_AP까지 — 결계가 막는다) · 체력 회복 */
+function eatTime(c: Combat, e: EnemyUnit) {
+  if (!e.mem.hgFail) return;
+  delete e.mem.hgFail;
+  e.mem.ate = (e.mem.ate ?? 0) + 1;
+  const k = Math.min(HUNGER_AP, HUNGER_MAX_AP - (c.p.st[GNAWED] ?? 0));
+  if (k > 0 && c.apply(c.p, GNAWED, k, e) > 0) c.emit({ t: 'text', uid: 'p', text: `시간 한 조각을 먹혔다 (최대 행동력 -${k})`, tone: 'bad' });
+  c.heal(e, Math.ceil(e.maxHp * HUNGER_HEAL));
+  // 처음 먹을 때 화면 모서리에서 이빨이 돋는다
+  if (!c.s.vars.a5Gnawed) {
+    c.s.vars.a5Gnawed = 1;
+    cine(c, 'corners', { uid: e.uid });
+  }
+}
+
+// ── 꿈을 먹는 자: 악몽 속의 나 (흉내) ──
+// 깨어난 악몽이 될 때 내 모습을 빚는다 (체력 = 내 최대 체력의 DOUBLE_HP_PCT). 내가 마지막으로 피해를 준 기술을 흉내 낸다:
+// 기술 하나가 준 타격당 피해(버팀·방어도에 깎이기 전)와 대상 하나가 맞은 횟수를 내 쪽 숨은 상태(악몽의 거울)가 기억한다.
+// 적의 특성 훅은 내 기술을 볼 수 없어서 꿈실(장막 직조자)처럼 내게 거는 숨은 상태로 짰다.
+// 쓰러뜨리면 꿈을 먹는 자가 반동 피해를 입고, DOUBLE_REFORM턴 뒤 한 번 다시 빚어진다.
+
+const doublesOf = (c: Combat): EnemyUnit[] => c.alive.filter((x) => x.def === DOUBLE);
+
+/** 악몽 속의 나의 체력: 내 최대 체력 × DOUBLE_HP_PCT (상한 DOUBLE_HP_MAX) */
+export function doubleHp(c: Combat): number {
+  return Math.max(1, Math.min(DOUBLE_HP_MAX, Math.round(c.p.maxHp * DOUBLE_HP_PCT)));
+}
+
+/** 이 기술 사용의 자리 (MIM_REF) — 0이면 장착 칸 밖의 기술 */
+function skillRef(c: Combat, u: SkillUse): number {
+  if (u.basic === 'weapon') return -1;
+  if (u.basic === 'armor') return -2;
+  const i = c.run.slots.indexOf(u.owned.uid);
+  return i >= 0 ? i + 1 : 0;
+}
+
+function mimicReset(c: Combat) {
+  for (const k of [MIM_ON, MIM_SUM, MIM_N, MIM_TY, MIM_T, MIM_TN]) delete c.s.vars[k];
+}
+
+/** 방금 쓴 기술이 피해를 줬으면 흉내 낼 기술로 기억한다 (타격당 피해는 평균, 횟수는 대상 하나가 맞은 횟수 — 무작위 타격은 모두) */
+function commitMimic(c: Combat, u: SkillUse) {
+  const n = c.s.vars[MIM_N] ?? 0;
+  const sum = c.s.vars[MIM_SUM] ?? 0;
+  const ty = c.s.vars[MIM_TY] ?? 0;
+  const onFirst = c.s.vars[MIM_TN] ?? 0;
+  mimicReset(c);
+  const ref = skillRef(c, u);
+  if (n <= 0 || sum <= 0 || !ref) return;
+  c.s.vars[MIM_REF] = ref;
+  c.s.vars[MIM_DMG] = Math.max(1, Math.round(sum / n));
+  c.s.vars[MIM_HITS] = u.def.target === 'random' ? n : Math.max(1, onFirst || n);
+  c.s.vars[MIM_TYPE] = ty;
+}
+
+/** 흉내 낼 타격당 피해 (내가 준 그대로, 상한 DOUBLE_CAP). 0이면 아직 흉내 낼 기술이 없다 */
+export function mimicPer(c: Combat): number {
+  return c.s.vars[MIM_REF] ? Math.min(DOUBLE_CAP, Math.max(1, c.s.vars[MIM_DMG] ?? 0)) : 0;
+}
+
+/** 흉내 낼 타격 수 (DOUBLE_HITS까지) */
+export function mimicHits(c: Combat): number {
+  return c.s.vars[MIM_REF] ? Math.max(1, Math.min(DOUBLE_HITS, c.s.vars[MIM_HITS] ?? 1)) : 1;
+}
+
+/** 흉내 낼 기술의 이름 */
+export function mimicName(c: Combat): string {
+  const ref = c.s.vars[MIM_REF] ?? 0;
+  const key = ref === -1 ? 'weapon' : ref === -2 ? 'armor' : c.run.slots[ref - 1];
+  return (key && c.skillInfo(key)?.def.name) || '기술';
+}
+
+const mimicType = (c: Combat): DmgType => {
+  const t = c.s.vars[MIM_TYPE] ?? 0;
+  return t > 0 ? DMG_TYPES[t - 1] : 'void';
+};
+
+/** 이 전투에서 5층 적의 공격에 걸리는 층·정예/수호자 배율 (흉내 낸 피해는 내가 준 그대로 돌려주려고 미리 덜어 둔다) */
+function foeMult(c: Combat): number {
+  const kind = c.s.kind === 'elite' ? ELITE_DMG_MULT[5] : c.s.kind === 'boss' ? BOSS_DMG_MULT[5] : 1;
+  return ACT_DMG_MULT[5] * kind;
+}
+
+/** 흉내의 기본 피해: 층·수호자 배율을 걸면 내가 준 타격당 피해가 되는 값 (0.01 단위로 올려 버림해도 그 값이 되게). 아직 흉내 낼 기술이 없으면 손톱 */
+function mimicBase(c: Combat): number {
+  const per = mimicPer(c);
+  return per ? Math.ceil((per / foeMult(c)) * 100 + 1e-6) / 100 : DOUBLE_CLAW;
+}
+
+/** 악몽 속의 나의 의도를 지금 흉내 낼 기술로 (내 턴이 시작될 때·기술을 쓸 때마다). 의도 이름에 그 기술 이름을 붙인다 */
+function planDouble(c: Combat, e: EnemyUnit) {
+  if (e.dead || e.broken === 2) return;
+  setIntent(c, e, mimicPer(c) ? 'mimic' : 'claw');
+  if (e.intent?.move === 'mimic') e.intent.label = `흉내: ${mimicName(c)}`;
+}
+
+/** 악몽 속의 나를 빚는다 (깨어난 악몽이 될 때, 쓰러뜨린 뒤 DOUBLE_REFORM턴이 지나면 한 번 더). 빚었으면 그 하수인 */
+export function formDouble(c: Combat, e: EnemyUnit): EnemyUnit | null {
+  if (isIllusion(e) || e.dead || c.over || (e.mem.dblN ?? 0) >= DOUBLE_FORMS || doublesOf(c).length > 0) return null;
+  const d = c.spawn(DOUBLE, 0);
+  if (!d) return null;
+  e.mem.dblN = (e.mem.dblN ?? 0) + 1;
+  cine(c, 'flip', { uid: d.uid });
+  c.emit({ t: 'text', uid: d.uid, text: e.mem.dblN > 1 ? '악몽이 다시 당신의 모습을 빚었다' : '악몽 속에서 당신이 걸어 나온다', tone: 'eldritch' });
+  planDouble(c, d);
+  return d;
 }
 
 // ── 요람의 수문장: 쉿 ──
@@ -1569,6 +1952,47 @@ reg.enemies([
     ai: (_c, e) => ((e.mem.left ?? DIGEST_TURNS) <= 1 ? 'digest' : 'fade'),
     visual: { tint: 0x2a2440, glow: 0xd0b0ff, scale: 0.6, fx: ['float', 'flicker'] },
   },
+  {
+    id: DOUBLE,
+    name: '악몽 속의 나',
+    icon: 'gi:shadow-follower',
+    act: 5,
+    tier: 'minion',
+    // 체력은 빚어질 때 내 최대 체력으로 정한다 (onSpawn — doubleHp)
+    hp: [1, 1],
+    poise: DOUBLE_POISE,
+    // 세 출신 모두 약점 하나는 친다 (관통·화염·비전)
+    weak: ['pierce', 'fire', 'arcane'],
+    row: 0,
+    // 기믹: 쓰러뜨리면 꿈을 먹는 자가 비틀거린다 — 뒷열에 있어도 근접으로 닿는다
+    reachable: true,
+    eldritch: true,
+    tags: ['dream', 'nightmare'],
+    traits: ['a5-double'],
+    desc: '꿈을 먹는 자의 악몽 속에서 빚어진 당신. 거울보다 정직하게, 당신이 방금 휘두른 것을 그대로 휘두른다.',
+    onSpawn: (c, e) => {
+      e.hp = e.maxHp = doubleHp(c);
+    },
+    moves: {
+      // 흉내: 의도 이름은 「흉내: 기술 이름」 (planDouble이 붙인다). 피해·횟수는 의도를 정할 때 계산한다
+      mimic: {
+        name: '흉내',
+        intent: 'attack',
+        melee: false,
+        dmg: (c) => mimicBase(c),
+        hits: (c) => mimicHits(c),
+        desc: `내가 마지막으로 피해를 준 기술을 흉내 낸다. 타격당 피해는 그 기술이 준 그대로 (버팀·방어도에 깎이기 전, 최대 ${DOUBLE_CAP}). ${DOUBLE_HITS}번까지`,
+        run(c, e) {
+          // 행동 이름(흉내)만으로는 무엇을 따라 하는지 모른다 — 내 기술 이름을 외치며 휘두른다
+          if (mimicPer(c)) c.emit({ t: 'text', uid: e.uid, text: `「${mimicName(c)}」`, tone: 'eldritch' });
+          c.enemyAttack(e, { type: mimicType(c) });
+        },
+      },
+      claw: mv.attack('악몽의 손톱', DOUBLE_CLAW, { melee: false, type: 'slash', desc: '아직 흉내 낼 기술이 없어 손톱으로 할퀸다' }),
+    },
+    ai: (c) => (mimicPer(c) ? 'mimic' : 'claw'),
+    visual: { tint: 0x0c0818, glow: 0xff3080, scale: 0.95, fx: ['flicker'] },
+  },
 
   // ───────────── 정예 ─────────────
   {
@@ -1779,7 +2203,7 @@ reg.enemies([
     icon: 'gi:evil-moon',
     act: 5,
     tier: 'boss',
-    hp: [680, 680],
+    hp: [EATER_HP, EATER_HP],
     poise: 14,
     weak: ['fire', 'slash'],
     resist: { void: 0.5 },
@@ -1789,19 +2213,27 @@ reg.enemies([
     tags: ['dream', 'lord'],
     traits: ['a5-dream-glutton'],
     desc: '태아가 꾸는 꿈의 가장자리에서, 잠든 이들의 꿈을 갉아먹고 자라는 것. 이 층에서 잠드는 자는 모두 그것의 식탁에 오른다.',
+    onSpawn: (c, e) => {
+      if (c.s.vars.a5Illu) return;
+      // 굶주림: 첫 식사 시간까지 (다음 내 턴 기준 남은 턴)
+      e.mem.hgAt = HUNGER_FIRST;
+      if (HUNGER_FIRST > 1) e.st[HUNGER] = HUNGER_FIRST - 1;
+      // 손끝을 비추는 악몽의 거울 (숨은 상태 — 악몽 속의 나가 흉내 낼 기술을 기억한다)
+      c.p.st[MIRROR] = 1;
+    },
     moves: {
-      maw: mv.attack('꿈의 아가리', 22),
-      ravage: hid(mv.attack('악몽의 난도질', 8, { hits: 3, type: 'slash' })),
+      maw: mv.attack('꿈의 아가리', EATER_MAW),
+      ravage: hid(mv.attack('악몽의 난도질', EATER_RAVAGE, { hits: EATER_RAVAGE_HITS, type: 'slash' })),
       devour: {
         name: '꿈 삼키기',
         intent: 'heal',
-        desc: '잠든 이를 통째로 삼켜 체력 30 회복, 힘 +1 (잠든 이가 없으면 꿈 갉아먹기)',
+        desc: `잠든 이를 통째로 삼켜 체력 ${EATER_DEVOUR_HEAL} 회복, 힘 +1 (잠든 이가 없으면 꿈 갉아먹기)`,
         run: devour,
       },
       dreamfeed: {
         name: '꿈 갉아먹기',
         intent: 'horror',
-        sanity: 12,
+        sanity: EATER_FEED_SAN,
         desc: '빼앗은 정신력의 두 배만큼 회복한다',
         run: feedOnDreams,
       },
@@ -1819,11 +2251,31 @@ reg.enemies([
           desc: `기술 2개를 삼켜 '삼켜진 기억'으로 붙든다. 기억을 쓰러뜨리면 곧바로 되찾는다. ${DIGEST_TURNS}턴 안에 못 되찾으면 소화된다 (꿈을 먹는 자 체력 ${DIGEST_HEAL} 회복, 힘 +1). 정신 피해 5`,
         }),
       ),
-      conceive: mv.charge('악몽 잉태', 48),
-      nightfall: release(mv.attack('악몽 강림', 48, { melee: false, type: 'void', ultimate: true, cine: 'ink' })),
+      conceive: mv.charge('악몽 잉태', EATER_NIGHTFALL),
+      nightfall: release(mv.attack('악몽 강림', EATER_NIGHTFALL, { melee: false, type: 'void', ultimate: true, cine: 'ink' })),
+      // 굶주림: 식사 시간 (화면 위 띠 — 이번 턴에 굶기지 못하면 물어뜯은 뒤 내 시간을 먹는다)
+      eat: mv.attack('식사 시간', HUNGER_BITE, {
+        melee: false,
+        type: 'pierce',
+        extra: ['special'],
+        then: eatTime,
+        desc: `물어뜯는다. 이번 턴에 굶기지 못했으면 내 시간을 먹는다: 최대 행동력 -${HUNGER_AP}(이 전투 동안, 모두 ${HUNGER_MAX_AP}까지), 꿈을 먹는 자 체력 ${Math.round(HUNGER_HEAL * 100)}% 회복. 굶기는 법은 화면 위 띠에`,
+      }),
+      starve: mv.attack('굶주린 이빨', HUNGER_BITE, {
+        melee: false,
+        type: 'pierce',
+        desc: `굶주려 힘없이 물어뜯는다. 굶긴 대가로 약화 ${HUNGER_WEAK}, 버팀 -${HUNGER_POISE}`,
+      }),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'nightfall';
+      // 굶주림: 굶겼으면 굶주린 이빨, 식사 시간이 걸려 있으면 그대로, 때가 되면 식사 시간을 알린다 (순환 밖의 차례 — 순환은 그대로 이어진다)
+      if (e.mem.hgSt) return 'starve';
+      if (e.mem.hunger) return 'eat';
+      if (hungerDue(c, e)) {
+        callHunger(c, e);
+        return 'eat';
+      }
       const sleeper = c.alive.some((x) => x !== e && isAsleep(x) && !isIllusion(x));
       const canLull = countDef(c, 'sleepwalker') < 2 && (e.mem.lulled ?? 0) < 3;
       const m = e.form

@@ -1,7 +1,9 @@
 import { reg } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
-import { DMG_TYPES, type DmgType, type EnemyUnit } from '../../engine/types';
+import { josa } from '../../engine/josa';
+import { isEnemy, MAX_ROW, unguarded, type Combat } from '../../engine/combat';
+import { DMG_TYPES, type DamageCtx, type DmgType, type EnemyUnit } from '../../engine/types';
 import { cine, execute, setObjective, setUi } from '../lib';
+import { canReact, intentFor, refreshIntent, vanish } from './common';
 
 /*
  * 3층 수호자·정예의 시그니처 메커니즘 (2026-10 패턴 확장).
@@ -10,6 +12,8 @@ import { cine, execute, setObjective, setUi } from '../lib';
  *  - 각도의 왕 「열린 각」: 화면의 금(ui:cracks) = 날카로운 각. 방어도로 메우고, 붕괴시키면 닫힌다
  *  - 산맥 너머의 것 「드러난 모습」: 보면(공격하면) 정신력, 대신 받는 피해 +50%
  *  - 깨어난 원로 「멈춘 칼날」: 멈춘 시간 속 칼날 다섯 — 원로를 때려 쳐낸다
+ *    「얼음 감옥」: 내 기술 하나를 얼음 속에 가둔다 — 깨뜨리면 돌아오고, 못 깨면 기억이 부서진다
+ *    「다섯 갈래의 몸」: 체력 UNFURL_AT(60%) 아래에서 펼쳐진다 — 팔 수만큼 때리고, 붕괴·큰 일격으로 팔을 자른다
  *  - 렝의 대거미 「몸속의 알」, 샨탁 「하늘에 매달림」, 고대인 해부학자 「절개선」, 시간에 얼어붙은 탐사대장 「멈춘 시간」
  * 수치는 전부 여기 상수로 두고 설명 문구도 같은 상수를 쓴다.
  */
@@ -268,6 +272,324 @@ export function veilAgain(c: Combat, e: EnemyUnit) {
 export const BLADES = 'a3-blades';
 export const BLADE_N = 5;
 export const BLADE_DMG = 6;
+/** 펼쳐진 원로(다섯 갈래의 몸)의 「멈춘 시간」은 칼날이 이만큼 더 많다 */
+export const BLADE_EXTRA = 2;
+
+// ───────────── 깨어난 원로: 수치 (2026-10 「계층군주를 훨씬 어렵게」) ─────────────
+// 계층군주는 숨은 조건을 채워야 나오는 선택 보스다 — 층 수호자보다 확실히 어렵게 (봇 승률 목표: 봇 ~40% · 1.5배 ~65% · 2.5배 ~88%).
+// 아래 수치는 첫 값이다. 설명 문구가 모두 이 상수를 쓰니 수치만 바꾸면 된다.
+
+/** 체력 (층·수호자 배율 전 — 실제로는 × ACT_HP_MULT[3] × BOSS_HP_MULT) */
+export const ELDER_HP = 1000;
+/** 원로의 버팀 — 강한 덱이 붕괴로 큰 공격을 너무 쉽게 끊지 않게 (13 → 16) */
+export const ELDER_POISE = 16;
+/** 「다섯 갈래 촉수」(펼치기 전): 타격당 피해 × 횟수 */
+export const TENTACLE_DMG = 8;
+export const TENTACLE_HITS = 3;
+/** 「해부의 손길」 피해 · 출혈 · 약화 */
+export const DISSECT_DMG = 16;
+export const DISSECT_BLEED = 3;
+export const DISSECT_WEAK = 1;
+/** 「수억 년의 기억」 정신 피해 · 공포 */
+export const MEMORY_SAN = 16;
+export const MEMORY_DREAD = 1;
+/** 「막날개를 펼친다」 → 「별을 건너온 날개」 피해 */
+export const STARFALL_DMG = 54;
+
+// ───────────── 깨어난 원로: 얼음 감옥 ─────────────
+// 「얼음 속에 가둔다」(의도에 미리 보인다): 지금 쓸 수 있는 장착 기술 중 행동력이 가장 큰 것 하나를 얼음 감옥(하수인)에 가둔다.
+// 무기·방어구 기본기는 장착 칸에 없어 가두지 않는다. 장착 기술이 둘 미만이면 가두지 않는다 (하나는 늘 남는다).
+// 갇힌 기술은 재사용 대기 99로 잠긴다 — 표본 채집과 같은 표식 mem.specimen이라 대기를 되돌리는 기술·각인도 건드리지 않는다.
+//  - 얼음 감옥을 깨뜨리면(어떻게 쓰러지든) 곧바로 돌아온다. 내 화염 피해(화상 포함)는 두 배로 녹인다 — 화염 없이도 깰 수 있는 체력
+//  - 내 턴 ICE_TURNS번 안에 깨뜨리지 못하면 기억이 얼음과 함께 부서진다: 이번 전투가 끝날 때까지 쓸 수 없다 (「부서진 기억」)
+//    원로는 부서진 기억 하나를 제 몸에 얼려 품는다 — 품은 동안에는 더 가두지 않는다 (부서진 기억은 전투마다 하나)
+//  - 감옥은 한 번에 하나. 원로가 쓰러지면 얼음이 녹아 갇힌 기술이 돌아온다
+//  - 화면 위 호박색 목표 띠(처치 목표)가 막는 법을 보이고, 봇도 이 목표를 보고 감옥을 먼저 깬다
+// 목표가 걸리면 심연 압력(content/depth.ts)은 목표가 겨누는 적(얼음 감옥)의 가호만 쉬게 한다 — 원로의 가호는 그대로다.
+
+/** 얼음 감옥 (하수인 id) */
+export const ICE_PRISON = 'a3-ice-prison';
+/** 플레이어 상태: 기억 하나가 얼음 감옥에 갇혔다 (수치 = 남은 내 턴) */
+export const ICE = 'a3-iced';
+/** 플레이어 상태: 얼음과 함께 부서진 기억 (이번 전투 동안 잠긴다) */
+export const SHATTERED = 'a3-shattered';
+/** 깨뜨려야 하는 내 턴 수 */
+export const ICE_TURNS = 3;
+/** 얼음 감옥 체력 (층 배율 전 — 실제로는 × ACT_HP_MULT[3]). 어느 출신이든 시작 덱 무기 기본 공격으로 기한 안에 깬다 */
+export const ICE_HP = 22;
+/** 내 화염 피해(화상 포함)가 얼음 감옥에 주는 피해 배율 */
+export const ICE_FIRE_MULT = 2;
+/** 이 턴의 의도부터 가둘 수 있다 — 빨라야 3번째 차례 (처음 두 턴엔 오지 않는다) */
+export const ICE_FROM = 2;
+/** 목표 띠를 누르면 보이는, 깨뜨리지 못했을 때의 대가 */
+export const ICE_FAIL = '갇힌 기억이 얼음과 함께 부서진다. 이번 전투가 끝날 때까지 그 기술을 쓸 수 없다';
+
+/** 이 이상의 재사용 대기는 잠긴 것(빼앗김·전투당 1회를 이미 씀)으로 본다 */
+const LOCKED = 90;
+/** 부서진 기억이 있던 장착 칸 + 1 (c.s.vars — 원로가 쓰러져도 잠금을 이어 간다) */
+const SHARD = 'a3-shard';
+
+const elderOf = (c: Combat): EnemyUnit | undefined => alive(c, 'awakened-elder');
+
+/** 화면·로그에 쓰는 기술 이름 */
+function memName(c: Combat, uid: string | null | undefined): string {
+  return (uid && c.skillInfo(uid)?.def.name) || '기술';
+}
+
+/** 플레이어에게 '규칙' 상태를 직접 건다 (결계에 막히지 않고, 사경 중에도 그대로). 0이면 지운다 */
+function setRule(c: Combat, id: string, n: number) {
+  const before = c.p.st[id] ?? 0;
+  if (n > 0) c.p.st[id] = n;
+  else delete c.p.st[id];
+  if (n !== before) c.emit({ t: 'status', uid: 'p', id, n: n - before });
+}
+
+/** 가둘 수 있는 장착 기술 (다른 적이 쥔 것·잠긴 것 제외 — 무기·방어구 기본기는 장착 칸에 없다) */
+function memories(c: Combat): { uid: string; i: number }[] {
+  const held = new Set(c.alive.filter((x) => (x.mem.specimen ?? 0) > 0).map((x) => x.mem.specimen - 1));
+  return c.run.slots
+    .map((uid, i) => ({ uid, i }))
+    .filter((x): x is { uid: string; i: number } => !!x.uid && !held.has(x.i) && (c.s.cd[x.uid] ?? 0) < LOCKED && !!c.skillInfo(x.uid));
+}
+
+/** 지금 쓸 수 있는 것 가운데 행동력이 가장 큰 기술 (쓸 수 있는 것이 없으면 대기 중인 것 가운데서). 같으면 무작위 */
+function pickMemory(c: Combat): { uid: string; i: number } | null {
+  const all = memories(c);
+  if (!all.length) return null;
+  const ready = all.filter((x) => (c.s.cd[x.uid] ?? 0) <= 0);
+  const pool = ready.length ? ready : all;
+  const cost = (x: { uid: string }) => {
+    const info = c.skillInfo(x.uid);
+    return info ? c.costOf(info) : 0;
+  };
+  const top = Math.max(...pool.map(cost));
+  return c.rng.pick(pool.filter((x) => cost(x) === top));
+}
+
+/** 살아 있는 얼음 감옥 */
+export const prisonOf = (c: Combat): EnemyUnit | undefined => alive(c, ICE_PRISON);
+
+/**
+ * 지금 「얼음 속에 가둔다」를 쓸 수 있는가: 초반이 아니고(ICE_FROM), 부서진 기억을 품고 있지 않고, 감옥이 없고,
+ * 감옥이 설 자리가 있고, 가둘 수 있는 장착 기술이 둘 이상 (하나는 늘 남는다)
+ */
+export function canImprison(c: Combat, e: EnemyUnit): boolean {
+  if (c.s.turn < ICE_FROM || (e.mem.specimen ?? 0) > 0 || prisonOf(c)) return false;
+  if (c.row(0).length >= MAX_ROW && c.row(1).length >= MAX_ROW) return false;
+  return memories(c).length >= 2;
+}
+
+/** 목표 띠: 얼음 감옥을 깨뜨려라 (남은 체력은 맞을 때마다 줄어든다) */
+function iceObjective(c: Combat, prison: EnemyUnit) {
+  const uid = c.run.slots[(prison.mem.specimen ?? 0) - 1];
+  const left = Math.max(1, prison.mem.left ?? ICE_TURNS);
+  setObjective(c, {
+    text: `얼음 감옥을 깨뜨려라: 「${memName(c, uid)}」 (${left}턴 남음)`,
+    hit: { uid: prison.uid, need: Math.max(0, prison.hp) },
+    kill: [prison.uid],
+    fail: ICE_FAIL,
+  });
+}
+
+/** 갇힌 기술의 잠금을 다시 건다 (대기가 매 턴 줄어 숫자로 보이지 않게 — 버튼엔 ✕) */
+function keepIced(c: Combat) {
+  for (const x of c.alive) {
+    if (x.def !== ICE_PRISON) continue;
+    const uid = c.run.slots[(x.mem.specimen ?? 0) - 1];
+    if (uid) c.s.cd[uid] = 99;
+  }
+}
+
+/** 부서진 기억의 잠금을 다시 건다 (원로가 쓰러진 뒤에도 — 이번 전투가 끝날 때까지) */
+function keepShard(c: Combat) {
+  const uid = c.run.slots[(c.s.vars[SHARD] ?? 0) - 1];
+  if (uid) c.s.cd[uid] = 99;
+}
+
+/** 「얼음 속에 가둔다」: 기술 하나를 얼음 감옥에 가둔다. 가뒀으면 true. 처음엔 화면 너머로 가짜 시스템 창 */
+export function imprison(c: Combat, e: EnemyUnit): boolean {
+  const pick = canImprison(c, e) ? pickMemory(c) : null;
+  const prison = pick ? c.spawn(ICE_PRISON, 0) : null;
+  if (!pick || !prison) {
+    c.emit({ t: 'text', uid: e.uid, text: '얼음이 맺히다 흩어진다', tone: 'info' });
+    return false;
+  }
+  prison.mem.specimen = pick.i + 1;
+  prison.mem.specimenCd = c.s.cd[pick.uid] ?? 0;
+  prison.mem.specimenAt = c.s.turn;
+  prison.mem.left = ICE_TURNS;
+  // 적의 차례에 생기면 그 라운드에는 움직이지 않는다 — 다음 라운드의 차례 끝부터 센다 (내 턴 ICE_TURNS번)
+  prison.mem.born = c.s.turn;
+  c.s.cd[pick.uid] = 99;
+  setRule(c, ICE, ICE_TURNS);
+  iceObjective(c, prison);
+  const name = memName(c, pick.uid);
+  c.emit({ t: 'text', uid: 'p', text: `「${name}」${josa(name, '이')} 얼음 속에 갇혔다`, tone: 'bad' });
+  if (!c.s.vars['a3-iceSeen']) {
+    c.s.vars['a3-iceSeen'] = 1;
+    cine(c, 'sysmsg', { uid: e.uid, text: `「${name}」의 기억이 얼음 속에 보관되었습니다.` });
+  } else cine(c, 'glitch', { n: 1, uid: prison.uid });
+  return true;
+}
+
+/** 갇힌 기술을 돌려준다 (감옥이 깨졌다·녹았다). 갇혀 있던 동안 지난 턴만큼 원래 대기가 줄어 있다 */
+export function freeMemory(c: Combat, prison: EnemyUnit, text: (name: string) => string) {
+  const i = (prison.mem.specimen ?? 0) - 1;
+  prison.mem.specimen = 0;
+  if (c.s.obj?.kill?.includes(prison.uid)) setObjective(c, null);
+  if (!c.alive.some((x) => x !== prison && x.def === ICE_PRISON)) setRule(c, ICE, 0);
+  const uid = i >= 0 ? c.run.slots[i] : null;
+  if (!uid) return;
+  const left = Math.max(0, (prison.mem.specimenCd ?? 0) - (c.s.turn - (prison.mem.specimenAt ?? c.s.turn)));
+  if (left > 0) c.s.cd[uid] = left;
+  else delete c.s.cd[uid];
+  c.emit({ t: 'text', uid: 'p', text: text(memName(c, uid)), tone: 'good' });
+}
+
+/** 기한이 다 됐다: 갇힌 기억이 얼음과 함께 부서진다 — 이번 전투 동안 잠긴다 (원로가 부서진 기억을 품는다) */
+export function shatterPrison(c: Combat, prison: EnemyUnit) {
+  const i = (prison.mem.specimen ?? 0) - 1;
+  prison.mem.specimen = 0;
+  if (c.s.obj?.kill?.includes(prison.uid)) setObjective(c, null);
+  setRule(c, ICE, 0);
+  vanish(c, prison, '기억과 함께 부서졌다');
+  const uid = i >= 0 ? c.run.slots[i] : null;
+  if (!uid) return;
+  c.s.cd[uid] = 99;
+  c.s.vars[SHARD] = i + 1;
+  // 원로가 품는다: 표본 채집과 같은 표식이라 대기를 되돌리는 기술·각인이 건드리지 않는다
+  const elder = elderOf(c);
+  if (elder && !elder.mem.specimen) elder.mem.specimen = i + 1;
+  setRule(c, SHATTERED, 1);
+  cine(c, 'crack', { n: 2 });
+  cine(c, 'glitch', { n: 2 });
+  const name = memName(c, uid);
+  c.emit({ t: 'text', uid: 'p', text: `「${name}」의 기억이 얼음과 함께 부서졌다`, tone: 'bad' });
+}
+
+/** 원로가 쓰러졌다: 남은 얼음 감옥이 녹아 갇힌 기술이 돌아온다 */
+export function meltPrisons(c: Combat) {
+  for (const x of c.alive.filter((p) => p.def === ICE_PRISON)) {
+    freeMemory(c, x, (n) => `얼음이 녹아 「${n}」${josa(n, '을')} 되찾았다`);
+    vanish(c, x, '녹아내렸다');
+  }
+}
+
+/** 내 쪽에서 온 피해 (내 공격·가시·반격·내가 건 지속 피해) — 버팀·가호와 같은 기준 */
+const fromPlayer = (c: Combat, d: Pick<DamageCtx, 'src' | 'tags'>) => d.src === c.p || (d.src === null && d.tags.includes('dot'));
+
+/** 얼음 감옥: 내 화염 피해(화상 포함)는 ICE_FIRE_MULT배로 녹인다 (미리보기도 같은 숫자 — 상태는 바꾸지 않는다) */
+export function meltHarder(c: Combat, prison: EnemyUnit, d: DamageCtx) {
+  if (d.tgt !== prison || !fromPlayer(c, d) || !(d.type === 'fire' || d.tags.includes('burn'))) return;
+  d.amount *= ICE_FIRE_MULT;
+  d.bare *= ICE_FIRE_MULT;
+}
+
+/** 얼음 감옥이 맞았다: 목표 띠의 남은 피해를 줄인다 */
+export function prisonHit(c: Combat, prison: EnemyUnit) {
+  if (prison.dead || prison.hp <= 0 || !c.s.obj?.kill?.includes(prison.uid)) return;
+  iceObjective(c, prison);
+}
+
+/** 얼음 감옥의 차례가 끝났다: 남은 턴을 센다. 기한이 다 되면 기억과 함께 부서진다 */
+export function iceTick(c: Combat, prison: EnemyUnit) {
+  // 생긴 라운드에는 세지 않는다 (적의 차례에 생기면 원래 이 라운드에 움직이지 않는다)
+  if (prison.dead || c.s.turn <= (prison.mem.born ?? -1)) return;
+  const left = (prison.mem.left ?? ICE_TURNS) - 1;
+  prison.mem.left = left;
+  if (left > 0) {
+    setRule(c, ICE, left);
+    if (c.s.obj?.kill?.includes(prison.uid)) iceObjective(c, prison);
+    c.emit({ t: 'text', uid: prison.uid, text: left > 1 ? '얼음이 더 단단히 굳는다' : '얼음에 금이 가기 시작한다', tone: 'bad' });
+    return;
+  }
+  shatterPrison(c, prison);
+}
+
+// ───────────── 깨어난 원로: 다섯 갈래의 몸 (2막) ─────────────
+// 체력이 UNFURL_AT 아래로 떨어지면 막날개와 다섯 팔을 펼친다 (형태 1 '펼쳐진 원로', 팔 ARM_MAX).
+//  - 「다섯 갈래 촉수」는 남은 팔마다 ARM_DMG씩 한 번 — 팔을 잘라 낼수록 약해진다
+//  - 붕괴시키면 팔 ARM_BREAK_CUT개, 내 공격 한 번에 ARM_CUT 이상(버팀에 깎이기 전 — unguarded)이면 팔 1개가 잘린다
+//  - 잘린 팔은 원로의 차례 ARM_REGROW번마다 하나씩 다시 자란다 (최대 ARM_MAX)
+//  - 새 행동 「다섯 별의 기도」: 한 차례 힘을 모은 뒤 「다섯 별의 응답」(PRAYER_DMG). 붕괴시키면 끊긴다
+//  - 「멈춘 시간」의 칼날이 BLADE_EXTRA개 더 (BLADE_N + BLADE_EXTRA)
+
+/** 원로의 팔 (원로에게 거는 상태, 수치 = 남은 팔) */
+export const ARMS = 'a3-arms';
+/** 이 체력 비율 아래로 떨어지면 펼친다 (잃은 체력 그대로 — 버팀과 상관없이) */
+export const UNFURL_AT = 0.6;
+/** 팔의 최대 수 (펼칠 때 이만큼) */
+export const ARM_MAX = 5;
+/** 펼친 뒤 「다섯 갈래 촉수」의 팔 하나당 피해 */
+export const ARM_DMG = 6;
+/** 붕괴시키면 잘리는 팔 */
+export const ARM_BREAK_CUT = 2;
+/** 내 공격 한 번에 이만큼(버팀에 깎이기 전) 피해를 주면 팔 하나가 잘린다 */
+export const ARM_CUT = 20;
+/** 잘린 팔이 다시 자라는 데 걸리는 원로의 차례 */
+export const ARM_REGROW = 3;
+/** 「다섯 별의 기도」 → 「다섯 별의 응답」 피해 */
+export const PRAYER_DMG = 60;
+
+/** 펼쳐진 원로인가 */
+export const unfurled = (e: EnemyUnit): boolean => !!e.mem.unfurled;
+/** 남은 팔 */
+export const armsOf = (e: EnemyUnit): number => e.st[ARMS] ?? 0;
+
+/** 다섯 갈래로 펼친다 (한 번). 내 턴이면 새 모습으로 다음 행동을 다시 정한다 (힘을 모으는 중이거나 무너져 있으면 그대로) */
+export function unfurl(c: Combat, e: EnemyUnit) {
+  if (unfurled(e) || e.dead || e.hp <= 0) return;
+  e.mem.unfurled = 1;
+  e.form = 1;
+  e.name = '펼쳐진 원로';
+  e.mem.armT = 0;
+  // 지금 무너져 있다면 그 붕괴는 이미 센 것으로 (펼치기 전의 붕괴로 팔이 잘리지 않게)
+  if (e.broken === 2) e.mem.armBk = 1;
+  c.apply(e, ARMS, ARM_MAX - armsOf(e), e);
+  c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
+  cine(c, 'shatter', { uid: e.uid });
+  cine(c, 'whisper', { uid: e.uid, text: '다섯 팔, 다섯 눈, 다섯 날개.\n너희는 고작 둘씩 지녔구나.' });
+  c.emit({ t: 'text', uid: e.uid, text: '막날개와 다섯 갈래의 팔이 활짝 펼쳐진다', tone: 'eldritch' });
+  if (c.s.phase === 'player' && e.broken !== 2 && !e.mem.charge) c.planIntent(e);
+}
+
+/** 팔을 자른다. 「다섯 갈래 촉수」를 노리던 차례면 의도의 횟수도 다시 센다 (팔이 다 잘렸으면 그 차례는 헛돈다) */
+export function cutArms(c: Combat, e: EnemyUnit, n: number, text: string) {
+  const k = Math.min(n, armsOf(e));
+  if (k <= 0 || e.dead || e.hp <= 0) return;
+  c.apply(e, ARMS, -k);
+  c.emit({ t: 'text', uid: e.uid, text: `${text} (팔 -${k})`, tone: 'good' });
+  // 하나라도 잘리면 다시 자라기까지 처음부터 센다
+  e.mem.armT = 0;
+  if (e.intent?.move !== 'tentacles') return;
+  if (armsOf(e) > 0) refreshIntent(c, e);
+  else if (canReact(c, e)) e.intent = intentFor(c, e, 'stump');
+}
+
+/** 붕괴로 팔이 잘린다 (붕괴 하나에 한 번 — 피해로 무너졌든 버팀만 깎여 무너졌든) */
+export function severOnBreak(c: Combat, e: EnemyUnit) {
+  if (e.mem.armBk) return;
+  e.mem.armBk = 1;
+  cutArms(c, e, ARM_BREAK_CUT, '무너지며 팔이 잘려 나갔다');
+}
+
+/** 내 공격 한 번이 팔을 자를 만큼 큰가 (버팀에 깎이기 전 피해 — 가호에 막힌 몫은 빼고) */
+export function bigCut(c: Combat, d: DamageCtx): boolean {
+  return d.src === c.p && d.attack && unguarded(d) >= ARM_CUT;
+}
+
+/** 원로의 차례가 끝났다: 잘린 팔이 ARM_REGROW 차례마다 하나씩 다시 자란다 */
+export function regrowArms(c: Combat, e: EnemyUnit) {
+  if (!unfurled(e) || e.dead) return;
+  if (armsOf(e) >= ARM_MAX) {
+    e.mem.armT = 0;
+    return;
+  }
+  e.mem.armT = (e.mem.armT ?? 0) + 1;
+  if (e.mem.armT < ARM_REGROW) return;
+  e.mem.armT = 0;
+  if (c.apply(e, ARMS, 1, e) > 0) c.emit({ t: 'text', uid: e.uid, text: '잘린 자리에서 팔이 다시 돋는다', tone: 'bad' });
+}
 
 // ───────────── 렝의 대거미: 몸속의 알 ─────────────
 
@@ -608,7 +930,7 @@ reg.statuses([
     name: '멈춘 칼날',
     icon: 'gi:thrown-knife',
     kind: 'debuff',
-    desc: `멈춘 시간 속에서 칼날 {n}개가 이쪽을 겨누고 있다. 깨어난 원로를 때리는 기술을 쓸 때마다 하나를 쳐낸다. 내 턴이 끝나면 시간이 다시 흘러 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다)`,
+    desc: `멈춘 시간 속에서 칼날 {n}개가 이쪽을 겨누고 있다. 깨어난 원로를 때리는 기술을 쓸 때마다 하나를 쳐낸다. 내 턴이 끝나면 시간이 다시 흘러 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다). 펼쳐진 원로는 칼날을 ${BLADE_EXTRA}개 더 세운다`,
     hooks: {
       onDamageDealt(c, s, d) {
         if (s.unit !== c.p || d.src !== c.p || !d.skill || !isEnemy(d.tgt) || d.tgt.def !== 'awakened-elder' || d.amount <= 0) return;
@@ -630,6 +952,45 @@ reg.statuses([
         if (s.unit === c.p && isEnemy(victim) && victim.def === 'awakened-elder') c.clear(c.p, BLADES);
       },
     },
+  },
+  {
+    id: ICE,
+    name: '갇힌 기억',
+    icon: 'gi:imprisoned',
+    kind: 'debuff',
+    desc: `장착 기술 하나가 얼음 감옥에 갇혀 쓸 수 없다. 얼음 감옥을 깨뜨리면 곧바로 돌아온다. 내 화염 피해는 ${ICE_FIRE_MULT}배로 녹인다. {n}턴 안에 깨뜨리지 못하면 얼음과 함께 부서져 이번 전투가 끝날 때까지 쓸 수 없다`,
+    tickStart(c, u) {
+      if (!isEnemy(u)) keepIced(c);
+    },
+    tickEnd(c, u) {
+      if (isEnemy(u)) c.clear(u, ICE);
+    },
+  },
+  {
+    id: SHATTERED,
+    name: '부서진 기억',
+    icon: 'gi:brain-freeze',
+    kind: 'debuff',
+    desc: '얼음과 함께 부서진 기억. 이번 전투가 끝날 때까지 그 기술을 쓸 수 없다',
+    tickStart(c, u) {
+      if (!isEnemy(u)) keepShard(c);
+    },
+    tickEnd(c, u) {
+      if (isEnemy(u)) c.clear(u, SHATTERED);
+    },
+    hooks: {
+      // 대기를 되돌리는 효과가 풀어 버려도 기술을 쓰고 나면 다시 잠긴다
+      afterSkill(c, s) {
+        if (s.unit === c.p) keepShard(c);
+      },
+    },
+  },
+  {
+    id: ARMS,
+    name: '다섯 갈래의 팔',
+    icon: 'gi:curled-tentacle',
+    kind: 'buff',
+    desc: `펼쳐진 팔 {n}개. 「다섯 갈래 촉수」가 팔마다 한 번씩 피해 ${ARM_DMG}. 붕괴시키면 팔 ${ARM_BREAK_CUT}개, 내 공격 한 번에 피해 ${ARM_CUT} 이상(버팀에 깎이기 전)을 주면 팔 1개가 잘린다. 잘린 팔은 원로의 차례 ${ARM_REGROW}번마다 하나씩 다시 자란다 (최대 ${ARM_MAX})`,
   },
   {
     id: EGGS,

@@ -32,31 +32,45 @@ import {
 import {
   ALOFT,
   ANGLE,
+  ARM_BREAK_CUT,
+  ARM_CUT,
+  ARM_DMG,
+  ARM_MAX,
+  ARM_REGROW,
+  armsOf,
+  bigCut,
   BLADE_DMG,
+  BLADE_EXTRA,
   BLADE_N,
   BLADES,
+  broodHurt,
   callHunt,
   cancelFull,
+  canImprison,
   closeAngles,
   closeIncisions,
   CUT_DMG,
+  cutArms,
+  declareFull,
   DIM_UNVEIL,
-  broodHurt,
+  DISSECT_BLEED,
+  DISSECT_DMG,
+  DISSECT_WEAK,
   EGG_LINK_DMG,
   EGG_POISON,
   EGG_TURNS,
   EGGS,
+  ELDER_HP,
+  ELDER_POISE,
   ESCAPE_HITS,
   FALL_DMG,
+  freeMemory,
   FULL,
   FULL_BLOCK,
   FULL_DMG,
   FULL_MAX,
   fullHit,
   fullReady,
-  declareFull,
-  layOnTable,
-  resolveFull,
   HATCH_N,
   HUNT,
   HUNT_DMG,
@@ -64,26 +78,48 @@ import {
   HUNT_GAP,
   huntHit,
   huntReady,
+  ICE_FIRE_MULT,
+  ICE_HP,
+  ICE_PRISON,
+  ICE_TURNS,
+  iceTick,
   implantEggs,
+  imprison,
   incise,
   INCISE_N,
-  LOOK_SAN,
+  layOnTable,
   liftUp,
+  LOOK_SAN,
   MAX_ANGLES,
   MAX_INCISION,
+  meltHarder,
+  meltPrisons,
+  MEMORY_DREAD,
+  MEMORY_SAN,
   MIMIC_SCREAM,
   openAllAngles,
   openAngle,
   PLASTER,
+  PRAYER_DMG,
+  prisonHit,
+  regrowArms,
+  resolveFull,
   resolveHunt,
   reveal,
   REVEAL_TURNS,
   REVEALED,
+  severOnBreak,
+  STARFALL_DMG,
   startListening,
   STOP_TURNS,
   stopTime,
   syncTilt,
+  TENTACLE_DMG,
+  TENTACLE_HITS,
   throwBack,
+  unfurl,
+  UNFURL_AT,
+  unfurled,
   veilAgain,
   vivisectDmg,
 } from './patterns';
@@ -481,6 +517,61 @@ reg.traits([
         if (!isEnemy(e) || e.dead || !isEnemy(victim) || victim.def !== 'awakened-elder') return;
         c.emit({ t: 'text', uid: e.uid, text: '주인을 잃은 원형질이 어둠 속으로 흘러간다', tone: 'eldritch' });
         c.flee(e);
+      },
+    },
+  },
+  {
+    id: 'a3-ice-memory',
+    name: '얼음 속의 기억',
+    desc: `「얼음 속에 가둔다」로 지금 쓸 수 있는 장착 기술 가운데 행동력이 가장 큰 것을 얼음 감옥에 가둔다. 무기·방어구 기본기는 가두지 않는다. 내 턴 ${ICE_TURNS}번 안에 얼음 감옥을 깨뜨리면 곧바로 돌아온다. 내 화염 피해는 ${ICE_FIRE_MULT}배로 녹인다. 깨뜨리지 못하면 기억이 얼음과 함께 부서져 이번 전투 동안 쓸 수 없다. 부서진 기억을 품은 원로는 더 가두지 않는다. 얼음 감옥이 서 있어도 원로의 가호는 그대로다`,
+    hooks: {
+      onDeath(c) {
+        meltPrisons(c);
+      },
+    },
+  },
+  {
+    id: 'a3-five-arms',
+    name: '다섯 갈래의 몸',
+    desc: `체력이 ${Math.round(UNFURL_AT * 100)}% 아래로 떨어지면 막날개와 다섯 갈래의 팔을 펼친다 (팔 ${ARM_MAX}). 펼친 뒤로 「다섯 갈래 촉수」는 남은 팔마다 한 번 때린다. 「멈춘 시간」의 칼날은 ${BLADE_N + BLADE_EXTRA}개로 는다. 「다섯 별의 기도」로 힘을 모으면 다음 차례에 피해 ${PRAYER_DMG} (모으는 동안 붕괴시키면 끊긴다). 붕괴시키면 팔 ${ARM_BREAK_CUT}개, 내 공격 한 번에 피해 ${ARM_CUT} 이상(버팀에 깎이기 전)을 주면 팔 1개가 잘린다. 잘린 팔은 원로의 차례 ${ARM_REGROW}번마다 하나씩 다시 자란다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0) return;
+        // 팔이 먼저 잘린다 (펼치게 만든 일격이 갓 펼친 팔까지 자르지는 않는다)
+        if (d.broke) severOnBreak(c, e);
+        if (unfurled(e) && bigCut(c, d)) cutArms(c, e, 1, '큰 일격에 팔 하나가 잘려 나갔다');
+        if (!unfurled(e) && hpPct(e) <= UNFURL_AT) unfurl(c, e);
+      },
+      onUnitTurnStart(c, s) {
+        // 피해 없이 무너졌을 때도 (버팀 깎기)
+        const e = s.unit;
+        if (isEnemy(e) && e.broken === 2) severOnBreak(c, e);
+      },
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e)) return;
+        if (e.broken !== 2) delete e.mem.armBk;
+        regrowArms(c, e);
+      },
+    },
+  },
+  {
+    id: 'a3-ice-cell',
+    name: '기억을 가둔 얼음',
+    desc: `깨어난 원로가 내 기술 하나를 가둔 얼음. 깨뜨리면 곧바로 돌아온다. 내 화염 피해는 화상까지 ${ICE_FIRE_MULT}배로 녹인다. 내 턴 ${ICE_TURNS}번 안에 깨뜨리지 못하면 갇힌 기억과 함께 부서진다. 후열에 있어도 근접 공격이 닿는다`,
+    hooks: {
+      modDamageFinal(c, s, d) {
+        if (isEnemy(s.unit)) meltHarder(c, s.unit, d);
+      },
+      onDamageTaken(c, s) {
+        if (isEnemy(s.unit)) prisonHit(c, s.unit);
+      },
+      onUnitTurnEnd(c, s) {
+        if (isEnemy(s.unit)) iceTick(c, s.unit);
+      },
+      onDeath(c, s) {
+        if (isEnemy(s.unit)) freeMemory(c, s.unit, (n) => `얼음이 깨져 「${n}」${josa(n, '을')} 되찾았다`);
       },
     },
   },
@@ -1374,6 +1465,42 @@ reg.enemies([
     visual: { tint: 0x14281c, glow: 0x60ff9a, scale: 1.1, fx: ['drip'] },
   },
   {
+    // 깨어난 원로의 「얼음 속에 가둔다」가 세우는 기믹 물건 — 공격하지 않는다 (patterns.ts 얼음 감옥)
+    id: ICE_PRISON,
+    name: '얼음 감옥',
+    icon: 'gi:crystal-bars',
+    act: 3,
+    tier: 'minion',
+    hp: [ICE_HP, ICE_HP],
+    poise: 0,
+    weak: ['fire'],
+    row: 0,
+    // 깨야 풀리는 물건 — 전열이 차서 후열에 서도 근접으로 닿는다
+    reachable: true,
+    traits: ['a3-ice-cell'],
+    desc: '검은 얼음이 기억 하나를 품고 굳어 간다. 얼음 속에 익숙한 기술의 모습이 희미하게 비친다.',
+    moves: {
+      harden: {
+        name: '얼음이 굳는다',
+        intent: 'special',
+        desc: '갇힌 기억 위로 얼음이 굳어 간다. 기한이 다 되기 전에 깨뜨리면 기억이 돌아온다',
+        run(c, e) {
+          c.emit({ t: 'text', uid: e.uid, text: '얼음이 갇힌 기억을 조여 온다', tone: 'eldritch' });
+        },
+      },
+      crumble: {
+        name: '기억과 함께 부서진다',
+        intent: 'special',
+        desc: '이 차례가 끝나면 갇힌 기억이 얼음과 함께 부서진다. 그러면 이번 전투가 끝날 때까지 그 기술을 쓸 수 없다. 그 전에 깨뜨리면 돌아온다',
+        run(c, e) {
+          c.emit({ t: 'text', uid: e.uid, text: '얼음 전체에 금이 번진다', tone: 'bad' });
+        },
+      },
+    },
+    ai: (_c, e) => ((e.mem.left ?? ICE_TURNS) <= 1 ? 'crumble' : 'harden'),
+    visual: { tint: 0x9fd8f0, glow: 0xe8fcff, scale: 0.8, fx: ['flicker'] },
+  },
+  {
     id: 'frozen-crewman',
     name: '얼어붙은 대원',
     icon: 'gi:frozen-body',
@@ -1862,18 +1989,24 @@ reg.enemies([
     icon: 'gi:sea-star',
     act: 3,
     tier: 'boss',
-    hp: [400, 400],
-    poise: 13,
+    hp: [ELDER_HP, ELDER_HP],
+    poise: ELDER_POISE,
     weak: ['fire', 'pierce'],
     resist: { arcane: 0.75 },
     row: 0,
     dread: 8,
     eldritch: true,
     tags: ['elder'],
-    traits: ['a3-old-master'],
-    desc: '수억 년 전 얼음 속에 잠든 고대인의 원로. 모닥불의 온기가 얼음을 녹이자 다섯 눈을 떴다. 아직도 이 도시가 제 것이라고 믿는다.',
+    traits: ['a3-old-master', 'a3-ice-memory', 'a3-five-arms'],
+    desc: '수억 년 전 얼음 속에 잠든 고대인의 원로. 모닥불의 온기가 얼음을 녹이자 다섯 눈을 떴다. 아직도 이 도시가 제 것이라고 믿는다. 별 모양의 머리 아래 접힌 막날개와 다섯 갈래의 팔은 아직 다 펼쳐지지 않았다.',
     moves: {
-      tentacles: mv.attack('다섯 갈래 촉수', 5, { hits: 3, melee: false, type: 'slash' }),
+      // 펼치기 전엔 세 번, 펼친 뒤엔 남은 팔마다 한 번
+      tentacles: mv.attack('다섯 갈래 촉수', (_c, e) => (unfurled(e) ? ARM_DMG : TENTACLE_DMG), {
+        hits: (_c, e) => (unfurled(e) ? armsOf(e) : TENTACLE_HITS),
+        melee: false,
+        type: 'slash',
+        desc: `펼쳐진 뒤에는 남은 팔마다 한 번씩 피해 ${ARM_DMG} (팔은 최대 ${ARM_MAX})`,
+      }),
       pipe: mv.buff(
         '명령의 피리',
         (c, e) => {
@@ -1893,35 +2026,46 @@ reg.enemies([
         },
         '원형질 조각 둘을 빚어낸다',
       ),
-      memory: mv.horror('수억 년의 기억', 12, {
+      memory: mv.horror('수억 년의 기억', MEMORY_SAN, {
         then: (c, e) => {
-          c.apply(c.p, 'dread', 1, e);
+          c.apply(c.p, 'dread', MEMORY_DREAD, e);
           // 처음 기억을 쏟아낼 때 한 번, 화면 너머의 당신에게
           if (!e.mem.spoke) {
             e.mem.spoke = 1;
             cine(c, 'whisper', { text: '우리가 너희를 빚었다.\n실수로.' });
           }
         },
-        desc: '정신 피해, 공포 1',
+        desc: `정신 피해, 공포 ${MEMORY_DREAD}`,
       }),
       stillness: {
         name: '멈춘 시간',
         intent: 'special',
         ultimate: true,
         cine: 'timestop',
-        desc: `시간을 멈춘다. 촉수 끝의 칼날 ${BLADE_N}개가 이쪽을 겨눈 채 멈춘다. 원로를 때리는 기술을 쓸 때마다 하나씩 쳐낸다. 내 턴이 끝나면 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다)`,
+        desc: `시간을 멈춘다. 촉수 끝의 칼날 ${BLADE_N}개(펼쳐진 뒤에는 ${BLADE_N + BLADE_EXTRA}개)가 이쪽을 겨눈 채 멈춘다. 원로를 때리는 기술을 쓸 때마다 하나씩 쳐낸다. 내 턴이 끝나면 남은 칼날마다 ${BLADE_DMG} 피해 (방어도가 먼저 막는다)`,
         run(c, e) {
           if ((c.p.st[BLADES] ?? 0) > 0) return;
-          if (c.apply(c.p, BLADES, BLADE_N, e) > 0) c.emit({ t: 'text', uid: 'p', text: '칼날들이 허공에 멈췄다', tone: 'eldritch' });
+          const n = unfurled(e) ? BLADE_N + BLADE_EXTRA : BLADE_N;
+          if (c.apply(c.p, BLADES, n, e) > 0) c.emit({ t: 'text', uid: 'p', text: '칼날들이 허공에 멈췄다', tone: 'eldritch' });
         },
       },
-      dissect: mv.attack('해부의 손길', 9, {
+      // 얼음 감옥 (patterns.ts): 의도에 미리 보이고, 화면 위 목표 띠가 막는 법을 보인다
+      ice: {
+        name: '얼음 속에 가둔다',
+        intent: 'debuff',
+        ultimate: true,
+        desc: `지금 쓸 수 있는 장착 기술 가운데 행동력이 가장 큰 것을 얼음 감옥에 가둔다. 무기·방어구 기본기는 가두지 않는다. 내 턴 ${ICE_TURNS}번 안에 얼음 감옥을 깨뜨리면 곧바로 돌아온다. 내 화염 피해는 ${ICE_FIRE_MULT}배로 녹인다. 깨뜨리지 못하면 기억이 얼음과 함께 부서져 이번 전투 동안 쓸 수 없다`,
+        run(c, e) {
+          imprison(c, e);
+        },
+      },
+      dissect: mv.attack('해부의 손길', DISSECT_DMG, {
         type: 'slash',
         then: (c, e) => {
-          c.apply(c.p, 'bleed', 3, e);
-          c.apply(c.p, 'weak', 1, e);
+          c.apply(c.p, 'bleed', DISSECT_BLEED, e);
+          c.apply(c.p, 'weak', DISSECT_WEAK, e);
         },
-        desc: '출혈 3, 약화 1',
+        desc: `출혈 ${DISSECT_BLEED}, 약화 ${DISSECT_WEAK}`,
       }),
       quell: {
         name: '반란 진압',
@@ -1934,19 +2078,58 @@ reg.enemies([
           c.damage({ src: e, tgt: t, base: 24, type: 'arcane', attack: true, move: 'quell' });
         },
       },
-      spread: mv.charge('막날개를 펼친다', 38),
-      starfall: release(mv.attack('별을 건너온 날개', 38, { melee: false, ultimate: true, cine: 'beam' })),
+      spread: mv.charge('막날개를 펼친다', STARFALL_DMG),
+      starfall: release(mv.attack('별을 건너온 날개', STARFALL_DMG, { melee: false, ultimate: true, cine: 'beam' })),
+      // ── 펼쳐진 원로 (다섯 갈래의 몸) ──
+      prayer: {
+        ...mv.charge('다섯 별의 기도', PRAYER_DMG, {
+          then: (_c, e) => {
+            e.mem.prayer = 1;
+          },
+        }),
+        follow: '다섯 별의 응답',
+        desc: `다섯 팔을 별 쪽으로 뻗어 기도한다. 다음 차례에 「다섯 별의 응답」(피해 ${PRAYER_DMG}). 그 전에 붕괴시키면 끊긴다`,
+      },
+      answer: {
+        ...release(mv.attack('다섯 별의 응답', PRAYER_DMG, { melee: false, type: 'void', ultimate: true, cine: 'beam' })),
+        desc: '기도에 답한 다섯 별이 빛을 내리꽂는다',
+        run(c, e) {
+          delete e.mem.charge;
+          delete e.mem.prayer;
+          c.enemyAttack(e, { type: 'void' });
+        },
+      },
+      // 「다섯 갈래 촉수」를 노리던 차례에 팔이 모두 잘렸다 (patterns.ts cutArms)
+      stump: {
+        name: '잘린 팔이 꿈틀거린다',
+        intent: 'unknown',
+        desc: '휘두를 팔이 남지 않아 이번 차례는 헛돈다',
+        run(c, e) {
+          c.emit({ t: 'text', uid: e.uid, text: '잘린 자리만 꿈틀거린다', tone: 'good' });
+        },
+      },
     },
     ai: (c, e) => {
-      if (e.mem.charge) return 'starfall';
+      // 모은 힘은 반드시 쏟는다 (어느 쪽으로 모았는지는 방금의 의도로 — 기절로 한 차례 밀려도 기억한다)
+      if (e.mem.charge) return e.mem.prayer || e.intent?.move === 'prayer' ? 'answer' : 'starfall';
+      delete e.mem.prayer;
       const o = opener(c, e, ['memory']);
       if (o) return o;
       if (rebelThrall(c) && last(e) !== 'quell' && c.rng.chance(0.5)) return 'quell';
-      let m = cycle(e, ['tentacles', 'pipe', 'stillness', 'dissect', 'spread', 'tentacles', 'memory']);
-      if (m === 'pipe' && !loyalThrall(c)) m = (e.mem.molds ?? 0) < 2 && countDef(c, 'shoggoth-blob') === 0 ? 'mold' : 'dissect';
+      if (!unfurled(e)) {
+        let m = cycle(e, ['tentacles', 'pipe', 'ice', 'dissect', 'stillness', 'spread', 'tentacles', 'memory']);
+        if (m === 'pipe' && !loyalThrall(c)) m = (e.mem.molds ?? 0) < 2 && countDef(c, 'shoggoth-blob') === 0 ? 'mold' : 'dissect';
+        if (m === 'ice' && !canImprison(c, e)) m = 'dissect';
+        return m;
+      }
+      // 펼쳐진 원로: 팔 수만큼 때리고, 별에 기도한다
+      let m = cycle(e, ['tentacles', 'stillness', 'ice', 'tentacles', 'prayer', 'dissect', 'memory'], 'c2');
+      if (m === 'ice' && !canImprison(c, e)) m = 'tentacles';
+      if (m === 'tentacles' && armsOf(e) <= 0) m = 'dissect';
       return m;
     },
     visual: { tint: 0x3a5048, glow: 0x9fffd0, scale: 1.5, fx: ['float'] },
+    forms: [{ name: '펼쳐진 원로', icon: 'gi:star-swirl', visual: { tint: 0x1e3a40, glow: 0xb8fff0, scale: 1.75, fx: ['float', 'flicker'] } }],
   },
 
   // ───────────── 추적자 ─────────────

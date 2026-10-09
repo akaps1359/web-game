@@ -78,7 +78,12 @@ export function detonate(c: Combat, u: SkillUse, t: EnemyUnit, per: number, base
 /** 3층 '표본 채집'으로 빼앗겨 잠긴 기술인가 (빼앗은 적을 쓰러뜨려야 되찾는다 — 대기를 되돌리는 효과로는 풀리지 않는다) */
 export function seized(c: Combat, uid: string): boolean {
   const slot = c.run.slots.indexOf(uid);
-  return slot >= 0 && c.alive.some((e) => !!e.mem.specimen && e.mem.specimen - 1 === slot);
+  if (slot < 0) return false;
+  // 적이 그 칸을 붙들고 있다 (mem.specimen — 3층 표본 채집·얼음 감옥, 1층 물속의 손)
+  if (c.alive.some((e) => !!e.mem.specimen && e.mem.specimen - 1 === slot)) return true;
+  // 4층 블랙홀의 사건의 지평선: 끌려간 칸은 돌아올 턴(vars 'a4-hz'+칸)까지 대기가 남아 있다 (act4/patterns.ts horizonHeld와 같은 셈)
+  const back = c.s.vars[`a4-hz${slot}`];
+  return !!back && back > c.s.turn && (c.s.cd[uid] ?? 0) === back - c.s.turn;
 }
 
 /** 이 스킬로 피해를 준 총합 */

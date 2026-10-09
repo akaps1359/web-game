@@ -1,6 +1,7 @@
 import { reg, SKILLS } from '../../engine/registry';
 import { isEnemy, MAX_ROW, type Combat } from '../../engine/combat';
-import type { CineName, DmgType, EnemyUnit, MoveDef, Unit } from '../../engine/types';
+import { josa } from '../../engine/josa';
+import type { CineName, DamageCtx, DmgType, EnemyUnit, MoveDef, TurnNote, Unit } from '../../engine/types';
 import { cine, execute, setObjective, setUi } from '../lib';
 import { DOOM, flipRows } from './common';
 
@@ -13,6 +14,9 @@ import { DOOM, flipRows } from './common';
  *  - 별의 자손 군주 「흔들리는 대지」: 체력을 일정량 잃을 때마다 다음 행동이 뒤집기로 바뀐다 (누적 피해 문턱, 점점 오른다)
  *    「별을 부른다」: 내 턴이 두 번 끝나면 전열에 별이 떨어진다 — 군주는 뒤로 숨지만, 전열을 비우면 끌려 나와 제 별을 맞는다
  *  - 검은 별 「어둠」: 빛을 먹어 쌓이면 의도가 어둠에 묻히고(ui:dark) 3이면 일식. 화염·비전 공격으로 걷어 낸다
+ *    「중력 렌즈」: 공허의 눈이 살아 있는 동안 별을 겨눈 단일 대상 공격이 휘어 일부만 들어간다 (눈을 먼저 감겨라)
+ *    「블랙홀」(2막, 체력 절반): 별이 무너져 남은 눈을 삼키고, 「사건의 지평선」이 차례마다 내 기술을 끌어간다.
+ *    끌려간 기술 수만큼 「스파게티화」가 세지고, 무너진 별을 붕괴시키면 모두 돌아오며 「호킹 복사」가 터진다
  *  - 정예: 웃는 가면(거짓 의도), 얽히는 뿌리(행동력), 몸 바꾸기(체력 비율 교환), 바람 타기(여러 번 때려 떨어뜨린다), 어둠 속 사냥(등불)
  * 화면 연출(cine·setUi)은 규칙과 따로다 — 규칙은 모두 여기 훅과 적 행동에 있고, 수치는 상수로 두어 설명 문구도 같은 상수를 쓴다.
  * 다른 층에 이미 있는 것(2층 거꾸로 매달림의 체력↔정신력 뒤바꿈, 3층 샨탁의 낚아채 떨어뜨리기, 5층 환영 뒤섞기)은 피했다.
@@ -358,6 +362,28 @@ function starfall(c: Combat) {
 
 export const BLACK_STAR = 'black-star';
 export const VOID_EYE = 'void-eye';
+/** 검은 별의 체력 (층·조수·수호자 배율 전) · 버팀 (GUARD.poise·층 배율 전) · 전투 시작 때 두르는 의식 (차례가 끝날 때마다 힘 +n) */
+export const BLACK_STAR_HP = 780;
+export const BLACK_STAR_POISE = 14;
+export const BLACK_STAR_RITUAL = 1;
+/** 공허의 눈의 체력 (층·조수 배율 전) — 중력 렌즈가 얼마나 버티는지를 정한다 */
+export const EYE_HP: [number, number] = [20, 24];
+/** 검은 광선: 한 줄기 피해 · 줄기 수 */
+export const BEAM_DMG = 7;
+export const BEAM_HITS = 2;
+/** 빛을 삼킨다: 정신 피해 · 깎는 등불 */
+export const DEVOUR_SAN = 15;
+export const DEVOUR_LIGHT = 10;
+/** 중력 붕괴 (한 차례 힘을 모은 뒤) */
+export const COLLAPSE_DMG = 56;
+/** 별의 심판: 떨어지기까지 내 턴 수 · 피해(방어도 무시) · 정신 피해 · 다시 걸기까지 (턴) */
+export const JUDGE_TURNS = 3;
+export const JUDGE_DMG = 42;
+export const JUDGE_SAN = 10;
+export const JUDGE_GAP = 7;
+/** 공허의 눈: 다시 뜨는 횟수 (전투마다, 한 번에 둘) · 「빛 흡수」로 검은 별이 회복하는 체력 */
+export const EYES_MAX = 2;
+export const FEED_HEAL = 8;
 /** 어둠 (n 1~3) */
 export const DARK = 'a4-dark';
 export const DARK_MAX = 3;
@@ -365,6 +391,24 @@ export const DARK_MAX = 3;
 export const DARK_REVEAL = 4;
 export const ECLIPSE_SAN = 16;
 export const ECLIPSE_STR = 2;
+/** 중력 렌즈 (검은 별의 상태, n = 살아 있는 공허의 눈) · 눈이 살아 있는 동안 별을 겨눈 단일 대상 공격이 들어가는 몫 */
+export const LENS = 'a4-lens';
+export const LENS_PART = 0.4;
+/** 「블랙홀」 (2막): 별이 무너지는 체력 비율 · 삼킨 눈 하나당 회복 · 힘 */
+export const BLACKHOLE_AT = 0.5;
+export const HEAL_PER_EYE = 90;
+export const BLACKHOLE_STR = 2;
+/** 무너진 뒤의 이름 (EnemyDef.forms[0]과 같다) */
+export const COLLAPSED = '무너진 별';
+/** 사건의 지평선: 끌려간 기술 (플레이어 상태, n = 끌려간 기술 수) · 한꺼번에 끌려가 있을 수 있는 수 · 돌아오기까지 무너진 별의 차례 수 */
+export const HORIZON = 'a4-horizon';
+export const HORIZON_MAX = 2;
+export const HORIZON_TURNS = 3;
+/** 호킹 복사: 무너진 별을 붕괴시키면 돌아오는 기술 하나마다 별이 잃는 체력 (최대 체력 비율, 방어도 무시) */
+export const HAWKING_PCT = 0.05;
+/** 스파게티화: 공허 피해 = SPAG_BASE + 끌려간 기술 하나마다 SPAG_PER */
+export const SPAG_BASE = 14;
+export const SPAG_PER = 8;
 /** 어둠 단계별 화면의 어두움 (%) */
 const DARK_UI = [0, 25, 50, 70];
 const SHROUD = '어둠 속';
@@ -373,11 +417,11 @@ export function syncDark(c: Combat) {
   setUi(c, 'ui:dark', DARK_UI[Math.min(DARK_MAX, c.p.st[DARK] ?? 0)]);
 }
 
-/** 어둠 2 이상: 적의 의도가 어둠에 묻힌다 (힘을 모으는 것·일식·붕괴는 보인다) */
+/** 어둠 2 이상: 적의 의도가 어둠에 묻힌다 (힘을 모으는 것·일식·블랙홀·붕괴는 보인다) */
 function shroud(c: Combat) {
   for (const e of c.alive) {
     const it = e.intent;
-    if (!it || it.charging || e.mem.charge || it.move === 'eclipse' || it.move.startsWith('_')) continue;
+    if (!it || it.charging || e.mem.charge || it.move === 'eclipse' || it.move === 'blackhole' || it.move.startsWith('_')) continue;
     it.disguise = { kind: 'unknown', label: SHROUD, reveal: DARK_REVEAL };
   }
 }
@@ -445,6 +489,220 @@ export function eclipse(c: Combat, e: EnemyUnit) {
     syncDark(c);
     unshroud(c);
   }
+}
+
+// ── 중력 렌즈 ──
+
+/** 살아 있는 공허의 눈 */
+export const eyesOpen = (c: Combat): number => c.alive.filter((x) => x.def === VOID_EYE).length;
+
+/**
+ * 중력 렌즈가 이 피해를 휘는가: 공허의 눈이 살아 있고, 내가 검은 별을 겨눈 단일 대상 공격(SkillDef.target 'single').
+ * 광역·무작위 공격과 지속 피해(공격이 아니다)는 그대로. 다른 적을 겨눈 기술이 튀어 맞힌 몫도 그대로다.
+ * 미리보기에는 겨눈 대상이 없으므로(primary = null) 미리 보는 대상을 겨눈 것으로 본다 (기술 칸의 숫자와 실제 피해가 같게)
+ */
+export function lensed(c: Combat, d: DamageCtx): boolean {
+  if (d.src !== c.p || !d.attack || !isEnemy(d.tgt) || d.tgt.def !== BLACK_STAR) return false;
+  const u = d.skill;
+  if (!u || u.def.target !== 'single' || (u.primary && u.primary !== d.tgt)) return false;
+  return eyesOpen(c) > 0;
+}
+
+/** 검은 별의 상태 칸 '중력 렌즈'를 살아 있는 눈의 수로 맞춘다 (규칙은 눈의 수로 센다 — 상태 칸은 보여 주기만) */
+export function syncLens(c: Combat) {
+  const star = alive(c, BLACK_STAR);
+  if (star) setSt(c, star, LENS, eyesOpen(c));
+}
+
+/** 처음 빛이 휘어 비껴갈 때 한 번 알린다 (미리보기 중에는 아무것도 하지 않는다) */
+export function lensNotice(c: Combat, star: EnemyUnit) {
+  if (c.previewing || !once(c, 'a4-lens-msg')) return;
+  cine(c, 'eye', { uid: star.uid });
+  c.emit({ t: 'text', uid: star.uid, text: '빛이 휘어 별을 비껴간다. 공허의 눈을 먼저 감겨라', tone: 'eldritch' });
+}
+
+// ── 블랙홀 (2막) ──
+
+/**
+ * 「블랙홀」: 별이 스스로 무너진다. 남은 공허의 눈을 모두 삼켜(내 처치가 아니다 — 먹힌 빛도 돌아오지 않는다) 하나당 체력을 회복하고 힘을 얻는다.
+ * 무너진 별(e.form 1)은 차례를 마칠 때마다 사건의 지평선으로 기술을 끌어간다 (특성 a4-event-horizon). 눈은 다시 뜨지 않는다
+ */
+export function collapseStar(c: Combat, e: EnemyUnit) {
+  if (e.form) return;
+  e.form = 1;
+  e.name = COLLAPSED;
+  // 무너진 모습 (그림이 따로 없으면 기본 그림 그대로 — 크기와 화면의 금으로 달라진 것을 보인다)
+  e.scale = c.defOf(e).forms?.[0]?.visual.scale ?? e.scale;
+  c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
+  // 제4의 벽: 화면 너머까지 끌어당긴다 (처음 한 번). 화면 유리에는 금이 남는다
+  if (once(c, 'a4-blackhole')) cine(c, 'whisper', { uid: e.uid, text: '빛도 빠져나가지 못한다.\n화면 너머의 너도.' });
+  setUi(c, 'ui:cracks', 1);
+  c.emit({ t: 'text', uid: e.uid, text: '별이 스스로 무너져 블랙홀이 되었다', tone: 'eldritch' });
+  const eyes = c.alive.filter((x) => x.def === VOID_EYE);
+  for (const x of eyes) {
+    x.mem.eaten = 1;
+    c.kill(x, false);
+  }
+  syncLens(c);
+  if (eyes.length) {
+    c.emit({ t: 'text', uid: e.uid, text: `공허의 눈 ${eyes.length}개를 삼켰다`, tone: 'bad' });
+    c.heal(e, HEAL_PER_EYE * eyes.length);
+  }
+  c.apply(e, 'str', BLACKHOLE_STR, e);
+}
+
+// ── 사건의 지평선 ──
+
+/** c.s.vars 키: 'a4-hz<칸 번호>' = 끌려간 기술이 돌아오는 내 턴 (그 턴이 시작되면 쓸 수 있다) */
+const HZ = 'a4-hz';
+
+export interface Sealed {
+  /** 장착 칸 번호 (0부터) */
+  slot: number;
+  uid: string;
+  /** 돌아오는 내 턴 */
+  back: number;
+}
+
+const hzKeys = (c: Combat): string[] => Object.keys(c.s.vars).filter((k) => k.startsWith(HZ));
+
+/**
+ * 지평선 너머로 끌려간 기술 (돌아오는 순서대로). 재사용 대기로 잠가 두므로 기술 칸에 돌아오기까지 남은 턴이 보인다.
+ * 지평선이 걸어 둔 대기 그대로일 때만 끌려간 것으로 친다 — 대기를 되돌리거나 줄이는 효과(허초·되감기 등)가 닿으면 지평선에서 풀려나고,
+ * 남은 대기는 보통 재사용 대기로 흘러간다
+ */
+export function sealedSkills(c: Combat): Sealed[] {
+  const out: Sealed[] = [];
+  for (const k of hzKeys(c)) {
+    const slot = Number(k.slice(HZ.length));
+    const back = c.s.vars[k];
+    const uid = c.run.slots[slot];
+    if (uid && back > c.s.turn && (c.s.cd[uid] ?? 0) === back - c.s.turn) out.push({ slot, uid, back });
+  }
+  return out.sort((a, b) => a.back - b.back || a.slot - b.slot);
+}
+
+/**
+ * 다음에 끌려갈 기술: 준비된(재사용 대기가 없는) 장착 기술 중 가장 무거운 것 — 행동력, 같으면 재사용 대기가 긴 것, 같으면 앞 칸.
+ * 이번 차례에 돌아올 기술(남은 대기 1)은 다시 끌려가지 않고 자리만 비운다. 자리가 없거나 준비된 기술이 없으면 null.
+ * 무기·방어구 기본기는 장착 칸에 없다 — 기본기 꼴의 기술('basic')도 끌어가지 않는다
+ */
+export function nextPull(c: Combat): { slot: number; uid: string } | null {
+  const staying = sealedSkills(c).filter((s) => s.back - c.s.turn > 1).length;
+  if (staying >= HORIZON_MAX) return null;
+  let best: { slot: number; uid: string; cost: number; cd: number } | null = null;
+  for (let slot = 0; slot < c.run.slots.length; slot++) {
+    const uid = c.run.slots[slot];
+    if (!uid || (c.s.cd[uid] ?? 0) > 0) continue;
+    const info = c.skillInfo(uid);
+    if (!info || info.basic || info.def.tags.includes('basic')) continue;
+    const cost = c.costOf(info);
+    const cd = c.cdOf(info);
+    if (!best || cost > best.cost || (cost === best.cost && cd > best.cd)) best = { slot, uid, cost, cd };
+  }
+  return best && { slot: best.slot, uid: best.uid };
+}
+
+/** 내 상태 칸 '지평선 너머'를 끌려간 기술 수로 맞춘다 (결계에 막히지 않는 규칙 표시) */
+export function syncHorizon(c: Combat) {
+  setSt(c, c.p, HORIZON, sealedSkills(c).length);
+}
+
+/**
+ * 이 기술이 지금 지평선 너머에 끌려가 있는가. 대기를 되돌리는 효과(허초·되감기·평정·안식)는 lib.ts의 seized()로 끌려간 기술을 건너뛴다
+ * (seized()가 같은 셈을 한다 — 'a4-hz'+칸을 바꾸면 거기도)
+ */
+export const horizonHeld = (c: Combat, uid: string): boolean => sealedSkills(c).some((s) => s.uid === uid);
+
+/**
+ * 기술을 썼다: 지평선이 붙들고 있던 칸이면 이미 빠져나온 것이다 (대기를 되돌리는 효과로 풀려나 다시 썼다).
+ * 다시 생긴 재사용 대기가 우연히 남은 턴과 같아도 끌려간 것으로 치지 않게 붙든 표시를 지운다
+ */
+export function forgetSeal(c: Combat, uid: string) {
+  const slot = c.run.slots.indexOf(uid);
+  if (slot >= 0) delete c.s.vars[HZ + slot];
+}
+
+/** 스파게티화의 공허 피해: 끌려간 기술 하나마다 SPAG_PER 더 */
+export const spagDmg = (c: Combat): number => SPAG_BASE + SPAG_PER * sealedSkills(c).length;
+
+/** 준비하던 스파게티화의 피해를 지금 끌려간 기술 수에 맞춘다 (지평선에서 빼내면 바로 줄어든다) */
+export function syncSpag(c: Combat) {
+  const e = alive(c, BLACK_STAR);
+  if (e?.intent?.move === 'spaghettify') e.intent.dmg = spagDmg(c);
+}
+
+/**
+ * 무너진 별의 차례가 끝날 때: 끌려간 지 HORIZON_TURNS차례가 된 기술이 돌아오고(남은 대기 1 — 다음 내 턴에 쓸 수 있다),
+ * pull이면(붕괴·기절로 쉬지 않고 차례를 치렀으면) 자리가 남는 대로 가장 무거운 기술 하나를 더 끌어간다
+ */
+export function horizonTurn(c: Combat, e: EnemyUnit, pull: boolean) {
+  const held = sealedSkills(c);
+  // 먼저 빠져나온 것은 지우고, 기한이 된 것은 돌려보낸다
+  for (const k of hzKeys(c)) delete c.s.vars[k];
+  for (const s of held) {
+    if (s.back - c.s.turn > 1) {
+      c.s.vars[HZ + s.slot] = s.back;
+      continue;
+    }
+    const name = skillName(c, s.uid);
+    c.emit({ t: 'text', uid: 'p', text: `「${name}」${josa(name, '이')} 지평선 너머에서 돌아왔다`, tone: 'good' });
+  }
+  const t = pull && !c.over && !e.dead ? nextPull(c) : null;
+  if (t) {
+    c.s.vars[HZ + t.slot] = c.s.turn + HORIZON_TURNS + 1;
+    // 대기는 내 턴이 시작될 때 1 줄어든다 — 다음 내 턴부터 HORIZON_TURNS턴 동안 쓸 수 없다
+    c.s.cd[t.uid] = HORIZON_TURNS + 1;
+    const name = skillName(c, t.uid);
+    c.emit({ t: 'fx', name: 'horror', src: e.uid, tgt: 'p' });
+    c.emit({ t: 'text', uid: 'p', text: `「${name}」${josa(name, '이')} 사건의 지평선 너머로 끌려갔다`, tone: 'bad' });
+    // 제4의 벽: 기술을 불러올 수 없다는 시스템 창 (처음 한 번)
+    if (once(c, 'a4-horizon-msg')) cine(c, 'sysmsg', { uid: e.uid, text: `「${name}」 데이터를 불러올 수 없습니다.` });
+  }
+  syncHorizon(c);
+}
+
+/** 호킹 복사: 무너진 별이 붕괴하면 끌려간 기술이 모두 돌아오고(바로 쓸 수 있다), 돌아온 기술 하나마다 별이 최대 체력의 HAWKING_PCT를 잃는다 */
+export function hawking(c: Combat, e: EnemyUnit) {
+  const held = sealedSkills(c);
+  for (const k of hzKeys(c)) delete c.s.vars[k];
+  for (const s of held) delete c.s.cd[s.uid];
+  syncHorizon(c);
+  if (!held.length || e.dead) return;
+  cine(c, 'beam', { uid: e.uid });
+  c.emit({ t: 'text', uid: e.uid, text: `호킹 복사! 끌려갔던 기술 ${held.length}개가 쏟아져 나온다`, tone: 'good' });
+  c.damage({ src: null, tgt: e, base: hawkingDmg(e) * held.length, type: 'true', ignoreBlock: true, tags: ['a4-hawking'] });
+}
+
+/** 호킹 복사: 돌아온 기술 하나마다의 피해 */
+export const hawkingDmg = (e: EnemyUnit): number => Math.max(1, Math.round(e.maxHp * HAWKING_PCT));
+
+/** 내 상태 칸 앞의 칩: 사건의 지평선 (별이 무너졌거나 무너지려 할 때) — 끌려간 기술과 다음에 끌려갈 기술 */
+export function horizonNote(c: Combat): TurnNote | null {
+  const e = alive(c, BLACK_STAR);
+  if (!e || (!e.form && e.intent?.move !== 'blackhole')) return null;
+  const held = sealedSkills(c);
+  const next = nextPull(c);
+  const nextName = next ? skillName(c, next.uid) : null;
+  const lines = [
+    held.length
+      ? `끌려간 기술: ${held.map((s) => `「${skillName(c, s.uid)}」 ${s.back - c.s.turn}턴 뒤`).join(', ')}.`
+      : '끌려간 기술 없음.',
+    nextName
+      ? `무너진 별이 차례를 마치면 「${nextName}」${josa(nextName, '이')} 끌려간다. 이번 턴에 쓰면 다른 기술이 대신 끌려간다.`
+      : held.length >= HORIZON_MAX
+        ? `지평선이 가득 찼다 (${HORIZON_MAX}개). 하나가 돌아와야 다시 끌려간다.`
+        : '끌려갈 기술이 없다 (모두 재사용 대기 중).',
+    `무너진 별을 붕괴시키면 모두 돌아오고 호킹 복사가 터진다`,
+  ];
+  return {
+    icon: 'gi:vortex',
+    text: nextName ?? `${held.length}/${HORIZON_MAX}`,
+    title: '사건의 지평선',
+    desc: lines.join(' '),
+    now: !!nextName,
+    bad: true,
+  };
 }
 
 // ───────────── 정예 ─────────────
@@ -644,7 +902,7 @@ reg.statuses([
     name: '어둠',
     icon: 'gi:night-sky',
     kind: 'debuff',
-    desc: `검은 별이 빛을 먹었다 (최대 ${DARK_MAX}). 2 이상이면 적의 의도가 어둠에 묻힌다. 힘을 모으는 것과 일식은 보인다. 통찰 ${DARK_REVEAL}이면 모두 보인다. ${DARK_MAX}이 되면 검은 별이 일식을 일으킨다. 어둠을 1씩 걷어 내는 법: 검은 별을 화염이나 비전으로 공격 (내 턴마다 한 번), 공허의 눈을 쓰러뜨림, 검은 별을 붕괴시킴`,
+    desc: `검은 별이 빛을 먹었다 (최대 ${DARK_MAX}). 2 이상이면 적의 의도가 어둠에 묻힌다. 힘을 모으는 것과 일식·블랙홀은 보인다. 통찰 ${DARK_REVEAL}이면 모두 보인다. ${DARK_MAX}이 되면 검은 별이 일식을 일으킨다. 어둠을 1씩 걷어 내는 법: 검은 별을 화염이나 비전으로 공격 (내 턴마다 한 번), 공허의 눈을 쓰러뜨림, 검은 별을 붕괴시킴`,
     hooks: {
       onTurnStart(c, s) {
         if (s.unit !== c.p) return;
@@ -659,13 +917,28 @@ reg.statuses([
         lighten(c, 1);
       },
       // 화염·비전이 없는 출신도 어둠을 걷을 수 있게: 빛을 먹던 눈이 감기거나, 별이 무너지면 빛이 돌아온다
+      // (블랙홀이 삼킨 눈은 빛째로 먹혔다 — 돌아오지 않는다)
       onAnyDeath(c, s, victim) {
-        if (s.unit === c.p && isEnemy(victim) && victim.def === VOID_EYE && !victim.fled) lighten(c, 1);
+        if (s.unit === c.p && isEnemy(victim) && victim.def === VOID_EYE && !victim.fled && !victim.mem.eaten) lighten(c, 1);
       },
       onBreak(c, s, victim) {
         if (s.unit === c.p && victim.def === BLACK_STAR) lighten(c, 1);
       },
     },
+  },
+  {
+    id: LENS,
+    name: '중력 렌즈',
+    icon: 'gi:eye-shield',
+    kind: 'buff',
+    desc: `살아 있는 공허의 눈 {n}개가 빛을 휜다. 검은 별을 겨눈 단일 대상 기술은 피해의 ${Math.round(LENS_PART * 100)}%만 들어간다. 광역·무작위 기술과 지속 피해는 그대로. 눈이 모두 감기면 사라진다`,
+  },
+  {
+    id: HORIZON,
+    name: '지평선 너머',
+    icon: 'gi:vortex',
+    kind: 'debuff',
+    desc: `무너진 별이 내 기술 {n}개를 사건의 지평선 너머로 끌어갔다 (한꺼번에 ${HORIZON_MAX}개까지). 끌려간 기술은 무너진 별의 차례가 ${HORIZON_TURNS}번 지나면 돌아온다. 기술 칸의 숫자가 남은 턴이다. 무너진 별을 붕괴시키면 모두 한꺼번에 돌아오고 호킹 복사가 터진다: 돌아온 기술 하나마다 별의 최대 체력 ${Math.round(HAWKING_PCT * 100)}% 피해`,
   },
   {
     id: ENTANGLE,
@@ -730,6 +1003,38 @@ reg.statuses([
       }
       setSt(c, u, WINDRIDE, 0);
       c.emit({ t: 'text', uid: u.uid, text: '바람이 잦아든다', tone: 'info' });
+    },
+  },
+]);
+
+// ───────────── 규칙 등록 ─────────────
+
+/**
+ * 무너진 별(검은 별 2막): 적의 특성 훅은 내 턴·기술·붕괴를 볼 수 없어서, 그쪽에서 일어나는 일은 이 규칙이 받는다.
+ * 끌려간 기술이 없어도(호킹 복사·다음에 끌려갈 기술의 칩) 돌아야 해서 상태가 아닌 규칙으로 둔다
+ */
+reg.rules([
+  {
+    id: 'a4-blackhole',
+    hooks: {
+      turnNote(c, s) {
+        return s.unit === c.p ? horizonNote(c) : null;
+      },
+      onBreak(c, s, victim) {
+        if (s.unit === c.p && victim.def === BLACK_STAR && victim.form) hawking(c, victim);
+      },
+      // 턴이 시작될 때 대기를 되돌리는 효과(안식 등)로 빠져나온 기술이 있으면 상태 칸과 스파게티화를 맞춘다
+      onTurnStart(c, s) {
+        if (s.unit !== c.p || !hzKeys(c).length) return;
+        syncHorizon(c);
+        syncSpag(c);
+      },
+      afterSkill(c, s, u) {
+        if (s.unit !== c.p || !hzKeys(c).length) return;
+        forgetSeal(c, u.owned.uid);
+        syncHorizon(c);
+        syncSpag(c);
+      },
     },
   },
 ]);

@@ -1,41 +1,65 @@
 import { josa } from '../../engine/josa';
 import { reg } from '../../engine/registry';
-import { isEnemy, scaledPoise, unguarded, type Combat } from '../../engine/combat';
+import { MAX_ROW, isEnemy, scaledPoise, unguarded, type Combat } from '../../engine/combat';
 import { cycle, last, opener, pick, hpPct } from '../../engine/ai';
 import type { EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
 import { cine, dealt, setUi } from '../lib';
 import {
   ACQUIT_POISE,
+  ANCHOR_DMG,
   BAIL_DMG,
+  CAPTAIN_HP,
+  CAPTAIN_POISE,
   CATCH_STR,
+  CHAIN,
+  CHAIN_DRAIN,
+  CHAIN_GAP,
+  CHAIN_HP,
+  CHAIN_RISE,
   CHARM_AP,
+  CHOIR_SAN,
+  CHOIR_WATER,
   CLAMP_TURNS,
   DISARMED,
   GUILTY_SAN,
   GUILTY_VULN,
   HANDPRINT,
+  HANDS,
+  HANDS_WATER,
   LINE,
   LINE_HP,
+  RAM_DMG,
+  SHANTY_DREAD,
+  SHANTY_SAN,
+  SWORD_DMG,
+  SWORD_HITS,
   TIDE_AP,
   TIDE_DMG,
   TIDE_GAP,
   TRIAL,
   VERDICT_DMG,
   WATER_MAX,
+  WRECK_AT,
+  WRECK_WATER,
   angler,
   bailWater,
   callTide,
   canHook,
+  chainAlive,
   charm,
   clampWeapon,
+  cutChain,
   cutLine,
   dazzle,
+  dropChain,
   freeWeapon,
+  grabSkill,
   handprints,
   hookSkill,
   judge,
   leavePrint,
+  loosenHands,
   plead,
   reelIn,
   releaseSkill,
@@ -43,14 +67,17 @@ import {
   riseWater,
   sentence,
   setPlayerSt,
+  setWater,
+  throwChain,
   tideObjective,
   tideReady,
+  waterLevel,
 } from './common';
 
 /*
  * 2026-10 정예·수호자 패턴 확장 — 수호자마다 시그니처 메커니즘, 정예마다 새 행동 (자세한 규칙은 act1/common.ts).
  * 등대지기: 도는 등명기와 섬광(눈부심) · 빛을 모은 백열광 / 밀수조직 두목: 휴전 제안과 배신 (거짓 의도, 조직원이 속셈을 드러낸다)
- * 늙은 어부: 낚싯줄로 기술 낚기 / 익사한 선장: 차오르는 물 / 도살자: 고기 저울(처형)·상처에 소금
+ * 늙은 어부: 낚싯줄로 기술 낚기 / 익사한 선장: 차오르는 물·닻사슬, 체력 절반에서 망령 선장(물속의 손) / 도살자: 고기 저울(처형)·상처에 소금
  * 집행자: 판결 / 거대 게: 무기 물기 / 안개 속 사냥꾼: 숨는 척 기습 / 망령: 유리의 손자국과 끌어내림
  */
 
@@ -251,7 +278,7 @@ reg.traits([
   {
     id: 'a1-sinking',
     name: '가라앉는 배',
-    desc: `선장이 행동할 때마다 물이 1 차오른다 (최대 ${WATER_MAX}). 물이 ${WATER_MAX}이면 숨이 막혀 내 턴이 시작될 때 행동력 -1. 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 익사체를 쓰러뜨리면 물이 1 빠진다. 선장 차례에 터지는 출혈·독·화상도 센다. 선장을 붕괴시키면 모두 빠진다. 물이 끝까지 차면 「만조」를 부른다. 다음 선장 차례까지 물을 빼지 못하면 물에 잠겨 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시), 다음 턴 행동력 -${TIDE_AP}. 만조가 몰려오는 턴엔 숨을 참아 행동력이 줄지 않는다. 막든 맞든 ${TIDE_GAP}턴 동안은 다시 부르지 않는다`,
+    desc: `선장이 행동할 때마다 물이 1 차오른다 (최대 ${WATER_MAX}). 닻사슬이 박혀 있으면 ${CHAIN_RISE} 더 차오른다. 물이 ${WATER_MAX}이면 숨이 막혀 내 턴이 시작될 때 행동력 -1. 한 턴에 선장에게 피해 ${BAIL_DMG} 이상을 주거나 익사체를 쓰러뜨리면 물이 1, 닻사슬을 끊으면 ${CHAIN_DRAIN} 빠진다. 선장 차례에 터지는 출혈·독·화상도 센다. 선장을 붕괴시키면 모두 빠진다. 물이 끝까지 차면 「만조」를 부른다. 다음 선장 차례까지 물을 빼지 못하면 물에 잠겨 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시), 다음 턴 행동력 -${TIDE_AP}. 만조가 몰려오는 턴엔 숨을 참아 행동력이 줄지 않는다. 막든 맞든 ${TIDE_GAP}턴 동안은 다시 부르지 않는다`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
@@ -259,7 +286,15 @@ reg.traits([
         e.mem.bail = 0;
         e.mem.bailed = 0;
         // 붕괴·기절로 쉰 차례, 만조가 지나간 차례엔 차오르지 않는다 (수호자는 쉬면 stunGuard가 남는다)
-        if (!e.mem.stunGuard && last(e) !== 'hightide') riseWater(c, e);
+        if (e.mem.stunGuard || last(e) === 'hightide') return;
+        riseWater(c, e);
+        // 닻사슬이 박혀 있으면 배와 함께 끌려 내려간다 (던진 그 차례부터)
+        if (chainAlive(c)) riseWater(c, e, CHAIN_RISE, (lv) => `배와 함께 끌려 내려간다 (${lv}/${WATER_MAX})`);
+      },
+      // 선장이 쓰러지면 사슬은 가라앉고 손은 흩어진다
+      onDeath(c) {
+        dropChain(c);
+        loosenHands(c, '선장이 쓰러지자 손이 흩어졌다');
       },
       onDamageTaken(c, s, d) {
         const e = s.unit;
@@ -271,6 +306,33 @@ reg.traits([
           e.mem.bailed = 1;
           bailWater(c, e);
         } else if (e.mem.tide && !e.dead) tideObjective(c, e);
+      },
+    },
+  },
+  {
+    id: 'a1-wreck',
+    name: '두 동강 난 배',
+    desc: `체력이 ${Math.round(WRECK_AT * 100)}% 이하가 되면 배가 두 동강 난다. 망령 선장이 되어 물이 ${WRECK_WATER}까지 차오르고 익사체 하나가 떠오른다. 그 뒤로는 닻 대신 유령선 돌격(${RAM_DMG})을 모으고, 물귀신의 합창으로 물을 더 끌어올린다. 「물속의 손」: 망령 선장의 차례가 끝날 때 물이 ${HANDS_WATER} 이상이면 다음 내 턴에 쓸 수 있는 기술 중 행동력이 가장 큰 것(같으면 왼쪽)을 붙잡아 그 턴 동안 쓸 수 없게 한다. 익사체를 쓰러뜨리거나 물을 빼면 곧바로 놓는다. 무기·방어 기본기는 붙잡지 않는다`,
+    hooks: {
+      onDamageTaken(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.form || e.hp <= 0 || hpPct(e) > WRECK_AT) return;
+        wreck(c, e);
+      },
+      // 물속의 손 (차오른 뒤에 센다 — 가라앉는 배가 먼저 돈다)
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (isEnemy(e) && e.form && waterLevel(c) >= HANDS_WATER) grabSkill(c, e);
+      },
+    },
+  },
+  {
+    id: 'a1-chain',
+    name: '닻사슬',
+    desc: `박혀 있는 동안 선장이 행동할 때마다 물이 ${CHAIN_RISE} 더 차오른다 (배와 함께 끌려 내려간다). 쓰러뜨려 끊으면 물이 ${CHAIN_DRAIN} 빠지고, 선장은 ${CHAIN_GAP}턴 동안 다시 던지지 않는다. 후열에 있어도 근접으로 닿는다`,
+    hooks: {
+      onDeath(c, s) {
+        if (isEnemy(s.unit)) cutChain(c, s.unit);
       },
     },
   },
@@ -339,6 +401,47 @@ function touch(name: string, dmg: number, extra: (c: Combat, e: EnemyUnit) => vo
       if (dealt(ds) > 0) leavePrint(c, e);
     },
   };
+}
+
+/** 닻·유령선이 내려칠 때마다 화면 유리의 금이 깊어진다 */
+function crackGlass(c: Combat) {
+  const k = Math.min(3, (c.s.vars['ui:cracks'] ?? 0) + 1);
+  setUi(c, 'ui:cracks', k);
+  cine(c, 'crack', { n: k });
+}
+
+/** 선장의 행동 순서 — 가라앉는 배 / 두 동강 난 배 (닻·유령선은 모은 다음 차례에 내려친다, 만조는 순서보다 먼저) */
+const SINKING_CYCLE = ['sword', 'muster', 'ready', 'shanty', 'chain', 'ready'];
+const WRECK_CYCLE = ['sword', 'chain', 'ramready', 'choir', 'sword', 'muster'];
+
+/** 닻사슬을 던질 수 있는가 (박힌 사슬이 없고, 끊긴 뒤 CHAIN_GAP 턴이 지났고, 박힐 자리가 있다) */
+function canChain(c: Combat, e: EnemyUnit): boolean {
+  return !chainAlive(c) && c.s.turn - (e.mem.chainAt ?? -99) >= CHAIN_GAP && (c.row(0).length < MAX_ROW || c.row(1).length < MAX_ROW);
+}
+
+/** 모은 힘이 유령선인가 (아니면 닻) — 모으는 행동이 표시를 남긴다. 의도로도 본다 (방금 모으기로 정한 차례) */
+function ramming(e: EnemyUnit): boolean {
+  return e.mem.ram === 1 || e.intent?.move === 'ramready';
+}
+
+/**
+ * 두 동강 난 배 (체력 WRECK_AT 이하): 망령 선장이 된다. 물이 WRECK_WATER까지 차오르고(이미 더 높으면 그대로) 익사체 하나가 떠오른다.
+ * 그 뒤로 물속의 손이 뻗어 온다 (상태 칸에 규칙). 모으던 닻은 그대로 내려친다
+ */
+function wreck(c: Combat, e: EnemyUnit) {
+  e.form = 1;
+  e.name = '망령 선장';
+  c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
+  cine(c, 'shatter', { uid: e.uid });
+  c.emit({ t: 'text', uid: e.uid, text: '배가 두 동강 났다. 선장이 물속에서 다시 일어선다', tone: 'eldritch' });
+  cine(c, 'whisper', { uid: e.uid, text: '배가 부러졌다. 선원이 모자라.\n{origin}, 너도 물 밑으로 내려와라.' });
+  if (waterLevel(c) < WRECK_WATER) setWater(c, WRECK_WATER);
+  c.s.vars['a1-waterPeak'] = Math.max(c.s.vars['a1-waterPeak'] ?? 0, waterLevel(c));
+  cine(c, 'water', { n: waterLevel(c) });
+  c.spawn('drowned', 0);
+  setPlayerSt(c, HANDS, HANDS_WATER);
+  // 내 턴에 넘어갔으면 새 모습의 행동으로 (적의 차례 중이면 정해 둔 행동 그대로 — 라운드 끝에 새로 정한다)
+  if (c.s.phase === 'player' && e.broken !== 2) c.planIntent(e);
 }
 
 /** 두목의 휴전 제안은 진짜든 거짓이든 같은 얼굴이다 (통찰이 모자라면 설명도 없이 '휴전 제안'으로만 보인다) */
@@ -916,41 +1019,46 @@ reg.enemies([
     icon: 'gi:pirate-skull',
     act: 1,
     tier: 'boss',
-    hp: [190, 190],
-    poise: 12,
+    hp: [CAPTAIN_HP, CAPTAIN_HP],
+    poise: CAPTAIN_POISE,
     weak: ['fire', 'void'],
     row: 0,
     dread: 6,
     eldritch: true,
-    traits: ['a1-sinking'],
+    traits: ['a1-sinking', 'a1-wreck'],
     moves: {
-      sword: mv.attack('녹슨 커틀러스', 8, { hits: 2, type: 'slash' }),
+      sword: mv.attack('녹슨 커틀러스', SWORD_DMG, { hits: SWORD_HITS, type: 'slash' }),
       // 배의 종이 울리면 바다 밑의 선원들이 대답한다
       muster: { ...mv.summon('선원 소집', (c) => void c.spawn('drowned', 0), '익사체 소환'), cine: 'bell' },
-      ready: mv.charge('닻을 들어올린다', 26),
-      anchor: release(
-        mv.attack('닻 내려치기', 26, {
-          ultimate: true,
-          cine: 'impact',
-          // 화면 유리에 금이 남는다 (닻을 내려칠 때마다 깊어진다)
-          then: (c) => {
-            const k = Math.min(3, (c.s.vars['ui:cracks'] ?? 0) + 1);
-            setUi(c, 'ui:cracks', k);
-            cine(c, 'crack', { n: k });
-          },
-        }),
-      ),
-      shanty: mv.horror('익사자의 뱃노래', 10, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
+      ready: { ...mv.charge('닻을 들어올린다', ANCHOR_DMG, { then: (_c, e) => void (e.mem.ram = 0) }), follow: '닻 내려치기' },
+      // 화면 유리에 금이 남는다 (닻을 내려칠 때마다 깊어진다)
+      anchor: release(mv.attack('닻 내려치기', ANCHOR_DMG, { ultimate: true, cine: 'impact', then: (c) => crackGlass(c) })),
+      shanty: mv.horror('익사자의 뱃노래', SHANTY_SAN, { then: (c, e) => void c.apply(c.p, 'dread', SHANTY_DREAD, e), desc: `정신 피해, 공포 ${SHANTY_DREAD}` }),
       // 퍼즐: 물이 끝까지 찬 채로 이 차례가 오면 물에 잠긴다 (큰 피해 + 헐떡임)
       hightide: {
         name: '만조',
         intent: 'charge',
-        desc: `물이 끝까지 찬 채로 이 차례가 오면 물에 잠긴다. 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시), 다음 턴 행동력 -${TIDE_AP}. 물 빼는 법: 한 턴에 선장에게 피해 ${BAIL_DMG} (출혈·독·화상 포함), 익사체 처치, 선장 붕괴`,
+        desc: `물이 끝까지 찬 채로 이 차례가 오면 물에 잠긴다. 최대 체력의 ${Math.round(TIDE_DMG * 100)}% 피해 (방어도 무시), 다음 턴 행동력 -${TIDE_AP}. 물 빼는 법: 한 턴에 선장에게 피해 ${BAIL_DMG} (출혈·독·화상 포함), 익사체 처치, 닻사슬 끊기, 선장 붕괴`,
         run: (c, e) => resolveTide(c, e),
       },
+      // 전열에 닻사슬을 박는다 — 박혀 있는 동안 배가 끌려 내려간다 (끊으면 떠오른다)
+      chain: {
+        name: '닻사슬을 던진다',
+        intent: 'summon',
+        desc: `전열에 닻사슬을 박는다. 박혀 있는 동안 선장이 행동할 때마다 물이 ${CHAIN_RISE} 더 차오른다 (던진 이번 차례부터). 쓰러뜨려 끊으면 물이 ${CHAIN_DRAIN} 빠진다. 후열에 있어도 근접으로 닿는다`,
+        run: (c, e) => void throwChain(c, e),
+      },
+      // 두 동강 난 배: 유령선이 물 밑에서 다가와 들이받는다 (붕괴시키면 끊긴다)
+      ramready: { ...mv.charge('유령선이 다가온다', RAM_DMG, { then: (_c, e) => void (e.mem.ram = 1) }), follow: '유령선 돌격' },
+      ram: release(mv.attack('유령선 돌격', RAM_DMG, { type: 'void', ultimate: true, cine: 'impact', then: (c) => crackGlass(c) })),
+      choir: mv.horror('물귀신의 합창', CHOIR_SAN, {
+        then: (c, e) => riseWater(c, e, CHOIR_WATER, (lv) => `물귀신들이 물을 끌어올린다 (${lv}/${WATER_MAX})`),
+        desc: `정신 피해, 물 +${CHOIR_WATER}`,
+      }),
     },
     ai: (c, e) => {
-      if (e.mem.charge) return 'anchor';
+      // 모은 힘을 내려친다 (닻 또는 유령선 — 만조보다 먼저)
+      if (e.mem.charge) return ramming(e) ? 'ram' : 'anchor';
       // 만조: 물이 끝까지 차면 다음 차례에 몰려온다 (부른 뒤엔 풀리거나 닿을 때까지 그대로 — 기절로 미뤄졌으면 목표를 새로 센다)
       if (e.mem.tide) {
         tideObjective(c, e);
@@ -960,11 +1068,14 @@ reg.enemies([
         callTide(c, e);
         return 'hightide';
       }
-      const m = cycle(e, ['sword', 'muster', 'ready', 'shanty', 'sword', 'ready']);
+      const m = e.form ? cycle(e, WRECK_CYCLE, 'c2') : cycle(e, SINKING_CYCLE);
+      // 사슬은 한 번에 하나 (끊긴 뒤 한동안은 칼을 휘두른다)
+      if (m === 'chain' && !canChain(c, e)) return 'sword';
       if (m === 'muster' && c.alive.length >= 4) return 'sword';
       return m;
     },
     visual: { tint: 0x2a3c3c, glow: 0x40ffc0, scale: 1.5, fx: ['drip', 'float'] },
+    forms: [{ name: '망령 선장', icon: 'gi:ghost', visual: { tint: 0x16282c, glow: 0x80ffe0, scale: 1.6, fx: ['drip', 'float', 'flicker'] } }],
   },
   {
     id: 'fogstalker',
@@ -1133,5 +1244,31 @@ reg.enemies([
     },
     ai: (_c, e) => (e.mem.spins ? 'snatch' : 'reel'),
     visual: { tint: 0x9aa4a8, glow: 0xd0f0ff, scale: 0.6, fx: ['flicker'] },
+  },
+  // 익사한 선장의 닻사슬 — 공격하지 않고 배를 끌어내린다. 끊으면(쓰러뜨리면) 물이 빠진다
+  {
+    id: CHAIN,
+    name: '닻사슬',
+    icon: 'gi:wavy-chains',
+    act: 1,
+    tier: 'minion',
+    hp: [CHAIN_HP, CHAIN_HP],
+    poise: 0,
+    // 녹슨 고리는 내려치면 부서지고, 사슬을 묶은 저주는 비전에 풀린다
+    weak: ['blunt', 'arcane'],
+    row: 0,
+    // 끊어야 하는 기믹 물건 — 전열이 차서 후열에 박혀도 근접으로 닿는다
+    reachable: true,
+    traits: ['a1-chain'],
+    moves: {
+      drag: {
+        name: '배를 끌어내린다',
+        intent: 'special',
+        desc: `박혀 있는 동안 선장이 행동할 때마다 물이 ${CHAIN_RISE} 더 차오른다. 쓰러뜨려 끊으면 물이 ${CHAIN_DRAIN} 빠진다`,
+        run() {},
+      },
+    },
+    ai: () => 'drag',
+    visual: { tint: 0x5a4a3e, glow: 0x40ffc0, scale: 0.7, fx: ['drip'] },
   },
 ]);

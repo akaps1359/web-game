@@ -66,7 +66,16 @@ const NO_MUT = ['swarm', 'thief', 'a2-innocent', 'a5-pilgrim'];
 
 const defOf = (e: EnemyUnit): EnemyDef | undefined => ENEMIES.get(e.def);
 const actOf = (e: EnemyUnit) => Math.min(5, defOf(e)?.act ?? 1);
-const puzzling = (c: Combat) => !!c.s.obj;
+/**
+ * 퍼즐 목표가 걸린 동안 가호·목표를 막는 변이·심연 모으기가 쉰다 — 목표가 겨누는 적만 (2026-10: 계층군주의 얼음 감옥처럼
+ * 다른 것을 노리는 목표가 본체의 가호까지 걷어 내지 않게). 겨누는 적이 없는 목표(상형문자의 속성 차례 등)는 예전처럼 모두
+ */
+const puzzling = (c: Combat, e: EnemyUnit) => {
+  const o = c.s.obj;
+  if (!o) return false;
+  const aim = [o.hit?.uid, o.break, ...(o.kill ?? [])].filter((x): x is string => !!x);
+  return !aim.length || aim.includes(e.uid);
+};
 const ownDesign = (def: EnemyDef) => (def.traits ?? []).some((t) => OWN_DESIGN.includes(t));
 
 // ───────────── 가호 ─────────────
@@ -253,7 +262,7 @@ export const MUTATIONS: Mutation[] = [
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
-        if (!isEnemy(e) || e.hp <= 0 || puzzling(c)) return;
+        if (!isEnemy(e) || e.hp <= 0 || puzzling(c, e)) return;
         if ((e.st.burn ?? 0) + (e.st.bleed ?? 0) + (e.st.poison ?? 0) > 0) return;
         c.heal(e, Math.ceil(e.maxHp * (actOf(e) >= 4 ? 0.05 : 0.03)));
       },
@@ -321,7 +330,7 @@ export const MUTATIONS: Mutation[] = [
     hooks: {
       onDeath(c, s) {
         const e = s.unit;
-        if (!isEnemy(e) || !e.dead || e.mem.revived || puzzling(c)) return;
+        if (!isEnemy(e) || !e.dead || e.mem.revived || puzzling(c, e)) return;
         e.mem.revived = 1;
         e.dead = false;
         e.hp = Math.ceil(e.maxHp * 0.3);
@@ -353,7 +362,7 @@ export const MUTATIONS: Mutation[] = [
     ok: (def) => def.poise > 0,
     hooks: {
       modPoiseLoss(c, s, t, dec) {
-        if (t !== s.unit || puzzling(c)) return dec;
+        if (t !== s.unit || puzzling(c, t)) return dec;
         const used = t.mem.sfR === c.s.turn ? (t.mem.sfN ?? 0) : 0;
         const n = Math.min(dec, Math.max(0, STEADFAST - used));
         t.mem.sfR = c.s.turn;
@@ -411,7 +420,7 @@ export const MUTATIONS: Mutation[] = [
     ok: (def, c, e) => def.poise > 0 && c.alive.some((x) => x !== e && !x.minion),
     hooks: {
       modPoiseLoss(c, s, t, dec) {
-        if (t !== s.unit || puzzling(c)) return dec;
+        if (t !== s.unit || puzzling(c, t)) return dec;
         if (!c.alive.some((x) => x !== t && !x.minion)) return dec;
         sayOnce(c, t, 'bdSaid', '결속: 다른 것이 살아 있는 한 흔들리지 않는다');
         return 0;
@@ -507,7 +516,7 @@ reg.rules([
       // 가호: 남은 만큼만 들어간다 — 지속 피해·가시 같은 속성 없는 피해도 (미리보기도 같은 숫자, 상태는 바꾸지 않는다)
       modDamageFinal(c, s, d) {
         const e = s.unit;
-        if (!isEnemy(e) || d.tgt !== e || !fromPlayer(c, d) || puzzling(c)) return;
+        if (!isEnemy(e) || d.tgt !== e || !fromPlayer(c, d) || puzzling(c, e)) return;
         const cap = aegisCap(e);
         if (cap <= 0) return;
         const left = Math.max(0, cap - aegisTaken(c, e));
@@ -516,7 +525,7 @@ reg.rules([
       onDamageTaken(c, s, d) {
         const e = s.unit;
         if (!isEnemy(e) || d.tgt !== e) return;
-        if (fromPlayer(c, d) && !puzzling(c) && aegisCap(e) > 0) {
+        if (fromPlayer(c, d) && !puzzling(c, e) && aegisCap(e) > 0) {
           if (e.mem.agR !== c.s.turn) {
             e.mem.agR = c.s.turn;
             e.mem.agD = 0;
@@ -555,7 +564,7 @@ reg.rules([
         if (t.mem.abc) return dec * 2;
         // 가호: 한 턴에 깎이는 버팀 상한 (퍼즐 중에는 쉰다)
         const cap = aegisPoiseCap(t);
-        if (cap <= 0 || dec <= 0 || puzzling(c)) return dec;
+        if (cap <= 0 || dec <= 0 || puzzling(c, t)) return dec;
         const used = t.mem.apR === c.s.turn ? (t.mem.apN ?? 0) : 0;
         const n = Math.min(dec, Math.max(0, cap - used));
         t.mem.apR = c.s.turn;
@@ -569,7 +578,7 @@ reg.rules([
       },
       // 각성한 수호자가 평범한 행동을 하려던 차례에 심연을 모은다 (퍼즐 중·자기 차지 중에는 기다린다)
       planReplace(c, s, e, planned) {
-        if (e !== s.unit || !e.mem.awk || e.mem.charge || puzzling(c)) return undefined;
+        if (e !== s.unit || !e.mem.awk || e.mem.charge || puzzling(c, e)) return undefined;
         if (c.s.turn < (e.mem.awkNext ?? 0) || !plainMove(c, e, planned)) return undefined;
         e.mem.agp = 1;
         return gatherId(e);

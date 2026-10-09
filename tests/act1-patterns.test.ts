@@ -975,6 +975,7 @@ describe('1층 — 전체', () => {
       ['queen', 'betray'],
       ['fisherman', 'maw'],
       ['captain', 'anchor'],
+      ['captain', 'ram'],
       ['butcher', 'chop'],
       ['fogstalker', 'lunge'],
       ['wraith', 'drag'],

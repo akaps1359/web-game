@@ -968,9 +968,10 @@ describe('공정성 — 세 출신의 시작 덱', () => {
     expect(hunter.st['a5-dreams'] ?? 0).toBe(dreams - 1);
   });
 
-  it('세 출신 모두 시작 덱으로 5층 기믹 전투를 이긴다 (봇, 체력은 넉넉히)', () => {
+  // 계층군주(lord-a5)는 빼다 — 숨은 보스는 일부러 훨씬 어렵게 했다 (굶주림의 공정성은 tests/lord-a5.test.ts)
+  it('세 출신 모두 시작 덱으로 5층 기믹 전투를 이긴다 (봇, 체력은 넉넉히 · 계층군주 제외)', () => {
     const lost: string[] = [];
-    const encs = ['a5-boss-fetus', 'lord-a5', 'a5-saturn-cat', 'a5-elite-warden', 'a5-elite-hierophant', 'a5-elite-gatekeeper', 'stalker-a5', 'rift-a5'];
+    const encs = ['a5-boss-fetus', 'a5-saturn-cat', 'a5-elite-warden', 'a5-elite-hierophant', 'a5-elite-gatekeeper', 'stalker-a5', 'rift-a5'];
     for (const origin of ORIGINS3) {
       for (const enc of encs) {
         const c = fightPicking(startCombat(kit(origin, 101, 8), enc, { anomaly: null }));
