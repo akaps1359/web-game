@@ -67,6 +67,27 @@ reg.encounters([
     kind: 'normal',
     enemies: [{ id: 'star-spawn' }, { id: 'star-spawn' }],
   },
+  // 시간을 갉는 것 + 시간의 파수꾼: 빼앗긴 행동력 · 되감기 · 예정된 상처
+  {
+    id: 'a4-hourglass',
+    act: 4,
+    kind: 'normal',
+    enemies: [{ id: 'time-gnawer' }, { id: 'time-warden', row: 1 }, { id: 'byakhee', row: 1 }],
+  },
+  // 별자리를 잇는 자가 별의 자손과 비야키를 잇는다
+  {
+    id: 'a4-constellation',
+    act: 4,
+    kind: 'normal',
+    enemies: [{ id: 'star-spawn' }, { id: 'star-weaver', row: 1 }, { id: 'byakhee', row: 1 }],
+  },
+  // 피리꾼의 박자에 맞춰 춤추는 시종을 별의 실이 잇는다
+  {
+    id: 'a4-woven-court',
+    act: 4,
+    kind: 'normal',
+    enemies: [{ id: 'outer-servitor' }, { id: 'star-weaver', row: 1 }, { id: 'formless-piper', row: 1 }],
+  },
 
   // ── 정예 ──
   { id: 'a4-avatar', act: 4, kind: 'elite', enemies: [{ id: 'chaos-avatar' }] },

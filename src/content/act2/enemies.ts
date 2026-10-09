@@ -1,7 +1,7 @@
 import { ENEMIES, reg } from '../../engine/registry';
 import { isEnemy, unguarded, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
-import type { DmgType, EnemyUnit, MoveDef } from '../../engine/types';
+import type { DamageCtx, DmgType, EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, others, release } from '../moves';
 import { cine, execute, setUi } from '../lib';
 import {
@@ -30,8 +30,12 @@ import {
   cutRequiem,
   endKnell,
   endRequiem,
+  intentNow,
   knellNeed,
+  myHit,
   once,
+  react,
+  refreshIntent,
   requiemHit,
   setIntent,
   setSt,
@@ -50,6 +54,42 @@ export const ASH_DARK = 60;
 export const SNATCH = 20;
 /** 대사제가 제물을 태워 다시 일어설 때의 체력 비율 */
 export const RISE_PCT = 0.25;
+
+// ───────────── 일반 적 패턴 수치 (2026-10: 낮은 층은 위협을 늘리지 않고 갈래만 늘린다) ─────────────
+
+/** 성가대원: 「마지막 소절」 정신 피해 */
+export const VERSE_SAN = 8;
+/** 향로 사제: 흔들린 향로로 의식이 끊기는 횟수 (전투당) */
+export const LAPSE_MAX = 2;
+/** 순교자: 「앞을 막아선다」 방어도 */
+export const STAND_BLOCK = 8;
+/** 납골당 구울: 「시체 포식」 회복량 */
+export const FEAST_HEAL = 12;
+/** 밀랍 수사: 「밀랍 봉인」 회복량·방어도 */
+export const SEAL_HEAL = 14;
+export const SEAL_BLOCK = 8;
+/** 빙의된 수도사: 악령이 다시 깃들 때 회복량 */
+export const REPOSSESS_HEAL = 12;
+/** 벽에 갇힌 수녀: 「벽돌 쌓기」 보호막 */
+export const BRICK_BARRIER = 8;
+/** 타종 수련사: 「조종」 정신 피해 */
+export const KNELL_TOLL_SAN = 5;
+/** 뼈지네: 파고든 턱이 내 턴마다 빨아 가는 체력 */
+export const LATCH_DRAIN = 2;
+/** 고해 신부: 「판결」 기본 피해, 장부의 죄 하나마다 더하는 피해 */
+export const VERDICT_DMG = 6;
+export const SIN_DMG = 3;
+/** 성수반의 손: 더 뻗어 나오는 손 상한 */
+export const HANDS_MAX = 2;
+
+/** 숨은 상태: 내 손이 누구를 치고 누구를 무너뜨리는지 수도원의 것들이 지켜본다 (순교자·벽에 갇힌 수녀) */
+export const WATCH2 = 'a2-watch';
+/** 뼈지네의 파고든 턱 (나에게) */
+export const LATCHED = 'a2-latched';
+/** 고해 신부의 장부에 적힌 죄 */
+export const SINS = 'a2-sins';
+/** 성수반에서 더 뻗어 나온 손 */
+export const HANDS = 'a2-hands';
 
 // ───────────── 공용 헬퍼 ─────────────
 
@@ -162,6 +202,88 @@ function lureDark(c: Combat) {
   setUi(c, 'ui:dark', Math.max(0, Math.min(54, Math.round((60 - c.run.light) * 0.9))));
 }
 
+// ───────────── 일반 적의 반응 (2026-10 패턴) ─────────────
+
+/** 내 손을 지켜보기 시작한다 (전투 시작 시 — 숨은 상태 WATCH2) */
+function watch2(c: Combat) {
+  c.p.st[WATCH2] = 1;
+}
+
+/** 후열의 교단 동료가 내 턴에 맞았다: 순교자가 앞을 막아선다 */
+function intercede(c: Combat, d: DamageCtx) {
+  const t = d.tgt;
+  if (!myHit(c, d) || !isEnemy(t) || t.row !== 1 || d.amount <= 0 || !hasTag(t, 'cult')) return;
+  for (const m of c.alive) if (m.def === 'martyr' && m !== t && m.row === 0) react(c, m, 'stand', '순교자가 앞을 막아선다', 'bad');
+}
+
+/** 동료가 내 턴에 무너졌다(붕괴): 벽에 갇힌 수녀가 그 동료를 회벽으로 감싼다 (수녀마다 전투당 한 번) */
+function plaster(c: Combat, victim: EnemyUnit) {
+  if (c.s.phase !== 'player') return;
+  for (const n of c.alive) {
+    if (n.def !== 'walled-nun' || n === victim || n.mem.plastered) continue;
+    if (!react(c, n, 'brick', '무너진 자를 회벽으로 감싼다', 'bad')) continue;
+    n.mem.plastered = 1;
+    n.mem.brickT = Number(victim.uid.slice(1));
+  }
+}
+
+/** 뼈지네의 턱이 빠진다 */
+function unlatch(c: Combat, e: EnemyUnit) {
+  e.mem.latched = 0;
+  setSt(c, c.p, LATCHED, Math.max(0, (c.p.st[LATCHED] ?? 0) - 1));
+  c.emit({ t: 'text', uid: e.uid, text: '턱이 빠졌다', tone: 'good' });
+}
+
+reg.statuses([
+  {
+    id: WATCH2,
+    name: '지켜보는 수도원',
+    icon: 'gi:eye-target',
+    kind: 'buff',
+    hidden: true,
+    desc: '수도원의 것들이 내 손이 누구를 치는지 지켜본다',
+    hooks: {
+      onDamageDealt(c, s, d) {
+        if (s.unit === c.p) intercede(c, d);
+      },
+      onBreak(c, s, victim) {
+        if (s.unit === c.p) plaster(c, victim);
+      },
+    },
+  },
+  {
+    id: LATCHED,
+    name: '파고든 턱',
+    icon: 'gi:insect-jaws',
+    kind: 'debuff',
+    desc: `뼈지네 {n}마리가 살을 파고들었다. 내 턴이 시작될 때마다 한 마리당 체력 ${LATCH_DRAIN}를 빨린다 (뼈지네가 회복). 그 뼈지네를 공격하면 떨어진다`,
+    tickStart(c, u) {
+      if (isEnemy(u)) return;
+      const bugs = c.alive.filter((x) => x.def === 'bone-centipede' && x.mem.latched);
+      setSt(c, u, LATCHED, bugs.length);
+      for (const b of bugs) {
+        if (c.over) return;
+        c.loseHp(u, LATCH_DRAIN, 'latch');
+        c.heal(b, LATCH_DRAIN);
+      }
+    },
+  },
+  {
+    id: SINS,
+    name: '기록된 죄',
+    icon: 'gi:quill-ink',
+    kind: 'buff',
+    desc: `고해 신부가 장부에 적은 죄 {n}. 「판결」 피해가 죄 하나마다 +${SIN_DMG}. 판결을 내리면 장부를 비운다`,
+  },
+  {
+    id: HANDS,
+    name: '뻗은 손',
+    icon: 'gi:grab',
+    kind: 'buff',
+    desc: '세례반에서 더 뻗어 나온 손 {n}. 「움켜쥐기」가 손 하나마다 한 번 더 움켜쥔다. 내 공격에 맞으면 손 하나가 움츠러든다',
+  },
+]);
+
 // ───────────── 특성 ─────────────
 
 reg.traits([
@@ -208,7 +330,9 @@ reg.traits([
   {
     id: 'a2-possessed',
     name: '빙의',
-    desc: '체력이 절반 이하가 되면 몸속의 악령이 빠져나온다. 수도사 힘 -2, 내 정신력 -3',
+    desc:
+      '체력이 절반 이하가 되면 몸속의 악령이 빠져나온다. 수도사 힘 -2, 내 정신력 -3. ' +
+      `두 번째 목소리는 빠져나온 악령을 한 번 다시 불러들인다: 다음 차례에 악령이 깃들면 수도사 체력 ${REPOSSESS_HEAL} 회복, 힘 +2. 그 전에 악령을 쓰러뜨리면 막는다`,
     hooks: {
       onDamageTaken(c, s) {
         const e = s.unit;
@@ -522,6 +646,159 @@ reg.traits([
       },
     },
   },
+  // ── 일반 적의 반응 (2026-10 패턴: 내 손에 맞거나 누가 쓰러지면 그 자리에서 의도를 바꿔 보인다) ──
+  {
+    id: 'a2-last-verse',
+    name: '마지막 소절',
+    desc: `체력이 처음으로 3분의 1 아래로 떨어지면 그 차례에 「마지막 소절」(정신 피해 ${VERSE_SAN}, 공포 1)을 부른다. 부르기 전에 쓰러뜨리면 듣지 않는다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.mem.verse || e.hp <= 0 || hpPct(e) > 1 / 3 || !myHit(c, d)) return;
+        if (react(c, e, 'verse', '마지막 소절을 들이마신다')) e.mem.verse = 1;
+      },
+    },
+  },
+  {
+    id: 'a2-rite-lapse',
+    name: '흔들리는 향로',
+    desc: `의식을 집전하는 동안 약점(관통·공허)에 맞거나 붕괴하면 향로가 흔들려 의식이 끊긴다: 의식이 사라지고 다시 집전해야 한다 (전투당 ${LAPSE_MAX}번까지)`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || !(d.weakHit || d.broke) || !myHit(c, d)) return;
+        if (!((e.st.ritual ?? 0) > 0) || (e.mem.lapses ?? 0) >= LAPSE_MAX) return;
+        e.mem.lapses = (e.mem.lapses ?? 0) + 1;
+        e.mem.rite = 0;
+        c.clear(e, 'ritual');
+        c.emit({ t: 'text', uid: e.uid, text: '향로가 흔들려 의식이 끊겼다', tone: 'good' });
+        // 붕괴했으면 일어난 뒤에 다시 집전한다 (AI가 고른다)
+        react(c, e, 'rite');
+      },
+    },
+  },
+  {
+    id: 'a2-intercede',
+    name: '대신 맞는 자',
+    desc: `내 턴에 후열의 교단 동료가 공격받으면 그 차례에 앞을 막아선다: 방어도 ${STAND_BLOCK}, 도발 1 (다음 내 턴에 단일 대상 공격은 순교자만 노릴 수 있다)`,
+    hooks: {
+      onCombatStart(c) {
+        watch2(c);
+      },
+    },
+  },
+  {
+    id: 'a2-scavenger',
+    name: '썩은 내를 맡는 자',
+    desc: '내 턴에 누가 쓰러지면 갓 쓰러진 냄새를 맡고 그 차례에 「시체 포식」을 한다. 피를 흘리는 상대에게는 덤벼든다',
+    hooks: {
+      onAnyDeath(c, s, victim) {
+        const e = s.unit;
+        if (!isEnemy(e) || !isEnemy(victim) || victim === e || corpses(c) <= 0 || e.intent?.move === 'feast') return;
+        react(c, e, 'feast', '갓 쓰러진 냄새를 맡았다', 'bad');
+      },
+    },
+  },
+  {
+    id: 'a2-molten',
+    name: '녹는 밀랍',
+    desc: `체력이 처음 절반 아래로 떨어지면 촛농을 부어 상처를 봉하려 한다 (다음 차례에 체력 ${SEAL_HEAL} 회복, 방어도 ${SEAL_BLOCK}). 그 사이 붕괴시키거나 화염으로 치면 밀랍이 흘러내려 끊긴다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || !e.mem.charge || d.type !== 'fire' || !myHit(c, d)) return;
+        delete e.mem.charge;
+        e.intent = intentNow(c, e, 'drip');
+        c.emit({ t: 'text', uid: e.uid, text: '밀랍이 흘러내린다', tone: 'good' });
+      },
+    },
+  },
+  {
+    id: 'a2-plaster',
+    name: '회벽',
+    desc: `동료가 처음 내 손에 무너지면(붕괴) 그 차례에 그 동료를 회벽으로 감싼다 (보호막 ${BRICK_BARRIER})`,
+    hooks: {
+      onCombatStart(c) {
+        watch2(c);
+      },
+    },
+  },
+  {
+    id: 'a2-knell',
+    name: '조종',
+    desc: `내 턴에 교단 동료가 쓰러지면 그 차례에 「조종」을 울린다 (정신 피해 ${KNELL_TOLL_SAN}). 함께할 교단 동료가 없으면 작은 종을 울리지 않는다`,
+    hooks: {
+      onAnyDeath(c, s, victim) {
+        const e = s.unit;
+        if (!isEnemy(e) || !isEnemy(victim) || victim === e || !hasTag(victim, 'cult')) return;
+        react(c, e, 'knell', '조종이 울린다');
+      },
+    },
+  },
+  {
+    id: 'a2-latch',
+    name: '파고드는 턱',
+    desc: `「턱 박기」로 체력 피해를 주면 살을 파고든다: 내 턴이 시작될 때마다 체력 ${LATCH_DRAIN}를 빨아 간다. 이 뼈지네를 공격하면 떨어진다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (isEnemy(e) && e.mem.latched && d.src === c.p && d.attack) unlatch(c, e);
+      },
+      onDeath(c, s) {
+        if (isEnemy(s.unit) && s.unit.mem.latched) unlatch(c, s.unit);
+      },
+    },
+  },
+  {
+    id: 'a2-dust',
+    name: '날갯가루',
+    desc: '생각이 많은 상대(지난 내 턴에 기술 3개 이상)일수록 날개를 비빈다. 날개를 비빈 뒤 내 공격에 맞으면 마비의 가루가 흩날려 침묵을 걸지 못한다 (약화 1에 그친다)',
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || !e.mem.charge || !myHit(c, d) || d.amount <= 0) return;
+        delete e.mem.charge;
+        e.intent = intentNow(c, e, 'scatter');
+        c.emit({ t: 'text', uid: e.uid, text: '마비의 가루가 흩날린다', tone: 'good' });
+      },
+    },
+  },
+  {
+    id: 'a2-ledger',
+    name: '죄의 장부',
+    desc: `누가 쓰러질 때마다 장부에 죄를 적는다. 내 턴에 적으면 그 차례에 「판결」을 내린다 (죄 하나마다 피해 +${SIN_DMG})`,
+    hooks: {
+      onAnyDeath(c, s, victim) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || !isEnemy(victim) || victim === e) return;
+        c.apply(e, SINS, 1, e);
+        c.emit({ t: 'text', uid: e.uid, text: '장부에 죄를 적는다', tone: 'eldritch' });
+        if (!react(c, e, 'verdict', undefined, 'bad', 'rxl') && e.intent?.move === 'verdict') refreshIntent(c, e);
+      },
+    },
+  },
+  {
+    id: 'a2-reaching',
+    name: '뻗어 오는 손',
+    desc: `내 턴에 공격받지 않으면 자기 차례가 끝날 때 손이 하나 더 뻗어 나온다 (최대 ${HANDS_MAX}). 손 하나마다 「움켜쥐기」가 한 번 더. 내 공격에 맞으면 손 하나가 움츠러든다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || d.src !== c.p || !d.attack) return;
+        e.mem.hitT = c.s.turn;
+        if (!((e.st[HANDS] ?? 0) > 0)) return;
+        c.apply(e, HANDS, -1);
+        c.emit({ t: 'text', uid: e.uid, text: '손 하나가 움츠러든다', tone: 'good' });
+        refreshIntent(c, e);
+      },
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.mem.hitT === c.s.turn || (e.st[HANDS] ?? 0) >= HANDS_MAX) return;
+        c.apply(e, HANDS, 1, e);
+        c.emit({ t: 'text', uid: e.uid, text: '손이 하나 더 뻗어 나온다', tone: 'bad' });
+      },
+    },
+  },
 ]);
 
 // ───────────── 일반 적 ─────────────
@@ -539,7 +816,7 @@ reg.enemies([
     row: 1,
     dread: 2,
     tags: ['cult', 'undead'],
-    traits: ['a2-chorus'],
+    traits: ['a2-chorus', 'a2-last-verse'],
     desc: '재가 쌓인 성가대석에서 아직도 저녁 기도를 부르는 아이들. 입을 벌릴 때마다 잿가루가 쏟아진다.',
     moves: {
       hymn0: hymn(0),
@@ -553,6 +830,8 @@ reg.enemies([
         },
         desc: '모든 아군 방어도 5',
       }),
+      // 죽어 가는 아이의 노래 (특성 a2-last-verse — 스스로 고르지 않고, 크게 다친 차례에만)
+      verse: mv.horror('마지막 소절', VERSE_SAN, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '죽어 가는 아이가 마지막 소절을 토한다. 정신 피해, 공포 1' }),
     },
     ai: (c, e) => {
       const h = `hymn${Math.min(3, choirOthers(c, e))}`;
@@ -571,15 +850,16 @@ reg.enemies([
     weak: ['pierce', 'void'],
     row: 1,
     tags: ['cult'],
+    traits: ['a2-rite-lapse'],
     desc: '꺼지지 않는 향로를 흔들며 회랑을 도는 사제. 연기가 짙어질수록 그가 외는 기도는 사람의 말이 아니게 된다.',
     moves: {
       rite: mv.buff(
         '의식 집전',
         (c, e) => {
           e.mem.rite = 1;
-          c.apply(e, 'ritual', 1, e);
+          if (!((e.st.ritual ?? 0) > 0)) c.apply(e, 'ritual', 1, e);
         },
-        { desc: '의식 1 (매 턴 힘 +1)' },
+        { desc: '의식 1 (매 턴 힘 +1). 약점에 맞거나 붕괴하면 끊긴다' },
       ),
       communion: mv.buff(
         '검은 성찬',
@@ -608,7 +888,7 @@ reg.enemies([
     weak: ['pierce', 'arcane'],
     row: 0,
     tags: ['cult'],
-    traits: ['a2-martyrdom'],
+    traits: ['a2-martyrdom', 'a2-intercede'],
     desc: '가시관을 쓰고 스스로를 채찍질하는 광신도. 죽음조차 동료에게 바치는 공물이다.',
     moves: {
       scourge: mv.buff(
@@ -622,6 +902,11 @@ reg.enemies([
       ),
       chain: mv.attack('가시 사슬', 9, { type: 'slash' }),
       embrace: mv.attack('피의 포옹', 5, { then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
+      // 후열의 동료를 감싼다 (특성 a2-intercede — 스스로 고르지 않고, 동료가 맞은 차례에만)
+      stand: mv.block('앞을 막아선다', STAND_BLOCK, {
+        then: (c, e) => void c.apply(e, 'taunt', 1, e),
+        desc: `방어도 ${STAND_BLOCK}, 도발 1 (다음 내 턴에 단일 대상 공격은 순교자만 노릴 수 있다)`,
+      }),
     },
     ai: (c, e) => pick(c, e, { chain: 3, embrace: 2, scourge: e.hp > 15 && (e.mem.sc ?? 0) < 2 ? 2 : 0 }),
     visual: { tint: 0x7a4a48, glow: 0xff5040 },
@@ -637,7 +922,7 @@ reg.enemies([
     weak: ['fire', 'pierce'],
     row: 0,
     tags: ['undead', 'ghoul'],
-    traits: ['a2-corpse-eater'],
+    traits: ['a2-corpse-eater', 'a2-scavenger'],
     desc: '개를 닮은 얼굴로 납골당의 뼈를 갉는 것. 갓 쓰러진 것을 가장 좋아한다.',
     moves: {
       claw: mv.attack('할퀴기', 7, { type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 1, e), desc: '출혈 1' }),
@@ -646,21 +931,25 @@ reg.enemies([
         name: '시체 포식',
         intent: 'heal',
         extra: ['buff'],
-        desc: '쓰러진 자의 시체를 먹어 체력 14 회복, 힘 +2',
+        desc: `쓰러진 자의 시체를 먹어 체력 ${FEAST_HEAL} 회복, 힘 +2`,
         run(c, e) {
           if (!eatCorpse(c)) {
             c.emit({ t: 'text', uid: e.uid, text: '먹을 것이 없다', tone: 'info' });
             return;
           }
           c.emit({ t: 'text', uid: e.uid, text: '시체를 뜯어먹는다', tone: 'bad' });
-          c.heal(e, 14);
+          c.heal(e, FEAST_HEAL);
           c.apply(e, 'str', 2, e);
         },
       },
+      // 피 냄새 (특성 a2-scavenger)
+      lunge: mv.attack('피 냄새를 쫓아 덤빈다', 4, { hits: 2, type: 'slash', desc: '피를 흘리는 상대에게 두 번 덤벼든다' }),
     },
     ai: (c, e) => {
       if (corpses(c) > 0 && last(e) !== 'feast') return pick(c, e, { feast: hpPct(e) < 0.9 ? 5 : 2, claw: 2, gnaw: 1 });
-      return pick(c, e, { claw: 3, gnaw: 2 });
+      // 피를 흘리는 상대(출혈 2 이상)에게는 냄새를 쫓아 덤벼든다
+      const bleeding = (c.p.st.bleed ?? 0) >= 2;
+      return pick(c, e, { claw: bleeding ? 2 : 3, gnaw: 2, lunge: bleeding ? 3 : 0 });
     },
     visual: { tint: 0x6a6a58, glow: 0xc0ff60 },
   },
@@ -675,14 +964,51 @@ reg.enemies([
     weak: ['blunt', 'arcane'],
     row: 0,
     tags: ['ash', 'cult'],
-    traits: ['a2-wax-seal'],
+    traits: ['a2-wax-seal', 'a2-molten'],
     desc: '녹은 촛농을 제 몸에 부어 상처를 봉한 수사. 굳은 밀랍이 얼굴의 반을 덮었지만 아침 기도는 거르지 않는다.',
     moves: {
       spike: mv.attack('쇠 촛대 찌르기', 9, { type: 'pierce' }),
       grip: mv.attack('밀랍 손아귀', 6, { then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
       harden: mv.block('밀랍 굳히기', 10, { desc: '방어도 10' }),
+      // 상처를 밀랍으로 봉한다 (특성 a2-molten): 붕괴시키거나 화염으로 치면 끊긴다
+      pour: {
+        name: '촛농을 붓는다',
+        intent: 'charge',
+        charging: true,
+        desc: `다음 차례에 녹인 촛농으로 상처를 봉한다 (체력 ${SEAL_HEAL} 회복, 방어도 ${SEAL_BLOCK}). 그 사이 붕괴시키거나 화염으로 치면 끊긴다`,
+        run(c, e) {
+          e.mem.charge = 1;
+          c.emit({ t: 'text', uid: e.uid, text: '촛농을 녹인다…', tone: 'bad' });
+        },
+      },
+      seal: release({
+        name: '밀랍 봉인',
+        intent: 'heal',
+        extra: ['block'],
+        desc: `녹인 촛농으로 상처를 봉한다. 체력 ${SEAL_HEAL} 회복, 방어도 ${SEAL_BLOCK}`,
+        run(c, e) {
+          c.heal(e, SEAL_HEAL);
+          c.gainBlock(e, SEAL_BLOCK);
+        },
+      }),
+      drip: {
+        name: '흘러내린 밀랍',
+        intent: 'unknown',
+        desc: '녹아 흘러내린 밀랍을 긁어모은다. 이번 차례에는 아무것도 하지 못한다',
+        run(c, e) {
+          c.emit({ t: 'text', uid: e.uid, text: '흘러내린 밀랍을 긁어모은다', tone: 'info' });
+        },
+      },
     },
-    ai: (c, e) => opener(c, e, ['spike']) ?? pick(c, e, { spike: 3, grip: 2, harden: hpPct(e) < 0.6 ? 2 : 1 }),
+    ai: (c, e) => {
+      if (e.mem.charge) return 'seal';
+      // 체력이 절반 아래로 떨어지면 한 번, 촛농을 부어 상처를 봉하려 한다
+      if (hpPct(e) < 0.5 && !e.mem.poured) {
+        e.mem.poured = 1;
+        return 'pour';
+      }
+      return opener(c, e, ['spike']) ?? pick(c, e, { spike: 3, grip: 2, harden: 1 });
+    },
     visual: { tint: 0x8a7a5a, glow: 0xffd070, fx: ['flicker'] },
   },
   {
@@ -704,9 +1030,35 @@ reg.enemies([
       voice: mv.horror('낯선 목소리', 6),
       fist: mv.attack('뒤틀린 주먹', 9),
       pray: mv.block('흐느끼는 기도', 8, { desc: '방어도 8' }),
+      // 두 번째 목소리가 빠져나온 악령을 부른다 (특성 a2-possessed)
+      beckon: {
+        name: '들어오라',
+        intent: 'special',
+        desc: `두 번째 목소리가 빠져나온 악령을 부른다. 다음 차례에 악령이 다시 깃든다 (수도사 체력 ${REPOSSESS_HEAL} 회복, 힘 +2). 그 전에 악령을 쓰러뜨리면 막는다. 부름을 받는 악령은 후열에 있어도 근접으로 닿는다`,
+        run(c, e) {
+          const sp = c.alive.find((x) => x.def === 'loose-spirit' && !x.mem.called);
+          if (!sp) {
+            c.emit({ t: 'text', uid: e.uid, text: '부를 것이 없다', tone: 'info' });
+            return;
+          }
+          sp.mem.called = 1;
+          sp.mem.reachable = 1;
+          c.emit({ t: 'text', uid: e.uid, text: '들어오라. 두 번째 목소리가 부른다', tone: 'eldritch' });
+        },
+      },
     },
-    ai: (c, e) =>
-      e.mem.exorcised ? pick(c, e, { fist: 2, pray: 2, spasm: 1 }) : pick(c, e, { spasm: 2, voice: 2, fist: 2 }),
+    ai: (c, e) => {
+      // 악령이 다시 깃들었거나 아직 빠져나오지 않았다
+      if (!e.mem.exorcised || e.mem.repossessed) return pick(c, e, { spasm: 2, voice: 2, fist: 2 });
+      // 빠져나온 악령이 아직 떠돌면 한 번, 다시 불러들인다 (부르는 동안 악령은 근접으로도 닿는다)
+      const sp = e.mem.beckoned ? undefined : c.alive.find((x) => x.def === 'loose-spirit' && !x.mem.called);
+      const m = pick(c, e, { fist: 2, pray: 2, spasm: 1, beckon: sp ? 3 : 0 });
+      if (m === 'beckon' && sp) {
+        e.mem.beckoned = 1;
+        sp.mem.reachable = 1;
+      }
+      return m;
+    },
     visual: { tint: 0x5a5048, glow: 0xff3060, fx: ['flicker'] },
   },
   {
@@ -733,9 +1085,29 @@ reg.enemies([
           c.flee(e);
         },
       },
+      // 수도사의 두 번째 목소리에 불려 돌아간다 (빙의된 수도사의 「들어오라」)
+      enter: {
+        name: '다시 깃든다',
+        intent: 'special',
+        desc: `빠져나왔던 수도사의 몸으로 돌아간다. 수도사 체력 ${REPOSSESS_HEAL} 회복, 힘 +2. 그 전에 쓰러뜨리면 막는다`,
+        run(c, e) {
+          const monk = c.alive.find((x) => x.def === 'possessed-monk');
+          if (!monk) {
+            c.emit({ t: 'text', uid: e.uid, text: '깃들 몸이 없다', tone: 'info' });
+            c.flee(e);
+            return;
+          }
+          monk.mem.repossessed = 1;
+          c.emit({ t: 'text', uid: monk.uid, text: '악령이 다시 깃들었다', tone: 'eldritch' });
+          c.heal(monk, REPOSSESS_HEAL);
+          c.apply(monk, 'str', 2, e);
+          c.flee(e);
+        },
+      },
     },
-    // 세 번 행동하면 흩어진다
+    // 세 번 행동하면 흩어진다 (수도사가 부르면 돌아간다)
     ai: (_c, e) => {
+      if (e.mem.called) return 'enter';
       e.mem.acts = (e.mem.acts ?? 0) + 1;
       return e.mem.acts > 3 ? 'fade' : cycle(e, ['whisper', 'chill']);
     },
@@ -752,20 +1124,23 @@ reg.enemies([
     weak: ['fire', 'slash'],
     row: 1,
     tags: ['undead'],
+    traits: ['a2-plaster'],
     desc: '수도원이 바쳐지던 밤, 그들은 스스로를 벽 속에 쌓아 넣었다. 회벽 너머의 기도는 아직 끝나지 않았다.',
     moves: {
       lament: mv.horror('벽 속의 기도', 6, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       brick: mv.buff(
         '벽돌 쌓기',
         (c, e) => {
-          const t = mostHurt(c) ?? e;
-          c.apply(t, 'barrier', 8, e);
+          // 무너진 동료를 감싸려던 참이면 그 동료에게 (특성 a2-plaster)
+          const want = e.mem.brickT ? c.alive.find((x) => x.uid === `e${e.mem.brickT}`) : undefined;
+          delete e.mem.brickT;
+          c.apply(want ?? mostHurt(c) ?? e, 'barrier', BRICK_BARRIER, e);
         },
-        { desc: '가장 다친 아군에게 보호막 8' },
+        { desc: `가장 다친 아군에게 보호막 ${BRICK_BARRIER} (무너진 동료를 감싸려던 참이면 그 동료에게)` },
       ),
       touch: mv.attack('벽 틈의 손길', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
     },
-    ai: (c, e) => pick(c, e, { touch: 3, lament: 2, brick: c.alive.some((a) => hpPct(a) < 0.8) ? 2 : 0 }),
+    ai: (c, e) => pick(c, e, { touch: 4, lament: 2, brick: c.alive.some((a) => hpPct(a) < 0.8) ? 2 : 0 }),
     visual: { tint: 0x6a6460, glow: 0xe8dcc0, fx: ['flicker'] },
   },
   {
@@ -779,6 +1154,7 @@ reg.enemies([
     weak: ['slash', 'void'],
     row: 1,
     tags: ['cult'],
+    traits: ['a2-knell'],
     desc: '종탑의 밧줄을 당기는 견습들. 고막은 오래전에 터졌지만 종소리는 여전히 들린다고 한다.',
     moves: {
       clang: mv.attack('공명', 6, { melee: false, type: 'arcane' }),
@@ -788,8 +1164,14 @@ reg.enemies([
           for (const a of c.alive) if (a !== e && hasTag(a, 'cult')) c.apply(a, 'str', 1, e);
         },
       }),
+      // 쓰러진 신도를 위해 울리는 종 (특성 a2-knell — 스스로 고르지 않고, 신도가 쓰러진 차례에만)
+      knell: mv.horror('조종', KNELL_TOLL_SAN, { desc: '쓰러진 신도를 위해 울리는 종. 귓속에서 오래 울린다' }),
     },
-    ai: (_c, e) => cycle(e, ['clang', 'toll', 'clang']),
+    ai: (c, e) => {
+      // 함께할 신도가 있으면 작은 종과 공명을 번갈아 울린다. 홀로 남으면 공명만
+      const flock = c.alive.some((x) => x !== e && hasTag(x, 'cult'));
+      return pick(c, e, { clang: 3, toll: flock && last(e) !== 'toll' ? 2 : 0 });
+    },
     visual: { tint: 0x5a4a3a, glow: 0xffc060 },
   },
   {
@@ -803,7 +1185,7 @@ reg.enemies([
     weak: ['slash', 'fire'],
     row: 0,
     tags: ['ash', 'beast'],
-    traits: ['a2-carapace'],
+    traits: ['a2-carapace', 'a2-latch'],
     desc: '납골당의 뼈를 껍데기 삼아 재 속을 기는 지네. 무엇에든 들러붙어 피를 빤다. 수도사들은 이것을 "회개하지 않는 혀"라 불렀다.',
     moves: {
       latch: {
@@ -812,18 +1194,25 @@ reg.enemies([
         extra: ['heal'],
         dmg: 5,
         melee: true,
-        desc: '출혈 2. 입힌 피해만큼 회복',
+        desc: `출혈 2. 입힌 피해만큼 회복. 체력 피해를 주면 살을 파고든다 (내 턴이 시작될 때마다 체력 ${LATCH_DRAIN}를 빨린다. 이 뼈지네를 공격하면 떨어진다)`,
         run(c, e) {
           const ds = c.enemyAttack(e, { type: 'pierce' });
           if (c.over || e.dead) return;
           c.apply(c.p, 'bleed', 2, e);
           const n = ds.reduce((s, d) => s + d.hpLoss, 0);
-          if (n > 0) c.heal(e, n);
+          if (n <= 0) return;
+          c.heal(e, n);
+          // 방어도에 막히지 않고 살에 닿았으면 파고든다 (특성 a2-latch)
+          if (!e.mem.latched && c.apply(c.p, LATCHED, 1, e) > 0) {
+            e.mem.latched = 1;
+            c.emit({ t: 'text', uid: e.uid, text: '턱이 살을 파고든다', tone: 'bad' });
+          }
         },
       },
       thrash: mv.attack('몸부림', 3, { hits: 2 }),
     },
-    ai: (c, e) => pick(c, e, { latch: 3, thrash: 2 }),
+    // 이미 파고들었으면 놓치지 않으려 몸부림친다
+    ai: (c, e) => pick(c, e, { latch: e.mem.latched ? 1 : 3, thrash: e.mem.latched ? 3 : 2 }),
     visual: { tint: 0xb0a890, glow: 0xff6050, scale: 0.8 },
   },
   {
@@ -837,10 +1226,11 @@ reg.enemies([
     weak: ['pierce', 'blunt'],
     row: 1,
     tags: ['ash', 'beast'],
+    traits: ['a2-dust'],
     desc: '향로 연기를 따라 모여드는 창백한 나방. 시체에 알을 슨다. 그 날갯가루를 들이마신 자는 생각이 굳는다.',
     moves: {
       dust: mv.attack('날갯가루', 5, { melee: false, type: 'arcane' }),
-      rub: mv.charge('날개를 비빈다', 9),
+      rub: { ...mv.charge('날개를 비빈다', 9), desc: '다음 차례에 「마비의 가루」(침묵 1). 그 사이 붕괴시키거나 공격으로 맞히면 가루가 흩날려 침묵을 걸지 못한다' },
       burst: release(
         mv.attack('마비의 가루', 9, {
           melee: false,
@@ -849,8 +1239,16 @@ reg.enemies([
           then: (c, e) => void c.apply(c.p, 'silence', 1, e),
         }),
       ),
+      // 비빈 날개를 맞혀 가루를 흩었다 (특성 a2-dust)
+      scatter: mv.attack('흩날린 가루', 5, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '마비의 가루가 흩어졌다. 침묵 대신 약화 1' }),
     },
-    ai: (_c, e) => (e.mem.charge ? 'burst' : cycle(e, ['dust', 'rub', 'dust'])),
+    ai: (c, e) => {
+      if (e.mem.charge) return 'burst';
+      // 이미 침묵한 상대에게는 날개를 비비지 않는다. 생각이 많은 상대(지난 내 턴에 기술 3개 이상)일수록 자주 비빈다
+      if ((c.p.st.silence ?? 0) > 0) return 'dust';
+      const recent = e.hist.slice(-2).some((h) => h === 'rub' || h === 'burst' || h === 'scatter');
+      return pick(c, e, { dust: 3, rub: recent ? 0 : c.s.used >= 3 ? 4 : 1 });
+    },
     visual: { tint: 0xd0c8b8, glow: 0xffe0a0, scale: 0.9, fx: ['float'] },
   },
   {
@@ -864,6 +1262,7 @@ reg.enemies([
     weak: ['void', 'slash'],
     row: 0,
     tags: ['cult'],
+    traits: ['a2-ledger'],
     desc: '모든 죄를 들어주고 모든 죄를 기록한다. 그 장부는 아래의 목소리에게 바쳐진다.',
     moves: {
       penance: mv.attack('참회의 매', 8, { then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
@@ -881,8 +1280,24 @@ reg.enemies([
           c.heal(mostHurt(c) ?? e, 10);
         },
       },
+      // 장부에 적은 죄를 묻는다 (특성 a2-ledger): 피해는 의도에 그대로 보인다
+      verdict: {
+        name: '판결',
+        intent: 'attack',
+        dmg: (_c, e) => VERDICT_DMG + SIN_DMG * (e.st[SINS] ?? 0),
+        melee: true,
+        desc: `장부에 적은 죄 하나마다 피해 +${SIN_DMG}. 판결을 내리면 장부를 비운다`,
+        run(c, e) {
+          c.enemyAttack(e, { type: 'blunt' });
+          if (!c.over && !e.dead) c.clear(e, SINS);
+        },
+      },
     },
-    ai: (c, e) => pick(c, e, { penance: 3, confess: 2, absolve: c.alive.some((a) => hpPct(a) < 0.7) ? 2 : 0 }),
+    ai: (c, e) => {
+      // 장부에 죄가 쌓였으면 판결을 내린다
+      const sins = e.st[SINS] ?? 0;
+      return pick(c, e, { penance: 3, confess: 2, absolve: c.alive.some((a) => hpPct(a) < 0.7) ? 2 : 0, verdict: sins > 0 ? 2 + sins : 0 });
+    },
     visual: { tint: 0x2e2a30, glow: 0xd0b070 },
   },
   {
@@ -898,16 +1313,25 @@ reg.enemies([
     dread: 3,
     eldritch: true,
     tags: ['ash'],
+    traits: ['a2-reaching'],
     desc: '세례반에는 재와 피를 갠 검은 것이 고여 있다. 그 속에서 손들이 뻗어 나와 세례받을 자를 더듬는다.',
     moves: {
-      reach: mv.attack('뻗어 오는 손', 7, { melee: false, type: 'void' }),
+      reach: mv.attack('뻗어 오는 손', 6, { melee: false, type: 'void' }),
       baptize: mv.horror('검은 세례', 4, {
         desc: '부식 1 (받는 피해 +1, 전투 동안)',
         then: (c, e) => void c.apply(c.p, 'corrode', 1, e),
       }),
-      clutch: mv.attack('움켜쥐기', 3, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
+      // 뻗어 나온 손 하나마다 한 번 더 움켜쥔다 (특성 a2-reaching — 의도에 그대로 보인다)
+      clutch: {
+        ...mv.attack('움켜쥐기', 3, { hits: 2, melee: false, then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1. 뻗어 나온 손 하나마다 한 번 더 움켜쥔다' }),
+        hits: (_c: Combat, e: EnemyUnit) => 2 + (e.st[HANDS] ?? 0),
+      },
     },
-    ai: (_c, e) => cycle(e, ['reach', 'baptize', 'clutch', 'reach']),
+    ai: (c, e) => {
+      // 손이 많이 뻗어 나왔으면 움켜쥐고, 부식이 덜 쌓인 상대에게는 검은 세례를 붓는다
+      const hands = e.st[HANDS] ?? 0;
+      return pick(c, e, { reach: 3, baptize: (c.p.st.corrode ?? 0) < 3 ? 2 : 0, clutch: 1 + hands });
+    },
     visual: { tint: 0x2a1a1a, glow: 0xff5a40, fx: ['float'] },
   },
 

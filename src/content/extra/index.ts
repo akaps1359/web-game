@@ -8,3 +8,5 @@ import './consumables';
 import './madness';
 import './anomalies';
 import './events';
+import './arsenal';
+import './arts';

@@ -65,7 +65,80 @@ import {
   unfold,
   unisonHits,
   withCine,
+  setSt,
 } from './patterns';
+import {
+  BEAT_STAGGER,
+  BURN_HEAL,
+  CLIMAX_SAN,
+  CRESCENDO_BREAK,
+  DEBRIDE_MIN,
+  DIRGE_CAP,
+  DRAG_SAN,
+  DREAM,
+  DREAM_MAX,
+  EATEN,
+  FLOOD_SAN,
+  FUTURE,
+  FUTURE_DMG,
+  FUTURE_GAP,
+  GNAW_DMG,
+  GNAW_MAX,
+  GRAB_BREAK,
+  GRAB_GAP,
+  GRABBED,
+  LAMENT_SAN,
+  LANDED,
+  WALL_GAP,
+  REWIND_CAP,
+  REWIND_GAP,
+  REWIND_PCT,
+  ROOT_SAP,
+  SAP_HEAL,
+  SATE,
+  SATIETY,
+  SNAP_POISE,
+  SWALLOWABLE,
+  THREAD_MAX,
+  TURTLE_BLOCK,
+  BRAND_MULT,
+  applyBrand,
+  branded,
+  burnTime,
+  carveFuture,
+  clearDirge,
+  clearStitch,
+  debride,
+  debrideTarget,
+  deepenDream,
+  endBlock,
+  endCrescendo,
+  feed,
+  gnawTime,
+  grabPlayer,
+  knockDown,
+  land,
+  landed,
+  panic,
+  releaseGrab,
+  reveal,
+  rewindTarget,
+  rewindWound,
+  shakeCrescendo,
+  shakeGrab,
+  startCrescendo,
+  stirDream,
+  stitchTarget,
+  stitchUp,
+  swallow,
+  takeOff,
+  takeRoot,
+  threadsOf,
+  tintAlly,
+  tintTarget,
+  weave,
+  weaveCandidates,
+} from './court';
 
 /** 문 너머의 존재를 이루는 구체들 */
 export { GATE_ORBS };
@@ -102,7 +175,7 @@ reg.traits([
   {
     id: 'a4-rooted',
     name: '검은 수액',
-    desc: '자기 차례가 끝날 때 체력 5 회복. 그 사이 화염 피해(화상 포함)를 받았다면 회복하지 못한다',
+    desc: `자기 차례가 끝날 때 체력 ${SAP_HEAL} 회복(뿌리를 내리면 ${ROOT_SAP}). 그 사이 화염 피해(화상 포함)를 받았다면 회복하지 못한다`,
     hooks: {
       onDamageTaken(_c, s, d) {
         if (!isEnemy(s.unit) || d.hpLoss <= 0) return;
@@ -116,7 +189,7 @@ reg.traits([
           c.emit({ t: 'text', uid: e.uid, text: '수액이 그을렸다', tone: 'info' });
           return;
         }
-        c.heal(e, 5);
+        c.heal(e, e.mem.rooted ? ROOT_SAP : SAP_HEAL);
       },
     },
   },
@@ -145,19 +218,22 @@ reg.traits([
   {
     id: 'a4-phasing',
     name: '위상 이동',
-    desc: '자기 차례가 끝날 때마다 전열과 후열을 오간다',
+    desc: '자기 차례가 끝날 때마다 전열과 후열을 오간다. 나를 붙잡고 있는 동안에는 옮기지 않는다',
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
-        if (isEnemy(e)) c.moveRow(e, e.row === 0 ? 1 : 0);
+        if (isEnemy(e) && !e.mem.grab) c.moveRow(e, e.row === 0 ? 1 : 0);
       },
     },
   },
   {
     id: 'a4-unseen',
     name: '보이지 않는 몸',
-    desc: '자기 차례가 끝날 때 회피 1 (중첩되지 않음)',
+    desc: `자기 차례가 끝날 때 회피 1(중첩되지 않음). 약점에 맞아 형체가 드러나면 하려던 공격을 멈추고 바람을 두른다(${WALL_GAP}턴에 한 번)`,
     hooks: {
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit)) reveal(c, s.unit, d);
+      },
       onUnitTurnEnd(c, s) {
         if (!((s.unit.st.evasive ?? 0) > 0)) c.apply(s.unit, 'evasive', 1, s.unit);
       },
@@ -362,6 +438,154 @@ reg.traits([
       },
     },
   },
+
+  // ── 일반 적의 패턴 (2026-10 패턴 확장 — 규칙과 상태는 court.ts) ──
+  {
+    id: 'a4-dreamer',
+    name: '가라앉은 꿈',
+    desc: `내 턴 동안 피해를 받지 않으면 꿈이 깊어진다. 꿈이 ${DREAM_MAX}에 이르면 다음 차례에 「꿈의 범람」(정신 피해 ${FLOOD_SAN}, 공포 2). 피해를 주면 꿈이 얕아지고 범람도 멎는다. 체력이 절반 아래로 떨어지면 꿈에서 깨어나 갈라진 촉수를 휘두른다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit)) stirDream(c, s.unit, d);
+      },
+      onUnitTurnStart(_c, s) {
+        const e = s.unit;
+        // 붕괴·기절로 쉬는 차례에는 꿈이 깊어지지 않는다
+        if (isEnemy(e) && (e.broken === 2 || (e.st.stun ?? 0) > 0)) e.mem.dreamSkip = 1;
+      },
+      onUnitTurnEnd(c, s) {
+        if (isEnemy(s.unit)) deepenDream(c, s.unit);
+      },
+    },
+  },
+  {
+    id: 'a4-crescendo',
+    name: '절정의 선율',
+    desc: `가끔 선율을 고조시킨다. 다음 차례에 「광기의 절정」(정신 피해 ${CLIMAX_SAN}, 공포 1, 다른 적 모두 힘 +1). 고조되는 동안 앞으로 떠올라 근접 공격이 닿는다. 최대 체력의 ${Math.round(CRESCENDO_BREAK * 100)}%만큼 피해를 주거나 붕괴시키면 끊긴다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit)) shakeCrescendo(c, s.unit, d);
+      },
+    },
+  },
+  {
+    id: 'a4-dirge',
+    name: '장송곡',
+    desc: `다른 적이 쓰러지면 다음 차례에 「장송곡」을 분다. 쓰러진 적이 하려던 공격을 공허 피해로 되풀이한다(타격당 최대 ${DIRGE_CAP}). 공격하려던 것이 아니었다면 정신 피해 ${LAMENT_SAN}`,
+    hooks: {},
+  },
+  {
+    id: 'a4-firefear',
+    name: '불을 두려워함',
+    desc: '화염 공격을 받으면 겁에 질려 하려던 공격을 멈추고 울부짖는다(내 턴마다 한 번). 힘을 모으던 중이면 멈추지 않는다',
+    hooks: {
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit)) panic(c, s.unit, d);
+      },
+    },
+  },
+  {
+    id: 'a4-taproot',
+    name: '뿌리 내리기',
+    desc: `체력이 절반 아래로 떨어지면 뿌리를 내린다. 검은 수액이 두 배로 돌고(체력 ${ROOT_SAP} 회복), 뒷발로 일어서는 대신 뿌리 가시와 포자를 뿌린다`,
+    hooks: {
+      onDamageTaken(c, s) {
+        if (isEnemy(s.unit)) takeRoot(c, s.unit);
+      },
+    },
+  },
+  {
+    id: 'a4-rewinder',
+    name: '상처 되감기',
+    desc: `내 턴에 한 적이 최대 체력의 ${Math.round(REWIND_PCT * 100)}% 넘게 다치면 그 상처를 되감으려 한다(그 적에게 표시). 다음 차례에 그 적이 그 턴에 잃은 체력을 되돌린다(최대 ${REWIND_CAP}). 그 전에 그 적을 쓰러뜨리거나 파수꾼을 붕괴시키면 무산된다. ${REWIND_GAP}턴에 한 번`,
+    hooks: {},
+  },
+  {
+    id: 'a4-surgeon',
+    name: '외과의',
+    desc: `동료가 붕괴하면 다음 차례에 꿰매어 한 차례 일찍 일으킨다(그 동료에게 표시). 그 전에 봉합사를 붕괴시키거나 쓰러뜨리면 무산된다. 동료 몸에 출혈·독·화상이 합쳐 ${DEBRIDE_MIN} 이상 쌓이면 상처를 도려내 씻어 낸다`,
+    hooks: {},
+  },
+  {
+    id: 'a4-engulfer',
+    name: '삼키는 몸',
+    desc: '「늘어나 삼키기」로 내 강화 효과 중 가장 큰 것 하나를 삼킨다(보호막·조준·힘·민첩·결계 등). 붕괴시키거나 쓰러뜨리면 토해 내 돌려준다',
+    hooks: {},
+  },
+  {
+    id: 'a4-dancer',
+    name: '피리에 맞춘 춤',
+    desc: `무형의 피리꾼이 살아 있으면 박자에 맞춰 「박자 맞춘 몸부림」을 춘다. 피리꾼이 쓰러질 때마다 박자를 잃고 비틀거린다(버팀 -${BEAT_STAGGER})`,
+    hooks: {},
+  },
+  {
+    id: 'a4-brander',
+    name: '얼굴 없는 낙인',
+    desc: `「얼굴 없는 낙인」을 새기면 다음 적의 차례에 내가 받는 공격 피해 +${Math.round((BRAND_MULT - 1) * 100)}%, 다른 적들이 낙인을 노려 공격한다. 낙인을 새긴 사제를 붕괴시키거나 쓰러뜨리면 사라진다. 내가 방어도 ${TURTLE_BLOCK} 이상으로 턴을 마치면 방어도로 막을 수 없는 「얼굴을 보여준다」를 즐겨 쓴다`,
+    hooks: {},
+  },
+  {
+    id: 'a4-bloom',
+    name: '색의 개화',
+    desc: `공격으로 빨아들인 생기가 포만으로 쌓인다. ${SATE}이 차면 빛이 부풀어 올라 다음 차례에 「색의 개화」(공허 피해와 정신 피해). 방어도로 막은 피해는 빨아들이지 못한다. 부풀어 오르는 동안 붕괴시키면 끊긴다`,
+    hooks: {
+      onDamageDealt(c, s, d) {
+        const e = s.unit;
+        if (isEnemy(e) && d.src === e && d.tgt === c.p && d.hpLoss > 0) feed(c, e, d.hpLoss);
+      },
+    },
+  },
+  {
+    id: 'a4-tinter',
+    name: '색의 전염',
+    desc: '「색의 전염」으로 동료 하나를 물들인다. 물든 적은 공격으로 준 체력 피해의 절반만큼 회복한다. 색을 붕괴시키거나 쓰러뜨리면 빛이 바랜다',
+    hooks: {},
+  },
+  {
+    id: 'a4-wings',
+    name: '성간의 날개',
+    desc: '근접 공격 피해 50% 감소. 「급강하」한 뒤에는 전열에 내려앉아 근접 공격을 그대로 받는다. 날아 있을 때 약점에 맞으면 날개가 꺾여 전열로 떨어진다(내 턴마다 한 번)',
+    hooks: {
+      modDamageIn(_c, s, d) {
+        if (d.melee && isEnemy(s.unit) && !landed(s.unit)) d.mult *= 0.5;
+      },
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit)) knockDown(c, s.unit, d);
+      },
+      onUnitTurnStart(c, s) {
+        // 혼돈의 춤 등으로 후열에 밀려났으면 다시 날아 있다
+        const e = s.unit;
+        if (isEnemy(e) && landed(e) && e.row === 1) setSt(c, e, LANDED, 0);
+      },
+    },
+  },
+  {
+    id: 'a4-abductor',
+    name: '저편으로 끌고 가는 자',
+    desc: `전열에서는 찢어발기고 붙잡으며, 후열에서는 할퀴고 공간을 접는다. 「차원 너머로 붙잡기」에 붙잡히면 다음 차례에 저편으로 끌려간다(정신 피해 ${DRAG_SAN}, 공포 2, 허약 2). 붙잡은 동안 방랑자는 열을 옮기지 않고 근접 공격이 닿는다. 최대 체력의 ${Math.round(GRAB_BREAK * 100)}%만큼 피해를 주거나 붕괴시키면 풀려난다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        if (isEnemy(s.unit)) shakeGrab(c, s.unit, d);
+      },
+    },
+  },
+  {
+    id: 'a4-time-eater',
+    name: '시간 포식',
+    desc: `「시간을 갉는다」로 다음 내 턴 행동력 1을 빼앗아 삼킨다(최대 ${GNAW_MAX}). 내가 행동력을 남기고 턴을 마치면 남은 시간도 핥아먹는다. 삼킨 시간 하나마다 공격 피해 +${GNAW_DMG}. 붕괴시키거나 쓰러뜨리면 토해 낸다: 다음 내 턴 행동력 +삼킨 만큼. 체력이 절반 아래면 삼킨 시간을 태워 회복하기도 한다(태운 시간은 돌아오지 않는다)`,
+    hooks: {
+      modDamageOut(_c, s, d) {
+        const e = s.unit;
+        if (isEnemy(e) && d.src === e && d.attack) d.add += GNAW_DMG * (e.st[EATEN] ?? 0);
+      },
+    },
+  },
+  {
+    id: 'a4-weaver',
+    name: '별자리 잇기',
+    desc: `「별의 실을 잇는다」로 가장 다친 동료를 잇는다(최대 ${THREAD_MAX}). 이어진 적이 내 쪽에서 받는 피해의 절반은 실을 따라 이것에게 넘어온다. 이것을 붕괴시키거나 쓰러뜨리면 실이 끊기며 이어진 적들이 비틀거린다(버팀 -${SNAP_POISE})`,
+    hooks: {},
+  },
 ]);
 
 // ───────────── 일반 적 ─────────────
@@ -381,16 +605,33 @@ reg.enemies([
     dread: 5,
     eldritch: true,
     tags: ['star'],
-    traits: ['a4-aligned'],
+    traits: ['a4-aligned', 'a4-dreamer'],
     moves: {
       claw: mv.attack('별의 손아귀', 12, { type: 'slash' }),
       dream: mv.horror('꿈의 송신', 10, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      // 내 턴마다 맞지 않고 꿈을 꾼 끝 (피해를 주면 얕아져 멎는다)
+      flood: mv.horror('꿈의 범람', FLOOD_SAN, {
+        then: (c, e) => {
+          c.apply(c.p, 'dread', 2, e);
+          setSt(c, e, DREAM, 0);
+        },
+        desc: '가라앉은 꿈이 넘쳐흐른다. 정신 피해, 공포 2. 꿈은 다시 얕아진다',
+      }),
+      // 꿈에서 깨어난 뒤 (체력 절반 아래): 후열에 밀려나도 닿는 촉수
+      lash: mv.attack('갈라진 촉수', 4, { hits: 3, melee: false, type: 'slash' }),
       rise: mv.charge('거대한 팔을 치켜든다', 40),
       crush: release(mv.attack('짓누르기', 40)),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'crush';
-      return opener(c, e, ['claw']) ?? pick(c, e, { claw: 3, dream: 2, rise: e.hist.slice(-2).includes('crush') ? 0 : 1 });
+      if (!e.mem.awake && (e.st[DREAM] ?? 0) >= DREAM_MAX) return 'flood';
+      const o = opener(c, e, ['claw']);
+      if (o) return o;
+      // 낙인이 찍힌 상대는 바로 노린다 (힘을 모으거나 꿈을 보내지 않는다)
+      const brand = branded(c);
+      const rested = !e.hist.slice(-2).includes('crush') && !brand;
+      if (e.mem.awake) return pick(c, e, { claw: 2, lash: 3, rise: rested ? 1 : 0 });
+      return pick(c, e, { claw: 3, dream: brand ? 0 : 2, rise: rested ? 1 : 0 });
     },
     visual: { tint: 0x2c4a52, glow: 0x7fe0d0, scale: 1.25, fx: ['drip'] },
   },
@@ -407,7 +648,7 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['outer'],
-    traits: ['incorporeal', 'a4-piping'],
+    traits: ['incorporeal', 'a4-piping', 'a4-crescendo', 'a4-dirge'],
     moves: {
       note: mv.attack('공허의 음표', 6, { hits: 2, melee: false, type: 'void' }),
       discord: mv.horror('불협화음', 11),
@@ -426,9 +667,71 @@ reg.enemies([
         },
         { desc: '공포 1, 약화 1' },
       ),
+      // 고조 → 절정: 고조되는 동안 앞으로 떠올라 근접이 닿고, 피해 문턱·붕괴로 끊긴다
+      crescendo: {
+        name: '선율이 고조된다',
+        intent: 'charge',
+        charging: true,
+        follow: '광기의 절정',
+        desc: `다음 차례에 「광기의 절정」: 정신 피해 ${CLIMAX_SAN}, 공포 1, 다른 적 모두 힘 +1. 그 전에 붕괴시키거나 최대 체력의 ${Math.round(CRESCENDO_BREAK * 100)}%만큼 피해를 주면 끊긴다. 고조되는 동안 근접 공격이 닿는다`,
+        run(c, e) {
+          startCrescendo(c, e);
+        },
+      },
+      climax: {
+        name: '광기의 절정',
+        intent: 'horror',
+        extra: ['buff'],
+        sanity: CLIMAX_SAN,
+        desc: '고조된 선율이 터진다. 정신 피해, 공포 1, 다른 적 모두 힘 +1',
+        run(c, e) {
+          delete e.mem.charge;
+          endCrescendo(c, e);
+          c.horror(e, CLIMAX_SAN);
+          if (c.over || e.dead) return;
+          c.apply(c.p, 'dread', 1, e);
+          for (const a of others(c, e)) c.apply(a, 'str', 1, e);
+        },
+      },
+      // 동료가 쓰러지면: 그 적이 하려던 공격을 공허의 선율로 되풀이한다 (의도에 그 피해·횟수가 보인다)
+      dirge: {
+        name: '장송곡',
+        intent: 'attack',
+        melee: false,
+        dmg: (_c, e) => e.mem.dirgeDmg || 6,
+        hits: (_c, e) => e.mem.dirgeHits || 1,
+        desc: '쓰러진 적이 하려던 공격을 공허의 선율로 되풀이한다',
+        run(c, e) {
+          clearDirge(e);
+          c.enemyAttack(e, { type: 'void' });
+        },
+      },
+      lament: {
+        name: '죽은 자의 선율',
+        intent: 'horror',
+        sanity: LAMENT_SAN,
+        desc: '쓰러진 적을 위해 공허의 장송곡을 분다. 정신 피해',
+        run(c, e) {
+          clearDirge(e);
+          c.horror(e, LAMENT_SAN);
+        },
+      },
     },
-    ai: (c, e) =>
-      opener(c, e, ['veil']) ?? pick(c, e, { note: 3, discord: 2, frenzy: others(c, e).length && !e.hist.includes('frenzy') ? 2 : 0 }),
+    ai: (c, e) => {
+      if (e.mem.charge) return 'climax';
+      if (e.mem.dirge) return e.mem.dirgeDmg ? 'dirge' : 'lament';
+      const o = opener(c, e, ['veil']);
+      if (o) return o;
+      const allies = others(c, e);
+      // 다른 피리꾼이 이미 고조시키고 있으면 함께 고조시키지 않는다
+      const ready = c.s.turn >= 2 && !e.hist.slice(-3).includes('climax') && !allies.some((a) => a.def === 'formless-piper' && a.mem.charge);
+      return pick(c, e, {
+        note: 3,
+        discord: branded(c) ? 0 : 2,
+        frenzy: allies.length && !e.hist.includes('frenzy') ? 2 : 0,
+        crescendo: ready ? 2 : 0,
+      });
+    },
     visual: { tint: 0x3a2f4a, glow: 0xd080ff, fx: ['float', 'flicker'] },
   },
   {
@@ -444,17 +747,38 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['outer'],
-    traits: ['a4-rooted'],
+    traits: ['a4-rooted', 'a4-firefear', 'a4-taproot'],
     moves: {
       lash: mv.attack('촉수 채찍', 4, { hits: 3 }),
       grab: mv.attack('휘감기', 9, { then: (c, e) => void c.apply(c.p, 'frail', 2, e), desc: '허약 2' }),
       bleat: mv.horror('검은 숲의 울음', 9),
       rear: mv.charge('뒷발로 일어선다', 40),
       trample: release(mv.attack('짓밟기', 40)),
+      // 화염 공격에 겁을 먹었다 (하려던 공격 대신)
+      cower: {
+        name: '겁에 질린 울음',
+        intent: 'horror',
+        sanity: 6,
+        desc: '불길에 겁을 먹고 울부짖는다. 정신 피해',
+        run(c, e) {
+          delete e.mem.panic;
+          c.horror(e, 6);
+        },
+      },
+      // 뿌리를 내린 뒤 (체력 절반 아래)
+      spines: mv.attack('뿌리 가시', 6, { hits: 2, melee: false, type: 'pierce' }),
+      spores: mv.horror('검은 포자', 8, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'trample';
-      return opener(c, e, ['lash']) ?? pick(c, e, { lash: 3, grab: 2, bleat: 1, rear: e.hist.slice(-2).includes('trample') ? 0 : 1 });
+      if (e.mem.panic) return 'cower';
+      const o = opener(c, e, ['lash']);
+      if (o) return o;
+      const brand = branded(c);
+      if (e.mem.rooted) return pick(c, e, { spines: 3, grab: 2, spores: brand ? 0 : 2 });
+      // 방어도를 쌓는 상대에겐 허약을 건다
+      const turtle = endBlock(c) >= TURTLE_BLOCK;
+      return pick(c, e, { lash: 3, grab: turtle ? 4 : 2, bleat: brand ? 0 : 1, rear: e.hist.slice(-2).includes('trample') || brand ? 0 : 1 });
     },
     visual: { tint: 0x1f2a1a, glow: 0x9fe060, scale: 1.25 },
   },
@@ -471,16 +795,17 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['time'],
-    traits: ['a4-judge'],
+    traits: ['a4-judge', 'a4-rewinder'],
     moves: {
       sentence: doomMove('파멸의 선고', 3, 30, 8),
       shards: mv.attack('시간의 파편', 6, { hits: 2, melee: false, type: 'arcane' }),
+      // 내 턴에 크게 다친 적의 상처를 되감는다 (그 적에게 표시 — 그 전에 쓰러뜨리거나 파수꾼을 붕괴시키면 무산)
       rewind: {
-        name: '되감기',
+        name: '상처를 되감는다',
         intent: 'heal',
-        desc: '가장 많이 다친 적의 체력 16 회복',
+        desc: `표시된 적이 그 턴에 잃은 체력을 되돌린다(최대 ${REWIND_CAP})`,
         run(c, e) {
-          c.heal(mostHurt(c) ?? e, 16);
+          rewindWound(c, e);
         },
       },
       stop: mv.debuff(
@@ -491,13 +816,23 @@ reg.enemies([
         },
         { desc: '허약 2, 약화 1' },
       ),
+      // 다음 내 턴이 끝날 때 열리는 상처 (방어도가 막는다)
+      future: {
+        name: '다가올 상처',
+        intent: 'debuff',
+        desc: `다가올 순간에 상처를 새긴다. 다음 내 턴이 끝날 때 피해 ${FUTURE_DMG}(힘·층에 따라 오른다). 방어도가 먼저 막는다. 파수꾼을 붕괴시키거나 쓰러뜨리면 사라진다`,
+        run(c, e) {
+          carveFuture(c, e);
+        },
+      },
     },
     ai: (c, e) => {
+      if (rewindTarget(c, e)) return 'rewind';
       const o = opener(c, e, ['shards']);
       if (o) return o;
       if (canDoom(c, e, 6)) return 'sentence';
-      const hurt = mostHurt(c);
-      return pick(c, e, { shards: 3, stop: 1, rewind: hurt && hpPct(hurt) < 0.6 && !e.hist.includes('rewind') ? 3 : 0 });
+      const carve = !((c.p.st[FUTURE] ?? 0) > 0) && c.s.turn - (e.mem.fwAt ?? -99) >= FUTURE_GAP;
+      return pick(c, e, { shards: 3, stop: 1, future: carve ? 2 : 0 });
     },
     visual: { tint: 0x6a5a3a, glow: 0xffe0a0, fx: ['float'] },
   },
@@ -515,7 +850,7 @@ reg.enemies([
     dread: 3,
     eldritch: true,
     tags: ['migo'],
-    traits: ['flying'],
+    traits: ['flying', 'a4-surgeon'],
     moves: {
       scalpel: mv.attack('전기 메스', 9, { melee: false, type: 'arcane', then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
       extract: mv.horror('뇌 적출', 11, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
@@ -538,12 +873,35 @@ reg.enemies([
         },
         '쓰러진 동료 하나를 체력 40%로 꿰매어 되살린다 (봉합사마다 한 번)',
       ),
+      // 동료가 붕괴하면: 꿰매어 한 차례 일찍 일으킨다 (그 동료에게 표시)
+      stitch: {
+        name: '응급 봉합',
+        intent: 'buff',
+        desc: '붕괴한 동료를 꿰매어 한 차례 일찍 일으킨다',
+        run(c, e) {
+          stitchUp(c, e);
+        },
+      },
+      // 동료 몸에 지속 피해가 쌓이면: 도려내 씻어 낸다
+      debride: {
+        name: '상처를 도려낸다',
+        intent: 'buff',
+        extra: ['heal'],
+        desc: '출혈·독·화상이 가장 많이 쌓인 동료의 그것을 모두 씻어 낸다',
+        run(c, e) {
+          debride(c, e);
+        },
+      },
     },
     ai: (c, e) => {
+      if (stitchTarget(c, e)) return 'stitch';
+      // 꿰매기 전에 일어설 동료라면 표시를 거둔다
+      clearStitch(c, e);
       const corpse = c.s.enemies.some((x) => x.dead && !x.fled && !x.minion && x !== e && !x.mem.rebuilt);
       if (corpse && !e.mem.rebuildUsed) return 'rebuild';
+      if (debrideTarget(c, e) && last(e) !== 'debride') return 'debride';
       const hurt = mostHurt(c);
-      return pick(c, e, { scalpel: 3, extract: 2, suture: hurt && hpPct(hurt) < 0.6 && !e.hist.slice(-2).includes('suture') ? 3 : 0 });
+      return pick(c, e, { scalpel: 3, extract: branded(c) ? 0 : 2, suture: hurt && hpPct(hurt) < 0.6 && !e.hist.slice(-2).includes('suture') ? 3 : 0 });
     },
     visual: { tint: 0x7a5a6a, glow: 0xff9ad0, fx: ['float'] },
   },
@@ -561,8 +919,15 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['outer'],
+    traits: ['a4-engulfer', 'a4-dancer'],
     moves: {
-      engulf: mv.attack('늘어나 삼키기', 10, { melee: false, type: 'void' }),
+      // 내 강화 효과 하나를 삼킨다 — 붕괴시키거나 쓰러뜨리면 토해 낸다
+      engulf: mv.attack('늘어나 삼키기', 10, {
+        melee: false,
+        type: 'void',
+        then: (c, e) => swallow(c, e),
+        desc: '내 강화 효과 중 가장 큰 것 하나를 삼킨다. 붕괴시키거나 쓰러뜨리면 돌려준다',
+      }),
       acid: mv.attack('산성 체액', 6, { melee: false, type: 'void', then: (c, e) => void c.apply(c.p, 'vuln', 1, e), desc: '취약 1' }),
       pipe: mv.horror('외신의 피리', 9),
       dance: {
@@ -573,10 +938,24 @@ reg.enemies([
           flipRows(c);
         },
       },
+      // 피리꾼이 살아 있을 때만: 박자에 맞춰 몸을 비튼다
+      reel: mv.attack('박자 맞춘 몸부림', 4, { hits: 3, melee: false, type: 'void' }),
     },
     ai: (c, e) => {
+      const o = opener(c, e, ['engulf']);
+      if (o) return o;
       const both = c.row(0).length > 0 && c.row(1).length > 0;
-      return opener(c, e, ['engulf']) ?? pick(c, e, { engulf: 3, pipe: 2, acid: 1, dance: both && !e.hist.includes('dance') ? 2 : 0 });
+      const piper = c.alive.some((x) => x.def === 'formless-piper');
+      // 삼킬 강화 효과가 있으면 삼키려 든다
+      const buffed = SWALLOWABLE.some((id) => (c.p.st[id] ?? 0) > 0);
+      const brand = branded(c);
+      return pick(c, e, {
+        engulf: buffed ? 4 : 2,
+        reel: piper ? 3 : 0,
+        acid: 1,
+        pipe: brand ? 0 : 2,
+        dance: both && !brand && !e.hist.includes('dance') ? 2 : 0,
+      });
     },
     visual: { tint: 0x3d4a2e, glow: 0xc8ff70, scale: 1.15, fx: ['drip'] },
   },
@@ -592,6 +971,7 @@ reg.enemies([
     row: 1,
     dread: 3,
     tags: ['cult'],
+    traits: ['a4-brander'],
     moves: {
       flame: mv.attack('검은 불꽃', 7, { melee: false, type: 'fire', then: (c, e) => void c.apply(c.p, 'burn', 2, e), desc: '화상 2' }),
       unmask: mv.horror('얼굴을 보여준다', 13, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
@@ -610,10 +990,33 @@ reg.enemies([
         },
         { desc: '가장 강한 동료에게 결계 1, 힘 +2' },
       ),
+      // 다른 적들의 공격을 모으는 낙인 — 사제를 붕괴시키거나 쓰러뜨리면 사라진다
+      brand: {
+        name: '얼굴 없는 낙인',
+        intent: 'debuff',
+        desc: `낙인을 새긴다. 다음 적의 차례에 내가 받는 공격 피해 +${Math.round((BRAND_MULT - 1) * 100)}%, 다른 적들이 낙인을 노려 공격한다. 사제를 붕괴시키거나 쓰러뜨리면 사라진다`,
+        run(c, e) {
+          applyBrand(c, e);
+        },
+      },
     },
-    ai: (c, e) =>
-      opener(c, e, ['flame']) ??
-      pick(c, e, { flame: 3, unmask: 2, bless: others(c, e).length ? 2 : 0, pact: others(c, e).length && !e.hist.includes('pact') ? 1 : 0 }),
+    ai: (c, e) => {
+      const o = opener(c, e, ['flame']);
+      if (o) return o;
+      const allies = others(c, e);
+      const hurt = allies.some((a) => hpPct(a) < 0.7);
+      // 낙인은 함께 때릴 동료가 있을 때만, 다른 사제가 이미 새기려 하면 그만둔다
+      const canBrand = allies.some((a) => !a.minion && a.def !== 'faceless-priest') && !branded(c) && last(e) !== 'brand';
+      const twin = allies.some((a) => a.intent?.move === 'brand');
+      return pick(c, e, {
+        flame: 3,
+        // 방어도를 쌓고 버티는 상대에겐 방어도로 막을 수 없는 얼굴을 보여 준다
+        unmask: endBlock(c) >= TURTLE_BLOCK ? 4 : 2,
+        bless: allies.length ? (hurt ? 3 : 1) : 0,
+        pact: allies.length && !e.hist.includes('pact') ? 1 : 0,
+        brand: canBrand && !twin ? 3 : 0,
+      });
+    },
     visual: { tint: 0x2a2630, glow: 0xff7040 },
   },
   {
@@ -630,13 +1033,44 @@ reg.enemies([
     dread: 5,
     eldritch: true,
     tags: ['star'],
-    traits: ['a4-leech'],
+    traits: ['a4-leech', 'a4-bloom', 'a4-tinter'],
     moves: {
       drain: mv.attack('생기 흡수', 9, { melee: false, type: 'void' }),
       glare: mv.horror('형언할 수 없는 빛', 11, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
       taint: mv.debuff('색채 오염', (c, e) => void c.apply(c.p, 'corrode', 1, e), { desc: '부식 1 (받는 공격 피해 +1, 전투 내내)' }),
+      // 빨아들인 생기(포만)가 가득 차면: 부풀어 올라 → 개화 (붕괴시키면 끊긴다)
+      swell: mv.charge('빛이 부풀어 오른다', 4, { hits: 3 }),
+      bloom: release(
+        mv.horror('색의 개화', 10, {
+          dmg: 4,
+          hits: 3,
+          type: 'void',
+          then: (c, e) => setSt(c, e, SATIETY, 0),
+          desc: '부풀어 오른 빛이 터진다. 공허 피해, 정신 피해. 포만이 비워진다',
+        }),
+      ),
+      // 동료를 물들여 흡혈을 나눈다 (색을 붕괴시키거나 쓰러뜨리면 바랜다)
+      tint: {
+        name: '색의 전염',
+        intent: 'buff',
+        desc: '체력이 가장 많은 동료를 형언할 수 없는 색으로 물들인다. 그 적은 공격으로 준 체력 피해의 절반만큼 회복한다',
+        run(c, e) {
+          tintAlly(c, e);
+        },
+      },
     },
-    ai: (c, e) => cycle(e, ['drain', 'glare', 'drain', 'taint']),
+    ai: (c, e) => {
+      if (e.mem.charge) return 'bloom';
+      if ((e.st[SATIETY] ?? 0) >= SATE) return 'swell';
+      const o = opener(c, e, ['drain']);
+      if (o) return o;
+      return pick(c, e, {
+        drain: 3,
+        glare: branded(c) ? 0 : 2,
+        taint: (c.p.st.corrode ?? 0) < 3 && last(e) !== 'taint' ? 1 : 0,
+        tint: tintTarget(c, e) ? 2 : 0,
+      });
+    },
     visual: { tint: 0x8a6aa0, glow: 0xff80ff, fx: ['flicker', 'float'] },
   },
   {
@@ -652,13 +1086,33 @@ reg.enemies([
     dread: 3,
     eldritch: true,
     tags: ['star'],
-    traits: ['flying', 'a4-aligned'],
+    traits: ['a4-wings', 'a4-aligned'],
     moves: {
       rend: mv.attack('할퀴기', 3, { hits: 3, melee: false, type: 'slash' }),
-      dive: mv.attack('급강하', 12, { melee: false, type: 'pierce' }),
-      soar: mv.block('성간 비행', 8, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '방어도 8, 회피 1' }),
+      // 급강하한 뒤 전열에 내려앉는다 — 그동안 근접 공격이 그대로 들어간다
+      dive: mv.attack('급강하', 12, {
+        melee: false,
+        type: 'pierce',
+        then: (c, e) => void land(c, e, '전열에 내려앉았다'),
+        desc: '급강하한 뒤 전열에 내려앉는다. 내려앉은 동안 근접 공격을 그대로 받는다',
+      }),
+      soar: mv.block('성간 비행', 8, {
+        then: (c, e) => {
+          takeOff(c, e);
+          c.apply(e, 'evasive', 1, e);
+        },
+        desc: '방어도 8, 회피 1. 내려앉아 있었다면 다시 날아올라 후열로 돌아간다',
+      }),
+      // 내려앉아 있을 때
+      buffet: mv.attack('날개 후려치기', 4, { hits: 2, type: 'blunt' }),
     },
-    ai: (c, e) => cycle(e, ['rend', 'dive', 'soar']),
+    ai: (c, e) => {
+      // 땅에 내려앉으면 한 번 후려치고 다시 날아오른다
+      if (landed(e)) return last(e) === 'buffet' ? 'soar' : 'buffet';
+      // 낙인이 찍힌 상대에겐 곧장 내리꽂힌다
+      if (branded(c)) return 'dive';
+      return pick(c, e, { rend: 3, dive: last(e) === 'dive' ? 0 : 2, soar: hpPct(e) < 0.4 ? 3 : 1 }, 1);
+    },
     visual: { tint: 0x40382e, glow: 0xffd060, fx: ['float'] },
   },
   {
@@ -674,7 +1128,7 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['outer'],
-    traits: ['a4-phasing'],
+    traits: ['a4-phasing', 'a4-abductor'],
     moves: {
       claw: mv.attack('차원 할퀴기', 11, { melee: false, type: 'slash' }),
       fold: mv.debuff(
@@ -686,8 +1140,41 @@ reg.enemies([
         { desc: '약화 1, 취약 2' },
       ),
       tear: mv.horror('차원의 틈', 9, { dmg: 6 }),
+      // 전열에서만: 찢어발기거나 붙잡는다
+      rake: mv.attack('찢어발기기', 6, { hits: 2, type: 'slash' }),
+      grab: mv.attack('차원 너머로 붙잡기', 8, {
+        type: 'slash',
+        extra: ['debuff'],
+        then: (c, e) => grabPlayer(c, e),
+        desc: `나를 붙잡는다. 다음 차례에 저편으로 끌고 간다. 방랑자에게 최대 체력의 ${Math.round(GRAB_BREAK * 100)}%만큼 피해를 주거나 붕괴시키면 풀려난다`,
+      }),
+      drag: {
+        name: '저편으로 끌고 간다',
+        intent: 'horror',
+        extra: ['debuff'],
+        sanity: DRAG_SAN,
+        desc: '저편의 냉기 속으로 끌고 갔다가 놓는다. 정신 피해, 공포 2, 허약 2',
+        run(c, e) {
+          releaseGrab(c, e);
+          c.horror(e, DRAG_SAN);
+          if (c.over || e.dead) return;
+          c.apply(c.p, 'dread', 2, e);
+          c.apply(c.p, 'frail', 2, e);
+        },
+      },
     },
-    ai: (c, e) => opener(c, e, ['claw']) ?? pick(c, e, { claw: 3, fold: e.hist.includes('fold') ? 0 : 2, tear: 2 }),
+    ai: (c, e) => {
+      if (e.mem.grab) return 'drag';
+      const o = opener(c, e, ['claw']);
+      if (o) return o;
+      const brand = branded(c);
+      // 전열과 후열에서 하는 일이 다르다 (자기 차례가 끝날 때마다 열을 옮긴다)
+      if (e.row === 0) {
+        const canGrab = !brand && !((c.p.st[GRABBED] ?? 0) > 0) && c.s.turn - (e.mem.grabAt ?? -99) >= GRAB_GAP;
+        return pick(c, e, { rake: 3, grab: canGrab ? 3 : 0, tear: brand ? 0 : 1 });
+      }
+      return pick(c, e, { claw: 3, fold: e.hist.includes('fold') || brand ? 0 : 2, tear: brand ? 0 : 2 });
+    },
     visual: { tint: 0x4a4048, glow: 0x80a0ff, fx: ['flicker'] },
   },
   {
@@ -723,9 +1210,129 @@ reg.enemies([
         },
       },
       whistle: mv.horror('공허의 휘파람', 10),
+      // 약점에 맞아 형체가 드러나면 (하려던 공격 대신)
+      wall: mv.block('바람 장막', 12, {
+        then: (_c, e) => {
+          delete e.mem.wall;
+        },
+        desc: '형체가 드러나자 공격을 멈추고 바람을 두른다. 방어도 12',
+      }),
+      gather: mv.charge('바람을 끌어모은다', 6, { hits: 3 }),
+      storm: release(mv.attack('진공 폭풍', 6, { hits: 3, melee: false, type: 'blunt', then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' })),
     },
-    ai: (c, e) => opener(c, e, ['gust']) ?? pick(c, e, { gust: 2, suck: last(e) === 'suck' ? 0 : 2, whistle: 1 }),
+    ai: (c, e) => {
+      if (e.mem.charge) return 'storm';
+      if (e.mem.wall) return 'wall';
+      const o = opener(c, e, ['gust']);
+      if (o) return o;
+      // 방어도를 쌓는 상대에겐 빨아들이는 바람을 즐겨 쓴다
+      const turtle = endBlock(c) >= TURTLE_BLOCK;
+      return pick(c, e, {
+        gust: 2,
+        suck: last(e) === 'suck' ? 0 : turtle ? 4 : 2,
+        whistle: branded(c) ? 0 : 1,
+        gather: e.hist.slice(-3).includes('storm') || branded(c) ? 0 : 1,
+      });
+    },
     visual: { tint: 0x6a7a8a, glow: 0xd0f0ff, scale: 1.15, fx: ['float', 'flicker'] },
+  },
+  // 새 일반 적 (2026-10): 내 행동력을 빼앗아 삼킨다 — 붕괴·처치하면 토해 낸다
+  {
+    id: 'time-gnawer',
+    name: '시간을 갉는 것',
+    icon: 'gi:worm-mouth',
+    act: 4,
+    tier: 'normal',
+    hp: [66, 72],
+    poise: 5,
+    weak: ['fire', 'slash'],
+    row: 0,
+    dread: 4,
+    eldritch: true,
+    tags: ['time'],
+    traits: ['a4-time-eater'],
+    desc: '시간의 틈새를 파먹고 사는 마디진 벌레. 그것이 지나간 자리의 시계는 모두 몇 분씩 늦게 간다.',
+    moves: {
+      gnaw: {
+        name: '시간을 갉는다',
+        intent: 'debuff',
+        extra: ['attack'],
+        dmg: 6,
+        melee: true,
+        desc: `다음 내 턴 행동력 1을 빼앗아 삼킨다(최대 ${GNAW_MAX}). 붕괴시키거나 쓰러뜨리면 토해 낸다`,
+        run(c, e) {
+          c.enemyAttack(e, { type: 'slash' });
+          if (!c.over && !e.dead) gnawTime(c, e);
+        },
+      },
+      bite: mv.attack('시간을 씹는 이빨', 10, { type: 'slash' }),
+      tick: mv.horror('째깍거리는 소리', 9, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
+      burn: {
+        name: '삼킨 시간을 태운다',
+        intent: 'heal',
+        desc: `삼킨 시간을 모두 태워 하나마다 체력 ${BURN_HEAL} 회복. 태운 시간은 돌아오지 않는다`,
+        run(c, e) {
+          burnTime(c, e);
+        },
+      },
+    },
+    ai: (c, e) => {
+      const o = opener(c, e, ['gnaw']);
+      if (o) return o;
+      const eaten = e.st[EATEN] ?? 0;
+      // 다치면 삼킨 시간을 태워 메운다 (전투마다 한 번 — 그 전에 붕괴시키면 시간이 돌아온다)
+      if (eaten > 0 && hpPct(e) < 0.5 && !e.mem.burned) return 'burn';
+      return pick(c, e, { gnaw: eaten < GNAW_MAX && last(e) !== 'gnaw' ? 3 : 0, bite: 3, tick: branded(c) ? 0 : 2 });
+    },
+    visual: { tint: 0x4a3c28, glow: 0xffd080, scale: 1.1, fx: ['drip'] },
+  },
+  // 새 일반 적 (2026-10): 동료를 별의 실로 이어 받는 피해를 나눠 진다 — 붕괴시키면 실이 끊기며 이어진 적들이 비틀거린다
+  {
+    id: 'star-weaver',
+    name: '별자리를 잇는 자',
+    icon: 'gi:star-formation',
+    act: 4,
+    tier: 'normal',
+    hp: [56, 62],
+    poise: 5,
+    weak: ['fire', 'void'],
+    row: 1,
+    dread: 4,
+    eldritch: true,
+    tags: ['star'],
+    traits: ['a4-weaver'],
+    desc: '손가락 마디가 열세 개인 여윈 형체. 별과 별 사이에 보이지 않는 실을 걸어 궁정의 하수인들을 별자리처럼 엮는다.',
+    moves: {
+      weave: {
+        name: '별의 실을 잇는다',
+        intent: 'buff',
+        desc: '가장 다친 동료를 별의 실로 잇는다. 그 적이 내 쪽에서 받는 피해의 절반이 실을 따라 이것에게 넘어온다',
+        run(c, e) {
+          weave(c, e);
+        },
+      },
+      ray: mv.attack('별자리 광선', 5, { hits: 2, melee: false, type: 'arcane' }),
+      gaze: mv.horror('별자리의 눈', 10, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
+      knot: mv.block('실을 조인다', 0, {
+        then(c, e) {
+          for (const t of [e, ...threadsOf(c, e)]) c.gainBlock(t, 8);
+        },
+        desc: '자신과 실로 이어진 적들 방어도 8',
+      }),
+    },
+    ai: (c, e) => {
+      const free = weaveCandidates(c, e).length > 0 && threadsOf(c, e).length < THREAD_MAX;
+      const o = opener(c, e, [free ? 'weave' : 'ray']);
+      if (o) return o;
+      const tied = threadsOf(c, e).length;
+      return pick(c, e, {
+        weave: free && last(e) !== 'weave' ? 3 : 0,
+        ray: 3,
+        gaze: branded(c) ? 0 : 2,
+        knot: tied && last(e) !== 'knot' ? 1 : 0,
+      });
+    },
+    visual: { tint: 0x2a2f4a, glow: 0xc0d8ff, fx: ['float', 'flicker'] },
   },
 
   // ───────────── 하수인 ─────────────

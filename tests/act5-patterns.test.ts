@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '../src/content';
 import { Combat, type CombatEvent } from '../src/engine/combat';
 import { ENCOUNTERS, ENEMIES, SKILLS } from '../src/engine/registry';
@@ -33,6 +33,7 @@ import {
   DIGEST_HEAL,
   FALSE_DOOR_SIGHT,
   FLIP_AT,
+  GESTATION,
   HUSH_LIMIT,
   HUSH_STARS,
   HUSH_VULN,
@@ -41,6 +42,54 @@ import {
   SHADE,
   SHADE_TURNS,
 } from '../src/content/act5/enemies';
+import {
+  BAKU,
+  BAKU_RETCH_DREAD,
+  BEAM_DMG,
+  BRACE_BLOCK,
+  BRACE_POISE,
+  COVER_BLOCK,
+  CRUSH_DMG,
+  DEAD_STAR,
+  DEVOUR_HEAL,
+  DEVOUR_HEAT,
+  EAT_HEAL,
+  EAT_HEAL_MAX,
+  FED,
+  FEED_DMG,
+  FURY_HITS,
+  GORGE_MAX,
+  GORGED,
+  HEAT,
+  HEAT_MAX,
+  HOLD_VULN,
+  HURRY_AT,
+  HYMN_BARRIER,
+  LAST_BEAM_DMG,
+  LAST_LIGHT_AT,
+  LIGHT_FAR,
+  LIGHT_NEAR,
+  LIGHT_STAGGER,
+  NEAR_CRADLE,
+  POUNCE_HITS,
+  RALLIED,
+  RELAPSE_AT,
+  RELAPSE_HEAL,
+  RELAPSE_TURNS,
+  RETCH_BURN,
+  SCENT,
+  SCENT_AT,
+  SIGNAL,
+  STAR_FLARE,
+  THREADS,
+  TWIST_AT,
+  TWIST_BASE,
+  TWIST_PER,
+  UNDERFOOT,
+  ZOOG_FLEE_AT,
+} from '../src/content/act5/patterns';
+import { HURRY_STEPS, isAsleep, isIllusion, SNAP_POISE, uidNum } from '../src/content/act5/dream';
+import { DEPTH } from '../src/content/depth';
 
 /**
  * 5층 정예·수호자 패턴 확장 (2026-10): 새 메커니즘마다 동작을 확인하고, 5층의 모든 조우를 봇이 이기는지 본다.
@@ -922,6 +971,551 @@ describe('공정성 — 세 출신의 시작 덱', () => {
       for (const enc of encs) {
         const c = fightPicking(startCombat(kit(origin, 101, 8), enc, { anomaly: null }));
         if (c.s.phase !== 'victory') lost.push(`${origin} ${enc}: ${c.s.phase}${c.s.doom ? ` (${c.s.doom})` : ''}`);
+      }
+    }
+    expect(lost).toEqual([]);
+  }, 120_000);
+});
+
+// ───────────── 5층 일반 적 — 새 패턴 (2026-10) ─────────────
+// "고층은 일반 몹조차 다양한 패턴": 주그·구그·몽유병자·달짐승·별을 삼킨 것·성운 해파리·별빛 순례자·장막 직조자 + 새 일반 적 꺼진 별·악몽 먹는 맥
+
+/** 일반 적의 무작위 변이(결계·결속 등)가 장면을 흔들지 않게 끈다 (tests/depth.test.ts와 같은 방식) */
+let mutSaved: [number[], number[]] | null = null;
+function mutOff() {
+  mutSaved = [DEPTH.mutElite.slice(), DEPTH.mutNormal.slice()];
+  DEPTH.mutElite.fill(0);
+  DEPTH.mutNormal.fill(0);
+}
+function mutOn() {
+  if (!mutSaved) return;
+  DEPTH.mutElite.splice(0, DEPTH.mutElite.length, ...mutSaved[0]);
+  DEPTH.mutNormal.splice(0, DEPTH.mutNormal.length, ...mutSaved[1]);
+  mutSaved = null;
+}
+
+const allOf = (c: Combat, def: string): EnemyUnit[] => c.alive.filter((e) => e.def === def);
+
+/** 의도를 여러 번 다시 정해 본다 (무작위는 남기되 상황에 맞는 행동만 고르는지) */
+function plans(c: Combat, e: EnemyUnit, n = 30): Set<string> {
+  const seen = new Set<string>();
+  for (let i = 0; i < n; i++) {
+    e.hist = [];
+    c.planIntent(e);
+    seen.add(e.intent!.move);
+  }
+  return seen;
+}
+
+/** 그 적이 나에게 준 피해 이벤트 */
+const hitsOn = (ev: CombatEvent[], e: EnemyUnit) => ev.filter((x): x is Extract<CombatEvent, { t: 'dmg' }> => x.t === 'dmg' && x.src === e.uid && x.tgt === 'p');
+
+describe('5층 일반 적 — 새 패턴 (2026-10)', () => {
+  beforeEach(mutOff);
+  afterEach(mutOn);
+
+  it('주그: 하나가 신호를 보내면 다른 주그들이 다음 차례에 일제히 덤빈다 — 신호를 보낸 주그를 쓰러뜨리면 그 자리에서 머뭇거린다', () => {
+    const c = startCombat(floor5(), 'a5-e-zoogs');
+    const [lead, a, b] = allOf(c, 'zoog');
+    act(c, lead, 'signal');
+    expect(lead.st[SIGNAL]).toBe(1);
+    expect(a.st[RALLIED]).toBe(1);
+    expect(b.st[RALLIED]).toBe(1);
+    c.planIntent(a);
+    c.planIntent(b);
+    expect(a.intent?.move).toBe('pounce');
+    expect(a.intent?.hits).toBe(POUNCE_HITS);
+    // 신호를 보낸 주그가 쓰러지면 덤비려던 주그들의 의도가 곧바로 바뀐다
+    slay(c, lead);
+    for (const z of [a, b]) {
+      expect(z.st[RALLIED] ?? 0).toBe(0);
+      expect(z.intent?.move).toBe('scatter');
+    }
+    c.drain();
+    c.endTurn();
+    expect(c.drain().some((x) => x.t === 'dmg' && x.tgt === 'p')).toBe(false);
+  });
+
+  it('주그: 신호를 보낸 주그를 붕괴시켜도 흩어진다 — 모두 덤비고 나면 채비와 우두머리 표시가 사라진다', () => {
+    const c = startCombat(floor5(), 'a5-e-zoogs');
+    const [lead, a] = allOf(c, 'zoog');
+    act(c, lead, 'signal');
+    c.planIntent(a);
+    breakIt(c, lead);
+    expect(a.intent?.move).toBe('scatter');
+    expect(lead.st[SIGNAL] ?? 0).toBe(0);
+
+    const d = startCombat(floor5(), 'a5-e-zoogs');
+    const [l2, x, y] = allOf(d, 'zoog');
+    act(d, l2, 'signal');
+    d.drain();
+    act(d, x, 'pounce');
+    expect(hitsOn(d.drain(), x).length).toBe(POUNCE_HITS);
+    expect(x.st[RALLIED] ?? 0).toBe(0);
+    // 아직 채비 중인 주그가 있으면 우두머리는 그대로
+    expect(l2.st[SIGNAL]).toBe(1);
+    act(d, y, 'pounce');
+    expect(l2.st[SIGNAL] ?? 0).toBe(0);
+    // 신호가 걸려 있는 동안 다른 주그는 또 신호를 보내지 않는다
+    act(d, l2, 'signal');
+    expect(plans(d, x)).not.toContain('signal');
+  });
+
+  it(`주그: 체력이 ${Math.round(ZOOG_FLEE_AT * 100)}% 아래이고 갉아먹은 등불을 품었으면 물고 달아난다 (등불도 보상도 없다) — 그 전에 쓰러뜨리면 되찾는다`, () => {
+    const run = floor5();
+    const c = startCombat(run, 'a5-e-zoogs');
+    const [z, w] = allOf(c, 'zoog');
+    act(c, z, 'nibble');
+    act(c, w, 'nibble');
+    expect(run.light).toBe(88);
+    for (const x of [z, w]) {
+      x.mem.agOff = 1;
+      x.hp = Math.floor(x.maxHp * (ZOOG_FLEE_AT - 0.1));
+    }
+    c.planIntent(z);
+    expect(z.intent?.move).toBe('flee');
+    expect(z.intent?.kind).toBe('flee');
+    act(c, z, 'flee');
+    expect(z.dead && z.fled).toBe(true);
+    expect(run.light).toBe(88);
+    c.kill(w);
+    expect(run.light).toBe(94);
+  });
+
+  it(`구그: 거대한 발을 들어 올리면 내 턴을 방어도 ${BRACE_BLOCK} 이상으로 마쳐 받아 낸다 — 내리찍기 피해 절반, 구그 버팀 -${BRACE_POISE}`, () => {
+    const c = startCombat(floor5(), 'a5-e-gug');
+    const g = find(c, 'gug');
+    act(c, g, 'lift');
+    expect(c.p.st[UNDERFOOT]).toBe(BRACE_BLOCK);
+    c.planIntent(g);
+    expect(g.intent?.move).toBe('crush');
+    expect(g.intent?.dmg).toBe(CRUSH_DMG);
+    const half = c.preview(g, c.p, Math.ceil(CRUSH_DMG / 2), 'blunt');
+    const poise = g.poise;
+    c.p.block = BRACE_BLOCK;
+    c.drain();
+    c.endTurn();
+    expect(g.poise).toBe(poise - BRACE_POISE);
+    expect(hitsOn(c.drain(), g).map((x) => x.amount)).toEqual([half]);
+    expect(c.p.st[UNDERFOOT] ?? 0).toBe(0);
+
+    // 받아 내지 못하면 그대로
+    const d = startCombat(floor5(), 'a5-e-gug');
+    const g2 = find(d, 'gug');
+    act(d, g2, 'lift');
+    d.planIntent(g2);
+    const full = d.preview(g2, d.p, CRUSH_DMG, 'blunt');
+    d.drain();
+    d.endTurn();
+    expect(hitsOn(d.drain(), g2).map((x) => x.amount)).toEqual([full]);
+    expect(d.p.st[UNDERFOOT] ?? 0).toBe(0);
+
+    // 붕괴시키면 발을 내려놓는다 (머리 위의 발도 사라진다)
+    const e = startCombat(floor5(), 'a5-e-gug');
+    const g3 = find(e, 'gug');
+    act(e, g3, 'lift');
+    e.planIntent(g3);
+    breakIt(e, g3);
+    expect(g3.mem.charge).toBeUndefined();
+    e.endTurn();
+    expect(e.p.st[UNDERFOOT] ?? 0).toBe(0);
+  });
+
+  it('구그: 내 턴에 화염 공격을 받으면 하려던 공격을 멈추고 앞발로 얼굴을 가린다 — 다음 차례엔 성이 나 네 앞발을 모두 휘두른다', () => {
+    const c = startCombat(floor5(), 'a5-e-gug');
+    const g = find(c, 'gug');
+    force(c, g, 'stomp');
+    c.damage({ src: c.p, tgt: g, base: 4, type: 'pierce', attack: true });
+    expect(g.intent?.move).toBe('stomp');
+    c.damage({ src: c.p, tgt: g, base: 4, type: 'fire', attack: true });
+    expect(g.intent?.move).toBe('cover');
+    act(c, g, 'cover');
+    expect(g.block).toBe(COVER_BLOCK);
+    c.planIntent(g);
+    expect(g.intent?.move).toBe('fury');
+    expect(g.intent?.hits).toBe(FURY_HITS);
+    // 크게 준비하는 중에는 움찔하지 않는다
+    force(c, g, 'gape');
+    c.damage({ src: c.p, tgt: g, base: 4, type: 'fire', attack: true });
+    expect(g.intent?.move).toBe('gape');
+  });
+
+  it('몽유병자: 비전·공허 피해로는 깨지 않는다 (꿈속의 일인 줄 안다) — 다른 피해에는 놀라 깬다', () => {
+    const c = startCombat(floor5(), 'a5-e-sleepers');
+    const [a, b] = allOf(c, 'sleepwalker');
+    c.damage({ src: c.p, tgt: a, base: 5, type: 'void', attack: true });
+    c.damage({ src: c.p, tgt: a, base: 5, type: 'arcane', attack: true });
+    expect(isAsleep(a)).toBe(true);
+    expect(a.st.str ?? 0).toBe(0);
+    c.damage({ src: c.p, tgt: b, base: 5, type: 'pierce', attack: true });
+    expect(isAsleep(b)).toBe(false);
+    expect(b.st.str).toBe(3);
+  });
+
+  it(`몽유병자: 하품이 졸음을 옮기고, 체력이 ${Math.round(RELAPSE_AT * 100)}% 아래로 떨어지면 한 번 다시 잠들어 잠든 동안 상처가 아문다`, () => {
+    const c = startCombat(floor5(), 'a5-e-sleepers');
+    const s = find(c, 'sleepwalker');
+    act(c, s, 'yawn');
+    expect(c.p.st['a5-drowsy']).toBe(1);
+    // 깨어 있는 몸이 크게 다쳤다
+    s.mem.asleep = 0;
+    delete s.st['a5-asleep'];
+    s.hp = Math.floor(s.maxHp * (RELAPSE_AT - 0.1));
+    c.planIntent(s);
+    expect(s.intent?.move).toBe('relapse');
+    act(c, s, 'relapse');
+    expect(isAsleep(s)).toBe(true);
+    expect(s.st['a5-asleep']).toBe(RELAPSE_TURNS);
+    const hp = s.hp;
+    act(c, s, 'doze');
+    expect(s.hp).toBe(hp + Math.ceil(s.maxHp * RELAPSE_HEAL));
+    for (let i = 1; i < RELAPSE_TURNS; i++) act(c, s, 'doze');
+    expect(isAsleep(s)).toBe(false);
+    expect(s.mem.rest ?? 0).toBe(0);
+    // 다시 잠드는 것은 한 번뿐
+    expect(plans(c, s)).not.toContain('relapse');
+  });
+
+  it(`달짐승 「붙잡아라!」: 노예가 곧바로 달려들어 붙잡는다 (취약 ${HOLD_VULN}) — 노예가 없으면 명령하지 않는다`, () => {
+    const c = startCombat(floor5(), 'a5-slave-drive');
+    const m = find(c, 'moonbeast');
+    const s = find(c, 'leng-slave');
+    expect(plans(c, m)).toContain('order');
+    act(c, m, 'order');
+    expect(s.mem.ordered).toBe(1);
+    // 달짐승 뒤에 움직이는 노예는 이번 차례에 곧바로 붙잡는다
+    expect(s.intent?.move).toBe('grab');
+    act(c, s, 'grab');
+    expect(c.p.st.vuln).toBe(HOLD_VULN);
+    expect(plans(c, s)).not.toContain('grab');
+    // 이미 붙잡힌(취약) 동안이나 부릴 노예가 없으면 명령하지 않는다
+    expect(plans(c, m)).not.toContain('order');
+    delete c.p.st.vuln;
+    c.kill(s);
+    expect(plans(c, m)).not.toContain('order');
+  });
+
+  it(`달짐승: 내 출혈이 ${TWIST_AT} 이상이면 상처를 비튼다 (출혈 1마다 피해 +${TWIST_PER})`, () => {
+    const c = startCombat(floor5(), 'a5-e-moonbeast');
+    const m = find(c, 'moonbeast');
+    expect(plans(c, m)).not.toContain('twist');
+    c.p.st.bleed = 5;
+    expect(plans(c, m)).toContain('twist');
+    force(c, m, 'twist');
+    expect(m.intent?.dmg).toBe(TWIST_BASE + TWIST_PER * 5);
+  });
+
+  it('별을 삼킨 것: 삼킨 별이 달아오른다 (자기 차례마다, 빨아들인 방어도로) — 다 차면 나에게 게워 내고, 별은 하나뿐이다', () => {
+    const c = startCombat(floor5(), 'a5-e-swallower');
+    const sw = find(c, 'star-swallower');
+    c.p.block = 20;
+    act(c, sw, 'pull');
+    expect(sw.st[HEAT]).toBe(1);
+    force(c, sw, 'hunger');
+    c.endTurn();
+    expect(sw.st[HEAT]).toBe(2);
+    force(c, sw, 'hunger');
+    c.endTurn();
+    expect(sw.st[HEAT]).toBe(HEAT_MAX);
+    expect(sw.intent?.move).toBe('retch');
+    c.drain();
+    c.endTurn();
+    expect(hitsOn(c.drain(), sw).some((x) => x.dtype === 'fire')).toBe(true);
+    expect(sw.mem.spat).toBe(1);
+    expect(sw.st[HEAT] ?? 0).toBe(0);
+    expect(c.p.st.burn ?? 0).toBeGreaterThan(0);
+    expect(RETCH_BURN).toBeGreaterThan(1);
+    // 별은 하나뿐: 다시 달아오르지 않는다
+    force(c, sw, 'hunger');
+    c.endTurn();
+    expect(sw.st[HEAT] ?? 0).toBe(0);
+  });
+
+  it('별을 삼킨 것: 달아오른 별도 그 전에 붕괴시키면 동료들에게 토해 내고, 다시는 게워 내지 않는다', () => {
+    const c = startCombat(floor5(), 'a5-swallow-pilgrims');
+    const sw = find(c, 'star-swallower');
+    sw.st[HEAT] = HEAT_MAX - 1;
+    const pilgrims = allOf(c, 'star-pilgrim');
+    const before = pilgrims.map((p) => p.hp);
+    breakIt(c, sw);
+    pilgrims.forEach((p, i) => expect(p.hp).toBeLessThan(before[i]));
+    expect(sw.st[HEAT] ?? 0).toBe(0);
+    sw.st[HEAT] = HEAT_MAX;
+    for (let i = 0; i < 6; i++) {
+      sw.hist = [];
+      expect(c.defOf(sw).ai(c, sw)).not.toBe('retch');
+    }
+  });
+
+  it('별을 삼킨 것: 곁의 갓 태어난 별을 삼킨다 — 별은 빛을 터뜨리지 못하고 사라지며, 삼킨 별이 더 달아오른다', () => {
+    const c = startCombat(floor5(), 'a5-nursery');
+    const sw = find(c, 'star-swallower');
+    const star = c.spawn('newborn-star', 1)!;
+    expect(plans(c, sw)).toContain('devour');
+    sw.mem.agOff = 1;
+    sw.hp -= 50;
+    const hp = sw.hp;
+    act(c, sw, 'devour');
+    expect(star.dead && star.fled).toBe(true);
+    expect(sw.hp).toBe(hp + DEVOUR_HEAL);
+    expect(sw.st[HEAT]).toBe(DEVOUR_HEAT);
+  });
+
+  it('성운 해파리: 붕괴시키면 품고 있던 별이 흩어져 처음부터 다시 품는다 (낳으려던 차례도 끊긴다)', () => {
+    const c = startCombat(floor5(), 'a5-e-jelly');
+    const j = find(c, 'nebula-jelly');
+    j.mem.gest = 0;
+    delete j.st['a5-gestation'];
+    c.planIntent(j);
+    expect(j.intent?.move).toBe('birth');
+    breakIt(c, j);
+    expect(j.intent?.move).toBe('_broken');
+    expect(j.mem.gest).toBe(GESTATION);
+    expect(j.st['a5-gestation']).toBe(GESTATION);
+  });
+
+  it(`성운 해파리: 갓 태어난 별에게 빛을 먹이면 그 별이 터뜨릴 빛이 커진다 (이미 정한 의도도 +${FEED_DMG}, 별마다 한 번)`, () => {
+    const c = startCombat(floor5(), 'a5-e-jelly');
+    const j = find(c, 'nebula-jelly');
+    expect(plans(c, j)).not.toContain('feed');
+    const star = c.spawn('newborn-star', 1)!;
+    expect(star.intent?.move).toBe('swell');
+    expect(star.intent?.dmg).toBe(STAR_FLARE);
+    expect(plans(c, j)).toContain('feed');
+    act(c, j, 'feed');
+    expect(star.st[FED]).toBe(FEED_DMG);
+    expect(star.intent?.dmg).toBe(STAR_FLARE + FEED_DMG);
+    act(c, star, 'swell');
+    c.planIntent(star);
+    expect(star.intent?.move).toBe('flare');
+    expect(star.intent?.dmg).toBe(STAR_FLARE + FEED_DMG);
+    expect(plans(c, j)).not.toContain('feed');
+  });
+
+  it(`성운 해파리: 체력이 ${Math.round(HURRY_AT * 100)}% 아래면 서둘러 낳는다 (잉태가 차례마다 2씩 줄어든다)`, () => {
+    const c = startCombat(floor5(), 'a5-e-jelly');
+    const j = find(c, 'nebula-jelly');
+    force(c, j, 'sting');
+    c.endTurn();
+    expect(j.mem.gest).toBe(GESTATION - 1);
+    j.mem.agOff = 1;
+    j.hp = Math.floor(j.maxHp * (HURRY_AT - 0.1));
+    force(c, j, 'sting');
+    c.endTurn();
+    expect(j.mem.gest).toBe(Math.max(0, GESTATION - 3));
+  });
+
+  it(`별빛 순례자: 지난 차례 뒤로 아무 피해도 받지 않았으면 ${HURRY_STEPS}걸음씩 걷는다 — 한 대라도 맞으면 한 걸음 (스스로 치른 고행은 방해가 아니다)`, () => {
+    const c = startCombat(floor5(), 'a5-gug-pilgrim');
+    const p = find(c, 'star-pilgrim');
+    act(c, p, 'shard');
+    expect(p.mem.steps).toBe(5 - HURRY_STEPS);
+    c.damage({ src: c.p, tgt: p, base: 3, type: 'pierce', attack: true });
+    act(c, p, 'shard');
+    expect(p.mem.steps).toBe(5 - HURRY_STEPS - 1);
+    expect(p.st['a5-pilgrimage']).toBe(p.mem.steps);
+    act(c, p, 'penance');
+    expect(p.mem.steps).toBe(Math.max(0, 5 - 2 * HURRY_STEPS - 1));
+  });
+
+  it('별빛 순례자: 앞줄에 서면 길이 막혀 걷지 못하고 지팡이를 든다 — 요람이 가까우면 노래가 바뀐다', () => {
+    const c = startCombat(floor5(), 'a5-gug-pilgrim');
+    const p = find(c, 'star-pilgrim');
+    expect(c.moveRow(p, 0)).toBe(true);
+    const front = plans(c, p);
+    expect(front).toContain('staff');
+    for (const id of ['shard', 'bless', 'penance', 'hymn']) expect(front).not.toContain(id);
+    const steps = p.mem.steps;
+    act(c, p, 'staff');
+    expect(p.mem.steps).toBe(steps);
+    // 요람이 가깝다
+    expect(c.moveRow(p, 1)).toBe(true);
+    p.mem.steps = NEAR_CRADLE;
+    const near = plans(c, p);
+    expect(near).toContain('hymn');
+    expect(near).not.toContain('chant');
+    act(c, p, 'hymn');
+    expect(find(c, 'gug').st.barrier).toBe(HYMN_BARRIER);
+  });
+
+  it('장막 직조자 「꿈실 엉키기」: 그 턴에 마지막으로 쓴 두 기술(기본기 제외)의 재사용 대기가 더 긴 쪽에 맞춰진다', () => {
+    const run = floor5();
+    const c = startCombat(run, 'a5-weaver-gug');
+    const w = find(c, 'veil-weaver');
+    const g = find(c, 'gug');
+    expect(c.p.st[THREADS]).toBe(1);
+    c.s.ap = 9;
+    const steady = slotOf(run, 'steady');
+    const reload = slotOf(run, 'reload');
+    const shot = slotOf(run, 'aimed-shot');
+    expect(c.useSkill(steady)).toBeNull();
+    const steadyCd = c.s.cd[steady];
+    expect(c.useSkill(reload)).toBeNull();
+    expect(c.useSkill(shot, g.uid)).toBeNull();
+    // 기본 공격은 엉키지 않는다 (마지막 두 기술은 재장전·겨눠 쏘기)
+    expect(c.useSkill('weapon', g.uid)).toBeNull();
+    const long = c.s.cd[reload];
+    expect(c.s.cd[shot]).toBeLessThan(long);
+    act(c, w, 'tangle');
+    expect(c.s.cd[shot]).toBe(long);
+    expect(c.s.cd[reload]).toBe(long);
+    expect(c.s.cd[steady]).toBe(steadyCd);
+
+    // 기술을 하나만 썼으면 엉킬 실이 없다 (기본기로 턴을 채워도)
+    const d = startCombat(floor5(), 'a5-weaver-gug');
+    const w2 = find(d, 'veil-weaver');
+    const g2 = find(d, 'gug');
+    d.useSkill(slotOf(d.run, 'aimed-shot'), g2.uid);
+    d.useSkill('weapon', g2.uid);
+    const before = JSON.stringify(d.s.cd);
+    act(d, w2, 'tangle');
+    expect(JSON.stringify(d.s.cd)).toBe(before);
+  });
+
+  it('장막 직조자: 짠 환영을 깨뜨리면 실이 끊어져 직조자가 비틀거린다 — 앞줄로 끌려 나오면 제 환영 사이로 숨는다', () => {
+    const c = startCombat(floor5(), 'a5-weaver-gug');
+    const w = find(c, 'veil-weaver');
+    act(c, w, 'weave');
+    const copy = c.alive.find(isIllusion)!;
+    expect(copy.mem.maker).toBe(uidNum(w));
+    const poise = w.poise;
+    c.damage({ src: c.p, tgt: copy, base: 5, type: 'slash', attack: true });
+    expect(copy.dead).toBe(true);
+    expect(w.poise).toBe(poise - SNAP_POISE);
+    // 문지기의 거울처럼 직조자가 짜지 않은 환영은 상관없다
+    expect(c.alive.some(isIllusion)).toBe(false);
+    // 앞줄로 끌려 나왔다
+    slay(c, find(c, 'gug'));
+    expect(c.moveRow(w, 0)).toBe(true);
+    c.planIntent(w);
+    expect(w.intent?.move).toBe('veilself');
+    act(c, w, 'veilself');
+    const mine = c.alive.filter((x) => isIllusion(x) && x.mem.maker === uidNum(w));
+    expect(mine.length).toBe(2);
+    expect(mine.every((x) => x.def === 'veil-weaver')).toBe(true);
+  });
+
+  it('꺼진 별: 쏘아 보낸 빛은 내 턴이 두 번 끝날 때 닿는다 — 별을 쓰러뜨려도 이미 떠난 빛은 멈추지 않는다', () => {
+    const c = startCombat(floor5(), 'a5-e-deadstar');
+    const star = find(c, DEAD_STAR);
+    act(c, star, 'send');
+    const n = c.p.st[LIGHT_FAR];
+    expect(n).toBe(c.preview(star, null, BEAM_DMG, 'fire'));
+    expect(n).toBeGreaterThan(BEAM_DMG);
+    c.kill(star);
+    c.endTurn();
+    expect(c.p.st[LIGHT_FAR] ?? 0).toBe(0);
+    expect(c.p.st[LIGHT_NEAR]).toBe(n);
+    c.drain();
+    c.endTurn();
+    const hit = c.drain().find((x) => x.t === 'dmg' && x.tgt === 'p' && x.tags.includes('a5-starlight'));
+    expect(hit && hit.t === 'dmg' ? hit.hpLoss : -1).toBe(n);
+    expect(c.p.st[LIGHT_NEAR] ?? 0).toBe(0);
+  });
+
+  it(`꺼진 별: 닿은 빛을 방어도로 모두 막아 내면 별이 흔들린다 (버팀 -${LIGHT_STAGGER}) — 붕괴시키면 오는 중인 빛이 모두 흩어진다`, () => {
+    const c = startCombat(floor5(), 'a5-e-deadstar');
+    const star = find(c, DEAD_STAR);
+    c.p.st[LIGHT_NEAR] = 10;
+    c.p.block = 40;
+    const poise = star.poise;
+    force(c, star, 'glimmer');
+    c.endTurn();
+    expect(star.poise).toBe(poise - LIGHT_STAGGER);
+    c.p.st[LIGHT_FAR] = 12;
+    c.p.st[LIGHT_NEAR] = 12;
+    breakIt(c, star);
+    expect(c.p.st[LIGHT_FAR] ?? 0).toBe(0);
+    expect(c.p.st[LIGHT_NEAR] ?? 0).toBe(0);
+  });
+
+  it(`꺼진 별: 체력이 ${Math.round(LAST_LIGHT_AT * 100)}% 아래로 떨어지면 마지막 빛을 한꺼번에 쏘아 보낸다 (전투마다 한 번)`, () => {
+    const c = startCombat(floor5(), 'a5-e-deadstar');
+    const star = find(c, DEAD_STAR);
+    star.mem.agOff = 1;
+    star.hp = Math.floor(star.maxHp * (LAST_LIGHT_AT - 0.1));
+    c.planIntent(star);
+    expect(star.intent?.move).toBe('lastlight');
+    act(c, star, 'lastlight');
+    expect(c.p.st[LIGHT_FAR]).toBe(c.preview(star, null, LAST_BEAM_DMG, 'fire'));
+    expect(plans(c, star)).not.toContain('lastlight');
+  });
+
+  it('악몽 먹는 맥: 적들에게 걸린 악몽을 먹어 치우고 아문다 — 먹은 종류마다 배부름, 다 차면 다음 차례에 나에게 게워 낸다', () => {
+    const c = startCombat(floor5(), 'a5-baku-gug');
+    const b = find(c, BAKU);
+    const g = find(c, 'gug');
+    // 내 턴이 아닐 때 건다 (냄새를 맡고 의도를 바꾸는 것은 따로 본다)
+    c.s.phase = 'enemy';
+    c.apply(g, 'bleed', 4, c.p);
+    c.apply(g, 'poison', 3, c.p);
+    c.apply(b, 'weak', 2, c.p);
+    c.s.phase = 'player';
+    b.mem.agOff = 1;
+    b.hp -= 40;
+    const hp = b.hp;
+    act(c, b, 'eat');
+    expect(g.st.bleed ?? 0).toBe(0);
+    expect(g.st.poison ?? 0).toBe(0);
+    expect(b.st.weak ?? 0).toBe(0);
+    expect(b.hp).toBe(hp + Math.min(EAT_HEAL_MAX, 9 * EAT_HEAL));
+    expect(b.st[GORGED]).toBe(GORGE_MAX);
+    c.planIntent(b);
+    expect(b.intent?.move).toBe('retch');
+    const san = c.p.sanity;
+    act(c, b, 'retch');
+    expect(c.p.sanity).toBeLessThan(san);
+    expect(c.p.st.dread).toBe(BAKU_RETCH_DREAD);
+    expect(b.st[GORGED] ?? 0).toBe(0);
+  });
+
+  it(`악몽 먹는 맥: 내 턴에 내가 건 악몽이 ${SCENT_AT}겹 이상 쌓이면 냄새를 맡고 공격을 멈춘 채 먹으러 간다 — 붕괴시키면 배 속의 악몽이 흩어진다`, () => {
+    const c = startCombat(floor5(), 'a5-baku-gug');
+    const b = find(c, BAKU);
+    const g = find(c, 'gug');
+    expect(c.p.st[SCENT]).toBe(1);
+    force(c, b, 'trample');
+    c.apply(g, 'bleed', SCENT_AT - 1, c.p);
+    expect(b.intent?.move).toBe('trample');
+    c.apply(g, 'poison', 1, c.p);
+    expect(b.intent?.move).toBe('eat');
+    expect(b.intent?.kind).toBe('heal');
+    b.st[GORGED] = 2;
+    breakIt(c, b);
+    expect(b.st[GORGED] ?? 0).toBe(0);
+  });
+
+  it('새 패턴의 상태는 저장했다 불러와도 이어진다 (JSON): 다가오는 별빛·들어 올린 발', () => {
+    const run = floor5();
+    const c = startCombat(run, 'a5-dead-light');
+    act(c, find(c, DEAD_STAR), 'send');
+    const n = c.p.st[LIGHT_FAR];
+    const saved = JSON.parse(JSON.stringify(run)) as RunState;
+    const d = new Combat(saved);
+    d.endTurn();
+    expect(d.p.st[LIGHT_NEAR]).toBe(n);
+
+    const run2 = floor5();
+    const e = startCombat(run2, 'a5-baku-gug');
+    const g = find(e, 'gug');
+    act(e, g, 'lift');
+    e.planIntent(g);
+    const saved2 = JSON.parse(JSON.stringify(run2)) as RunState;
+    const f = new Combat(saved2);
+    const g2 = f.s.enemies.find((x) => x.uid === g.uid)!;
+    const poise = g2.poise;
+    f.p.block = BRACE_BLOCK;
+    f.endTurn();
+    expect(g2.poise).toBe(poise - BRACE_POISE);
+  });
+
+  it('세 출신 모두 시작 덱으로 새 패턴이 든 일반 조우를 이긴다 (봇, 체력은 넉넉히)', () => {
+    const lost: string[] = [];
+    const encs = ['a5-e-zoogs', 'a5-e-deadstar', 'a5-dead-light', 'a5-dead-procession', 'a5-baku-gug', 'a5-nightmare-feast', 'a5-slave-drive', 'a5-weaver-gug', 'a5-nursery', 'a5-pilgrims'];
+    for (const origin of ORIGINS3) {
+      for (const enc of encs) {
+        const c = fightPicking(startCombat(kit(origin, 202, 8), enc, { anomaly: null }));
+        if (c.s.phase !== 'victory') lost.push(`${origin} ${enc}: ${c.s.phase} (턴 ${c.s.turn})`);
       }
     }
     expect(lost).toEqual([]);

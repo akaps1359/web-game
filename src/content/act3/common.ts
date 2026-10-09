@@ -1,7 +1,7 @@
 import { josa } from '../../engine/josa';
 import { reg, SKILLS } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
-import type { EnemyUnit, Intent, MoveDef, Unit } from '../../engine/types';
+import { isEnemy, MAX_ROW, type Combat } from '../../engine/combat';
+import type { DamageCtx, EnemyUnit, Intent, MoveDef, Unit } from '../../engine/types';
 
 /**
  * 3층(얼어붙은 고대 도시) 공용 헬퍼와 전용 상태.
@@ -104,6 +104,81 @@ export const ENCASED = 'a3-encased';
 
 /** 얼음 속에 갇힌 적의 의도 (아무것도 하지 않는다) */
 export const frozenIntent = (): Intent => ({ move: '_wait', kind: 'sleep', label: '얼음 속에 갇힘' });
+
+// ───────────── 반응하는 의도 (2026-10 일반 적 패턴) ─────────────
+// 적의 특성 훅은 내 기술을 직접 보지 못한다. 대신 맞을 때(onDamageTaken)·누가 쓰러질 때(onAnyDeath) 의도를 바꿔
+// 그 자리에서 보여 준다 — 바뀐 의도는 내 턴 안에 보이므로 남은 행동력으로 대응할 수 있다.
+
+/** 이 행동을 지금 의도로 정할 때의 모습 (planIntent와 같은 계산: 근접 행동인데 후열이면 전진·관망) */
+export function intentFor(c: Combat, e: EnemyUnit, id: string): Intent {
+  let move = id;
+  let m = c.moveDef(e, id);
+  if (m.melee && e.row !== 0) {
+    move = c.row(0).length < MAX_ROW ? '_advance' : '_wait';
+    m = c.moveDef(e, move);
+  }
+  return {
+    move,
+    kind: m.intent,
+    extra: m.extra,
+    dmg: typeof m.dmg === 'function' ? m.dmg(c, e) : m.dmg,
+    hits: typeof m.hits === 'function' ? m.hits(c, e) : m.hits,
+    sanity: m.sanity,
+    label: m.name,
+    hidden: m.hidden,
+    charging: m.charging,
+    disguise: m.disguise,
+  };
+}
+
+/** 내 턴에 내 손으로 준 피해 (지속 피해·적끼리 준 피해·적의 차례에 되돌려 준 피해는 빼고) */
+export function myHit(c: Combat, d: DamageCtx): boolean {
+  return d.src === c.p && c.s.phase === 'player';
+}
+
+/** 지금 의도를 바꿀 수 있는가: 살아 있고, 내 턴이고, 붕괴·기절·얼음에 갇히지 않았고, 모아 둔 힘을 쏟아낼 차례가 아니다 */
+export function canReact(c: Combat, e: EnemyUnit): boolean {
+  if (e.dead || e.hp <= 0 || c.over || c.s.phase !== 'player' || e.broken === 2 || e.mem.charge) return false;
+  return !((e.st.stun ?? 0) > 0) && !((e.st[ENCASED] ?? 0) > 0);
+}
+
+/** 반응: 내 턴 도중 의도를 이 행동으로 바꿔 보인다 (key마다 한 턴에 한 번). 바꿨으면 true */
+export function react(c: Combat, e: EnemyUnit, id: string, text?: string, tone: 'good' | 'bad' | 'eldritch' = 'eldritch', key = 'rx'): boolean {
+  if (!canReact(c, e) || e.mem[key] === c.s.turn) return false;
+  e.mem[key] = c.s.turn;
+  e.intent = intentFor(c, e, id);
+  if (text) c.emit({ t: 'text', uid: e.uid, text, tone });
+  return true;
+}
+
+/** 지금 의도의 피해·횟수를 다시 센다 (의도를 정한 뒤 높이·무리 수처럼 수치가 바뀌었을 때) */
+export function refreshIntent(c: Combat, e: EnemyUnit) {
+  const it = e.intent;
+  if (!it || e.dead || it.move.startsWith('_')) return;
+  const m = c.moveDef(e, it.move);
+  e.intent = { ...it, dmg: typeof m.dmg === 'function' ? m.dmg(c, e) : m.dmg, hits: typeof m.hits === 'function' ? m.hits(c, e) : m.hits };
+}
+
+/** 앞(전열)에 이것 말고 다른 적이 버티고 있는가 */
+export const covered = (c: Combat, e: EnemyUnit): boolean => c.row(0).some((x) => x !== e);
+
+// ───────────── 일반 적의 상태 (2026-10 패턴) ─────────────
+
+/** 밤의 마귀: 탑 끝에 매달려 쌓은 높이 = 「급강하」 추가 피해 */
+export const HEIGHT = 'a3-height';
+/** 썰매개가 들은 탐사대원의 휘파람 = 다음 공격 추가 피해 */
+export const CALLED = 'a3-called';
+/** 썰매개의 터진 실밥 = 공격 추가 피해이자 자기 차례마다 잃는 체력 */
+export const TORN = 'a3-torn';
+/** 숨은 상태: 내 턴이 끝날 때의 방어도를 기억한다 (쇼고스 유충이 배운다) */
+export const WATCH = 'a3-watch';
+/** WATCH가 적어 두는 값: 지난 내 턴을 마친 방어도 */
+export const END_BLOCK = 'a3-endBlk';
+
+/** 내 턴을 마칠 때의 방어도를 지켜보기 시작한다 (전투 시작 시) */
+export function watchBlock(c: Combat) {
+  c.p.st[WATCH] = 1;
+}
 
 // ───────────── 표본 채집 (기술 빼앗기) ─────────────
 
@@ -223,6 +298,59 @@ reg.statuses([
     tickEnd(c, u) {
       c.clear(u, ENCASED);
       if (isEnemy(u)) c.emit({ t: 'text', uid: u.uid, text: '얼음을 깨고 나왔다', tone: 'bad' });
+    },
+  },
+  // ── 일반 적의 상태 (2026-10 패턴) ──
+  {
+    id: HEIGHT,
+    name: '높이',
+    icon: 'gi:bat-wing',
+    kind: 'buff',
+    desc: '탑 끝에 매달려 노린다. 「급강하」 피해 +{n}. 내 공격에 맞으면 사라진다 (회피로 흘린 공격은 빼고)',
+  },
+  {
+    id: CALLED,
+    name: '휘파람',
+    icon: 'gi:whistle',
+    kind: 'buff',
+    desc: '탐사대원의 휘파람을 들었다. 공격 피해 +{n}. 자기 차례가 끝나면 사라진다',
+    hooks: {
+      modDamageOut(_c, s, d) {
+        if (d.attack && d.src === s.unit) d.add += s.n;
+      },
+    },
+    tickEnd(c, u) {
+      c.clear(u, CALLED);
+    },
+  },
+  {
+    id: TORN,
+    name: '터진 실밥',
+    icon: 'gi:stitched-wound',
+    kind: 'buff',
+    desc: '꿰맨 배가 터져 미쳐 날뛴다. 공격 피해 +{n}. 자기 차례가 끝날 때마다 체력 {n}을 잃는다',
+    hooks: {
+      modDamageOut(_c, s, d) {
+        if (d.attack && d.src === s.unit) d.add += s.n;
+      },
+    },
+    tickEnd(c, u, n) {
+      if (!isEnemy(u)) return;
+      c.emit({ t: 'text', uid: u.uid, text: '터진 배에서 피가 쏟아진다', tone: 'good' });
+      c.loseHp(u, n, 'torn');
+    },
+  },
+  {
+    id: WATCH,
+    name: '지켜보는 원형질',
+    icon: 'gi:eye-target',
+    kind: 'buff',
+    hidden: true,
+    desc: '원형질이 내가 몸을 어떻게 지키는지 지켜본다',
+    hooks: {
+      onTurnEnd(c, s) {
+        if (s.unit === c.p) c.s.vars[END_BLOCK] = c.p.block;
+      },
     },
   },
 ]);

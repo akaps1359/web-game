@@ -9,6 +9,10 @@ const ess = (d: Omit<SkillDef, 'school' | 'pool' | 'tags' | 'vals'> & { tags?: s
 
 const isBoss = (defId: string) => ENEMIES.get(defId)?.tier === 'boss';
 
+/** 악몽 먹는 맥의 정수가 먹어 치우는 내 해로운 상태 (보스의 기믹 상태는 건드리지 않는다) */
+const BAKU_EATS = ['weak', 'vuln', 'frail', 'dread', 'bleed', 'poison', 'burn', 'corrode'];
+const BAKU_EATS_KO = '약화·취약·허약·공포·출혈·독·화상·부식';
+
 /*
  * 5층 정수. 등급: 일반 3 · 정예/추적자/균열 2 · 계층정수 1 · 최종 수호자 1.
  * (꿈의 땅 정수들은 3층에서 옮겨 오면서 5층 등급으로 올렸다)
@@ -240,6 +244,76 @@ reg.skills([
     desc: '{D:dmg} 공허 피해',
     run: (c, u, t) => void hit(c, u, t),
   }),
+  // 꺼진 별 (2026-10 새 일반 적)
+  ess({
+    id: 'ess-dead-star-light',
+    name: '늦게 닿는 빛',
+    icon: 'gi:sunbeams',
+    rarity: 'uncommon',
+    cost: 1,
+    cd: 2,
+    range: 'ranged',
+    target: 'single',
+    type: 'arcane',
+    tags: ['attack'],
+    vals: { dmg: [11, 14] },
+    desc: '{D:dmg} 비전 피해. 방어도를 무시한다',
+    run: (c, u, t) => void hit(c, u, t, { ignoreBlock: true }),
+  }),
+  ess({
+    id: 'ess-dead-star-glimmer',
+    name: '희미한 잔광',
+    icon: 'gi:star-skull',
+    rarity: 'uncommon',
+    cost: 1,
+    cd: 3,
+    range: 'ranged',
+    target: 'all',
+    tags: ['debuff'],
+    vals: { weak: [1, 2] },
+    desc: '적 전체 약화 {weak}',
+    run: (c, u) => {
+      for (const e of [...c.alive]) c.apply(e, 'weak', u.v('weak'), c.p);
+    },
+  }),
+  // 악몽 먹는 맥 (2026-10 새 일반 적)
+  ess({
+    id: 'ess-baku-eat',
+    name: '악몽 먹기',
+    icon: 'gi:stomach',
+    rarity: 'uncommon',
+    cost: 1,
+    cd: 4,
+    range: 'self',
+    target: 'self',
+    tags: ['buff'],
+    vals: { heal: [3, 4] },
+    desc: `내게 걸린 해로운 상태(${BAKU_EATS_KO})를 모두 먹어 치운다. 먹은 종류마다 체력 {heal} 회복`,
+    run: (c, u) => {
+      let kinds = 0;
+      for (const id of BAKU_EATS) {
+        if (!((c.p.st[id] ?? 0) > 0)) continue;
+        c.clear(c.p, id);
+        kinds++;
+      }
+      if (kinds) c.heal(c.p, u.v('heal') * kinds);
+    },
+  }),
+  ess({
+    id: 'ess-baku-trample',
+    name: '범의 발',
+    icon: 'gi:paw',
+    rarity: 'uncommon',
+    cost: 2,
+    cd: 2,
+    range: 'melee',
+    target: 'single',
+    type: 'blunt',
+    tags: ['attack'],
+    vals: { dmg: [16, 20], poise: 1 },
+    desc: '{D:dmg} 타격 피해, 버팀 추가 -{poise}',
+    run: (c, u, t) => void hit(c, u, t),
+  }),
   // 꿈 사냥꾼 (추적자)
   ess({
     id: 'ess-dream-hunter-net',
@@ -399,6 +473,58 @@ reg.essences([
     },
     actives: ['ess-star-swallower-pull', 'ess-star-swallower-swallow'],
     colors: ['사건의 지평선 검정', '삼킨 별의 주황'],
+  },
+  {
+    id: 'dead-star',
+    name: '꺼진 별의 정수',
+    icon: 'gi:star-skull',
+    grade: 3,
+    eldritch: true,
+    stats: { maxHp: 12, will: 1 },
+    passive: {
+      name: '늦게 닿는 빛',
+      desc: '적을 쓰러뜨리면 그 빛이 남아, 다음 내 턴이 시작될 때 무작위 적에게 비전 피해 10',
+      hooks: {
+        onKill(c, s) {
+          c.s.vars.a5Late = (c.s.vars.a5Late ?? 0) + 10 * s.n;
+        },
+        onTurnStart(c) {
+          const n = c.s.vars.a5Late ?? 0;
+          if (!n) return;
+          delete c.s.vars.a5Late;
+          const pool = c.alive;
+          if (!pool.length) return;
+          const t = c.rng.pick(pool);
+          c.emit({ t: 'text', uid: t.uid, text: '꺼진 별빛이 늦게 닿았다', tone: 'good' });
+          c.damage({ src: c.p, tgt: t, base: n, type: 'arcane', tags: ['a5-late'] });
+        },
+      },
+    },
+    actives: ['ess-dead-star-light', 'ess-dead-star-glimmer'],
+    colors: ['식은 별의 잿빛', '늦게 닿는 금빛'],
+  },
+  {
+    id: 'baku',
+    name: '악몽 먹는 맥의 정수',
+    icon: 'gi:tapir',
+    grade: 3,
+    eldritch: true,
+    stats: { maxHp: 12, will: 2 },
+    passive: {
+      name: '악몽을 먹는 꿈',
+      desc: `내 턴이 시작될 때 내게 가장 많이 쌓인 해로운 상태(${BAKU_EATS_KO}) 하나를 1 줄이고 정신력 +1`,
+      hooks: {
+        onTurnStart(c, s) {
+          let best: string | null = null;
+          for (const id of BAKU_EATS) if ((c.p.st[id] ?? 0) > 0 && (!best || c.p.st[id] > c.p.st[best])) best = id;
+          if (!best) return;
+          c.apply(c.p, best, -s.n);
+          c.gainSanity(s.n);
+        },
+      },
+    },
+    actives: ['ess-baku-eat', 'ess-baku-trample'],
+    colors: ['꿈결의 먹빛', '배부른 보랏빛'],
   },
   {
     id: 'dream-hunter',

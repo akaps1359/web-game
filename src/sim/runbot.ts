@@ -19,7 +19,7 @@ import {
 import { continueRift, distances, enterRift, goHaven, moveTo, startGuardian } from '../engine/dungeon';
 import { chooseEvent, eventView, leaveEvent } from '../engine/events';
 import { GROWTH, forgoChoice, omensOf, shrinePacts, signShrinePact } from '../engine/growth';
-import { camp, campRefuel, cureMadness, inn, inscribeFlask, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
+import { camp, campBlock, campRefuel, cureMadness, inn, inscribeFlask, leaveHaven, leavePlace, shrinePray, smith } from '../engine/places';
 import { buy, priceOf } from '../engine/shop';
 import { endRun, winRun } from '../engine/run';
 import { isGenesisLoot, type LootItem } from '../engine/run';
@@ -556,17 +556,18 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
       }
       case 'camp': {
         const p = run.player;
+        // 잠들 수 없으면(잠들지 않는 비늘) 다른 것을 한다 — 실패한 채로 두면 야영지가 닫히지 않아 그 방을 끝없이 오갔다
         const act = () => {
           const upg = run.skills.find((x) => run.slots.includes(x.uid) && canUpgradeSkill(run, x));
-          if (p.hp < p.maxHp * 0.65) camp(run, 'sleep');
-          else if (p.sanity < 45) camp(run, 'meditate');
-          else if (upg) camp(run, 'train', upg.uid);
-          else camp(run, 'sleep');
+          const canSleep = !campBlock(run, 'sleep');
+          if (p.hp < p.maxHp * 0.65 && canSleep) return camp(run, 'sleep');
+          if (p.sanity < 45) return camp(run, 'meditate');
+          if (upg) return camp(run, 'train', upg.uid);
+          return camp(run, canSleep ? 'sleep' : 'meditate');
         };
-        act();
         // 휴식의 징조: 방이 아직 열려 있으면 한 번 더
         const room = run.floor?.rooms[run.floor.pos];
-        if (room && !room.cleared) act();
+        if (!act() && room && !room.cleared) act();
         campRefuel(run);
         leavePlace(run);
         break;

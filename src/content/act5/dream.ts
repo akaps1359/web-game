@@ -1,6 +1,6 @@
 import { reg, STATUSES } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
-import type { EnemyUnit, MoveDef } from '../../engine/types';
+import { isEnemy, MAX_ROW, type Combat } from '../../engine/combat';
+import type { EnemyUnit, MoveDef, Unit } from '../../engine/types';
 
 /**
  * 5층(꿈꾸는 우주) — 꿈의 땅 공용 헬퍼와 전용 상태. (2026-10 개편 때 3층 '꿈의 경계'에서 옮겨 왔고, id 접두사도 a3- → a5- 로 바꿨다)
@@ -11,6 +11,58 @@ import type { EnemyUnit, MoveDef } from '../../engine/types';
 
 /** 통찰이 이 이상이면 환영의 정체가 이름에 드러난다 */
 export const ILLUSION_SIGHT = 4;
+/** 장막 직조자가 짠 환영을 깨뜨리면 실이 끊어져 직조자의 버팀이 이만큼 깎인다 */
+export const SNAP_POISE = 1;
+/** 별빛 순례자: 지난 차례 뒤로 아무 피해도 받지 않았으면 한 번에 걷는 걸음 */
+export const HURRY_STEPS = 2;
+
+// ───────────── 공용 도구 (2026-10 일반 적 패턴 확장) ─────────────
+
+/** 적 uid('e12')의 번호 — mem에는 숫자만 담는다 (저장·시뮬레이터가 JSON으로 다루게) */
+export const uidNum = (e: EnemyUnit): number => Number(e.uid.slice(1)) || 0;
+
+/** 그 번호의 살아 있는 적 */
+export const byNum = (c: Combat, n: number | undefined): EnemyUnit | undefined => (n ? c.alive.find((x) => uidNum(x) === n) : undefined);
+
+/** 의도를 이 행동으로 바꿔 보여 준다 (planIntent와 같은 계산 — AI를 거치지 않아 행동 순서가 흐트러지지 않는다) */
+export function setIntent(c: Combat, e: EnemyUnit, id: string) {
+  let move = id;
+  let m = c.moveDef(e, id);
+  if (m.melee && e.row !== 0) {
+    move = c.row(0).length < MAX_ROW ? '_advance' : '_wait';
+    m = c.moveDef(e, move);
+  }
+  e.intent = {
+    move,
+    kind: m.intent,
+    extra: m.extra,
+    dmg: typeof m.dmg === 'function' ? m.dmg(c, e) : m.dmg,
+    hits: typeof m.hits === 'function' ? m.hits(c, e) : m.hits,
+    sanity: m.sanity,
+    label: m.name,
+    hidden: m.hidden,
+    charging: m.charging,
+    disguise: m.disguise,
+  };
+}
+
+/** 상태를 정확히 n으로 맞춘다 (결계에 막히지 않는 규칙 표시) */
+export function setSt(c: Combat, u: Unit, id: string, n: number) {
+  const before = u.st[id] ?? 0;
+  if (n > 0) u.st[id] = n;
+  else delete u.st[id];
+  if (n !== before) c.emit({ t: 'status', uid: u.uid, id, n: n - before });
+}
+
+/** 피해 없이 버팀만 깎는다 (0이 되면 붕괴). 돌려주는 값: 이것으로 붕괴했는가 */
+export function chipPoise(c: Combat, e: EnemyUnit, n: number, text: string): boolean {
+  if (e.dead || e.broken > 0 || e.maxPoise <= 0 || n <= 0) return false;
+  e.poise = Math.max(0, e.poise - n);
+  c.emit({ t: 'text', uid: e.uid, text: `${text} (버팀 -${n})`, tone: 'good' });
+  if (e.poise > 0) return false;
+  c.breakEnemy(e);
+  return true;
+}
 
 /** 숨겨진 의도 (통찰 HIDDEN_REVEAL = 3 이상만 보임) */
 export const hid = (m: MoveDef): MoveDef => ({ ...m, hidden: true });
@@ -37,8 +89,9 @@ export function vanish(c: Combat, e: EnemyUnit, text = '환영이 흩어졌다')
 /**
  * src의 환영을 만든다. 체력·버팀·상태까지 똑같이 베껴 겉보기로는 구별할 수 없다.
  * onSpawn은 c.s.vars.a5Illu 플래그로 건너뛸 수 있다.
+ * maker: 환영을 짠 장막 직조자 — 내가 그 환영을 깨뜨리면 실이 끊어져 직조자가 비틀거린다 (mem.maker)
  */
-export function spawnIllusion(c: Combat, src: EnemyUnit, turns = 3): EnemyUnit | null {
+export function spawnIllusion(c: Combat, src: EnemyUnit, turns = 3, maker?: EnemyUnit): EnemyUnit | null {
   const prev = c.s.vars.a5Illu;
   c.s.vars.a5Illu = 1;
   let copy: EnemyUnit | null = null;
@@ -49,7 +102,7 @@ export function spawnIllusion(c: Combat, src: EnemyUnit, turns = 3): EnemyUnit |
     else c.s.vars.a5Illu = prev;
   }
   if (!copy) return null;
-  copy.mem = { illu: 1 };
+  copy.mem = maker ? { illu: 1, maker: uidNum(maker) } : { illu: 1 };
   // 파멸 등으로 '죽더라도' 처치 보상·처치 판정이 나지 않게 (fled/minion은 보상 계산에서 제외되는 표식)
   copy.fled = true;
   copy.minion = true;
@@ -105,6 +158,8 @@ export function stealLight(c: Combat, e: EnemyUnit, n: number) {
 export function wake(c: Combat, e: EnemyUnit, startled: boolean) {
   if (!isAsleep(e) || e.dead) return;
   e.mem.asleep = 0;
+  // 다시 잠들어 상처를 아물리던 몽유병자도 깨면 그친다
+  delete e.mem.rest;
   if (e.st['a5-asleep']) c.clear(e, 'a5-asleep');
   if (startled) {
     c.apply(e, 'str', 3, e);
@@ -143,7 +198,11 @@ reg.statuses([
       onDamageTaken(c, s, d) {
         const e = s.unit;
         if (!isEnemy(e) || e.dead || d.src === e) return;
-        if (d.attack || d.hpLoss > 0 || d.blocked > 0) vanish(c, e);
+        if (!(d.attack || d.hpLoss > 0 || d.blocked > 0)) return;
+        vanish(c, e);
+        // 장막 직조자가 짠 환영을 내가 깨뜨리면 실이 끊어져 직조자가 비틀거린다
+        const weaver = d.src === c.p ? byNum(c, e.mem.maker) : undefined;
+        if (weaver && weaver.def === 'veil-weaver' && !isIllusion(weaver)) chipPoise(c, weaver, SNAP_POISE, '환영의 실이 끊어져 비틀거린다');
       },
     },
     tickEnd(c, u, n) {
@@ -157,14 +216,14 @@ reg.statuses([
     name: '잠듦',
     icon: 'gi:sleepy',
     kind: 'debuff',
-    desc: '행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3. {n}턴 뒤 스스로 깨어난다 (꿈을 먹는 자의 곁에서는 깨어나지 못한다)',
+    desc: '행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3. 비전·공허 피해로는 깨지 않는다 (꿈속의 일인 줄 안다). {n}턴 뒤 스스로 깨어난다 (꿈을 먹는 자의 곁에서는 깨어나지 못한다). 다시 잠든 몽유병자는 잠든 동안 상처가 아문다',
   },
   {
     id: 'a5-pilgrimage',
     name: '순례',
     icon: 'gi:pilgrim-hat',
     kind: 'buff',
-    desc: '요람까지 {n}걸음. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료는 힘 +2, 체력 20 회복. 붕괴·기절 중에는 걷지 못한다',
+    desc: `요람까지 {n}걸음. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료는 힘 +2, 체력 20 회복. 지난 차례 뒤로 아무 피해도 받지 않았으면 ${HURRY_STEPS}걸음씩 걷는다. 앞줄에 서거나 붕괴·기절 중에는 걷지 못한다`,
   },
   {
     id: 'a5-lives',

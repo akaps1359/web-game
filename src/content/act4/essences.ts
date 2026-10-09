@@ -1,8 +1,10 @@
 import { reg } from '../../engine/registry';
 import { isEnemy, lvlVal, type Combat } from '../../engine/combat';
-import { combo, dealt, guard, hit, skill } from '../lib';
+import { combo, dealt, guard, hit, killed, skill } from '../lib';
 import type { SkillDef } from '../../engine/types';
 import { flipRows } from './common';
+import { TIME_DEBT } from './court';
+import { setSt } from './patterns';
 
 const ess = (d: Omit<SkillDef, 'school' | 'pool' | 'tags' | 'vals'> & { tags?: string[]; vals?: SkillDef['vals'] }) =>
   skill({ school: 'essence', pool: false, ...d });
@@ -410,6 +412,78 @@ reg.skills([
     vals: { dmg: [5, 6], hits: 5 },
     desc: '무작위 적에게 {D:dmg} 타격 피해 {hits}회',
     run: (c, u, t) => void hit(c, u, t),
+  }),
+  // 시간을 갉는 것
+  ess({
+    id: 'ess-time-gnawer-gnaw',
+    name: '시간을 갉는다',
+    icon: 'gi:worm-mouth',
+    rarity: 'uncommon',
+    cost: 2,
+    cd: 3,
+    range: 'melee',
+    target: 'single',
+    type: 'slash',
+    tags: ['attack', 'energy'],
+    vals: { dmg: [16, 20], ap: 1 },
+    desc: '{D:dmg} 참격 피해. 이 기술로 쓰러뜨리면 다음 턴 행동력 +{ap}',
+    run: (c, u, t) => {
+      const ds = hit(c, u, t);
+      if (!u.echo && killed(ds)) c.apply(c.p, 'energized', u.v('ap'), c.p);
+    },
+  }),
+  ess({
+    id: 'ess-time-gnawer-burn',
+    name: '삼킨 시간을 태운다',
+    icon: 'gi:empty-hourglass',
+    rarity: 'uncommon',
+    cost: 0,
+    cd: 4,
+    range: 'self',
+    target: 'self',
+    tags: ['heal'],
+    vals: { heal: [12, 16], ap: 1 },
+    desc: '체력 {heal} 회복. 다음 턴 행동력 -{ap}',
+    run: (c, u) => {
+      c.heal(c.p, u.v('heal'));
+      // 결계로 막을 수 없는 대가 (스스로 태운 시간)
+      if (!u.echo) setSt(c, c.p, TIME_DEBT, (c.p.st[TIME_DEBT] ?? 0) + u.v('ap'));
+    },
+  }),
+  // 별자리를 잇는 자
+  ess({
+    id: 'ess-star-weaver-thread',
+    name: '별의 실',
+    icon: 'gi:sewing-string',
+    rarity: 'uncommon',
+    cost: 1,
+    cd: 2,
+    range: 'ranged',
+    target: 'single',
+    type: 'arcane',
+    tags: ['attack'],
+    vals: { dmg: [10, 13] },
+    desc: '{D:dmg} 비전 피해. 실을 따라 무작위 다른 적에게도 그 절반',
+    run: (c, u, t) => {
+      hit(c, u, t);
+      const rest = c.alive.filter((e) => e !== t);
+      if (rest.length && !c.over) hit(c, u, c.rng.pick(rest), { dmg: Math.floor(u.v('dmg') / 2), mode: 'single' });
+    },
+  }),
+  ess({
+    id: 'ess-star-weaver-ray',
+    name: '별자리 광선',
+    icon: 'gi:star-formation',
+    rarity: 'uncommon',
+    cost: 1,
+    cd: 2,
+    range: 'ranged',
+    target: 'all',
+    type: 'arcane',
+    tags: ['attack', 'aoe'],
+    vals: { dmg: [6, 8], poise: 1 },
+    desc: '적 전체에 {D:dmg} 비전 피해. 적이 셋 이상이면 버팀 추가 -{poise}',
+    run: (c, u, t) => void hit(c, u, t, { poise: c.alive.length >= 3 ? u.v('poise') : 0 }),
   }),
   // 기어오는 혼돈의 화신
   ess({
@@ -991,6 +1065,51 @@ reg.essences([
     },
     actives: ['ess-flying-polyp-gale', 'ess-flying-polyp-vortex'],
     colors: ['투명한 잿빛', '폭풍 청색'],
+  },
+  {
+    id: 'time-gnawer',
+    name: '시간을 갉는 것의 정수',
+    icon: 'gi:worm-mouth',
+    grade: 4,
+    eldritch: true,
+    stats: { maxHp: 9, dex: 2 },
+    passive: {
+      name: '갉아 둔 시간',
+      desc: '전투에서 처음 적을 붕괴시키면 다음 턴 행동력 +1',
+      hooks: {
+        onBreak(c, s) {
+          if (c.s.vars['ess-gnawer'] === 1) return;
+          c.s.vars['ess-gnawer'] = 1;
+          c.apply(c.p, 'energized', s.n, c.p);
+        },
+      },
+    },
+    actives: ['ess-time-gnawer-gnaw', 'ess-time-gnawer-burn'],
+    colors: ['좀먹은 금빛', '타는 모래'],
+  },
+  {
+    id: 'star-weaver',
+    name: '별자리를 잇는 자의 정수',
+    icon: 'gi:star-formation',
+    grade: 4,
+    eldritch: true,
+    stats: { maxHp: 7, will: 2, maxSanity: 4 },
+    passive: {
+      name: '이어진 별',
+      desc: '적을 쓰러뜨리고 남은 피해가 다른 무작위 적에게 넘어간다 (최대 10)',
+      hooks: {
+        onDamageDealt(c, s, d) {
+          // 쓰러뜨리는 순간(체력이 아직 음수일 때) 넘친 만큼. 넘어간 피해가 다시 넘어가지는 않는다
+          if (d.src !== c.p || !isEnemy(d.tgt) || d.tgt.hp >= 0 || d.tags.includes('a4-carry')) return;
+          const over = Math.min(10 * s.n, -d.tgt.hp);
+          const rest = c.alive.filter((e) => e !== d.tgt && e.hp > 0);
+          if (over <= 0 || !rest.length) return;
+          c.damage({ src: c.p, tgt: c.rng.pick(rest), base: over, type: 'true', tags: ['a4-carry'] });
+        },
+      },
+    },
+    actives: ['ess-star-weaver-thread', 'ess-star-weaver-ray'],
+    colors: ['별빛 은사', '성좌 남빛'],
   },
   {
     id: 'chaos-avatar',
