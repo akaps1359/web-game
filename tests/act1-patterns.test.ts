@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { Combat, DISGUISE_REVEAL, type CombatEvent } from '../src/engine/combat';
+import { ACT_DMG_MULT, Combat, DISGUISE_REVEAL, ELITE_DMG_MULT, type CombatEvent } from '../src/engine/combat';
 import { ENCOUNTERS, ENEMIES, SKILLS, TRAITS } from '../src/engine/registry';
 import { finishCombat, gainXp, newRun, startCombat, type RunState } from '../src/engine/run';
 import type { EnemyUnit } from '../src/engine/types';
@@ -24,6 +24,7 @@ import {
   HOOKED,
   LINE,
   LINE_HP,
+  TIDE_DMG,
   TRIAL,
   VERDICT_DMG,
   WATER_MAX,
@@ -44,6 +45,7 @@ import {
   SEAR_DMG,
   VERDICT_HIT,
 } from '../src/content/act1/enemies';
+import { preHard } from './prehard';
 
 /**
  * 1층 정예·수호자 패턴 (2026-10): 새 메커니즘마다 동작을 확인하고, 1층의 모든 조우를 봇이 이기는지 본다.
@@ -513,8 +515,9 @@ describe('1층 — 익사한 선장: 만조 (퍼즐 · 큰 대가)', () => {
   });
 
   it('물을 빼지 못하면 물에 잠긴다 — 최대 체력 30% 피해(방어도 무시), 다음 턴 행동력 -1, 물은 한 칸 빠진다 (체력이 충분하면 살아남는다)', () => {
+    // 만조가 오기까지 맞는 피해에 쓰러지지 않게 넉넉히 (사경이면 체력 대신 정신력이 깎인다)
     const run = hero();
-    run.player.maxHp = run.player.hp = 100;
+    run.player.maxHp = run.player.hp = 300;
     const { c, cap } = untilTide(run);
     c.p.hp = c.p.maxHp;
     const hp = c.p.hp;
@@ -528,8 +531,8 @@ describe('1층 — 익사한 선장: 만조 (퍼즐 · 큰 대가)', () => {
     expect(cines(ev, 'water').length).toBe(1);
     // 방어도를 무시하고 최대 체력의 30%
     const tide = ev.find((x) => x.t === 'dmg' && x.tgt === 'p' && x.tags.includes('tide')) as Extract<CombatEvent, { t: 'dmg' }>;
-    expect(tide.hpLoss).toBe(Math.ceil(100 * 0.3));
-    expect(c.p.hp).toBe(hp - 30);
+    expect(tide.hpLoss).toBe(Math.ceil(300 * TIDE_DMG));
+    expect(c.p.hp).toBe(hp - Math.ceil(300 * TIDE_DMG));
     // 헐떡임: 다음 턴 행동력 -1 (물은 2라 숨 막힘은 없다)
     expect(c.p.st[FLOOD]).toBe(WATER_MAX - 1);
     expect(c.s.ap).toBe(c.p.maxAp - 1);
@@ -634,19 +637,23 @@ describe('1층 정예 — 새 행동', () => {
     const b = find(c, 'butcher');
     c.endTurn();
     c.p.hp = 60;
-    expect(c.preview(b, c.p, 24, 'slash')).toBe(24);
+    // 1층 정예전의 적 공격 배율 (엔진과 같은 순서로 곱한다)
+    let m = 1;
+    m *= ACT_DMG_MULT[1];
+    m *= ELITE_DMG_MULT[1];
+    expect(c.preview(b, c.p, 24, 'slash')).toBe(Math.floor(24 * m));
     c.p.hp = 40;
     replan(c);
     expect(b.intent?.move).toBe('prep');
     // 차지 말풍선의 '다음 턴' 숫자도 오른다
-    expect(c.preview(b, c.p, 24, 'slash')).toBe(Math.floor(24 * SCALE_MULT));
+    expect(c.preview(b, c.p, 24, 'slash')).toBe(Math.floor(24 * (m * SCALE_MULT)));
     c.endTurn();
     expect(b.intent?.move).toBe('chop');
     c.drain();
     c.endTurn();
     const ev = c.drain();
     expect(moveEv(ev, b.uid)?.ult).toBe(true);
-    expect(hitsOn(ev, b.uid)[0].amount).toBe(Math.floor(24 * SCALE_MULT));
+    expect(hitsOn(ev, b.uid)[0].amount).toBe(Math.floor(24 * (m * SCALE_MULT)));
   });
 
   it('도살자의 상처에 소금: 출혈 3, 이미 피를 흘리면 그만큼 더 (최대 +3)', () => {
@@ -785,12 +792,15 @@ describe('1층 정예 — 새 행동', () => {
 
 describe('1층 — 출신마다 공정한 기믹 (시작 덱)', () => {
   const ORIGINS3 = ['soldier', 'hunter', 'occultist'];
+  /** 만조까지 버티는지 보는 테스트의 체력 배율 (starter의 hpMul) — '어렵게'(2026-10-09) 뒤 1층 적 공격 ×1.5 */
+  const SURVIVE = 2.5;
 
-  /** 시작 기술·장비 그대로, 그 층에 맞는 레벨 (체력은 가득) */
-  function starter(origin: string, lv: number, seed = 101, tide = 0): RunState {
+  /** 시작 기술·장비 그대로, 그 층에 맞는 레벨 (체력은 가득, hpMul배) */
+  function starter(origin: string, lv: number, seed = 101, tide = 0, hpMul = 1): RunState {
     const run = newRun({ seed, origin });
     let guard = 0;
     while (run.player.level < lv && guard++ < 30) gainXp(run, 60);
+    run.player.maxHp = Math.round(run.player.maxHp * hpMul);
     run.player.hp = run.player.maxHp;
     if (run.floor) run.floor.tide = tide;
     return run;
@@ -872,7 +882,7 @@ describe('1층 — 출신마다 공정한 기믹 (시작 덱)', () => {
   it('만조: 봇은 출신마다 시작 덱으로 물을 빼 대가를 피한다 (여러 시드)', () => {
     for (const origin of ORIGINS3) {
       for (const seed of [11, 22, 33, 44]) {
-        const { c } = untilTide(starter(origin, 4, seed, 3));
+        const { c } = untilTide(starter(origin, 4, seed, 3, SURVIVE));
         autoTurn(c);
         expect(c.s.vars['a1-tideHits'], `${origin} #${seed}`).toBeUndefined();
         expect(c.s.phase, `${origin} #${seed}`).not.toBe('defeat');
@@ -933,7 +943,7 @@ describe('1층 — 출신마다 공정한 기믹 (시작 덱)', () => {
     expect(cr.dead).toBe(false);
   });
 
-  it('봇이 출신마다 시작 덱으로 1층 정예·수호자를 이긴다 (군주 제외)', () => {
+  it('봇이 출신마다 시작 덱으로 1층 정예·수호자를 이긴다 (군주 제외) — \'어렵게\' 전의 층 배율로', () => {
     const encs: [string, number, number][] = [
       ['a1-butcher', 2, 1],
       ['a1-enforcer', 2, 1],
@@ -944,18 +954,20 @@ describe('1층 — 출신마다 공정한 기믹 (시작 덱)', () => {
       ['a1-boss-queen', 3, 2],
       ['a1-boss-fisherman', 3, 2],
     ];
-    for (const [enc, lv, tide] of encs) {
-      for (const origin of ORIGINS3) {
-        for (const seed of [7, 8]) {
-          const run = starter(origin, lv, seed, tide);
-          const c = startCombat(run, enc, { anomaly: null });
-          c.snapshots = false;
-          let n = 0;
-          while (!c.over && n++ < 100) autoTurn(c);
-          expect(c.s.phase, `${enc} ${origin} #${seed}`).toBe('victory');
+    preHard(() => {
+      for (const [enc, lv, tide] of encs) {
+        for (const origin of ORIGINS3) {
+          for (const seed of [7, 8]) {
+            const run = starter(origin, lv, seed, tide);
+            const c = startCombat(run, enc, { anomaly: null });
+            c.snapshots = false;
+            let n = 0;
+            while (!c.over && n++ < 100) autoTurn(c);
+            expect(c.s.phase, `${enc} ${origin} #${seed}`).toBe('victory');
+          }
         }
       }
-    }
+    });
   }, 60_000);
 });
 

@@ -25,6 +25,7 @@ import {
   woundKinds,
 } from '../src/content/extra/arsenal';
 import { VOW, gathering } from '../src/content/extra/arts';
+import { plainHits } from './prehard';
 
 /**
  * 무기고·계열 기술 보강 (content/extra/arsenal.ts · arts.ts): 장비 여섯과 계열 기술 여섯이 설명대로 움직이는지,
@@ -384,15 +385,17 @@ describe('메아리 흉갑', () => {
   });
 
   it('적의 공격이 깎은 만큼 덜 울린다 (적의 차례 중 방어도를 따라간다)', () => {
-    const c = arena([], { equip: { armor: { id: 'ar-echo-plate', lvl: 2 } } });
-    c.s.phase = 'enemy';
-    c.p.block = 20;
-    c.damage({ src: front(c), tgt: c.p, base: 12, type: 'blunt', attack: true });
-    c.s.phase = 'player';
-    c.startPlayerTurn();
-    const es = echoes(c.drain());
-    expect(es.length).toBe(c.alive.length);
-    for (const d of es) expect(d.amount).toBe(8);
+    plainHits(() => {
+      const c = arena([], { equip: { armor: { id: 'ar-echo-plate', lvl: 2 } } });
+      c.s.phase = 'enemy';
+      c.p.block = 20;
+      c.damage({ src: front(c), tgt: c.p, base: 12, type: 'blunt', attack: true });
+      c.s.phase = 'player';
+      c.startPlayerTurn();
+      const es = echoes(c.drain());
+      expect(es.length).toBe(c.alive.length);
+      for (const d of es) expect(d.amount).toBe(8);
+    });
   });
 });
 
@@ -717,37 +720,41 @@ describe('결계 찢기 (비술)', () => {
 
 describe('철벽의 맹세 (결의)', () => {
   it('다음 내 턴이 올 때까지 적의 공격으로 잃는 체력은 모두 합쳐 최대 체력의 20%까지 (방어도가 먼저 막는다)', () => {
-    for (const lvl of [0, 1]) {
-      const c = arena([{ id: 'ar-iron-vow', lvl }]);
-      use(c, 's0');
-      const blk = v('ar-iron-vow', 'blk', lvl);
-      expect(c.p.block).toBe(blk);
-      const cap = Math.floor((c.p.maxHp * v('ar-iron-vow', 'pct', lvl)) / 100);
-      expect(c.p.st[VOW]).toBe(cap);
-      const e = front(c);
-      const hp = c.p.hp;
-      c.s.phase = 'enemy';
-      c.damage({ src: e, tgt: c.p, base: cap - 20, type: 'blunt', attack: true });
-      expect(hp - c.p.hp).toBe(cap - 20 - blk);
-      c.damage({ src: e, tgt: c.p, base: 200, type: 'blunt', attack: true });
-      c.damage({ src: e, tgt: c.p, base: 200, type: 'slash', attack: true });
-      expect(hp - c.p.hp, `+${lvl}`).toBe(cap);
-    }
+    plainHits(() => {
+      for (const lvl of [0, 1]) {
+        const c = arena([{ id: 'ar-iron-vow', lvl }]);
+        use(c, 's0');
+        const blk = v('ar-iron-vow', 'blk', lvl);
+        expect(c.p.block).toBe(blk);
+        const cap = Math.floor((c.p.maxHp * v('ar-iron-vow', 'pct', lvl)) / 100);
+        expect(c.p.st[VOW]).toBe(cap);
+        const e = front(c);
+        const hp = c.p.hp;
+        c.s.phase = 'enemy';
+        c.damage({ src: e, tgt: c.p, base: cap - 20, type: 'blunt', attack: true });
+        expect(hp - c.p.hp).toBe(cap - 20 - blk);
+        c.damage({ src: e, tgt: c.p, base: 200, type: 'blunt', attack: true });
+        c.damage({ src: e, tgt: c.p, base: 200, type: 'slash', attack: true });
+        expect(hp - c.p.hp, `+${lvl}`).toBe(cap);
+      }
+    });
   });
 
   it('공격이 아닌 피해(퍼즐 위협의 대가 등)는 막지 않는다. 다음 내 턴이 오면 풀린다', () => {
-    const c = arena([{ id: 'ar-iron-vow' }]);
-    use(c, 's0');
-    const e = front(c);
-    const hp = c.p.hp;
-    c.damage({ src: e, tgt: c.p, base: 300, type: 'true', ignoreBlock: true });
-    expect(hp - c.p.hp).toBe(300);
-    stunAll(c);
-    c.endTurn();
-    expect(c.p.st[VOW] ?? 0).toBe(0);
-    const hp2 = c.p.hp;
-    c.damage({ src: e, tgt: c.p, base: 400, type: 'blunt', attack: true });
-    expect(hp2 - c.p.hp).toBe(400);
+    plainHits(() => {
+      const c = arena([{ id: 'ar-iron-vow' }]);
+      use(c, 's0');
+      const e = front(c);
+      const hp = c.p.hp;
+      c.damage({ src: e, tgt: c.p, base: 300, type: 'true', ignoreBlock: true });
+      expect(hp - c.p.hp).toBe(300);
+      stunAll(c);
+      c.endTurn();
+      expect(c.p.st[VOW] ?? 0).toBe(0);
+      const hp2 = c.p.hp;
+      c.damage({ src: e, tgt: c.p, base: 400, type: 'blunt', attack: true });
+      expect(hp2 - c.p.hp).toBe(400);
+    });
   });
 
   it('미리보기(적의 의도 숫자)도 같은 상한을 보여 준다', () => {

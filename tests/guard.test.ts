@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import '../src/content';
-import { BREAK, Combat, GUARD, breakProfile } from '../src/engine/combat';
+import { ACT_DMG_MULT, BREAK, Combat, GUARD, breakProfile } from '../src/engine/combat';
 import { ENEMIES } from '../src/engine/registry';
 import { newRun, startCombat } from '../src/engine/run';
 import type { EnemyUnit } from '../src/engine/types';
@@ -62,7 +62,8 @@ describe('버팀: 남아 있으면 덜 받는다', () => {
   it('적끼리 주고받는 피해와 스스로 치르는 대가는 버팀과 상관없다', () => {
     const c = arena();
     const [a, b] = c.alive;
-    expect(c.damage({ src: a, tgt: b, base: 10, type: 'blunt', attack: true }).amount).toBe(10);
+    // 적의 공격이라 층 배율은 붙는다 (ACT_DMG_MULT) — 버팀만 상관없다
+    expect(c.damage({ src: a, tgt: b, base: 10, type: 'blunt', attack: true }).amount).toBe(Math.floor(10 * ACT_DMG_MULT[1]));
     expect(c.loseHp(a, 7).amount).toBe(7);
   });
 

@@ -23,6 +23,7 @@ import { inscribeFlask } from '../src/engine/places';
 import { GUARDIAN_REST, startGuardian } from '../src/engine/dungeon';
 import { simulateRun } from '../src/sim/runbot';
 import { skillDesc } from '../src/ui/text';
+import { preHard } from './prehard';
 
 /**
  * 2026-10 밸런스 개편 — 구조 세 가지:
@@ -124,18 +125,21 @@ describe('정수 자리제', () => {
   it('봇은 정수 자리를 넘겨 흡수하지 않고, 꽉 차면 바꾸거나 병에 담는다', () => {
     let maxUsed = 0;
     let overflow = 0;
-    // 일찍 죽는 판도 있다 (2026-10 심연 압력 뒤 11·13은 1·2층에서) — 여러 판 중 하나라도 자리가 찰 만큼 내려가면 된다
-    for (const seed of [11, 13, 17, 19, 23]) {
-      const res = simulateRun(seed, 'soldier', 4000, (run) => {
-        const used = essenceUsed(run);
-        maxUsed = Math.max(maxUsed, used);
-        // 무한의 고리(정수 자리 -1)를 자리가 꽉 찬 뒤에 얻으면 한 칸 넘친 채로 남는다 — 더 들이지 못할 뿐
-        const ring = run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0;
-        if (used > essenceCap(run) + ring) overflow++;
-      });
-      // 다섯 수호자를 모두 쓰러뜨린 판: 자리 base + 5, 그리고 자리를 차지하지 않는 계층정수 하나
-      expect(res.essences).toBeLessThanOrEqual(ESSENCE_SLOTS.base + 5 + 1);
-    }
+    // 일찍 죽는 판도 있다 (2026-10 심연 압력 뒤 11·13은 1·2층에서) — 여러 판 중 하나라도 자리가 찰 만큼 내려가면 된다.
+    // 봇이 자리가 찰 만큼 내려가야 해서 '어렵게'(2026-10-09) 전의 층 배율로 (어렵게 뒤 봇은 대개 1층에서 죽는다)
+    preHard(() => {
+      for (const seed of [11, 13, 17, 19, 23]) {
+        const res = simulateRun(seed, 'soldier', 4000, (run) => {
+          const used = essenceUsed(run);
+          maxUsed = Math.max(maxUsed, used);
+          // 무한의 고리(정수 자리 -1)를 자리가 꽉 찬 뒤에 얻으면 한 칸 넘친 채로 남는다 — 더 들이지 못할 뿐
+          const ring = run.relics.some((r) => r.id === 'infinite-ring') ? 1 : 0;
+          if (used > essenceCap(run) + ring) overflow++;
+        });
+        // 다섯 수호자를 모두 쓰러뜨린 판: 자리 base + 5, 그리고 자리를 차지하지 않는 계층정수 하나
+        expect(res.essences).toBeLessThanOrEqual(ESSENCE_SLOTS.base + 5 + 1);
+      }
+    });
     expect(overflow).toBe(0);
     expect(maxUsed).toBeGreaterThanOrEqual(4);
   }, 120_000);
@@ -171,8 +175,9 @@ describe('수호자는 온전한 시험', () => {
   });
 
   it('정예·수호자 전투의 적은 층별 배율만큼 세게 때린다 (일반전은 그대로)', () => {
-    expect(ELITE_DMG_MULT.slice(3)).toEqual([1.25, 1.35, 1.35]);
-    expect(BOSS_DMG_MULT.slice(2)).toEqual([1.15, 1.3, 1.35, 1.2]);
+    // 2026-10-09 어렵게 (GDD 10.8): 1·2층 정예·수호자도 더 세게, 5층 정예는 1.35 → 1.2
+    expect(ELITE_DMG_MULT.slice(1)).toEqual([1.15, 1.15, 1.25, 1.3, 1.2]);
+    expect(BOSS_DMG_MULT.slice(1)).toEqual([1.15, 1.25, 1.3, 1.35, 1.2]);
     const run = newRun({ seed: 9, origin: 'soldier' });
     run.floor!.tide = 0;
     const c = startCombat(run, 'a4-starfall', { anomaly: null });

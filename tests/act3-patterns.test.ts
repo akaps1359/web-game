@@ -64,6 +64,7 @@ import {
   VIVISECT_BASE,
   WOUNDS,
 } from '../src/content/act3/patterns';
+import { preHard } from './prehard';
 
 /*
  * 3층 정예·수호자 패턴 확장 (2026-10): 새 메커니즘마다 실제로 그렇게 움직이는지.
@@ -1171,17 +1172,19 @@ describe('3층 기믹의 출신 간 공정성 — 시작 덱으로', () => {
     expect(c2.validTargets(knife).map((x) => x.uid)).not.toContain(extra.uid);
   });
 
-  it('어느 출신이든 시작 덱으로 3층의 정예·수호자를 봇이 이긴다 — 즉사로 끝나는 판이 없다', () => {
+  it("어느 출신이든 시작 덱으로 3층의 정예·수호자를 봇이 이긴다 — 즉사로 끝나는 판이 없다 ('어렵게' 전의 층 배율로)", () => {
     const encs = ['a3-boss-shoggoth', 'a3-boss-king', 'a3-boss-peaks', 'lord-a3', 'a3-broodmother', 'a3-shantak', 'a3-vivisector', 'stalker-a3', 'rift-a3'];
     const lost: string[] = [];
-    for (const origin of ORIGINS) {
-      for (const enc of encs) {
-        const c = startCombat(kit3(origin, 77, true), enc, { anomaly: null });
-        let n = 0;
-        while (!c.over && n++ < 300) autoTurn(c);
-        if (c.s.phase !== 'victory') lost.push(`${origin} ${enc}: ${c.s.phase} ${c.s.doom ?? ''} ${c.s.turn}턴`);
+    preHard(() => {
+      for (const origin of ORIGINS) {
+        for (const enc of encs) {
+          const c = startCombat(kit3(origin, 77, true), enc, { anomaly: null });
+          let n = 0;
+          while (!c.over && n++ < 300) autoTurn(c);
+          if (c.s.phase !== 'victory') lost.push(`${origin} ${enc}: ${c.s.phase} ${c.s.doom ?? ''} ${c.s.turn}턴`);
+        }
       }
-    }
+    });
     expect(lost).toEqual([]);
   });
 });

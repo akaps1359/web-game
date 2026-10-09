@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '../src/content';
 import { Combat, DISGUISE_REVEAL, weakMult, type CombatEvent } from '../src/engine/combat';
 import { ENCOUNTERS, ENEMIES } from '../src/engine/registry';
@@ -61,6 +61,8 @@ import {
   VOW_STR_TIMES,
   VOW_WORDS,
 } from '../src/content/act2/patterns';
+import { DEPTH } from '../src/content/depth';
+import { preHard } from './prehard';
 
 /**
  * 2층 정예·수호자 패턴 (2026-10 확장): 새 메커니즘마다 실제 동작을, 마지막에 봇이 2층의 모든 조우를 이기는지 확인한다.
@@ -204,6 +206,7 @@ describe('대사제 — 꺼지지 않는 불', () => {
     const priest = one(c, 'high-priest');
     expect(c.alive.filter((x) => x.def === 'offering').length).toBe(2);
     priest.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
+    priest.mem.agOff = 1; // 가호(한 턴 피해 상한)도
     c.damage({ src: c.p, tgt: priest, base: priest.hp + 50, type: 'true' });
     expect(priest.dead).toBe(false);
     expect(priest.hp).toBe(Math.ceil(priest.maxHp * RISE_PCT));
@@ -224,6 +227,7 @@ describe('대사제 — 꺼지지 않는 불', () => {
     const priest = one(c, 'high-priest');
     for (const o of c.alive.filter((x) => x.def === 'offering')) c.kill(o);
     priest.poise = 0;
+    priest.mem.agOff = 1;
     c.damage({ src: c.p, tgt: priest, base: priest.hp + 50, type: 'true' });
     expect(priest.dead).toBe(true);
     // 남은 제물은 풀려나 달아난다 (전투가 끝난다)
@@ -934,19 +938,21 @@ describe('출신 공정성 — 시작 덱 (2층 수준: Lv5, 체력 95)', () => 
     }
   });
 
-  it('출신 셋의 시작 덱으로 2층 정예·추적자·균열·재에 묻힌 것을 이긴다', () => {
+  it("출신 셋의 시작 덱으로 2층 정예·추적자·균열·재에 묻힌 것을 이긴다 — '어렵게' 전의 층 배율로", () => {
     const lost: string[] = [];
-    for (const enc of ['a2-flagellant', 'a2-choirmaster', 'a2-reliquary', 'stalker-a2', 'rift-a2', 'a2-boss-buried']) {
-      for (const origin of ORIGINS) {
-        for (const seed of [11, 12]) {
-          const c = open(origin, enc, seed);
-          c.snapshots = false;
-          let n = 0;
-          while (!c.over && n++ < 200) autoTurn(c);
-          if (c.s.phase !== 'victory') lost.push(`${enc} ${origin} #${seed}`);
+    preHard(() => {
+      for (const enc of ['a2-flagellant', 'a2-choirmaster', 'a2-reliquary', 'stalker-a2', 'rift-a2', 'a2-boss-buried']) {
+        for (const origin of ORIGINS) {
+          for (const seed of [11, 12]) {
+            const c = open(origin, enc, seed);
+            c.snapshots = false;
+            let n = 0;
+            while (!c.over && n++ < 200) autoTurn(c);
+            if (c.s.phase !== 'victory') lost.push(`${enc} ${origin} #${seed}`);
+          }
         }
       }
-    }
+    });
     expect(lost).toEqual([]);
   }, 120_000);
 });
@@ -1181,6 +1187,16 @@ describe('2층 — 봇이 모든 조우를 이긴다', () => {
  * 반응하는 의도(맞거나 누가 쓰러지거나 무너지면 그 자리에서 바뀌어 보인다)와 상태를 읽는 AI가 실제로 그렇게 움직이는지.
  */
 describe('2층 일반 적 — 반응하는 패턴 (2026-10)', () => {
+  // 장면이 변이에 흐려지지 않게 (2026-10-09 '어렵게'부터 2층 일반 적도 DEPTH.mutNormal[2]로 변이한다 — 망령은 쓰러져도 다시 일어선다)
+  let mutSaved: number[] = [];
+  beforeEach(() => {
+    mutSaved = DEPTH.mutNormal.slice();
+    DEPTH.mutNormal.fill(0);
+  });
+  afterEach(() => {
+    DEPTH.mutNormal.splice(0, DEPTH.mutNormal.length, ...mutSaved);
+  });
+
   const WAIT = { move: '_wait', kind: 'unknown' as const, label: '관망' };
   /** 적의 차례처럼 그 행동을 실행하고 내 턴으로 돌아온다 */
   const doMove = (c: Combat, e: EnemyUnit, id: string) => {

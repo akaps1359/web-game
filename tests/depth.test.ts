@@ -88,7 +88,7 @@ describe('가호: 한 턴에 받는 피해 상한', () => {
   beforeEach(mutOff);
   afterEach(mutOn);
 
-  it('3층부터 정예는 한 턴에 상한만큼만 받는다. 붕괴하면 두 배, 내 턴이 시작되면 다시 찬다', () => {
+  it('2층부터 정예는 한 턴에 상한만큼만 받는다. 붕괴하면 두 배, 내 턴이 시작되면 다시 찬다', () => {
     const c = fight(['shantak'], { kind: 'elite' });
     const e = c.alive[0];
     const poise = e.maxPoise;
@@ -118,14 +118,16 @@ describe('가호: 한 턴에 받는 피해 상한', () => {
     expect(hp2 - e.hp).toBe(aegisCap(e));
   });
 
-  it('수호자는 상한이 더 낮다. 1·2층과 마지막 수호자(별의 태아)는 가호가 없다', () => {
+  it('수호자는 상한이 더 낮다. 1층과 마지막 수호자(별의 태아)는 가호가 없다 — 2층부터 (2026-10-09 어렵게)', () => {
     const c = fight(['shoggoth'], { kind: 'boss' });
     const b = one(c, 'shoggoth');
     expect(aegisCap(b)).toBe(Math.round(b.maxHp * DEPTH.aegisBoss[3]));
-    expect(aegisCap(fight(['flagellant'], { kind: 'elite' }).alive[0])).toBe(0);
+    const f = fight(['flagellant'], { kind: 'elite' }).alive[0];
+    expect(aegisCap(f)).toBe(Math.round(f.maxHp * DEPTH.aegisElite[2]));
+    expect(aegisCap(fight(['butcher'], { kind: 'elite' }).alive[0])).toBe(0);
     expect(aegisCap(fight(['lightkeeper'], { kind: 'boss' }).alive.find((e) => e.def === 'lightkeeper')!)).toBe(0);
-    const f = fight(['star-fetus'], { kind: 'boss' }).alive.find((e) => e.def === 'star-fetus');
-    if (f) expect(aegisCap(f)).toBe(0);
+    const sf = fight(['star-fetus'], { kind: 'boss' }).alive.find((e) => e.def === 'star-fetus');
+    if (sf) expect(aegisCap(sf)).toBe(0);
   });
 
   it('퍼즐 목표가 걸린 동안에는 가호가 쉰다 (즉사 퍼즐이 막히지 않게)', () => {
@@ -138,7 +140,7 @@ describe('가호: 한 턴에 받는 피해 상한', () => {
     expect(hp - e.hp).toBe(aegisCap(e) * 2);
   });
 
-  it('가호는 버팀도 지킨다: 한 턴에 깎이는 버팀에 상한 (올림) — 내 턴이 시작되면 다시. 일반 적·1·2층은 없다', () => {
+  it('가호는 버팀도 지킨다: 한 턴에 깎이는 버팀에 상한 (올림) — 내 턴이 시작되면 다시. 일반 적·1층은 없다', () => {
     const c = fight(['shantak'], { kind: 'elite' });
     const e = c.alive[0];
     const cap = aegisPoiseCap(e);
@@ -153,9 +155,11 @@ describe('가호: 한 턴에 받는 피해 상한', () => {
     c.drain();
     for (let i = 0; i < e.maxPoise + 3 && e.broken === 0; i++) tap();
     expect(e.broken).toBeGreaterThan(0);
-    // 일반 적·2층 정예에는 없다
+    // 일반 적·1층 정예에는 없다 (2층 정예부터)
     expect(aegisPoiseCap(fight(['outer-servitor']).alive[0])).toBe(0);
-    expect(aegisPoiseCap(fight(['flagellant'], { kind: 'elite' }).alive[0])).toBe(0);
+    expect(aegisPoiseCap(fight(['butcher'], { kind: 'elite' }).alive[0])).toBe(0);
+    const f = fight(['flagellant'], { kind: 'elite' }).alive[0];
+    expect(aegisPoiseCap(f)).toBe(Math.ceil(f.maxPoise * DEPTH.aegisPoiseElite[2]));
   });
 
   it('심연을 모으는 수호자에게는 버팀 상한이 없다 (붕괴시켜 끊을 수 있게 — 두 배로 깎인다)', () => {
@@ -263,24 +267,27 @@ describe('변이', () => {
       const a3 = fight(['shantak'], { kind: 'elite', seed }).alive[0];
       expect(a3.affix?.length).toBe(1);
       expect(a3.affix!.every((m) => tier(m) === 1)).toBe(true);
-      const a4 = fight(['outer-servitor', 'star-walker'], { kind: 'elite', seed });
-      expect(one(a4, 'star-walker').affix?.length).toBe(DEPTH.mutElite[4]);
+      const a4 = one(fight(['outer-servitor', 'star-walker'], { kind: 'elite', seed }), 'star-walker').affix?.length ?? 0;
+      expect(a4).toBeGreaterThanOrEqual(Math.floor(DEPTH.mutElite[4]));
+      expect(a4).toBeLessThanOrEqual(Math.ceil(DEPTH.mutElite[4]));
       const a5 = fight(['dream-hunter'], { kind: 'elite', seed }).alive[0].affix?.length ?? 0;
       expect(a5).toBeGreaterThanOrEqual(Math.floor(DEPTH.mutElite[5]));
       expect(a5).toBeLessThanOrEqual(Math.ceil(DEPTH.mutElite[5]));
       expect(fight(['thug'], { seed }).alive[0].affix).toEqual([]);
+      expect(fight(['butcher'], { kind: 'elite', seed }).alive[0].affix).toEqual([]);
       expect(one(fight(['shoggoth'], { kind: 'boss', seed }), 'shoggoth').affix).toEqual([]);
       expect(fight(['flagellant'], { kind: 'elite', seed }).alive[0].affix).toEqual(a2.affix);
     }
   });
 
-  it('일반 적은 깊을수록 자주 변이한다 (3층 25%, 5층 55%)', () => {
+  it('일반 적은 깊을수록 자주 변이한다 (1층은 없고, 2층 15% · 3층 30% · 5층 55%)', () => {
     const rate = (id: string) => {
       let n = 0;
       for (let seed = 1; seed <= 120; seed++) n += fight([id], { seed }).alive[0].affix?.length ? 1 : 0;
       return n / 120;
     };
-    expect(rate('censer-priest')).toBe(0);
+    expect(rate('thug')).toBe(0);
+    expect(Math.abs(rate('censer-priest') - DEPTH.mutNormal[2])).toBeLessThan(0.1);
     expect(Math.abs(rate('leng-spider') - DEPTH.mutNormal[3])).toBeLessThan(0.12);
     expect(Math.abs(rate('moonbeast') - DEPTH.mutNormal[5])).toBeLessThan(0.12);
   });

@@ -130,7 +130,7 @@ export interface EnemyUnit extends Unit {
   form?: number;
   /**
    * 변이 (2026-10 심연 압력, content/depth.ts): 이 개체에만 붙은 특성 id. EnemyDef.traits처럼 훅이 돈다.
-   * 2층부터 정예, 3층부터 일반 적에게 무작위로 붙는다. 굴린 적이 없으면 undefined (예전 저장)
+   * 2층부터 정예와 일반 적에게 무작위로 붙는다. 굴린 적이 없으면 undefined (예전 저장)
    */
   affix?: string[];
 }

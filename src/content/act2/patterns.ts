@@ -60,8 +60,8 @@ export const KNELL_TEXT_2 = '대종을 깨뜨려라. 아니면 기술을 쓰지 
 // 수호자와 같은 세기였던 군주를 숨은 보스답게: 체력·피해를 올리고 침묵령, 2막 「종탑의 광란」과 떨어지는 종을 더했다.
 // 숫자는 모두 여기서 고친다 (설명 문구도 이 상수를 읽는다)
 
-/** 종지기 체력·버팀 (EnemyDef 단위 — 층·수호자 배율이 더 곱해진다). 330 → 450 */
-export const KEEPER_HP = 640;
+/** 종지기 체력·버팀 (EnemyDef 단위 — 층·수호자 배율이 더 곱해진다). 330 → 450 → 640, '어렵게'(2층 배율 1.27 → 2.0, 가호) 뒤 490 (GDD 10.8) */
+export const KEEPER_HP = 490;
 export const KEEPER_POISE = 12;
 /** 종추 내려치기 (13 → 16) */
 export const KEEPER_HAMMER = 19;

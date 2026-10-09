@@ -58,13 +58,13 @@ export const CHARM_AP = 1;
 export const CHARMED = 'a1-charmed';
 
 // ── 익사한 선장 (계층군주 — 2026-10 강화: 층 수호자보다 확실히 어렵게. 수치는 하네스로 다시 맞춘다) ──
-/** 선장 체력 / 버팀 */
-export const CAPTAIN_HP = 260;
+/** 선장 체력 / 버팀 — 2026-10-09 '어렵게'로 1층 배율이 1 → 1.5가 되자 2.5배 쪽도 32%만 이겨 260 → 220 (공격도 조금씩, GDD 10.8) */
+export const CAPTAIN_HP = 220;
 export const CAPTAIN_POISE = 12;
 /** 녹슨 커틀러스 (타격당 피해 × 횟수) / 닻 내려치기 / 익사자의 뱃노래 (정신 피해, 공포) */
-export const SWORD_DMG = 9;
+export const SWORD_DMG = 8;
 export const SWORD_HITS = 2;
-export const ANCHOR_DMG = 30;
+export const ANCHOR_DMG = 27;
 export const SHANTY_SAN = 12;
 export const SHANTY_DREAD = 2;
 /** 닻사슬: 체력 / 끊긴 뒤 다시 던지기까지 (턴) / 박혀 있으면 선장이 행동할 때마다 더 차오르는 물 / 끊으면 빠지는 물 */
@@ -76,7 +76,7 @@ export const CHAIN_DRAIN = 1;
 export const WRECK_AT = 0.5;
 export const WRECK_WATER = WATER_MAX - 1;
 /** 망령 선장: 유령선 돌격 / 물귀신의 합창 (정신 피해, 차오르는 물) */
-export const RAM_DMG = 34;
+export const RAM_DMG = 30;
 export const CHOIR_SAN = 12;
 export const CHOIR_WATER = 1;
 /** 물속의 손: 망령 선장 차례가 끝날 때 물이 이 높이 이상이면 기술 하나를 붙잡는다 */

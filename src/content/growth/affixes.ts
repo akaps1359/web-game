@@ -194,7 +194,7 @@ reg.affixes([
     icon: 'gi:broadsword',
     tier: 2,
     slots: ['weapon'],
-    desc: '가호를 지닌 적(3층부터의 정예·수호자)에게 주는 공격 피해 +15%',
+    desc: '가호를 지닌 적(2층부터의 정예·수호자)에게 주는 공격 피해 +15%',
     hooks: {
       modDamageOut(c, _s, d) {
         if (mine(c, d) && aegisCap(d.tgt) > 0) d.mult *= 1.15;
