@@ -425,7 +425,8 @@ describe('점검: 사경(체력 0)에서도 싸움은 계속된다', () => {
     const s = c.p.sanity;
     const d = c.damage({ src: c.alive[0], tgt: c.p, base: 4, type: 'blunt', attack: true });
     expect(d.hpLoss).toBe(0);
-    expect(c.p.sanity).toBe(s - 2); // 받은 피해의 절반만큼 정신력만
+    expect(d.amount).toBeGreaterThan(0);
+    expect(c.p.sanity).toBe(s - Math.ceil(d.amount / 2)); // 받은 피해의 절반(올림)만큼 정신력만
   });
 });
 

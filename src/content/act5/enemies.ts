@@ -120,24 +120,24 @@ export const DIGEST_HEAL = 40;
 // 강한 덱일수록 더 걸리게: 내 기술을 그대로 흉내 내는 나(세게 칠수록 세게 돌려받는다)와, 몇 턴마다 한 턴 몫의 피해를 요구하는 식사 시간.
 // 수치는 군주 측정(봇·1.5배·2.5배)으로 다듬는다 — 설명 문구도 같은 상수를 쓴다.
 /** 기본 체력 / 꿈의 아가리 / 악몽의 난도질 (타격당·횟수) / 악몽 강림 (예고와 같은 값) / 꿈 삼키기 회복 / 꿈 갉아먹기 정신 피해 */
-export const EATER_HP = 1200;
-export const EATER_MAW = 26;
-export const EATER_RAVAGE = 9;
+export const EATER_HP = 1750;
+export const EATER_MAW = 29;
+export const EATER_RAVAGE = 10;
 export const EATER_RAVAGE_HITS = 3;
-export const EATER_NIGHTFALL = 56;
+export const EATER_NIGHTFALL = 62;
 export const EATER_DEVOUR_HEAL = 30;
 export const EATER_FEED_SAN = 12;
 /** 악몽 속의 나: 깨어난 악몽이 될 때 빚는 내 모습 (하수인) */
 export const DOUBLE = 'nightmare-double';
 /** 체력 = 내 최대 체력 × 이 비율 (상한 DOUBLE_HP_MAX — 체력이 터무니없이 큰 판·시험에서도 잡을 수 있게) / 버팀 (EnemyDef.poise) */
-export const DOUBLE_HP_PCT = 0.3;
-export const DOUBLE_HP_MAX = 150;
+export const DOUBLE_HP_PCT = 0.6;
+export const DOUBLE_HP_MAX = 300;
 export const DOUBLE_POISE = 2;
 /**
  * 흉내: 내가 마지막으로 피해를 준 기술의 타격당 피해(버팀·방어도에 깎이기 전)를 그대로 돌려준다 — 타격당 상한 / 타격 수 상한.
  * 흉내 낸 피해에는 층·수호자 공격 배율을 걸지 않는다 (내가 준 그대로. 조수·심연 배율은 걸린다)
  */
-export const DOUBLE_CAP = 30;
+export const DOUBLE_CAP = 40;
 export const DOUBLE_HITS = 3;
 /** 아직 흉내 낼 기술이 없을 때의 손톱 (보통 적의 피해처럼 층·수호자 배율이 걸린다) */
 export const DOUBLE_CLAW = 8;

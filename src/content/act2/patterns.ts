@@ -61,7 +61,7 @@ export const KNELL_TEXT_2 = '대종을 깨뜨려라. 아니면 기술을 쓰지 
 // 숫자는 모두 여기서 고친다 (설명 문구도 이 상수를 읽는다)
 
 /** 종지기 체력·버팀 (EnemyDef 단위 — 층·수호자 배율이 더 곱해진다). 330 → 450 */
-export const KEEPER_HP = 640;
+export const KEEPER_HP = 490;
 export const KEEPER_POISE = 12;
 /** 종추 내려치기 (13 → 16) */
 export const KEEPER_HAMMER = 19;

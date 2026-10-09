@@ -363,22 +363,22 @@ function starfall(c: Combat) {
 export const BLACK_STAR = 'black-star';
 export const VOID_EYE = 'void-eye';
 /** 검은 별의 체력 (층·조수·수호자 배율 전) · 버팀 (GUARD.poise·층 배율 전) · 전투 시작 때 두르는 의식 (차례가 끝날 때마다 힘 +n) */
-export const BLACK_STAR_HP = 780;
+export const BLACK_STAR_HP = 1250;
 export const BLACK_STAR_POISE = 14;
 export const BLACK_STAR_RITUAL = 1;
 /** 공허의 눈의 체력 (층·조수 배율 전) — 중력 렌즈가 얼마나 버티는지를 정한다 */
 export const EYE_HP: [number, number] = [20, 24];
 /** 검은 광선: 한 줄기 피해 · 줄기 수 */
-export const BEAM_DMG = 7;
+export const BEAM_DMG = 8;
 export const BEAM_HITS = 2;
 /** 빛을 삼킨다: 정신 피해 · 깎는 등불 */
 export const DEVOUR_SAN = 15;
 export const DEVOUR_LIGHT = 10;
 /** 중력 붕괴 (한 차례 힘을 모은 뒤) */
-export const COLLAPSE_DMG = 56;
+export const COLLAPSE_DMG = 62;
 /** 별의 심판: 떨어지기까지 내 턴 수 · 피해(방어도 무시) · 정신 피해 · 다시 걸기까지 (턴) */
 export const JUDGE_TURNS = 3;
-export const JUDGE_DMG = 42;
+export const JUDGE_DMG = 46;
 export const JUDGE_SAN = 10;
 export const JUDGE_GAP = 7;
 /** 공허의 눈: 다시 뜨는 횟수 (전투마다, 한 번에 둘) · 「빛 흡수」로 검은 별이 회복하는 체력 */
@@ -407,7 +407,7 @@ export const HORIZON_TURNS = 3;
 /** 호킹 복사: 무너진 별을 붕괴시키면 돌아오는 기술 하나마다 별이 잃는 체력 (최대 체력 비율, 방어도 무시) */
 export const HAWKING_PCT = 0.05;
 /** 스파게티화: 공허 피해 = SPAG_BASE + 끌려간 기술 하나마다 SPAG_PER */
-export const SPAG_BASE = 14;
+export const SPAG_BASE = 16;
 export const SPAG_PER = 8;
 /** 어둠 단계별 화면의 어두움 (%) */
 const DARK_UI = [0, 25, 50, 70];

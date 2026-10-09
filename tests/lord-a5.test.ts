@@ -311,7 +311,8 @@ describe('계층군주 꿈을 먹는 자 — 굶주림 (식사 시간)', () => {
     hush(c);
     expect(hungerNeed(c)).toBe(HUNGER_NEED_AP * 4);
     for (let k = 1; k <= HUNGER_MAX_AP + 1; k++) {
-      e.hp = e.maxHp - 400;
+      // 회복이 최대 체력에 걸리지 않게 넉넉히 깎아 둔다
+      e.hp = e.maxHp - Math.ceil(e.maxHp * HUNGER_HEAL) - 100;
       supper(c, e);
       expect(c.s.obj?.hit?.need).toBe(HUNGER_NEED_AP * (4 - Math.min(k - 1, HUNGER_MAX_AP)));
       const hp = e.hp;

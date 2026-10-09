@@ -26,6 +26,7 @@ import { openShop } from '../src/engine/shop';
 import { RARITY_NAME, plain, skillDesc } from '../src/ui/text';
 import type { DmgType, EquipSlot, SkillDef } from '../src/engine/types';
 import { DIAL } from '../src/content/genesis';
+import { plainHits } from './prehard';
 
 /**
  * 창세 등급 (content/genesis.ts): 9개 아이템의 효과가 설명대로인지, 한 턴에 끝없이 쓰는 고리가 없는지,
@@ -234,36 +235,38 @@ describe('창세: 스킬 효과', () => {
   });
 
   it('하늘 떠받치기: 방어도, 다음 내 턴까지 적의 공격을 막아 낸 만큼 되돌려준다', () => {
-    const c = arena([{ id: 'g-sky-pillar' }], { enc: 'a1-thug' });
-    const e = c.alive[0];
-    expect(c.useSkill('s0')).toBeNull();
-    expect(c.p.block).toBe(v('g-sky-pillar', 'blk'));
-    c.s.phase = 'enemy';
-    c.damage({ src: e, tgt: c.p, base: 10, type: 'blunt', attack: true });
-    expect(999 - e.hp).toBe(10);
-    // 일부만 막으면 막은 만큼만
-    c.damage({ src: e, tgt: c.p, base: 10, type: 'blunt', attack: true });
-    expect(999 - e.hp).toBe(10 + (v('g-sky-pillar', 'blk') - 10));
-    // 방어도가 없으면 되돌릴 것도 없다
-    c.damage({ src: e, tgt: c.p, base: 10, type: 'blunt', attack: true });
-    expect(999 - e.hp).toBe(v('g-sky-pillar', 'blk'));
-    // 적의 반격과 끝없이 주고받지 않는다
-    c.p.block = 50;
-    e.st.counter = 5;
-    const before = e.hp;
-    c.drain();
-    c.damage({ src: e, tgt: c.p, base: 10, type: 'blunt', attack: true });
-    expect(dmgEvents(c).length).toBe(3); // 공격 → 되돌림 → 적의 반격 (반격은 되돌리지 않는다)
-    expect(before - e.hp).toBe(10);
-    expect(c.p.block).toBe(50 - 10 - 5);
-    c.s.phase = 'player';
-    // 다음 내 턴이 시작되면 사라진다
-    delete e.st.counter;
-    stunAll(c);
-    c.endTurn();
-    expect(c.p.st['g-pillar']).toBeUndefined();
-    // 강화하면 매 턴 쓸 수 있다
-    expect(lvlVal(SKILLS.get('g-sky-pillar')!.cd, 1)).toBe(1);
+    plainHits(() => {
+      const c = arena([{ id: 'g-sky-pillar' }], { enc: 'a1-thug' });
+      const e = c.alive[0];
+      expect(c.useSkill('s0')).toBeNull();
+      expect(c.p.block).toBe(v('g-sky-pillar', 'blk'));
+      c.s.phase = 'enemy';
+      c.damage({ src: e, tgt: c.p, base: 10, type: 'blunt', attack: true });
+      expect(999 - e.hp).toBe(10);
+      // 일부만 막으면 막은 만큼만
+      c.damage({ src: e, tgt: c.p, base: 10, type: 'blunt', attack: true });
+      expect(999 - e.hp).toBe(10 + (v('g-sky-pillar', 'blk') - 10));
+      // 방어도가 없으면 되돌릴 것도 없다
+      c.damage({ src: e, tgt: c.p, base: 10, type: 'blunt', attack: true });
+      expect(999 - e.hp).toBe(v('g-sky-pillar', 'blk'));
+      // 적의 반격과 끝없이 주고받지 않는다
+      c.p.block = 50;
+      e.st.counter = 5;
+      const before = e.hp;
+      c.drain();
+      c.damage({ src: e, tgt: c.p, base: 10, type: 'blunt', attack: true });
+      expect(dmgEvents(c).length).toBe(3); // 공격 → 되돌림 → 적의 반격 (반격은 되돌리지 않는다)
+      expect(before - e.hp).toBe(10);
+      expect(c.p.block).toBe(50 - 10 - 5);
+      c.s.phase = 'player';
+      // 다음 내 턴이 시작되면 사라진다
+      delete e.st.counter;
+      stunAll(c);
+      c.endTurn();
+      expect(c.p.st['g-pillar']).toBeUndefined();
+      // 강화하면 매 턴 쓸 수 있다
+      expect(lvlVal(SKILLS.get('g-sky-pillar')!.cd, 1)).toBe(1);
+    });
   });
 
   it('창세 이전: 정신력을 치르고 방어를 무시하는 공허 피해, 체력이 기준 이하로 남으면 소멸 (통찰은 4까지), 수호자는 2배 피해만', () => {

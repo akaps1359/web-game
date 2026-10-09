@@ -280,7 +280,7 @@ export const BLADE_EXTRA = 2;
 // 아래 수치는 첫 값이다. 설명 문구가 모두 이 상수를 쓰니 수치만 바꾸면 된다.
 
 /** 체력 (층·수호자 배율 전 — 실제로는 × ACT_HP_MULT[3] × BOSS_HP_MULT) */
-export const ELDER_HP = 1000;
+export const ELDER_HP = 1080;
 /** 원로의 버팀 — 강한 덱이 붕괴로 큰 공격을 너무 쉽게 끊지 않게 (13 → 16) */
 export const ELDER_POISE = 16;
 /** 「다섯 갈래 촉수」(펼치기 전): 타격당 피해 × 횟수 */
