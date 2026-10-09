@@ -1,7 +1,7 @@
-import { AFFIXES, EQUIPS, OMENS, PACTS, RELICS } from './registry';
+import { AFFIXES, EQUIPS, OMENS, PACTS, RELICS, RUNES, SKILLS } from './registry';
 import { Rng, deriveSeed } from './rng';
-import { gainRelic, log, type RunState } from './run';
-import type { HookSelf, Hooks } from './types';
+import { gainRelic, log, type LootItem, type RunState } from './run';
+import type { HookSelf, Hooks, Rarity } from './types';
 
 /*
  * 성장 개편 (2026-10): 느리지만 넓게.
@@ -9,7 +9,7 @@ import type { HookSelf, Hooks } from './types';
  * 봇 기준 5층 시작에 유물 17개·스킬 20개(장착 7칸)·레벨 11 — 4층 시작(레벨 9)에 스킬 칸이 다 열리고, 스킬 강화는 한 번뿐이라 동나고,
  * 유물은 층과 상관없는 같은 풀에서 나왔다. 보상을 건너뛰면 아무것도 없었다.
  *
- * - 징조 (발라트로의 블라인드 건너뛰기 태그, 슬레이 더 스파이어 「노래하는 그릇」): 보상을 고르지 않고 지나치면 미리 보인 징조를 받는다.
+ * - 징조 (발라트로의 블라인드 건너뛰기 태그, 슬레이 더 스파이어 「노래하는 그릇」): 희귀 이상의 후보가 나온 보상을 고르지 않고 지나치면 미리 보인 징조를 받는다.
  *   정해진 때(다음 보상·다음 전투·다음 상점·다음 야영지·다음 장비)에 한 번 이루어진다. 건너뛰기가 곧 선택이 된다
  * - 장비 접사 (디아블로·데드 셀의 무작위 접사): 장비를 얻을 때 층에 따라 접사가 붙는다 — 깊은 층의 장비일수록 많이, 3층부터 2단계 접사
  * - 계약 (하데스의 혼돈 축복): 몇 전투 동안 저주를 견디면 그 뒤로 축복이 영원히. 신전·이벤트에서
@@ -54,6 +54,15 @@ export function useOmen(run: RunState, id: string): boolean {
   return true;
 }
 
+/** 지닌 징조를 다른 것으로 바꾼다 (점쟁이 — 새 징조가 아니라 바꿈이라 받은 수에 세지 않는다) */
+export function swapOmen(run: RunState, from: string, to: string): boolean {
+  const i = omensOf(run).indexOf(from);
+  if (i < 0 || !OMENS.has(to) || omensOf(run).includes(to)) return false;
+  run.omens![i] = to;
+  log(run, `징조가 바뀌었다: ${OMENS.get(from)?.name ?? from} → ${OMENS.get(to)!.name}`);
+  return true;
+}
+
 /** 징조를 얻는다 (가득 차 있으면 false) */
 export function gainOmen(run: RunState, id: string): boolean {
   if (!OMENS.has(id)) return false;
@@ -65,7 +74,36 @@ export function gainOmen(run: RunState, id: string): boolean {
   return true;
 }
 
-/** 건너뛰면 받을 징조 하나 (보상을 만들 때 정해 미리 보여 준다). 지닌 것과 겹치지 않게 */
+/**
+ * 징조는 희귀 이상(희귀·특수·보스·금기·창세)의 후보가 있는 보상을 지나칠 때만 받는다 — 귀한 것을 내주는 대가로만.
+ * 성장 억제 (2026-10 피드백: 모든 보상에 붙으니 봇이 판마다 징조를 6.7개씩 받았다)
+ */
+export const OMEN_RARITY: Rarity[] = ['rare', 'special', 'boss', 'forbidden', 'genesis'];
+
+/** 전리품의 등급 (등급이 없는 것 — 강화·골드·소모품 등 — 은 null) */
+export function lootRarity(it: { kind: string; id: string }): Rarity | null {
+  switch (it.kind) {
+    case 'skill':
+      return SKILLS.get(it.id)?.rarity ?? null;
+    case 'relic':
+    case 'evolve':
+      return RELICS.get(it.id)?.rarity ?? null;
+    case 'equip':
+      return EQUIPS.get(it.id)?.rarity ?? null;
+    case 'rune':
+      return RUNES.get(it.id)?.rarity ?? null;
+    default:
+      return null;
+  }
+}
+
+/** 지나치면 받을 징조 (보상을 만들 때 정해 미리 보여 준다): 고르는 후보에 희귀 이상이 있을 때만, 없으면 undefined */
+export function skipOmen(run: RunState, choice: LootItem[] | null | undefined): string | undefined {
+  if (!choice?.some((it) => OMEN_RARITY.includes(lootRarity(it) as Rarity))) return undefined;
+  return rollOmen(run);
+}
+
+/** 건너뛰면 받을 징조 하나. 지닌 것과 겹치지 않게 */
 export function rollOmen(run: RunState): string | undefined {
   const have = new Set(omensOf(run));
   const pool = [...OMENS.keys()].filter((id) => !have.has(id));

@@ -418,11 +418,9 @@ function handleReward(run: RunState, res: SimResult) {
     if (idx < 0 && botClue.take) idx = clue = cluePick(run, rw.choice);
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'upgrade');
     if (idx < 0) idx = rw.choice.findIndex((c) => c.kind === 'equip');
-    // 쓸 만한 것이 없으면 고르지 않고 지나쳐 징조를 받는다 (성장 개편 — 사람은 4층쯤부터 이렇게 했다)
-    if (idx < 0 && rw.omen && omensOf(run).length < GROWTH.omenCap && forgoChoice(run)) {
-      res.growth.skipped++;
-      idx = -1;
-    } else if (idx < 0) idx = 0;
+    // 쓸 만한 것이 없으면 고르지 않고 지나친다 — 사람이 그랬다 ("4층쯤 가면 아무것도 안 먹고 건너뛴다"). 쓰지 않는 스킬을 가방에 쌓지 않는다.
+    // 희귀 이상의 후보가 있었으면 징조를 받는다 (engine/growth.ts OMEN_RARITY)
+    if (idx < 0 && rw.omen && omensOf(run).length < GROWTH.omenCap && forgoChoice(run)) res.growth.skipped++;
     const it = idx >= 0 ? rw.choice[idx] : null;
     if (!it) {
       // 지나쳤다

@@ -35,7 +35,7 @@ import type { EventState } from './events';
 import type { ShopState } from './shop';
 import { abyssAmbushStrike, abyssEssenceDrop, abyssGold, abyssFloor, abyssSlotCut, abyssStart, abyssWhisper, type AbyssState } from './abyss';
 import { CLUE, clueLinks, clueMult, clueSources, crossesSchools } from './keywords';
-import { affixHooks, evolutionsReady, evolveRelic, moreAffixes, pactHooks, rollAffixes, rollOmen, tickPacts, useOmen } from './growth';
+import { affixHooks, evolutionsReady, evolveRelic, moreAffixes, pactHooks, rollAffixes, skipOmen, tickPacts, useOmen } from './growth';
 
 /** 저장 형식 버전. 층 구성이 바뀌면 올린다 (이전 판은 이어하기 불가) — 2: 3층/5층 개편, 5층이 정식 탐험 층으로 */
 export const SAVE_VERSION = 2;
@@ -1152,8 +1152,9 @@ export function finishCombat(run: RunState): RewardState | null {
     }
   }
 
-  // 고르지 않고 지나치면 받을 징조 (미리 보인다 — engine/growth.ts)
-  if (reward.choice?.length) reward.omen = rollOmen(run);
+  // 고르지 않고 지나치면 받을 징조 (미리 보인다 — engine/growth.ts). 희귀 이상의 후보가 있을 때만
+  const omen = skipOmen(run, reward.choice);
+  if (omen) reward.omen = omen;
   // 계약: 이긴 전투마다 저주가 하나씩 준다
   tickPacts(run);
   run.player.gold += gold;

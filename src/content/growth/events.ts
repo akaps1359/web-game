@@ -1,8 +1,8 @@
 import { josa } from '../../engine/josa';
 import { finish } from '../../engine/events';
 import { AFFIXES, EQUIPS, OMENS, PACTS, RELICS, RUNES, SKILLS, reg } from '../../engine/registry';
-import { GROWTH, acceptPact, equipName, gainOmen, moreAffixes, omensOf, placeRng, rollAffixes, rollPacts } from '../../engine/growth';
-import { gainRelic, hurtRun, loseSanityRun, rng, type RunState } from '../../engine/run';
+import { GROWTH, acceptPact, equipName, moreAffixes, omensOf, placeRng, rollAffixes, rollPacts, swapOmen } from '../../engine/growth';
+import { gainRelic, hurtRun, rng, type RunState } from '../../engine/run';
 import { dismantlePool } from '../../engine/schools';
 import type { EquipSlot } from '../../engine/types';
 
@@ -67,37 +67,35 @@ reg.events([
     title: '점쟁이의 탁자',
     icon: 'gi:crystal-ball',
     acts: [1, 2, 3, 4],
+    // 징조는 희귀 이상의 보상을 지나칠 때만 생긴다 (engine/growth.ts OMEN_RARITY) — 점쟁이는 지닌 징조를 바꿔 줄 뿐, 새로 주지 않는다 (성장 억제)
+    when: (run) => omensOf(run).length > 0,
     stages: {
       start: (run) => {
-        const full = omensOf(run).length >= GROWTH.omenCap;
+        const held = omensOf(run)[0];
+        if (!held || !OMENS.has(held)) {
+          return {
+            text: '천을 덮은 탁자 위에 그을린 뼈 조각들이 흩어져 있다. 얼굴을 가린 이가 고개를 젓는다. "네 앞날엔 아직 읽을 무늬가 없군."',
+            choices: [{ label: '지나간다', go: (_r, e) => finish(e, '등 뒤에서 뼈 굴러가는 소리가 들렸다.') }],
+          };
+        }
+        const from = OMENS.get(held)!;
         const cost = 20 + 10 * Math.min(5, run.act);
         const have = new Set(omensOf(run));
         // 이 탁자에 놓인 뼈 셋 (이 방에서 늘 같다)
         const picks = placeRng(run, 'seer').sample([...OMENS.keys()].filter((id) => !have.has(id)), 3);
         return {
-          text: '천을 덮은 탁자 위에 그을린 뼈 조각들이 흩어져 있다. 얼굴을 가린 이가 뼈 셋을 내 앞으로 민다. "앞날을 하나 골라 가겠나, 아니면 뼈가 고르게 두겠나?"',
+          text: `천을 덮은 탁자 위에 그을린 뼈 조각들이 흩어져 있다. 얼굴을 가린 이가 내 「${from.name}」${josa(from.name, '을')} 읽더니 뼈 셋을 내 앞으로 민다.\n"그 앞날이 마음에 들지 않으면 바꿔 주지. 새 앞날을 그냥 얹어 주지는 않아."`,
           choices: [
             ...picks.map((id) => ({
-              label: `${OMENS.get(id)!.name} (${cost} 골드)`,
-              hint: OMENS.get(id)!.desc,
-              disabled: (full && `징조가 가득 찼다 (${GROWTH.omenCap})`) || (run.player.gold < cost && '골드가 부족하다'),
+              label: `바꾼다: ${OMENS.get(id)!.name} (${cost} 골드)`,
+              hint: `「${from.name}」${josa(from.name, '을')} 내려놓는다 · ${OMENS.get(id)!.desc}`,
+              disabled: run.player.gold < cost && '골드가 부족하다',
               go: (r: RunState, e: Parameters<typeof finish>[0]) => {
                 r.player.gold -= cost;
-                gainOmen(r, id);
-                finish(e, `뼈를 쥐자 손바닥에 무늬가 남았다. 「${OMENS.get(id)!.name}」`);
+                swapOmen(r, held, id);
+                finish(e, `뼈를 쥐자 손바닥의 무늬가 바뀌었다. 「${from.name}」 → 「${OMENS.get(id)!.name}」`);
               },
             })),
-            {
-              label: '뼈가 고르게 둔다',
-              hint: '정신력 -6, 무작위 징조 둘',
-              disabled: full && `징조가 가득 찼다 (${GROWTH.omenCap})`,
-              go: (r, e) => {
-                const loss = loseSanityRun(r, 6);
-                const ids = rng(r, 'event').sample([...OMENS.keys()].filter((id) => !omensOf(r).includes(id)), 2);
-                const got = ids.filter((id) => gainOmen(r, id)).map((id) => OMENS.get(id)!.name);
-                finish(e, `뼈가 저절로 굴렀다. 그 모양을 보는 순간 머릿속이 서늘해졌다.${got.length ? ` (${got.join(', ')})` : ''}${loss.madness ? ' 정신이 무너졌다.' : ''}`);
-              },
-            },
             { label: '그냥 지나간다', go: (_r, e) => finish(e, '등 뒤에서 뼈 굴러가는 소리가 들렸다.') },
           ],
         };

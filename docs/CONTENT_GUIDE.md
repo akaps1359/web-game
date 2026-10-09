@@ -107,7 +107,7 @@ id는 게임 전체에서 유일해야 한다 (적·스킬·특성·이벤트). 
 ## 6-1. 성장 콘텐츠 (`src/content/growth/`, `docs/GDD.md` 7.1)
 
 - **장비 접사** (`affixes.ts`, `reg.affixes`): `{ id: 'aff-…', name, icon, tier: 1|2, slots?, desc, hooks }`. `name`은 장비 이름 앞에 붙는 꾸밈말('날선', '피를 부르는'). 훅은 플레이어 쪽에서만 돈다(`HookSelf.kind` 'affix', `s.n` = 장비 강화 단계) — 적의 훅(`modPoiseLoss` 등)에는 닿지 않으니 내 쪽 훅으로 (`d.poiseBonus` 등). 한 턴에 한 번 도는 효과는 `c.s.vars`에 턴을 적는다 (미리보기 중에는 적지 않는다). 세기는 흔한 유물 하나보다 약하게 — 장비 하나에 둘셋이 붙는다. 2단계(3층부터)는 깊은 층의 장치(가호·변이·붕괴 내성)를 다루는 것.
-- **징조** (`omens.ts`, `reg.omens`): 이루어지는 곳을 엔진이 id로 부른다 (`useOmen(run, id)`) — 새 징조는 엔진에 부르는 자리를 함께 넣고 `tests/growth.test.ts`의 목록에 더한다. 한 번 쓰고 사라지는 옆 방향의 이득만 (오래 남는 힘은 계약·유물의 몫).
+- **징조** (`omens.ts`, `reg.omens`): 이루어지는 곳을 엔진이 id로 부른다 (`useOmen(run, id)`) — 새 징조는 엔진에 부르는 자리를 함께 넣고 `tests/growth.test.ts`의 목록에 더한다. 한 번 쓰고 사라지는 옆 방향의 이득만 (오래 남는 힘은 계약·유물의 몫). 받는 곳은 희귀 이상의 후보가 나온 보상을 지나칠 때(`OMEN_RARITY`)뿐이다 (점쟁이는 지닌 것을 바꿔 줄 뿐 — `swapOmen`). 성장을 억제하려는 것이니 받는 곳을 늘리지 말 것.
 - **계약** (`pacts.ts`, `reg.pacts`): 저주(`kind: 'curse'`, `hooks`)는 이긴 전투 `GROWTH.pactFights`번 동안, 축복(`kind: 'boon'`, `onGain` 영구 스탯 또는 `hooks`)은 그 뒤로 영원히. 축복은 통찰을 주지 않는다 (통찰은 영구 대가와 함께만 — `tests/insight.test.ts`). 저주는 3전투를 견딜 만한 크기로.
 - **유물 진화** (`evolutions.ts`, `reg.relics`에 `evolve: [재료1, 재료2]`): `rarity: 'rare'`, 재료는 보통 보상에서 나오는 유물(흔함·드묾·희귀, 수호자·특별 유물 아님)이고 한 재료는 진화 한 곳에만. 효과는 두 재료의 효과를 이어받아 더 세게 — 재료의 훅을 옮겨 적는다 (재료는 사라진다). 이름의 번호는 두 재료의 번호를 잇는다 ('No.52·43'). 보통 보상·상점에는 나오지 않는다 (`rollRelic`이 뺀다).
 

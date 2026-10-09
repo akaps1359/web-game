@@ -10,7 +10,9 @@ import {
   evolutionsReady,
   forgoChoice,
   gainOmen,
+  lootRarity,
   moreAffixes,
+  OMEN_RARITY,
   omensOf,
   rollAffixes,
   rollPacts,
@@ -118,35 +120,59 @@ describe('성장 속도', () => {
   });
 });
 
-describe('징조: 고르지 않고 지나치면', () => {
-  it('보상을 만들 때 건너뛰면 받을 징조가 정해져 보인다 — 지나치면 받고, 고르면 받지 않는다', () => {
+describe('징조: 희귀 이상의 보상을 고르지 않고 지나치면', () => {
+  it('희귀 이상(희귀·특수·보스·금기·창세)의 후보가 있는 보상만 징조를 내민다 — 성장 억제', () => {
     alwaysChoice();
+    let withOmen = 0;
+    let without = 0;
+    for (let s = 0; s < 40; s++) {
+      const r = run(1 + (s % 4), 700 + s);
+      const rw = win(r, enc(r.act, s % 2 ? 'elite' : 'normal').id);
+      const rare = rw.choice!.some((x) => OMEN_RARITY.includes(lootRarity(x)!));
+      expect(!!rw.omen, `${s}: ${rw.choice!.map((x) => `${x.kind}:${x.id}:${lootRarity(x)}`).join(',')}`).toBe(rare);
+      if (rw.omen) withOmen++;
+      else without++;
+    }
+    expect(withOmen).toBeGreaterThan(0);
+    expect(without).toBeGreaterThan(0);
+    expect(OMEN_RARITY).toEqual(['rare', 'special', 'boss', 'forbidden', 'genesis']);
+  });
+
+  it('보상을 만들 때 건너뛰면 받을 징조가 정해져 보인다 — 지나치면 받고, 고르면 받지 않는다 (수호자 보상: 보스 유물)', () => {
     const a = run();
-    const rw = win(a, enc(1, 'normal').id);
-    expect(rw.choice?.length).toBeGreaterThan(0);
+    const rw = win(a, enc(1, 'boss').id);
+    expect(rw.choice!.some((x) => lootRarity(x) === 'boss')).toBe(true);
     expect(OMENS.has(rw.omen!)).toBe(true);
     const omen = rw.omen!;
     expect(closeReward(a)).toBe(true);
     expect(omensOf(a)).toEqual([omen]);
 
     const b = run();
-    const rw2 = win(b, enc(1, 'normal').id);
+    const rw2 = win(b, enc(1, 'boss').id);
     expect(rw2.omen).toBe(omen);
-    const idx = rw2.choice!.findIndex((x) => x.kind !== 'upgrade');
-    expect(chooseLoot(b, idx, b.skills[0]?.uid)).toBeNull();
+    expect(chooseLoot(b, 0)).toBeNull();
     closeReward(b);
     expect(omensOf(b)).toEqual([]);
   });
 
+  it('흔한 후보뿐인 보상은 지나쳐도 아무것도 없다', () => {
+    const r = run();
+    win(r, enc(1, 'normal').id);
+    r.reward!.choice = r.reward!.choice?.length ? r.reward!.choice : [{ kind: 'upgrade', id: 'upgrade' }];
+    delete r.reward!.omen;
+    expect(forgoChoice(r)).toBeNull();
+    closeReward(r);
+    expect(omensOf(r)).toEqual([]);
+  });
+
   it('지닐 수 있는 징조는 GROWTH.omenCap개 — 가득 차면 지나쳐도 받지 못한다 (보상은 닫힌다)', () => {
-    alwaysChoice();
     const r = run();
     // 전투·보상에서 이루어지지 않는 것들로 채운다
     const ids = ['omen-merchant', 'omen-rest', 'omen-smith', 'omen-relic'];
     expect(GROWTH.omenCap).toBeLessThan(ids.length);
     for (let i = 0; i < GROWTH.omenCap; i++) expect(gainOmen(r, ids[i])).toBe(true);
     expect(gainOmen(r, ids[GROWTH.omenCap])).toBe(false);
-    win(r, enc(1, 'normal').id);
+    win(r, enc(1, 'boss').id);
     expect(r.reward!.omen).toBeDefined();
     expect(forgoChoice(r)).toBeNull();
     expect(r.reward!.chosen).toBe(true);
@@ -154,12 +180,12 @@ describe('징조: 고르지 않고 지나치면', () => {
   });
 
   it('지닌 징조와 같은 것은 건너뛰기 징조로 나오지 않는다', () => {
-    alwaysChoice();
     for (let s = 0; s < 12; s++) {
       const r = run(1, 300 + s);
       gainOmen(r, 'omen-merchant');
       gainOmen(r, 'omen-rest');
-      const rw = win(r, enc(1, 'normal').id);
+      const rw = win(r, enc(1, 'boss').id);
+      expect(rw.omen).toBeDefined();
       expect(['omen-merchant', 'omen-rest']).not.toContain(rw.omen);
     }
   });
@@ -485,11 +511,37 @@ describe('성장 이벤트', () => {
     for (const id of ['g-notary', 'g-seer']) {
       const r = run(3, 51);
       r.player.gold = 500;
+      gainOmen(r, 'omen-gold');
       startEvent(r, id);
       const a = eventView(r)!.choices.map((c) => c.label);
       const b = eventView(r)!.choices.map((c) => c.label);
       expect(b).toEqual(a);
     }
+  });
+
+  it('점쟁이는 지닌 징조를 바꿔 줄 뿐 — 새 징조를 만들지 않는다 (징조는 희귀 이상의 보상을 지나칠 때만)', () => {
+    const def = EVENTS.get('g-seer')!;
+    const none = run(2, 53);
+    expect(def.when!(none)).toBe(false);
+    const r = run(2, 53);
+    r.player.gold = 500;
+    gainOmen(r, 'omen-gold');
+    expect(def.when!(r)).toBe(true);
+    const got = r.stats.omens;
+    startEvent(r, 'g-seer');
+    const v = eventView(r)!;
+    const i = v.choices.findIndex((c) => !c.disabled && c.label.startsWith('바꾼다'));
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(chooseEvent(r, i)).toBeNull();
+    expect(r.event!.done).toBe(true);
+    expect(omensOf(r).length).toBe(1);
+    expect(omensOf(r)[0]).not.toBe('omen-gold');
+    expect(r.stats.omens).toBe(got);
+    expect(r.player.gold).toBeLessThan(500);
+    // 지닌 징조가 없으면 (이벤트가 열린 뒤 사라졌어도) 지나가기만
+    const empty = run(2, 54);
+    startEvent(empty, 'g-seer');
+    expect(eventView(empty)!.choices.length).toBe(1);
   });
 
   it('공증인: 서명하면 계약이 맺어진다', () => {

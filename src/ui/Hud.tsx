@@ -96,7 +96,7 @@ function GrowthChip() {
       body: [
         ...omens.map((id) => `【${OMENS.get(id)?.name}】 ${OMENS.get(id)?.desc}`),
         ...pacts.map((p) => `【계약 · ${PACTS.get(p.curse)?.name} → ${PACTS.get(p.boon)?.name}】 저주가 ${p.left}전투 남았다: ${PACTS.get(p.curse)?.desc}. 그 뒤로 ${PACTS.get(p.boon)?.desc}`),
-        omens.length ? `징조는 ${GROWTH.omenCap}개까지 지닌다. 보상을 고르지 않고 떠나면 얻는다.` : '',
+        omens.length ? `징조는 ${GROWTH.omenCap}개까지 지닌다. 희귀 이상의 후보가 나온 보상을 고르지 않고 떠나면 얻는다.` : '',
       ]
         .filter(Boolean)
         .join('\n'),
