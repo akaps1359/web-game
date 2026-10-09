@@ -8,17 +8,13 @@ reg.consumables([
     name: '조명탄',
     icon: 'gi:cross-flare',
     rarity: 'common',
-    desc: '적 전체의 약점을 밝히고 취약 1',
+    desc: '적 전체의 약점과 급소를 밝히고 취약 1',
     combat: true,
     target: 'all',
     use(_run, c) {
       if (!c) return;
       for (const e of c.alive) {
-        for (const w of e.weak) {
-          if (e.known.includes(w)) continue;
-          e.known.push(w);
-          c.emit({ t: 'reveal', uid: e.uid, dtype: w });
-        }
+        c.expose(e);
         c.apply(e, 'vuln', 1, c.p);
       }
     },

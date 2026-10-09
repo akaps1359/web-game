@@ -115,13 +115,16 @@ reg.relics([
     icon: 'gi:raven',
     rarity: 'rare',
     evolve: ['cracked-glasses', 'x-raven-feather'],
-    desc: '전투 시작 시 모든 적에게 취약 2, 적마다 약점 하나가 드러난다',
+    desc: '전투 시작 시 모든 적에게 취약 2, 적마다 약점 하나가 드러난다 (약점을 다 알면 급소가)',
     hooks: {
       onCombatStart(c) {
         for (const e of c.alive) {
           c.apply(e, 'vuln', 2, c.p);
           const hidden = e.weak.filter((w) => !e.known.includes(w));
-          if (!hidden.length) continue;
+          if (!hidden.length) {
+            c.revealPoint(e);
+            continue;
+          }
           const w = c.rng.pick(hidden);
           e.known.push(w);
           c.emit({ t: 'reveal', uid: e.uid, dtype: w });

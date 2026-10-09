@@ -4,6 +4,7 @@ import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
 import { BUILTIN_MOVES, DISGUISE_REVEAL, GUARD, HIDDEN_REVEAL, breakProfile, lvlVal, shownIntentOf, toleranceGain } from '../../engine/combat';
 import { DEPTH, MUTATION, aegisCap, aegisLeft, aegisPoiseCap, canAwaken } from '../../content/depth';
+import { WEAKPOINT, weakPointKnown, weakPointOf, wpOpen } from '../../engine/weakpoint';
 import type { CombatChoice, EnemyUnit, Intent, IntentKind, Objective, SkillDef, TurnNote } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
 import { layoutEnemies, type Anchor } from '../../render/battle';
@@ -27,6 +28,7 @@ import {
   INTENT_WAIT,
   RARITY_COLOR,
   SCHOOL_COLOR,
+  WP_COLOR,
   josa,
   skillDesc,
   statusText,
@@ -985,6 +987,14 @@ function EnemyOverlay({
                   <span class="w">?</span>
                 ),
               )}
+              {/* 급소: 둥근 금빛 고리 — 드러났으면 그 속성, 아니면 ? (engine/weakpoint.ts) */}
+              {e.wp === '?' ? (
+                <span class="w wp">?</span>
+              ) : e.wp ? (
+                <span class="w wp on">
+                  <Icon name={DMG_ICON[e.wp]} size={11} color={DMG_COLOR[e.wp]} />
+                </span>
+              ) : null}
             </div>
           </div>
           <StatusRow st={e.st} max={Math.max(64, Math.min(130, (a.slot ?? 130) - 4))} muts={real.affix} />
@@ -1040,6 +1050,9 @@ function enemyTip(e: EnemyUnit) {
   const gap = gapView(e.uid);
   const cap = aegisCap(e);
   const gain = e.maxPoise > 0 ? toleranceGain(def, e.mem.tol ?? 0) : 0;
+  const run = store.run;
+  const wp = run ? weakPointOf(run, e.def) : null;
+  const wpKnown = !!run && weakPointKnown(run, e.def);
   showTip({
     title: e.name,
     sub: `${def.tier === 'boss' ? '수호자' : def.tier === 'elite' ? '정예' : def.tier === 'minion' ? '하수인' : '일반'} · ${e.row === 0 ? '전열' : '후열'}`,
@@ -1064,6 +1077,14 @@ function enemyTip(e: EnemyUnit) {
         label: '약점',
         value: e.weak.map((w) => (e.known.includes(w) ? DMG_NAME[w] : '?')).join(' · '),
       },
+      ...(wp
+        ? [
+            {
+              label: '급소',
+              value: wpKnown ? `${DMG_NAME[wp]} · 피해 ×${WEAKPOINT.mult}, 버팀 하나 더 (이번 여정 내내)` : '숨어 있다 — 들여다보는 이벤트·관찰·조명탄 같은 것으로 드러난다 (드러나야 노릴 수 있다)',
+            },
+          ]
+        : []),
       ...(Object.keys(e.resist).length
         ? [{ label: '저항', value: Object.entries(e.resist).map(([k, v]) => `${DMG_NAME[k as keyof typeof DMG_NAME]} ${Math.round((1 - (v ?? 1)) * 100)}%`).join(', ') }]
         : []),
@@ -1133,6 +1154,13 @@ function SkillButton({ r }: { r: string }) {
   const hue = info.basic ? '#a39a88' : SCHOOL_COLOR[def.school];
   // 턴마다 바뀌는 피해 속성 (굴절광): 이번 턴의 것
   const now = def.typeNow?.(c);
+  // 드러난 급소를 찌른다 (engine/weakpoint.ts): 고른 적(없으면 살아 있는 적 하나라도)의 드러난 급소가 이 속성이면 금빛 과녁
+  const dt = now ?? def.type;
+  // 급소 각인을 새긴 공격은 드러난 급소면 무엇이든 그 속성으로 친다
+  const wpRune = owned.runes.includes('wp-rune') && def.tags.includes('attack');
+  const wpMark =
+    !cd &&
+    (def.target === 'single' && s.focus ? c.alive.filter((e) => e.uid === s.focus) : c.alive).some((e) => (wpRune ? weakPointKnown(c.run, e.def) && !!weakPointOf(c.run, e.def) : !!dt && wpOpen(c.run, e.def, dt)));
   // 기억을 빼앗기면 이름이 뒤섞여 보인다 (기본기는 그대로)
   const scrambled = !!(s.snap?.ui ?? c.s.vars)['ui:scramble'] && !info.basic;
   const tap = () => {
@@ -1156,7 +1184,7 @@ function SkillButton({ r }: { r: string }) {
   const gapWax = gh ? `--g:${gh.color};--gw-hi:${mix(gh.color, '#1a0d08', 0.18)};--gw:${mix(gh.color, '#1a0d08', 0.45)};--gw-lo:${mix(gh.color, '#080402', 0.72)}` : '';
   return (
     <button
-      class={`skill ${sel ? 'sel' : ''} ${why && !cd ? 'off' : ''} ${cd > 0 ? 'cooling' : ''} ${info.basic ? 'basic' : ''} ${gh ? 'gap' : ''}`}
+      class={`skill ${sel ? 'sel' : ''} ${why && !cd ? 'off' : ''} ${cd > 0 ? 'cooling' : ''} ${info.basic ? 'basic' : ''} ${gh ? 'gap' : ''} ${wpMark ? 'wp' : ''}`}
       style={wax}
       {...press(tap, () => skillTip(def, owned.lvl, owned.runes, c.makeUse(info), cost, c.cdOf(info), gh))}
     >
@@ -1181,6 +1209,11 @@ function SkillButton({ r }: { r: string }) {
         {owned.lvl > 0 ? '+' : ''}
       </span>
       {owned.runes.length > 0 && <span class="rune-dot" />}
+      {wpMark && (
+        <span class="wp-mark" aria-label="드러난 급소를 찌른다">
+          <Icon name="gi:bullseye" size={13} color={WP_COLOR} />
+        </span>
+      )}
       {cd > 0 && (
         <span class="cd">
           <b>{cd >= 99 ? '✕' : cd}</b>

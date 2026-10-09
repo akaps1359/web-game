@@ -786,15 +786,9 @@ reg.skills([
     target: 'self',
     tags: ['insight'],
     vals: { san: 4 },
-    desc: '적 전체의 약점이 드러난다. 정신력 -{san}',
+    desc: '적 전체의 약점과 급소가 드러난다. 정신력 -{san}',
     run: (c, u) => {
-      for (const e of c.alive) {
-        for (const w of e.weak) {
-          if (e.known.includes(w)) continue;
-          e.known.push(w);
-          c.emit({ t: 'reveal', uid: e.uid, dtype: w });
-        }
-      }
+      for (const e of c.alive) c.expose(e);
       c.loseSanity(u.v('san'));
     },
   }),

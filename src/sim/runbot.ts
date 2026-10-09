@@ -356,6 +356,8 @@ export const botEssence: { mode: 'skill' | 'core' | 'auto' } = { mode: 'auto' };
 
 /** 봇의 성장 개편 행동 (SIM_GROWTH로 끈다): 계약을 맺는가 */
 export const botGrowth = { pacts: true };
+/** 급소를 일부러 찾는 봇 (SIM_BOT_WP=1): '급소를 알게 된다' 선택지가 있으면 그것을 고른다 — 밝히는 값을 잴 때 (engine/weakpoint.ts) */
+export const botWp = { seek: false };
 
 /** 봇이 도전하는 심연 단계 (밸런스 시뮬레이션의 SIM_ASC) */
 export const botAsc = { value: 0 };
@@ -549,7 +551,9 @@ export function simulateRun(seed: number, origin = 'soldier', maxSteps = 4000, o
             const safe = ok.filter((x) => !/정신력 -/.test(x.c.hint ?? ''));
             if (safe.length) ok = safe;
           }
-          const pickIdx = ok.length ? ok[(seed + step) % ok.length].i : 0;
+          let pickIdx = ok.length ? ok[(seed + step) % ok.length].i : 0;
+          const wp = botWp.seek ? ok.find((x) => /급소/.test(x.c.hint ?? '')) : undefined;
+          if (wp) pickIdx = wp.i;
           chooseEvent(run, pickIdx);
         } else leaveEvent(run);
         break;

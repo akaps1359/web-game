@@ -168,6 +168,8 @@ export interface RunState {
   omens?: string[];
   /** 맺은 계약: 저주가 left전투 남았다 (0이면 축복이 이루어졌다). 예전 저장에는 없다 */
   pacts?: { curse: string; boon: string; left: number }[];
+  /** 이번 판에 급소가 드러난 종족 (engine/weakpoint.ts — 판을 넘어 남지 않는다). 예전 저장에는 없다 */
+  weakPoints?: string[];
 }
 
 export const MAX_SLOTS = 7;
@@ -1049,14 +1051,8 @@ function startOmens(run: RunState, c: Combat) {
     c.emit({ t: 'text', uid: 'p', text: '수호의 징조', tone: 'good' });
   }
   if (useOmen(run, 'omen-sight')) {
-    for (const e of c.alive) {
-      for (const w of e.weak) {
-        if (e.known.includes(w)) continue;
-        e.known.push(w);
-        c.emit({ t: 'reveal', uid: e.uid, dtype: w });
-      }
-    }
-    c.emit({ t: 'text', text: '간파의 징조: 약점이 모두 드러났다', tone: 'good' });
+    for (const e of c.alive) c.expose(e);
+    c.emit({ t: 'text', text: '간파의 징조: 약점과 급소가 모두 드러났다', tone: 'good' });
   }
   if (useOmen(run, 'omen-haste')) {
     c.s.ap += 1;

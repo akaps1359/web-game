@@ -4,6 +4,8 @@ import type { Combat } from './combat';
 
 export type DmgType = 'slash' | 'pierce' | 'blunt' | 'fire' | 'arcane' | 'void';
 export const DMG_TYPES: readonly DmgType[] = ['slash', 'pierce', 'blunt', 'fire', 'arcane', 'void'];
+/** 속성 이름 (콘텐츠의 결과 문장용 — 화면은 ui/text DMG_NAME) */
+export const DMG_KO: Record<DmgType, string> = { slash: '참격', pierce: '관통', blunt: '타격', fire: '화염', arcane: '비전', void: '공허' };
 
 export type School = 'blade' | 'firearm' | 'occult' | 'alchemy' | 'resolve' | 'forbidden' | 'essence' | 'neutral';
 
@@ -259,6 +261,8 @@ export interface DamageCtx {
   killed: boolean;
   broke: boolean;
   weakHit: boolean;
+  /** 급소를 찔렀다 (engine/weakpoint.ts — 판마다 종족마다 숨은 속성) */
+  wpHit: boolean;
   crit: boolean;
 }
 

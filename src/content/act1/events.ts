@@ -192,7 +192,7 @@ reg.events([
           },
           {
             label: '귀를 기울인다',
-            hint: '이 층 적들의 약점을 알게 된다, 정신력 -12',
+            hint: '이 층 적들의 약점과 급소를 알게 된다, 정신력 -12',
             go: (r, e) => {
               const names = learnWeak(r, floorFoes(r));
               finish(e, '목소리는 이 물길에 사는 것들이 무엇을 견디지 못하는지 하나하나 일러 주었다.' + weakNote(names) + (names.length ? sanity(r, 12) : ''));
@@ -299,7 +299,7 @@ reg.events([
         choices: [
           {
             label: '끝까지 읽는다',
-            hint: '이 층 수호자의 약점을 알게 된다, 정신력 -5',
+            hint: '이 층 수호자의 약점과 급소를 알게 된다, 정신력 -5',
             go: (r, e) => {
               const names = learnWeak(r, floorGuardian(r));
               finish(

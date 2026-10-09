@@ -364,7 +364,7 @@ reg.equips([
     icon: 'gi:sundial',
     slot: 'trinket',
     rarity: 'genesis',
-    desc: `턴마다 창세의 하루가 흐른다. 1일 빛: 적 전체의 약점이 드러난다 · 2일 궁창: 보호막 ${DIAL.barrier[0]} · 3일 뭍: 체력 ${DIAL.heal[0]} 회복 · 4일 해와 별: 이번 턴 공격 피해 +${DIAL.frenzy[0]}% · 5일 생명: 행동력 +${DIAL.ap} · 6일 사람: 힘 +${DIAL.str} · 7일 안식: 정신력 +${DIAL.san[0]}, 재사용 대기가 모두 풀린다. 여드레째에 다시 첫날. 강화마다 보호막 +${DIAL.barrier[1]}, 회복 +${DIAL.heal[1]}, 피해 +${DIAL.frenzy[1]}%, 정신력 +${DIAL.san[1]}`,
+    desc: `턴마다 창세의 하루가 흐른다. 1일 빛: 적 전체의 약점과 급소가 드러난다 · 2일 궁창: 보호막 ${DIAL.barrier[0]} · 3일 뭍: 체력 ${DIAL.heal[0]} 회복 · 4일 해와 별: 이번 턴 공격 피해 +${DIAL.frenzy[0]}% · 5일 생명: 행동력 +${DIAL.ap} · 6일 사람: 힘 +${DIAL.str} · 7일 안식: 정신력 +${DIAL.san[0]}, 재사용 대기가 모두 풀린다. 여드레째에 다시 첫날. 강화마다 보호막 +${DIAL.barrier[1]}, 회복 +${DIAL.heal[1]}, 피해 +${DIAL.frenzy[1]}%, 정신력 +${DIAL.san[1]}`,
     hooks: {
       onTurnStart(c, s) {
         const day = ((c.s.turn - 1) % 7) + 1;
@@ -374,13 +374,7 @@ reg.equips([
         c.emit({ t: 'text', uid: 'p', text: `창세 ${day}일째: ${DAYS[day - 1]}`, tone: 'good' });
         switch (day) {
           case 1:
-            for (const e of c.alive) {
-              for (const w of e.weak) {
-                if (e.known.includes(w)) continue;
-                e.known.push(w);
-                c.emit({ t: 'reveal', uid: e.uid, dtype: w });
-              }
-            }
+            for (const e of c.alive) c.expose(e);
             break;
           case 2:
             c.apply(c.p, 'barrier', dial('barrier', lv), c.p);

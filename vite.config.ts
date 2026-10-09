@@ -138,6 +138,7 @@ export default defineConfig(({ command }) => ({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    setupFiles: ['tests/setup.ts'],
     // 봇이 전투를 여러 번 치르는 테스트는 바쁜 기기(배포 서버 등)에서 기본 5초를 넘길 수 있다
     testTimeout: 30_000,
   },

@@ -535,14 +535,10 @@ reg.skills([
     target: 'single',
     tags: ['debuff'],
     vals: { vuln: [2, 3] },
-    desc: '대상의 약점을 모두 드러내고 취약 {vuln}',
+    desc: '대상의 약점과 급소를 모두 드러내고 취약 {vuln}',
     run: (c, u, t) => {
       if (!t) return;
-      for (const w of t.weak) {
-        if (t.known.includes(w)) continue;
-        t.known.push(w);
-        c.emit({ t: 'reveal', uid: t.uid, dtype: w });
-      }
+      c.expose(t);
       c.apply(t, 'vuln', u.v('vuln'), c.p);
     },
   }),

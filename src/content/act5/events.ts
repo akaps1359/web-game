@@ -1,7 +1,8 @@
 import { MADNESS, reg, SKILLS } from '../../engine/registry';
 import { finish } from '../../engine/events';
 import { advanceTime, floorSignal, revealPath } from '../../engine/dungeon';
-import { DMG_TYPES } from '../../engine/types';
+import { DMG_KO, DMG_TYPES } from '../../engine/types';
+import { revealWeakPoint, weakPointOf } from '../../engine/weakpoint';
 import {
   canUpgradeSkill,
   gainSanityRun,
@@ -130,10 +131,12 @@ reg.events([
         choices: [
           {
             label: '숨어서 노랫말을 엿듣는다',
-            hint: '별의 태아의 약점을 모두 알게 된다, 정신력 -12',
+            hint: '별의 태아의 약점과 급소를 모두 알게 된다, 정신력 -12',
             go: (r, e) => {
               r.knownWeak = { ...r.knownWeak, [FETUS]: [...DMG_TYPES] };
-              finish(e, '자장가는 태아의 세 모습을 노래하고 있었다. 잠든 몸, 깨어나는 알, 태어난 것. 그 틈새가 머릿속에 새겨졌다. (별의 태아의 약점 공개)' + sanity(r, 12));
+              revealWeakPoint(r, FETUS);
+              const wp = weakPointOf(r, FETUS);
+              finish(e, `자장가는 태아의 세 모습을 노래하고 있었다. 잠든 몸, 깨어나는 알, 태어난 것. 그 틈새가 머릿속에 새겨졌다. (별의 태아의 약점 공개${wp ? ` · 급소 ${DMG_KO[wp]}` : ''})` + sanity(r, 12));
             },
           },
           {
@@ -216,7 +219,7 @@ reg.events([
           },
           {
             label: '베개를 뜯어 본다',
-            hint: '이 층 적들의 약점을 알게 된다, 정신력 -10',
+            hint: '이 층 적들의 약점과 급소를 알게 된다, 정신력 -10',
             go: (r, e) => {
               const names = learnWeak(r, floorFoes(r));
               finish(

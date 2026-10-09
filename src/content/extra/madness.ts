@@ -54,10 +54,10 @@ reg.madness([
     name: '각성: 예지',
     icon: 'gi:sheikah-eye',
     virtue: true,
-    desc: '적의 숨겨진 의도와 약점을 모두 꿰뚫어 본다',
+    desc: '적의 숨겨진 의도와 약점·급소를 모두 꿰뚫어 본다',
     hooks: {
       onCombatStart(c) {
-        for (const e of c.alive) e.known = [...e.weak];
+        for (const e of c.alive) c.expose(e, true);
       },
       onTurnStart(c) {
         let changed = false;
@@ -66,10 +66,7 @@ reg.madness([
             e.intent.hidden = false;
             changed = true;
           }
-          if (e.known.length < e.weak.length) {
-            e.known = [...e.weak];
-            changed = true;
-          }
+          if (c.expose(e, true)) changed = true;
         }
         if (changed) c.emit({ t: 'text', uid: 'p', text: '예지', tone: 'eldritch' });
       },

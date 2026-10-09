@@ -40,10 +40,11 @@ import type {
 import type { RunState } from './run';
 import { abyssDmgMult, abyssHpMult, abyssRise, abyssSources } from './abyss';
 import { affixHooks, pactHooks } from './growth';
+import { WEAKPOINT, revealWeakPoint, weakPointKnown, weakPointOf, wpOpen } from './weakpoint';
 
 // ───────────── 통찰 ─────────────
 // 대가 없이 들어오지 않는다(영구 대가를 치르는 선택·금기·수호자 유물). 1점마다 보이는 것이 늘어난다.
-//   1: 전투를 시작할 때 적마다 아직 모르는 약점 하나 / 2: 약점 전부 / 3: 숨겨진·거짓 의도 / 4: 4층의 어둠·5층의 환영
+//   1: 전투를 시작할 때 적마다 아직 모르는 약점 하나 / 2: 약점 전부 / 3: 숨겨진·거짓 의도, 이번 판의 급소(engine/weakpoint.ts) / 4: 4층의 어둠·5층의 환영
 //   5: 가장 깊은 속임수(검은 파라오의 자비·꿈의 문지기의 문). 문턱은 콘텐츠 상수 — 설명은 ui/text.ts의 INSIGHT_STEPS
 //   약점 공격 피해는 누구나 +25%, 통찰 1점마다 +6% 더 (8까지). 대가는 받는 정신 피해 +5%/통찰 (6에서 멈춘다)
 
@@ -58,13 +59,15 @@ export const HIDDEN_REVEAL = 3;
  * 0.1이면 시작 덱으로 2층 정예를 못 넘는 출신이 생겨(출신 공정성 테스트) 0.25
  */
 export const WEAK_BONUS = 0.25;
+/** 시뮬레이터가 바꿔 볼 약점 보너스 (SIM_WEAK — 평소엔 WEAK_BONUS 그대로) */
+export const WEAK_TUNE = { bonus: WEAK_BONUS };
 /** 통찰 1당 약점 공격 피해 보너스 / 그 상한 통찰 */
 export const INSIGHT_WEAK = 0.06;
 export const INSIGHT_WEAK_CAP = 8;
 
 /** 약점 공격 피해 배율: 1 + 25% + 통찰×6% (통찰은 8까지) */
 export function weakMult(insight: number): number {
-  return 1 + WEAK_BONUS + INSIGHT_WEAK * Math.max(0, Math.min(INSIGHT_WEAK_CAP, insight));
+  return 1 + WEAK_TUNE.bonus + INSIGHT_WEAK * Math.max(0, Math.min(INSIGHT_WEAK_CAP, insight));
 }
 
 // ───────────── 버팀과 붕괴 (2026-10 붕괴 개편, 붕괴: 스타레일의 강인성 참고) ─────────────
@@ -195,6 +198,8 @@ export interface Snap {
     dead: boolean;
     row: 0 | 1;
     known: DmgType[];
+    /** 급소 (engine/weakpoint.ts): 드러났으면 그 속성, 숨어 있으면 '?', 없으면 null */
+    wp: DmgType | '?' | null;
   }[];
   cd: Record<string, number>;
   /** 화면 상태 (vars의 'ui:' 값) — 연출이 재생되는 순서에 맞춰 화면이 바뀌게 */
@@ -216,6 +221,8 @@ export type CombatEvent = (
       hpLoss: number;
       dtype: DmgType | 'true';
       weak: boolean;
+      /** 급소를 찔렀다 (engine/weakpoint.ts) */
+      wp?: boolean;
       crit: boolean;
       attack: boolean;
       tags: string[];
@@ -223,7 +230,8 @@ export type CombatEvent = (
   | { t: 'block'; uid: string; amount: number }
   | { t: 'heal'; uid: string; amount: number }
   | { t: 'status'; uid: string; id: string; n: number }
-  | { t: 'reveal'; uid: string; dtype: DmgType }
+  /** 약점 발견. wp: 이번 판의 급소가 드러났다 (engine/weakpoint.ts) */
+  | { t: 'reveal'; uid: string; dtype: DmgType; wp?: boolean }
   /** 붕괴. turns: 행동을 건너뛰는 횟수 · vuln: 붕괴 중 받는 피해 배율 */
   | { t: 'break'; uid: string; turns: number; vuln: number }
   | { t: 'recover'; uid: string }
@@ -277,8 +285,11 @@ export const BUILTIN_MOVES: Record<string, MoveDef> = {
 
 export const MAX_ROW = 3;
 
-/** 층별 적 성장 배율 (밸런스 조절용) — 인덱스 = 층 */
-export const ACT_HP_MULT = [1, 1, 1.25, 1.65, 2.2, 2.0];
+/**
+ * 층별 적 성장 배율 (밸런스 조절용) — 인덱스 = 층.
+ * 2026-10-09 급소(engine/weakpoint.ts)를 넣으며 [1, 1, 1.25, 1.65, 2.2, 2.0]에서 올렸다 — 밝힌 급소는 깊이 가는 쪽에 더 걸려 4·5층에 더 (GDD 10.6)
+ */
+export const ACT_HP_MULT = [1, 1, 1.27, 1.7, 2.37, 2.16];
 /** 수호자(층 수호자·계층군주) 체력 배율 — 수호자 난이도 조절용 */
 export const BOSS_HP_MULT = { value: 1.1 };
 /**
@@ -450,6 +461,7 @@ export class Combat {
         dead: e.dead,
         row: e.row,
         known: [...e.known],
+        wp: weakPointKnown(this.run, e.def) ? weakPointOf(this.run, e.def) : weakPointOf(this.run, e.def) ? '?' : null,
       })),
       cd: { ...this.s.cd },
       ui: this.uiVars(),
@@ -575,6 +587,7 @@ export class Combat {
       killed: false,
       broke: false,
       weakHit: false,
+      wpHit: false,
       crit: false,
     };
   }
@@ -620,6 +633,8 @@ export class Combat {
           if (d.src === this.p && d.attack && d.tgt.weak.includes(d.type) && (!this.previewing || d.tgt.known.includes(d.type))) {
             d.mult *= weakMult(this.p.insight);
           }
+          // 급소 (engine/weakpoint.ts): 판마다 종족마다 숨은 속성 하나 — 드러난 급소만 노릴 수 있다 (미리보기도 같다)
+          if (d.src === this.p && d.attack && wpOpen(this.run, d.tgt.def, d.type)) d.mult *= WEAKPOINT.mult;
         }
       }
     }
@@ -691,11 +706,14 @@ export class Combat {
           this.emit({ t: 'reveal', uid: t.uid, dtype: d.type });
         }
       }
+      // 급소: 드러난 급소를 찌르면 버팀이 더 깎인다 (숨어 있는 동안은 맞혀도 모른다 — 들여다봐야 드러난다)
+      if (counts && d.src === this.p && wpOpen(this.run, t.def, d.type)) d.wpHit = true;
       if (counts && t.broken === 0 && t.maxPoise > 0) {
-        let dec = (d.weakHit ? 1 : 0) + d.poiseBonus;
+        let dec = (d.weakHit ? 1 : 0) + (d.wpHit ? WEAKPOINT.poise : 0) + d.poiseBonus;
         // 약점이 아닌 내 공격도 GUARD.chip번 맞히면 버팀 -1 (약점을 못 치는 덱도 붕괴시킬 수 있게). 약점 타격처럼 타격마다 센다
         // (기술 사용마다 세 보니 여러 번 때리는 사냥꾼만 크게 약해졌다: 승률 군인 57 · 사냥꾼 41 · 학자 41%)
-        if (!d.weakHit && d.attack && d.src === this.p) {
+        // 급소 타격은 약점 타격처럼 이미 버팀을 깎으니 세지 않는다
+        if (!d.weakHit && !d.wpHit && d.attack && d.src === this.p) {
           const k = (t.chip ?? 0) + 1;
           if (k >= GUARD.chip) {
             t.chip = 0;
@@ -741,6 +759,7 @@ export class Combat {
       hpLoss: d.hpLoss,
       dtype: d.type,
       weak: d.weakHit,
+      wp: d.wpHit || undefined,
       crit: d.crit,
       attack: d.attack,
       tags: d.tags,
@@ -1037,12 +1056,33 @@ export class Combat {
     for (const e of this.alive) this.senseWeak(e);
   }
 
+  /** 이번 판에 이 종족의 급소를 드러낸다 (engine/weakpoint.ts). quiet면 연출 없이. 새로 드러났으면 true */
+  revealPoint(e: EnemyUnit, quiet = false): boolean {
+    if (!revealWeakPoint(this.run, e.def)) return false;
+    if (!quiet) this.emit({ t: 'reveal', uid: e.uid, dtype: weakPointOf(this.run, e.def)!, wp: true });
+    return true;
+  }
+
+  /** 약점을 모두 드러낸다 — 이번 판의 급소까지 (조명탄·기묘한 우상·간파의 징조 등). quiet면 연출 없이. 새로 드러난 것이 있으면 true */
+  expose(e: EnemyUnit, quiet = false): boolean {
+    let any = false;
+    for (const w of e.weak) {
+      if (e.known.includes(w)) continue;
+      e.known.push(w);
+      if (!quiet) this.emit({ t: 'reveal', uid: e.uid, dtype: w });
+      any = true;
+    }
+    return this.revealPoint(e, quiet) || any;
+  }
+
   /**
    * 통찰로 꿰뚫어 보는 약점: 2 이상이면 전부, 1이면 아직 모르는 약점 하나 (적마다 한 번 — e.mem.sensed).
    * 약점이 바뀌는 적(변신·가면·목숨)은 known을 다시 정하고 sensed를 지운 뒤 다시 부른다
    */
   senseWeak(e: EnemyUnit) {
     const n = this.p.insight;
+    // 통찰이 깊으면 이번 판의 급소도 보인다 (engine/weakpoint.ts)
+    if (n >= WEAKPOINT.insight) this.revealPoint(e, true);
     if (n >= 2) {
       e.known = [...e.weak];
       return;

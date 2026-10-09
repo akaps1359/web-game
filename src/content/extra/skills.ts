@@ -2,6 +2,7 @@ import { reg, STATUSES } from '../../engine/registry';
 import { lvlVal, type Combat } from '../../engine/combat';
 import type { EnemyUnit, SkillUse } from '../../engine/types';
 import { combo, dealt, detonate, guard, hit, needAmmo, reload, seized, skill, spendAmmo } from '../lib';
+import { weakPointKnown, weakPointOf } from '../../engine/weakpoint';
 
 /**
  * 재사용 대기 중인 다른 스킬 중 남은 대기가 가장 긴 것 (전투당 1회 스킬·대기를 되돌리는 스킬 제외).
@@ -809,11 +810,12 @@ reg.skills([
     makes: [],
     reads: [],
     vals: { dmg: [8, 10] },
-    desc: '대상의 밝혀진 약점 속성으로 {D:dmg} 피해 (모르면 타격)',
+    desc: '대상의 드러난 급소 속성으로 {D:dmg} 피해 (급소를 모르면 밝혀진 약점, 그것도 모르면 타격)',
     run: (c, u, t) => {
       if (!t) return;
       const known = t.known.filter((w) => t.weak.includes(w));
-      hit(c, u, t, { type: u.type ?? known[0] ?? 'blunt' });
+      const wp = weakPointKnown(c.run, t.def) ? weakPointOf(c.run, t.def) : null;
+      hit(c, u, t, { type: u.type ?? wp ?? known[0] ?? 'blunt' });
     },
   }),
   skill({

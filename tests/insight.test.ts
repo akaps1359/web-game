@@ -9,6 +9,7 @@ import {
   MAX_MADNESS,
   WEAK_BONUS,
   shownIntentOf,
+  weakMult,
   type Combat,
 } from '../src/engine/combat';
 import { CONSUMABLES, ENEMIES, EQUIPS, EVENTS, MADNESS, SKILLS } from '../src/engine/registry';
@@ -165,14 +166,16 @@ describe('약점 공격 피해: 누구나 +25%, 통찰 1당 +6% 더 (8까지)', 
   };
 
   it('약점을 찌르는 내 공격만 강해진다', () => {
-    expect(WEAK_BONUS).toBe(0.25);
     expect(INSIGHT_WEAK).toBe(0.06);
     expect(INSIGHT_WEAK_CAP).toBe(8);
-    expect(hitFor(0)).toBe(125);
-    expect(hitFor(1)).toBe(131);
-    expect(hitFor(5)).toBe(155);
-    expect(hitFor(8)).toBe(173);
-    expect(hitFor(12)).toBe(173); // 8에서 멈춘다
+    // 엔진과 같은 계산 (WEAK_BONUS를 바꿔도 맞게)
+    const at = (n: number) => Math.floor(100 * weakMult(n));
+    expect(weakMult(0)).toBeCloseTo(1 + WEAK_BONUS, 9);
+    expect(hitFor(0)).toBe(at(0));
+    expect(hitFor(1)).toBe(at(1));
+    expect(hitFor(5)).toBe(at(5));
+    expect(hitFor(8)).toBe(at(8));
+    expect(hitFor(12)).toBe(at(8)); // 8에서 멈춘다
     expect(hitFor(5, 'slash')).toBe(100); // 약점이 아니면 그대로
     expect(hitFor(5, 'fire', false)).toBe(100); // 공격이 아닌 피해는 그대로
   });
@@ -190,7 +193,7 @@ describe('약점 공격 피해: 누구나 +25%, 통찰 1당 +6% 더 (8까지)', 
     const { c, e } = target(5);
     expect(c.preview(c.p, e, 100, 'fire')).toBe(100);
     e.known = ['fire'];
-    expect(c.preview(c.p, e, 100, 'fire')).toBe(155);
+    expect(c.preview(c.p, e, 100, 'fire')).toBe(Math.floor(100 * weakMult(5)));
   });
 });
 
@@ -347,7 +350,7 @@ describe('이벤트: 통찰은 영구 대가를 치르고, 막마다 많아야 �
     expect(chooseEvent(run, idx)).toBeNull();
     expect(run.player.insight).toBe(0);
     expect(run.player.sanity).toBeLessThan(san);
-    expect(run.event!.result).toContain('약점을 알아냈다');
+    expect(run.event!.result).toContain('알아냈다:');
     const learned = Object.keys(run.learned.weak);
     expect(learned.length).toBeGreaterThan(3);
     for (const id of learned) expect(ENEMIES.get(id)!.act).toBe(2);

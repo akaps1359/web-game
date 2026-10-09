@@ -162,6 +162,8 @@ function tips() {
     // 깊은 층의 장치(가호·변이)를 처음 만났을 때
     if (r.combat?.enemies.some((e) => !e.dead && (e.affix?.length || (e.st.aegis ?? 0) > 0))) tipOnce('depth');
   } else if (r.screen === 'reward' && r.reward?.items.some((i) => i.kind === 'essence')) tipOnce('essence');
+  // 처음으로 급소가 드러났을 때 (engine/weakpoint.ts)
+  if ((r.screen === 'combat' || r.screen === 'dungeon') && r.weakPoints?.length) tipOnce('weakpoint');
 }
 
 function endOfRun() {

@@ -2,6 +2,7 @@ import { isEnemy, type Combat } from '../../engine/combat';
 import { reg } from '../../engine/registry';
 import type { DamageCtx, EnemyUnit } from '../../engine/types';
 import { aegisCap } from '../depth';
+import { weakPointKnown, weakPointOf } from '../../engine/weakpoint';
 
 /*
  * 장비 접사 (2026-10 성장 개편, engine/growth.ts): 장비를 얻을 때 층에 따라 붙는 무작위 특성 — 디아블로·데드 셀의 접사처럼
@@ -170,11 +171,15 @@ reg.affixes([
     icon: 'gi:third-eye',
     tier: 1,
     slots: ['trinket'],
-    desc: '전투 시작 시 무작위 적 하나의 약점 하나가 드러난다',
+    desc: '전투 시작 시 무작위 적 하나의 약점 하나가 드러난다 (약점을 다 알면 급소가)',
     hooks: {
       onCombatStart(c) {
         const hidden = c.alive.filter((e) => e.weak.some((w) => !e.known.includes(w)));
-        if (!hidden.length) return;
+        if (!hidden.length) {
+          const wp = c.alive.filter((e) => weakPointOf(c.run, e.def) && !weakPointKnown(c.run, e.def));
+          if (wp.length) c.revealPoint(c.rng.pick(wp));
+          return;
+        }
         const e = c.rng.pick(hidden);
         const w = c.rng.pick(e.weak.filter((x) => !e.known.includes(x)));
         e.known.push(w);

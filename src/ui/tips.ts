@@ -4,6 +4,7 @@ import { showTip } from './components';
 import { MAX_MADNESS } from '../engine/combat';
 import { guardWord } from './guard';
 import { DEPTH } from '../content/depth';
+import { WP_RULE } from './text';
 
 /** 처음 한 번만 보여주는 도움말 */
 const TIPS: Record<string, { title: string; icon: string; body: string }> = {
@@ -36,6 +37,11 @@ const TIPS: Record<string, { title: string; icon: string; body: string }> = {
     title: '심연 압력',
     icon: 'gi:evil-moon',
     body: `깊은 층의 존재들은 쉽게 무너지지 않는다.\n\n가호: 정예·수호자는 한 턴에 받는 피해와 깎이는 버팀에 상한이 있다 — 한 번에 몰아쳐 무너뜨리지 못한다. 붕괴시키면 피해 상한이 ${DEPTH.aegisBroken}배가 된다.\n\n붕괴 내성: 붕괴를 겪을 때마다 버팀 최대치가 늘어난다.\n\n변이: 이름표 아래 보라 테두리 표시. 누르면 무엇인지 나온다.\n\n각성: 층 수호자는 체력이 ${Math.round(DEPTH.awakenAt * 100)}% 아래로 내려가면 깨어나 심연을 모은다. 모으는 동안 붕괴시키면 끊긴다.`,
+  },
+  weakpoint: {
+    title: '급소',
+    icon: 'gi:bullseye',
+    body: `${WP_RULE}\n\n무엇을 들고 갈지, 어느 방으로 갈지 정할 때 드러난 급소를 떠올리자. 들여다볼 기회(이벤트·관찰·조명탄)가 오면 놓치지 말자.`,
   },
   dying: {
     title: '사경',

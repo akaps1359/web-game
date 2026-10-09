@@ -108,7 +108,7 @@ reg.events([
           },
           {
             label: '모서리 안을 들여다본다',
-            hint: '각도의 사냥개·각도의 왕의 약점을 알게 된다, 위험',
+            hint: '각도의 사냥개·각도의 왕의 약점과 급소를 알게 된다, 위험',
             go: (r, e) => {
               const note = weakNote(learnWeak(r, ANGLES));
               if (rng(r, 'event').chance(0.5)) finish(e, '모서리 너머로 굽은 시간이 보였다. 그 속을 헤매는 것들이 어디가 무른지도. 다행히 그것들은 아직 이쪽을 보지 못했다.' + note + sanity(r, 6));
@@ -200,7 +200,7 @@ reg.events([
           },
           {
             label: '원형질을 빚는 장면을 들여다본다',
-            hint: '쇼고스들의 약점을 알게 된다, 정신력 -8',
+            hint: '쇼고스들의 약점과 급소를 알게 된다, 정신력 -8',
             go: (r, e) => {
               const names = learnWeak(r, SHOGGOTHS());
               finish(
@@ -376,7 +376,7 @@ reg.events([
           },
           {
             label: '해부 기록을 읽는다',
-            hint: '이 층 적들의 약점을 알게 된다, 정신력 -10',
+            hint: '이 층 적들의 약점과 급소를 알게 된다, 정신력 -10',
             go: (r, e) => {
               const names = learnWeak(r, floorFoes(r));
               finish(

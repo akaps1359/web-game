@@ -2,6 +2,7 @@ import type { Combat } from '../engine/combat';
 import type { DmgType, IntentKind, Rarity, School, SkillDef, SkillUse, Unit } from '../engine/types';
 import type { RoomType } from '../engine/dungeon';
 import { DISGUISE_REVEAL, HIDDEN_REVEAL, INSIGHT_WEAK, INSIGHT_WEAK_CAP, lvlVal, WEAK_BONUS } from '../engine/combat';
+import { WEAKPOINT } from '../engine/weakpoint';
 
 export const DMG_NAME: Record<DmgType | 'true', string> = {
   slash: '참격',
@@ -22,6 +23,10 @@ export const DMG_COLOR: Record<DmgType | 'true', string> = {
   void: '#4fffc4',
   true: '#ffffff',
 };
+/** 급소 (engine/weakpoint.ts) — 약점(네모)과 달리 둥근 금빛 고리 */
+export const WP_COLOR = '#ffd23f';
+/** 급소 규칙 한 문단 (용어 풀이·첫 안내) */
+export const WP_RULE = `여정마다 바뀌는 숨은 약점. 일반·정예·수호자 존재마다 한 속성씩 숨어 있다. 드러난 급소만 노릴 수 있다 — 그 속성으로 맞히면 피해 ×${WEAKPOINT.mult}, 버팀 하나 더 (약점과 겹치면 둘 다). 맞혀서는 드러나지 않는다: 들여다보는 이벤트, 관찰·조명탄·기묘한 우상 같은 약점을 밝히는 것들, 통찰 ${WEAKPOINT.insight}으로 드러난다. 한 번 드러나면 이번 여정 내내 금빛 고리로 보인다 — 지도의 방 설명과 보상 카드에도. 다음 여정엔 다른 곳에 있다.`;
 
 export const DMG_ICON: Record<DmgType, string> = {
   slash: 'gi:sword-wound',
@@ -222,6 +227,7 @@ export const INSIGHT_STEPS: { at: number; text: string }[] = [
   { at: 1, text: '전투를 시작할 때 적마다 약점 하나가 보인다' },
   { at: 2, text: '적의 약점이 모두 보인다' },
   { at: Math.max(HIDDEN_REVEAL, DISGUISE_REVEAL), text: '숨겨진 의도와 거짓 의도가 보인다' },
+  { at: WEAKPOINT.insight, text: '적의 급소(판마다 바뀌는 숨은 약점)가 보인다' },
   { at: 4, text: '4층의 어둠 속 의도와 5층의 환영이 보인다' },
   { at: 5, text: '가장 깊은 속임수(검은 파라오의 자비, 꿈의 문지기의 문)가 보인다' },
 ];

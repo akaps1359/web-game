@@ -97,7 +97,7 @@ reg.events([
           },
           {
             label: '칸막이 너머를 엿본다',
-            hint: '이 층 적들의 약점을 알게 된다, 정신력 -10',
+            hint: '이 층 적들의 약점과 급소를 알게 된다, 정신력 -10',
             go: (r, e) => {
               const names = learnWeak(r, floorFoes(r));
               finish(

@@ -572,6 +572,21 @@ h2.title {
 .clue-line .ic {
   margin-top: 1px;
 }
+/* 급소 줄 (cards.tsx WpLine): 이 속성이 이번 여정에 드러난 이 층 존재의 급소 */
+.wp-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed rgba(255, 210, 63, 0.3);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #ffd23f;
+}
+.wp-line .ic {
+  margin-top: 1px;
+}
 
 /* 두 계열로 치는 스킬(예전 합기)의 두 계열 칩 (cards.tsx DuoTag): 두 칩이 한 띠로 이어진다 */
 .duo-tag {

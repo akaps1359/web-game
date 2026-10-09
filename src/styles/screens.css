@@ -16,12 +16,51 @@
 .floorbar .grow {
   flex: 1;
 }
+/* 계층군주의 기척: 들은 징후만큼 보랏빛 ◆ */
+.lord-chip .pips {
+  display: inline-flex;
+  gap: 2px;
+}
+.lord-chip .pips i {
+  width: 6px;
+  height: 6px;
+  rotate: 45deg;
+  border: 1px solid rgba(183, 154, 214, 0.65);
+  background: transparent;
+}
+.lord-chip .pips i.on {
+  background: #c99cf0;
+  box-shadow: 0 0 4px rgba(201, 156, 240, 0.8);
+}
+.lord-chip.awake {
+  color: #f0d6ff;
+  border-color: rgba(230, 184, 255, 0.7);
+  box-shadow: 0 0 8px rgba(201, 156, 240, 0.45);
+}
+.lord-chip.done {
+  opacity: 0.6;
+}
 .lightbar {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 4px 12px 0;
   width: 100%;
+}
+/* 등불 막대 + 계층군주 칩 (군주가 없는 층이면 막대만) */
+.lightrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 12px;
+}
+.lightrow .lightbar {
+  flex: 1;
+  min-width: 0;
+}
+.lightrow .lord-chip {
+  margin-top: 4px;
+  padding: 2px 8px;
 }
 .lightbar-track {
   flex: 1;
@@ -648,6 +687,16 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 9px;
   color: var(--ink-3);
+}
+/* 급소 (engine/weakpoint.ts): 약점의 네모와 달리 둥근 금빛 고리 — 숨어 있으면 점선 */
+.weak-row .w.wp {
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 210, 63, 0.6);
+  color: #ffd23f;
+}
+.weak-row .w.wp.on {
+  border: 1.5px solid #ffd23f;
+  box-shadow: 0 0 5px rgba(255, 210, 63, 0.65);
 }
 .st-row {
   display: flex;

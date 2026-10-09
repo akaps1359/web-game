@@ -8,13 +8,65 @@ import { store } from '../../state/store';
 import { CONSUMABLES } from '../../engine/registry';
 import { Icon, press, showTip } from '../components';
 import { RunHud, XpBar } from '../Hud';
-import { hours, josa, ROOM_COLOR, ROOM_ICON, ROOM_NAME } from '../text';
+import { DMG_NAME, hours, josa, ROOM_COLOR, ROOM_ICON, ROOM_NAME } from '../text';
+import { weakPointKnown, weakPointOf } from '../../engine/weakpoint';
 import { leavePlace } from '../../engine/places';
 import { openShop } from '../../engine/shop';
 import { refresh } from '../../state/actions';
 import { sound } from '../../sound';
 import { confirmThen } from '../ask';
 import { MapView } from './DungeonMap';
+
+/**
+ * 계층군주의 기척 (2026-10, "계층군주 등장 조건에 대한 힌트도 인게임에"): 지도 위 칩 — 들은 징후만큼 ◆가 찬다.
+ * 누르면 깨우는 조건의 소문(LordDef.hints)과 지금까지 들려온 징후
+ */
+function LordChip() {
+  const run = store.run!;
+  const f = run.floor!;
+  const lord = FLOORS.get(f.act)?.lord;
+  if (!lord) return null;
+  const st = f.lord;
+  // 마지막 징후는 깨어남 — ◆는 그 앞의 단계들
+  const steps = Math.max(1, lord.warnings.length - 1);
+  const heard = Math.min(st.warned, steps);
+  const awake = st.room >= 0 && !st.defeated;
+  const color = awake ? '#e6b8ff' : st.defeated ? 'var(--ink-3)' : '#b79ad6';
+  const tip = () =>
+    showTip({
+      title: `계층군주 · ${lord.name}`,
+      icon: 'gi:crowned-skull',
+      color: '#c99cf0',
+      body: [
+        st.defeated
+          ? '이 층의 계층군주를 쓰러뜨렸다.'
+          : awake
+            ? '깨어났다 — 지도에 표시된 곳에서 기다린다.'
+            : '이 층 어딘가에 숨은 수호자가 잠들어 있다. 조건을 채우면 깨어나 지도에 나타난다. 쓰러뜨리면 희귀 유물과 창세의 물건(셋 중 하나), 그리고 계층정수를 얻는다.',
+        '',
+        '소문',
+        ...lord.hints.map((h) => `· ${h}`),
+        ...(heard > 0 ? ['', '들려온 징후', ...lord.warnings.slice(0, heard).map((w) => `· ${w}`)] : []),
+      ].join('\n'),
+      lines: [{ label: '기척', value: st.defeated ? '쓰러뜨림' : awake ? '깨어남' : `${heard} / ${steps}` }],
+    });
+  return (
+    <button class={`chip lord-chip ${awake ? 'awake' : ''} ${st.defeated ? 'done' : ''}`} onClick={tip} aria-label="계층군주의 기척">
+      <Icon name="gi:crowned-skull" size={13} color={color} />
+      {st.defeated ? (
+        '✓'
+      ) : awake ? (
+        '깨어남'
+      ) : (
+        <span class="pips">
+          {Array.from({ length: steps }, (_, i) => (
+            <i class={i < heard ? 'on' : ''} />
+          ))}
+        </span>
+      )}
+    </button>
+  );
+}
 
 export function DungeonScreen() {
   const run = store.run!;
@@ -54,13 +106,22 @@ export function DungeonScreen() {
       return;
     }
     const lines: { label: string; value: string }[] = [];
+    // 이름 (같은 존재는 ×n) + 이번 여정에 드러난 급소 (engine/weakpoint.ts)
+    const foes = (ids: string[]) =>
+      [...new Set(ids)]
+        .map((id) => {
+          const n = ids.filter((x) => x === id).length;
+          const wp = weakPointKnown(run, id) ? weakPointOf(run, id) : null;
+          return `${ENEMIES.get(id)?.name ?? id}${n > 1 ? ` ×${n}` : ''}${wp ? ` (급소 ${DMG_NAME[wp]})` : ''}`;
+        })
+        .join(', ');
     if (r.enc) {
       const enc = ENCOUNTERS.find((e) => e.id === r.enc);
-      if (enc) lines.push({ label: '존재', value: enc.enemies.map((e) => ENEMIES.get(e.id)?.name ?? e.id).join(', ') });
+      if (enc) lines.push({ label: '존재', value: foes(enc.enemies.map((e) => e.id)) });
     }
     if (r.type === 'portal') {
       const boss = ENCOUNTERS.find((e) => e.id === f.bossEnc);
-      if (boss) lines.push({ label: '층 수호자', value: ENEMIES.get(boss.enemies[0].id)?.name ?? '???' });
+      if (boss) lines.push({ label: '층 수호자', value: boss.enemies[0] ? foes([boss.enemies[0].id]) : '???' });
     }
     const notes: string[] = [];
     if (r.flooded) notes.push(f.act === 2 ? '재에 파묻힘: 들어가는 데 2시간' : '침수됨: 들어가는 데 2시간');
@@ -114,32 +175,36 @@ export function DungeonScreen() {
           <Icon name="gi:scroll-unfurled" size={14} color="var(--brass-2)" />
         </button>
       </div>
-      <button
-        class="lightbar"
-        onClick={() =>
-          showTip({
-            title: `등불 · ${lightName}`,
-            icon: 'gi:old-lantern',
-            color: lightColor,
-            body: `이동할 때마다 ${lightCost(run)} 줄어든다.\n밝음(75+): 이웃 방이 모두 보인다.\n희미함(25+): 일부만 보인다.\n어둠: 아무것도 보이지 않고, 이동마다 정신력 -2, 기습 위험. 대신 전리품이 늘어난다.${ascAt(run, LV.ambush) ? '\n심연 「어둠 속의 것들」: 기습당하면 적이 먼저 움직인다.' : ''}`,
-          })
-        }
-      >
-        <span class={`lamp ${run.light < 25 ? 'low' : run.light < 75 ? 'mid' : ''}`}>
-          <Icon name="gi:old-lantern" size={16} color={lightColor} />
-        </span>
-        <div class="lightbar-track">
-          <i style={{ width: `${lightPct}%`, background: `linear-gradient(90deg, #6a3a10, ${lightColor})`, boxShadow: `0 0 ${4 + lightPct / 10}px ${lightColor}` }} />
-        </div>
-        <span class="num" style={{ color: lightColor, fontSize: 12, minWidth: 26, position: 'relative' }}>
-          {run.light}
-          {drop && (
-            <span key={drop.k} class="light-drop">
-              -{drop.n}
-            </span>
-          )}
-        </span>
-      </button>
+      {/* 등불 막대 줄 끝에 계층군주의 기척 (윗줄은 층 이름·조수로 차 있다) */}
+      <div class="lightrow">
+        <button
+          class="lightbar"
+          onClick={() =>
+            showTip({
+              title: `등불 · ${lightName}`,
+              icon: 'gi:old-lantern',
+              color: lightColor,
+              body: `이동할 때마다 ${lightCost(run)} 줄어든다.\n밝음(75+): 이웃 방이 모두 보인다.\n희미함(25+): 일부만 보인다.\n어둠: 아무것도 보이지 않고, 이동마다 정신력 -2, 기습 위험. 대신 전리품이 늘어난다.${ascAt(run, LV.ambush) ? '\n심연 「어둠 속의 것들」: 기습당하면 적이 먼저 움직인다.' : ''}`,
+            })
+          }
+        >
+          <span class={`lamp ${run.light < 25 ? 'low' : run.light < 75 ? 'mid' : ''}`}>
+            <Icon name="gi:old-lantern" size={16} color={lightColor} />
+          </span>
+          <div class="lightbar-track">
+            <i style={{ width: `${lightPct}%`, background: `linear-gradient(90deg, #6a3a10, ${lightColor})`, boxShadow: `0 0 ${4 + lightPct / 10}px ${lightColor}` }} />
+          </div>
+          <span class="num" style={{ color: lightColor, fontSize: 12, minWidth: 26, position: 'relative' }}>
+            {run.light}
+            {drop && (
+              <span key={drop.k} class="light-drop">
+                -{drop.n}
+              </span>
+            )}
+          </span>
+        </button>
+        <LordChip />
+      </div>
 
       <MapView target={target} walking={walking} onRoom={select} onTip={roomTip} />
 

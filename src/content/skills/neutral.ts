@@ -72,13 +72,10 @@ reg.skills([
     makes: ['expose'],
     reads: [],
     vals: { vuln: [1, 2] },
-    desc: '대상의 약점을 모두 밝히고 취약 {vuln}',
+    desc: '대상의 약점과 급소를 모두 밝히고 취약 {vuln}',
     run: (c, u, t) => {
       if (!t) return;
-      for (const w of t.weak) if (!t.known.includes(w)) {
-        t.known.push(w);
-        c.emit({ t: 'reveal', uid: t.uid, dtype: w });
-      }
+      c.expose(t);
       c.apply(t, 'vuln', u.v('vuln'), c.p);
     },
   }),

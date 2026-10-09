@@ -125,7 +125,7 @@ reg.events([
           },
           {
             label: '무늬와 눈을 맞춘다',
-            hint: '이 층 적들의 약점을 알게 된다, 정신력 -12',
+            hint: '이 층 적들의 약점과 급소를 알게 된다, 정신력 -12',
             go: (r, e) => {
               const names = learnWeak(r, floorFoes(r));
               finish(

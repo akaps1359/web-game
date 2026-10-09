@@ -1,7 +1,7 @@
 import { BUILTIN_MOVES, isEnemy, type Combat } from '../engine/combat';
 import { ENEMIES, TRAITS, reg } from '../engine/registry';
 import { Rng, deriveSeed } from '../engine/rng';
-import { DMG_TYPES, type DmgType, type EnemyDef, type EnemyUnit, type Hooks } from '../engine/types';
+import { DMG_KO, DMG_TYPES, type DmgType, type EnemyDef, type EnemyUnit, type Hooks } from '../engine/types';
 import { FROST } from './act3/common';
 import { cine } from './lib';
 
@@ -225,7 +225,6 @@ function sayOnce(c: Combat, e: EnemyUnit, key: string, text: string) {
   c.emit({ t: 'text', uid: e.uid, text, tone: 'info' });
 }
 
-const DMG_KO: Record<DmgType, string> = { slash: '참격', pierce: '관통', blunt: '타격', fire: '화염', arcane: '비전', void: '공허' };
 
 export const MUTATIONS: Mutation[] = [
   // ── 1단계 (2층부터) ──

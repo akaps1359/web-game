@@ -5,6 +5,7 @@ import type { SkillDef } from '../../engine/types';
 import { flipRows } from './common';
 import { TIME_DEBT } from './court';
 import { setSt } from './patterns';
+import { weakPointOf } from '../../engine/weakpoint';
 
 const ess = (d: Omit<SkillDef, 'school' | 'pool' | 'tags' | 'vals'> & { tags?: string[]; vals?: SkillDef['vals'] }) =>
   skill({ school: 'essence', pool: false, ...d });
@@ -512,16 +513,11 @@ reg.skills([
     target: 'single',
     tags: ['attack', 'poise'],
     vals: { dmg: [5, 7], poise: [2, 3] },
-    desc: '대상의 약점을 모두 드러내고 그중 한 속성으로 {D:dmg} 피해 (약점이 없으면 타격). 버팀 추가 -{poise}',
+    desc: '대상의 약점과 급소를 모두 드러내고 급소 속성으로 {D:dmg} 피해 (급소가 없으면 약점 하나, 그것도 없으면 타격). 버팀 추가 -{poise}',
     run: (c, u, t) => {
       if (!t) return;
-      for (const w of t.weak) {
-        if (!t.known.includes(w)) {
-          t.known.push(w);
-          c.emit({ t: 'reveal', uid: t.uid, dtype: w });
-        }
-      }
-      hit(c, u, t, { type: t.weak[0] });
+      c.expose(t);
+      hit(c, u, t, { type: weakPointOf(c.run, t.def) ?? t.weak[0] });
     },
   }),
   // 천 마리 새끼의 어머니

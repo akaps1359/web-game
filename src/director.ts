@@ -7,7 +7,7 @@ import { stage } from './render/stage';
 import type { VignetteKind } from './render/vfxTextures';
 import { sound } from './sound';
 import { store } from './state/store';
-import { DMG_COLOR, DMG_NAME, SCHOOL_COLOR } from './ui/text';
+import { DMG_COLOR, DMG_NAME, SCHOOL_COLOR, WP_COLOR } from './ui/text';
 import { gapBonusText } from './content/gap';
 import { noteGap } from './ui/gap';
 import { timesWord } from './ui/guard';
@@ -358,7 +358,8 @@ async function step(ev: CombatEvent) {
         stage.flash(0xffffff, 0.08);
       }
       floater(p.x, p.y, ev.hpLoss > 0 ? `${ev.hpLoss}` : ev.blocked > 0 ? `(${ev.blocked})` : '0', DMG_COLOR[ev.dtype], 'num', big ? 36 : 28);
-      if (ev.weak) floater(p.x, p.y - 34, `약점 · ${DMG_NAME[ev.dtype]}`, DMG_COLOR[ev.dtype], 'word', 16);
+      if (ev.wp) floater(p.x, p.y - 34, ev.weak ? `약점 · 급소 · ${DMG_NAME[ev.dtype]}` : `급소 · ${DMG_NAME[ev.dtype]}`, WP_COLOR, 'word', 17);
+      else if (ev.weak) floater(p.x, p.y - 34, `약점 · ${DMG_NAME[ev.dtype]}`, DMG_COLOR[ev.dtype], 'word', 16);
       if (ev.crit) floater(p.x, p.y - 52, '치명타!', '#ffe080', 'word', 18);
       if (ev.amount > 0) stage.shake(big ? 8 : heavy ? 6 : ev.dtype === 'blunt' ? 5 : firearm ? 4 : 3, big || heavy ? 0.2 : 0.15);
       sound.sfx(ev.blocked > 0 && ev.hpLoss === 0 ? 'block' : SFX_BY_TYPE[ev.dtype], { pitch: 0.92 + Math.random() * 0.16 });
@@ -409,9 +410,11 @@ async function step(ev: CombatEvent) {
     case 'reveal': {
       store.emit();
       const p = unitPoint(ev.uid, 1.05);
-      stage.battle.reveal(ev.uid, hexNum(DMG_COLOR[ev.dtype]));
-      floater(p.x, p.y, `약점 발견: ${DMG_NAME[ev.dtype]}`, DMG_COLOR[ev.dtype], 'word', 15);
-      sound.sfx('reveal', { volume: 0.6 });
+      stage.battle.reveal(ev.uid, hexNum(ev.wp ? WP_COLOR : DMG_COLOR[ev.dtype]));
+      // 급소는 금빛으로 — 이번 판 내내 그 종족의 급소가 보인다 (engine/weakpoint.ts)
+      if (ev.wp) floater(p.x, p.y, `급소 발견: ${DMG_NAME[ev.dtype]}`, WP_COLOR, 'word', 16);
+      else floater(p.x, p.y, `약점 발견: ${DMG_NAME[ev.dtype]}`, DMG_COLOR[ev.dtype], 'word', 15);
+      sound.sfx('reveal', { volume: 0.6, pitch: ev.wp ? 0.8 : 1 });
       await wait(160);
       return;
     }

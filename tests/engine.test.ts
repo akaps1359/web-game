@@ -59,6 +59,15 @@ describe('콘텐츠 무결성', () => {
       if (lord) expect(encs.some((e) => e.id === lord.enc && e.kind === 'boss' && e.id.startsWith('lord')), `${act}층 군주 조우 ${lord.enc}`).toBe(true);
     }
   });
+  it('계층군주마다 깨우는 조건의 힌트가 두세 줄 (지도 위 「계층군주」 칩의 소문)', () => {
+    for (let act = 1; act <= FINAL_ACT; act++) {
+      const lord = FLOORS.get(act)?.lord;
+      if (!lord) continue;
+      expect(lord.hints.length, `${act}층 ${lord.name} 힌트`).toBeGreaterThanOrEqual(2);
+      expect(lord.hints.length, `${act}층 ${lord.name} 힌트`).toBeLessThanOrEqual(3);
+      for (const h of lord.hints) expect(h.trim().length, `${act}층 빈 힌트`).toBeGreaterThan(8);
+    }
+  });
   it('이벤트는 1~5층에만', () => {
     for (const ev of EVENTS.values()) for (const a of ev.acts) expect(a >= 1 && a <= FINAL_ACT, `${ev.id}: ${a}`).toBe(true);
   });

@@ -900,10 +900,10 @@ reg.essences([
     stats: { maxHp: 10, will: 2, maxSanity: 5 },
     passive: {
       name: '등명기의 빛',
-      desc: '전투 시작 시 모든 적의 약점 공개',
+      desc: '전투 시작 시 모든 적의 약점과 급소 공개',
       hooks: {
         onCombatStart(c) {
-          for (const e of c.alive) e.known = [...e.weak];
+          for (const e of c.alive) c.expose(e, true);
         },
       },
     },

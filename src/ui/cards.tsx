@@ -1,12 +1,14 @@
 import type { ComponentChildren } from 'preact';
-import { AFFIXES, CONSUMABLES, EQUIPS, ESSENCES, RELICS, RUNES, SKILLS } from '../engine/registry';
+import { AFFIXES, CONSUMABLES, ENEMIES, EQUIPS, ESSENCES, RELICS, RUNES, SKILLS } from '../engine/registry';
+import { weakPointOf } from '../engine/weakpoint';
+import { store } from '../state/store';
 import { equipName } from '../engine/growth';
 import { essenceActives, essenceStats, isGenesisLoot, type LootItem, type RunState } from '../engine/run';
 import { lvlVal } from '../engine/combat';
 import { clueReason, keywordNames } from '../engine/keywords';
-import type { EssenceStats, SkillDef, SkillUse } from '../engine/types';
+import type { DmgType, EssenceStats, SkillDef, SkillUse } from '../engine/types';
 import { Icon, Segs, press, showTip } from './components';
-import { DMG_NAME, RARITY_COLOR, RARITY_NAME, SCHOOL_COLOR, SCHOOL_NAME, rarityClass, skillDesc, type Seg } from './text';
+import { DMG_NAME, RARITY_COLOR, RARITY_NAME, SCHOOL_COLOR, SCHOOL_NAME, WP_COLOR, rarityClass, skillDesc, type Seg } from './text';
 import { josa as engineJosa } from '../engine/josa';
 
 export const RANGE = { melee: '근접', ranged: '원거리', self: '자신' } as const;
@@ -149,6 +151,7 @@ export function SkillCard({ id, lvl = 0, runes = [], sel, off, onClick, right, c
             <span>{clue}</span>
           </div>
         )}
+        <WpLine type={def.type} />
       </div>
       {right}
     </button>
@@ -361,6 +364,36 @@ export function lootInfo(it: LootItem): { icon: string; color: string; meta: str
   return { icon, color, meta, desc };
 }
 
+/**
+ * 이 속성이 이번 여정에 드러난 급소인, 이 층의 존재들 (engine/weakpoint.ts).
+ * 보상·상점에서 무엇을 들일지 고를 때 알아낸 급소가 떠오르게 — 급소를 알아 두는 값
+ */
+export function wpFoes(type: DmgType | undefined, run: RunState | null | undefined = store.run): string[] {
+  if (!run || !type || !run.weakPoints?.length) return [];
+  return run.weakPoints.filter((id) => weakPointOf(run, id) === type && ENEMIES.get(id)?.act === run.act).map((id) => ENEMIES.get(id)!.name);
+}
+
+/** 급소 줄: 「급소: 익사체, 심해의 피」 */
+export function WpLine({ type }: { type: DmgType | undefined }) {
+  const foes = wpFoes(type);
+  if (!foes.length) return null;
+  return (
+    <div class="wp-line">
+      <Icon name="gi:bullseye" size={14} color={WP_COLOR} />
+      <span>
+        급소를 찌른다: {foes.slice(0, 3).join(', ')}
+        {foes.length > 3 ? ` 외 ${foes.length - 3}` : ''}
+      </span>
+    </div>
+  );
+}
+
+/** 장비 기본기의 피해 속성 (무기의 기본 공격 등) */
+export function equipType(id: string): DmgType | undefined {
+  const s = EQUIPS.get(id)?.skill;
+  return s ? SKILLS.get(s)?.type : undefined;
+}
+
 /** 전리품 카드 (스킬이면 SkillCard — clue: 실마리 이유 한 줄) */
 export function LootCard({ it, sel, off, onClick, right, clue }: { it: LootItem; sel?: boolean; off?: boolean; onClick?: () => void; right?: ComponentChildren; clue?: string | null }) {
   if (it.kind === 'skill') return <SkillCard id={it.id} sel={sel} off={off} onClick={onClick} right={right} clue={clue} />;
@@ -383,6 +416,7 @@ export function LootCard({ it, sel, off, onClick, right, clue }: { it: LootItem;
             {desc}
           </div>
         )}
+        {it.kind === 'equip' && <WpLine type={equipType(it.id)} />}
       </div>
       {right}
     </button>

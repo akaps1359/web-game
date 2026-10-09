@@ -468,6 +468,23 @@
 }
 
 /* 턴마다 바뀌는 피해 속성 (굴절광): 왼쪽 아래에 이번 턴의 속성 */
+/* 드러난 급소를 찌르는 스킬 (engine/weakpoint.ts): 오른쪽 아래 금빛 과녁 */
+.kit .skill .wp-mark {
+  position: absolute;
+  right: 5px;
+  bottom: 3px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 210, 63, 0.75);
+  background: rgba(20, 14, 4, 0.7);
+  box-shadow: 0 0 6px rgba(255, 210, 63, 0.55);
+}
+.kit .skill.wp .rune-dot {
+  right: 26px;
+}
 .kit .skill .dtype-now {
   position: absolute;
   left: 6px;

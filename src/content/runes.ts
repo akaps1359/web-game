@@ -1,5 +1,6 @@
 import { reg } from '../engine/registry';
 import { isEnemy } from '../engine/combat';
+import { weakPointKnown, weakPointOf } from '../engine/weakpoint';
 
 const isAttack = (s: { tags: string[] }) => s.tags.includes('attack');
 
@@ -130,6 +131,22 @@ reg.runes([
       },
       modDamageOut(c, _s, d) {
         d.add += 2 * c.p.insight;
+      },
+    },
+  },
+  {
+    // 급소 (engine/weakpoint.ts — 2026-10, "약점을 알아도 어차피 가진 스킬로 때린다"): 밝힌 급소를 어떤 스킬로든 찌를 수 있게
+    id: 'wp-rune',
+    name: '급소 각인',
+    icon: 'gi:convergence-target',
+    rarity: 'uncommon',
+    desc: '대상의 급소가 드러나 있으면 그 속성으로 친다 (드러나지 않았으면 그대로)',
+    fits: isAttack,
+    hooks: {
+      modDamageOut(c, _s, d) {
+        if (!d.attack || d.type === 'true' || !isEnemy(d.tgt) || !weakPointKnown(c.run, d.tgt.def)) return;
+        const wp = weakPointOf(c.run, d.tgt.def);
+        if (wp) d.type = wp;
       },
     },
   },

@@ -180,18 +180,14 @@ reg.consumables([
     icon: 'gi:totem-head',
     rarity: 'uncommon',
     // 2026-10 통찰 개편: 상점에서 몇 번이고 사는 물건이 영구 통찰을 주지 않게 — 이번 전투의 약점만 드러낸다
-    desc: '적 전체의 약점이 드러나고 광란 2. 정신력 -6',
+    desc: '적 전체의 약점과 급소가 드러나고 광란 2. 정신력 -6',
     combat: true,
     target: 'all',
     use(_run, c) {
       if (!c) return;
       c.loseSanity(6);
       for (const e of c.alive) {
-        for (const w of e.weak) {
-          if (e.known.includes(w)) continue;
-          e.known.push(w);
-          c.emit({ t: 'reveal', uid: e.uid, dtype: w });
-        }
+        c.expose(e);
         c.apply(e, 'madden', 2, c.p);
       }
     },

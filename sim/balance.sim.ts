@@ -3,7 +3,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import '../src/content';
 import { CORE_HP, GENESIS, ORIGIN_WEIGHT } from '../src/engine/run';
 import { CLUE } from '../src/engine/keywords';
-import { BOSS_HP_MULT, BREAK, GUARD } from '../src/engine/combat';
+import { BOSS_HP_MULT, BREAK, GUARD, WEAK_TUNE } from '../src/engine/combat';
 import { botAsc, botClue, botEssence, simulateRun, summarize } from '../src/sim/runbot';
 import { BOT_BREAK } from '../src/sim/bot';
 import { GAP } from '../src/content/gap';
@@ -11,8 +11,9 @@ import { DEPTH } from '../src/content/depth';
 import { ACT_DMG_MULT, ACT_HP_MULT, ACT_SAN_MULT, BOSS_DMG_MULT, ELITE_DMG_MULT, TOLERANCE } from '../src/engine/combat';
 import { GROWTH } from '../src/engine/growth';
 import { CHOICE_RATE, GOLD_MULT, RARITY_ACT, XP_STEP } from '../src/engine/run';
-import { botGrowth, botRush } from '../src/sim/runbot';
+import { botGrowth, botRush, botWp } from '../src/sim/runbot';
 import { reg } from '../src/engine/registry';
+import { WEAKPOINT } from '../src/engine/weakpoint';
 
 const N = Number(process.env.SIM_RUNS ?? 40);
 /** 시드 묶음 바꾸기 (다른 판들로 다시 재 보기) */
@@ -62,6 +63,13 @@ if (process.env.SIM_RARITY) Object.assign(RARITY_ACT, JSON.parse(process.env.SIM
 if (process.env.SIM_BOT_GROWTH) Object.assign(botGrowth, JSON.parse(process.env.SIM_BOT_GROWTH));
 // 저층을 서두르는 봇 (이 층까지 포탈을 보는 대로, 고를 수 있는 싸움은 피한다): SIM_BOT_RUSH=2
 if (process.env.SIM_BOT_RUSH) botRush.upTo = Number(process.env.SIM_BOT_RUSH);
+// 급소를 일부러 찾는 봇 ('급소를 알게 된다' 선택지를 고른다): SIM_BOT_WP=1
+if (process.env.SIM_BOT_WP) botWp.seek = process.env.SIM_BOT_WP !== '0';
+// 약점 보너스 (engine/combat.ts WEAK_BONUS): SIM_WEAK=0.2
+if (process.env.SIM_WEAK) WEAK_TUNE.bonus = Number(process.env.SIM_WEAK);
+// 급소 (engine/weakpoint.ts — 2026-10): SIM_WP='{"mult":1.2,"poise":1}' · 끄기: SIM_WP=off
+if (process.env.SIM_WP === 'off') WEAKPOINT.on = false;
+else if (process.env.SIM_WP) Object.assign(WEAKPOINT, JSON.parse(process.env.SIM_WP));
 
 // 사람처럼 강한 플레이어 흉내 (후반 층이 강한 덱에게 얼마나 쉬워지는지 볼 때): SIM_POWER='{"dmg":1.5,"taken":0.85}'
 // dmg: 내가 주는 피해 배율 · taken: 적 공격으로 받는 피해 배율 (봇은 사람보다 판짜기·막기가 서툴다)
