@@ -11,7 +11,7 @@ import { DEPTH } from '../src/content/depth';
 import { ACT_DMG_MULT, ACT_HP_MULT, ACT_SAN_MULT, BOSS_DMG_MULT, ELITE_DMG_MULT, TOLERANCE } from '../src/engine/combat';
 import { GROWTH } from '../src/engine/growth';
 import { CHOICE_RATE, GOLD_MULT, RARITY_ACT, XP_STEP } from '../src/engine/run';
-import { botGrowth } from '../src/sim/runbot';
+import { botGrowth, botRush } from '../src/sim/runbot';
 import { reg } from '../src/engine/registry';
 
 const N = Number(process.env.SIM_RUNS ?? 40);
@@ -60,6 +60,8 @@ if (process.env.SIM_RATE) CHOICE_RATE.splice(0, CHOICE_RATE.length, ...JSON.pars
 if (process.env.SIM_GOLD) GOLD_MULT.splice(0, GOLD_MULT.length, ...JSON.parse(process.env.SIM_GOLD));
 if (process.env.SIM_RARITY) Object.assign(RARITY_ACT, JSON.parse(process.env.SIM_RARITY));
 if (process.env.SIM_BOT_GROWTH) Object.assign(botGrowth, JSON.parse(process.env.SIM_BOT_GROWTH));
+// 저층을 서두르는 봇 (이 층까지 포탈을 보는 대로, 고를 수 있는 싸움은 피한다): SIM_BOT_RUSH=2
+if (process.env.SIM_BOT_RUSH) botRush.upTo = Number(process.env.SIM_BOT_RUSH);
 
 // 사람처럼 강한 플레이어 흉내 (후반 층이 강한 덱에게 얼마나 쉬워지는지 볼 때): SIM_POWER='{"dmg":1.5,"taken":0.85}'
 // dmg: 내가 주는 피해 배율 · taken: 적 공격으로 받는 피해 배율 (봇은 사람보다 판짜기·막기가 서툴다)

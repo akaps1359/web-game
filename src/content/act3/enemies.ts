@@ -1,10 +1,34 @@
 import { reg } from '../../engine/registry';
+import { josa } from '../../engine/josa';
 import { isEnemy, unguarded, type Combat } from '../../engine/combat';
 import { cycle, hpPct, last, opener, pick } from '../../engine/ai';
 import type { EnemyUnit, MoveDef } from '../../engine/types';
 import { countDef, mv, release } from '../moves';
 import { cine, setUi } from '../lib';
-import { absorbBlobs, frost, hid, isIllusion, returnSkill, seizeSkill, stealInsight, swapRows, veiledHorror } from './common';
+import {
+  absorbBlobs,
+  CALLED,
+  canReact,
+  covered,
+  END_BLOCK,
+  frost,
+  FROST,
+  HEIGHT,
+  hid,
+  intentFor,
+  isIllusion,
+  myHit,
+  react,
+  refreshIntent,
+  returnSkill,
+  seizeSkill,
+  stealInsight,
+  swapRows,
+  TORN,
+  TORN_LOSS,
+  veiledHorror,
+  watchBlock,
+} from './common';
 import {
   ALOFT,
   ANGLE,
@@ -112,6 +136,47 @@ function stealBuffs(c: Combat, e: EnemyUnit): boolean {
 
 /** 멈춘 시간: 한 턴에 받는 피해 상한 */
 export const CLOCK_CAP = 75;
+
+// ───────────── 일반 적 패턴 수치 (2026-10: 낮은 층은 위협을 늘리지 않고 갈래만 늘린다) ─────────────
+
+/** 밤의 마귀: 「급강하」 기본 피해, 탑 끝에 매달릴 때마다 쌓는 높이, 높이 상한 */
+export const DIVE_DMG = 11;
+export const PERCH_STEP = 4;
+export const PERCH_MAX = 8;
+/** 유고스의 균류: 「광맥 발파」 피해, 「외과 봉합」 회복량 */
+export const BLAST_DMG = 16;
+export const SUTURE_HEAL = 12;
+/** 쇼고스 유충: 지난 내 턴을 이 방어도 이상으로 마치면 「녹여 삼키기」를 노린다 */
+export const DISSOLVE_AT = 6;
+/** 렝의 거미: 「분노한 독액」의 독 */
+export const VENOM_POISON = 4;
+/** 눈먼 펭귄: 「얼음판 발 구르기」 동상 상한 */
+export const STOMP_MAX = 3;
+/** 눈먼 펭귄 무리가 이미 놀랐다 (전투 변수: 무리에서 하나만, 처음 한 번만 놀란다) */
+const FLOCK_PANIC = 'a3-flockPanic';
+/** 탐사대원의 휘파람: 썰매개 공격 피해 + */
+export const CALL_DMG = 4;
+/** 서리 망령: 상대의 동상이 이만큼이면 숨을 들이쉰다 / 「얼려 버리는 숨」의 동상 / 「얼음 껍질」 방어도 */
+export const INHALE_AT = 3;
+export const FREEZE_DMG = 10;
+export const FREEZE_FROST = 3;
+export const RIME_BLOCK = 10;
+/** 그노프케: 「얼음을 가르는 돌진」 피해 */
+export const GORE_DMG = 24;
+/** 해부된 썰매개: 터진 실밥 (공격 피해 + / 자기 차례마다 잃는 체력) */
+export const TORN_N = 3;
+
+/** 렝의 거미가 아직 알주머니를 찢을 수 있는가 (거미마다 둘, 새끼는 한 번에 둘까지) */
+const canBrood = (c: Combat, e: EnemyUnit) => (e.mem.brood ?? 0) < 2 && countDef(c, 'leng-spiderling') < 2;
+
+/** 썰매개가 무리 지어 무는 횟수: 다른 썰매개 하나마다 한 번 더 (최대 3번) */
+const packHits = (c: Combat, e: EnemyUnit) => 1 + Math.min(2, c.alive.filter((x) => x !== e && x.def === 'sled-dog').length);
+
+/** 앞에 선 동료 중 가장 다친 것 */
+const frontAlly = (c: Combat, e: EnemyUnit): EnemyUnit | undefined =>
+  c.row(0)
+    .filter((x) => x !== e)
+    .sort((a, b) => hpPct(a) - hpPct(b))[0];
 
 // ───────────── 특성 ─────────────
 
@@ -310,6 +375,8 @@ reg.traits([
         e.hp = Math.ceil(e.maxHp * 0.4);
         c.emit({ t: 'spawn', uid: e.uid });
         c.emit({ t: 'text', uid: e.uid, text: '얼어붙은 채 다시 일어선다', tone: 'eldritch' });
+        // 다시 일어선 몸은 조명탄 권총을 쏘지 못한다: 얼어붙은 몸으로 다음 행동을 다시 정한다
+        if (c.s.phase === 'player' && e.broken !== 2) c.planIntent(e);
       },
     },
   },
@@ -339,7 +406,10 @@ reg.traits([
     desc: '갈라진 몸속이 훤히 보여 약점이 처음부터 모두 드러나 있다. 다른 썰매개가 쓰러지면 힘 +2',
     hooks: {
       onAnyDeath(c, s, victim) {
-        if (isEnemy(victim) && victim !== s.unit && victim.def === 'sled-dog') c.apply(s.unit, 'str', 2, s.unit);
+        if (!isEnemy(victim) || victim === s.unit || victim.def !== 'sled-dog' || !isEnemy(s.unit)) return;
+        c.apply(s.unit, 'str', 2, s.unit);
+        // 무리가 줄었다: 「무리 지어 몰아붙이기」의 횟수도 다시 센다
+        refreshIntent(c, s.unit);
       },
     },
   },
@@ -441,6 +511,161 @@ reg.traits([
       },
     },
   },
+  // ── 일반 적의 반응 (2026-10 패턴: 내 손에 맞거나 누가 쓰러지면 그 자리에서 의도를 바꿔 보인다) ──
+  {
+    id: 'a3-tower',
+    name: '탑 위의 그림자',
+    desc: `앞에 동료가 버티는 동안 후열에서 탑 끝에 매달려 높이를 쌓는다 (「급강하」 피해 +${PERCH_STEP}, 최대 +${PERCH_MAX}). 내 공격에 맞으면 높이를 잃는다. 약점(화염·관통)에 맞으면 움찔해 그 차례의 의도가 드러나고, 찢긴 날개로는 낚아채 오르지 못한다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || !myHit(c, d)) return;
+        // 맞으면 탑 끝에서 미끄러진다 (회피로 흘린 공격은 빼고)
+        if ((e.st[HEIGHT] ?? 0) > 0 && d.amount > 0) {
+          c.clear(e, HEIGHT);
+          c.emit({ t: 'text', uid: e.uid, text: '탑 끝에서 미끄러졌다', tone: 'good' });
+          refreshIntent(c, e);
+        }
+        if (!d.weakHit || !canReact(c, e) || e.mem.flinch === c.s.turn) return;
+        e.mem.flinch = c.s.turn;
+        if (e.intent?.move === 'lift') e.intent = intentFor(c, e, 'clutch');
+        if (e.intent) e.intent = { ...e.intent, hidden: false };
+        c.emit({ t: 'text', uid: e.uid, text: '얼굴 없는 몸이 움찔한다', tone: 'good' });
+      },
+    },
+  },
+  {
+    id: 'a3-yuggoth-tools',
+    name: '유고스의 연장',
+    desc: `앞에 동료가 버티는 동안 얼음 밑 광맥에 발파 장치를 박는다 (다음 차례에 「광맥 발파」). 그 사이 붕괴시키거나 약점(타격·비전)으로 치면 장치가 꺼진다. 쓰러질 듯한 동료를 한 번 꿰매 체력 ${SUTURE_HEAL}${josa(SUTURE_HEAL, '을')} 되살린다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || !e.mem.charge || !d.weakHit || !myHit(c, d)) return;
+        delete e.mem.charge;
+        e.intent = intentFor(c, e, 'fizzle');
+        c.emit({ t: 'text', uid: e.uid, text: '발파 장치가 꺼졌다', tone: 'good' });
+      },
+    },
+  },
+  {
+    id: 'a3-scent',
+    name: '푸른 냄새',
+    desc: '후열(각도 속)에서 내 공격에 맞으면 냄새를 쫓아 그 차례에 「모서리에서 덮치기」로 튀어나온다. 각도 속에서 붕괴하면 각도 밖(전열)으로 굴러떨어진다. 피를 흘리는 상대는 「물고 늘어지기」로 노린다',
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || e.row !== 1) return;
+        if (d.broke) {
+          if (c.moveRow(e, 0)) c.emit({ t: 'text', uid: e.uid, text: '각도 밖으로 굴러떨어졌다', tone: 'good' });
+          return;
+        }
+        if (myHit(c, d) && d.amount > 0 && e.intent?.move !== 'pounce') react(c, e, 'pounce', '냄새를 맡았다', 'bad');
+      },
+    },
+  },
+  {
+    id: 'a3-learner',
+    name: '배우는 원형질',
+    desc: `내가 지난 턴을 방어도 ${DISSOLVE_AT} 이상으로 마쳤으면 「녹여 삼키기」(방어도를 절반 녹이고 덮친다)를 노린다. 약점(화염·비전)에 맞은 턴에는 몸을 다시 빚지 못한다: 「재형성」·「흡수」는 비명으로, 「집어삼키기」는 위족 채찍으로 바뀐다`,
+    hooks: {
+      onCombatStart(c) {
+        watchBlock(c);
+      },
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || !d.weakHit || !myHit(c, d)) return;
+        const m = e.intent?.move;
+        if (m === 'reform' || m === 'absorb') react(c, e, 'tekeli', '그을린 원형질이 굳는다', 'good');
+        else if (m === 'engulf') react(c, e, 'lash', '그을린 원형질이 굳어 삼키지 못한다', 'good');
+      },
+    },
+  },
+  {
+    id: 'a3-web-sense',
+    name: '거미줄 진동',
+    desc: `새끼 거미가 내 손에 쓰러지면 거미줄이 떨려 그 차례에 「분노한 독액」(독 ${VENOM_POISON})을 뱉는다. 처음으로 체력이 절반 아래로 떨어졌을 때 곁에 새끼가 없으면 알주머니를 찢는다 (새끼 거미 1마리). 독이 깊이 오른 상대(독 6 이상)에게는 독 대신 거미줄을 감는다`,
+    hooks: {
+      onAnyDeath(c, s, victim) {
+        const e = s.unit;
+        if (!isEnemy(e) || !isEnemy(victim) || victim.def !== 'leng-spiderling') return;
+        react(c, e, 'venom', '거미줄이 떨린다', 'bad', 'rxv');
+      },
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.mem.sac || e.hp <= 0 || hpPct(e) > 0.5 || !myHit(c, d)) return;
+        e.mem.sac = 1;
+        if (canBrood(c, e) && countDef(c, 'leng-spiderling') === 0) react(c, e, 'brood', '알주머니를 찢는다', 'bad', 'rxb');
+      },
+    },
+  },
+  {
+    id: 'a3-flock',
+    name: '무리',
+    desc: `둘 이상이면 얼음판에서 함께 발을 굴러 동상을 건다 (살아 있는 눈먼 펭귄 수만큼, 최대 ${STOMP_MAX}). 펭귄 하나가 처음 내 손에 쓰러지면 남은 펭귄 하나가 놀라 그 차례에는 쪼지 않고 울부짖는다 (「떼 울음」). 지난 내 턴에 기술을 4개 이상 썼으면 소리를 쫓아 더 자주 쫀다`,
+    hooks: {
+      onAnyDeath(c, s, victim) {
+        const e = s.unit;
+        if (!isEnemy(e) || !isEnemy(victim) || victim === e || victim.def !== 'blind-penguin') return;
+        // 무리에서 하나만, 처음 한 번만 놀란다 (그 뒤로는 소리를 쫓아 다시 몰려온다)
+        if (c.s.vars[FLOCK_PANIC]) return;
+        if (react(c, e, 'cry', '놀라 울부짖는다', 'eldritch')) c.s.vars[FLOCK_PANIC] = 1;
+      },
+    },
+  },
+  {
+    id: 'a3-whistle',
+    name: '탐사대의 휘파람',
+    desc: `썰매개가 곁에 있으면 휘파람으로 부른다: 썰매개 모두 다음 공격 피해 +${CALL_DMG}. 다시 일어선 몸은 조명탄을 쏘지 못하고 얼어붙은 손으로 붙잡는다 (동상)`,
+    hooks: {},
+  },
+  {
+    id: 'a3-rime',
+    name: '서리 숨',
+    desc: `상대의 동상이 ${INHALE_AT} 이상이면 숨을 크게 들이쉰다: 다음 차례에 「얼려 버리는 숨」(동상 ${FREEZE_FROST}). 숨을 들이쉬는 동안 붕괴시키면 끊긴다. 앞에 선 동료에게 얼음 껍질(방어도 ${RIME_BLOCK})을 입힌다`,
+    hooks: {},
+  },
+  {
+    id: 'a3-collector',
+    name: '표본 운반',
+    desc: '붕괴하면 쥐고 있던 표본을 떨어뜨린다 (빼앗긴 기술을 되찾는다). 표본을 쥔 채 체력이 3분의 1 아래로 떨어지면 다음 차례에 날아가 버린다. 그 기술은 전투가 끝나야 돌아온다. 표본을 잃으면 한 번 더 노린다',
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || !d.broke || !e.mem.specimen) return;
+        c.emit({ t: 'text', uid: e.uid, text: '표본을 떨어뜨렸다', tone: 'good' });
+        returnSkill(c, e);
+      },
+    },
+  },
+  {
+    id: 'a3-snow-horn',
+    name: '눈보라의 뿔',
+    desc: '화염에 맞으면 불길을 덮으려 그 차례에 「눈보라 부르기」를 한다. 체력이 절반 아래로 떨어지거나 상대의 동상이 3 이상이면 뿔을 낮추고 돌진한다 (뿔을 낮춘 동안 붕괴시키면 끊긴다)',
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || d.type !== 'fire' || d.amount <= 0 || !myHit(c, d)) return;
+        const m = e.intent?.move;
+        if (m === 'blizzard' || m === 'lower') return;
+        react(c, e, 'blizzard', '눈보라가 불길을 덮는다');
+      },
+    },
+  },
+  {
+    id: 'a3-stitches',
+    name: '터지는 실밥',
+    desc: `체력이 처음 절반 아래로 떨어지면 꿰맨 배가 터져 미쳐 날뛴다: 공격 피해 +${TORN_N}, 대신 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}${josa(TORN_LOSS, '을')} 잃는다. 다른 썰매개가 곁에 있으면 함께 몰아붙인다`,
+    hooks: {
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || e.hp <= 0 || e.mem.torn || hpPct(e) > 0.5 || d.tags.includes('torn')) return;
+        e.mem.torn = 1;
+        c.apply(e, TORN, TORN_N, e);
+        c.emit({ t: 'text', uid: e.uid, text: '꿰맨 배가 터졌다', tone: 'bad' });
+      },
+    },
+  },
 ]);
 
 // ───────────── 행동 헬퍼 ─────────────
@@ -482,17 +707,49 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['gaunt'],
-    traits: ['a3-faceless'],
+    traits: ['a3-faceless', 'a3-tower'],
     desc: '얼굴이 없는 검은 날개. 얼어붙은 탑 꼭대기에 거꾸로 매달려 있다가 소리 없이 내려와 간지럼을 태우고 낚아채 어둠 속으로 날아간다.',
     moves: {
       tickle: hid(mv.horror('간지럼', 8, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' })),
       clutch: hid(mv.attack('움켜쥐기', 10, { desc: '고무 같은 발톱으로 움켜쥔다' })),
       lift: hid(mv.attack('낚아채 오르기', 12, { then: (c, e) => void c.moveRow(e, 1), desc: '공격한 뒤 후열로 날아오른다' })),
-      dive: hid(mv.attack('급강하', 11, { melee: false, then: (c, e) => void c.moveRow(e, 0), desc: '높은 곳에서 덮친 뒤 전열로 내려앉는다' })),
+      // 쌓은 높이만큼 세진다 (의도의 숫자에도 보인다)
+      dive: hid({
+        ...mv.attack('급강하', DIVE_DMG, {
+          melee: false,
+          then: (c, e) => {
+            c.clear(e, HEIGHT);
+            c.moveRow(e, 0);
+          },
+          desc: '높은 곳에서 덮친 뒤 전열로 내려앉는다. 쌓은 높이만큼 피해가 늘고, 높이는 사라진다',
+        }),
+        dmg: (_c: Combat, e: EnemyUnit) => DIVE_DMG + (e.st[HEIGHT] ?? 0),
+      }),
+      perch: hid(
+        mv.buff(
+          '탑 끝에 매달린다',
+          (c, e) => {
+            c.apply(e, 'evasive', 1, e);
+            if (e.row === 1) c.apply(e, HEIGHT, Math.min(PERCH_STEP, PERCH_MAX - (e.st[HEIGHT] ?? 0)), e);
+          },
+          { desc: `회피 1, 높이 +${PERCH_STEP} (최대 ${PERCH_MAX}). 다음 「급강하」 피해가 그만큼 는다. 내 공격에 맞으면 높이를 잃는다` },
+        ),
+      ),
     },
     ai: (c, e) => {
-      if (e.row === 1) return 'dive';
-      return pick(c, e, { clutch: 3, tickle: 2, lift: last(e) === 'dive' ? 0 : 2 });
+      const h = e.st[HEIGHT] ?? 0;
+      if (e.row === 1) {
+        // 앞에 동료가 버티는 동안에는 탑 끝에 매달려 높이를 쌓는다 (높을수록 곧 덮친다)
+        if (!covered(c, e) || h >= PERCH_MAX) return 'dive';
+        return pick(c, e, { perch: h > 0 ? 1 : 2, dive: 3 });
+      }
+      // 공포에 질린 먹이는 움켜쥐고(피해 +25%), 다치면 날아올라 몸을 숨긴다
+      const dread = (c.p.st.dread ?? 0) > 0;
+      return pick(c, e, {
+        clutch: dread ? 4 : 3,
+        tickle: dread ? 1 : 2,
+        lift: last(e) === 'dive' ? 0 : hpPct(e) < 0.5 ? 3 : 2,
+      });
     },
     visual: { tint: 0x1b1b24, glow: 0x7a6cff, fx: ['float'] },
   },
@@ -509,17 +766,47 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['yuggoth'],
-    traits: ['a3-brain-thief'],
+    traits: ['a3-brain-thief', 'a3-yuggoth-tools'],
     desc: '갑각과 균사로 된 날개 달린 것. 얼음 밑 광맥을 캐러 별 너머에서 왔다. 윙윙거리는 목소리로 말하고 뇌를 원통에 담아 가져간다.',
     moves: {
       extract: mv.horror('뇌 적출', 6, { then: (c, e) => void stealInsight(c, e, 1), desc: '정신 피해, 통찰 1 강탈 (통찰이 없으면 정신 피해 +4)' }),
       buzz: mv.horror('윙윙거리는 목소리', 9),
-      mist: mv.attack('냉기 분사', 9, { melee: false, type: 'arcane' }),
+      mist: mv.attack('냉기 분사', 8, { melee: false, type: 'arcane', then: (c, e) => frost(c, c.p, 1, e), desc: '동상 1' }),
       pincer: mv.attack('외과 집게', 5, { hits: 2, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
+      // 광맥 발파: 박아 둔 장치는 붕괴시키거나 약점으로 쳐서 끈다 (특성 a3-yuggoth-tools)
+      rig: {
+        ...mv.charge('발파 장치를 박는다', BLAST_DMG),
+        follow: '광맥 발파',
+        desc: `얼음 밑 광맥에 발파 장치를 박는다. 다음 차례에 「광맥 발파」(피해 ${BLAST_DMG}, 동상 2). 그 사이 붕괴시키거나 약점(타격·비전)으로 치면 장치가 꺼진다`,
+      },
+      blast: release(mv.attack('광맥 발파', BLAST_DMG, { melee: false, type: 'blunt', then: (c, e) => frost(c, c.p, 2, e), desc: '발밑의 얼음이 터져 나간다. 동상 2' })),
+      fizzle: mv.block('꺼진 장치를 다시 맞춘다', 6, { desc: '발파 장치가 꺼졌다. 방어도 6' }),
+      suture: {
+        name: '외과 봉합',
+        intent: 'heal',
+        desc: `쓰러질 듯한 동료 하나를 꿰매 체력 ${SUTURE_HEAL} 회복, 출혈 제거 (전투당 한 번)`,
+        run(c, e) {
+          e.mem.sutured = 1;
+          const t = c.alive.filter((x) => x !== e && !x.minion).sort((a, b) => hpPct(a) - hpPct(b))[0] ?? e;
+          c.heal(t, SUTURE_HEAL);
+          c.clear(t, 'bleed');
+          c.emit({ t: 'text', uid: t.uid, text: '갈라진 살이 꿰매졌다', tone: 'bad' });
+        },
+      },
     },
     ai: (c, e) => {
-      if (e.row === 0) return pick(c, e, { pincer: 3, extract: 2, mist: 1 });
-      return pick(c, e, { mist: 3, extract: (e.mem.brain ?? 0) >= 2 ? 1 : 3, buzz: 2 });
+      if (e.mem.charge) return 'blast';
+      const patient = !e.mem.sutured && c.alive.some((x) => x !== e && !x.minion && hpPct(x) < 0.5);
+      if (e.row === 0) return pick(c, e, { pincer: 3, extract: 2, mist: 1, suture: patient ? 3 : 0 });
+      // 앞에 동료가 버티는 동안 광맥에 발파 장치를 박는다 (세 차례 안에 다시 박지 않는다)
+      const rigged = e.hist.slice(-3).some((h) => h === 'rig' || h === 'blast' || h === 'fizzle');
+      return pick(c, e, {
+        mist: 3,
+        extract: (e.mem.brain ?? 0) >= 2 ? 1 : 3,
+        buzz: 3,
+        rig: covered(c, e) && !rigged ? 1 : 0,
+        suture: patient ? 4 : 0,
+      });
     },
     visual: { tint: 0x9a6070, glow: 0xff7ad0, fx: ['float'] },
   },
@@ -536,14 +823,14 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['angle'],
-    traits: ['a3-angles'],
+    traits: ['a3-angles', 'a3-scent'],
     desc: '굽은 시간 속에 사는 굶주린 것. 이 도시의 오각형 탑들에는 120도보다 날카로운 모서리가 너무 많다.',
     moves: {
-      lurk: mv.block('모서리에 웅크림', 8, { desc: '방어도 8. 다음 턴 덮친다' }),
+      lurk: mv.block('모서리에 웅크림', 8, { desc: '방어도 8. 다음 차례에 덮친다' }),
       pounce: {
         name: '모서리에서 덮치기',
         intent: 'attack',
-        dmg: 12,
+        dmg: 11,
         melee: false,
         desc: '전열로 튀어나와 공격, 출혈 2',
         run(c, e) {
@@ -553,6 +840,7 @@ reg.enemies([
         },
       },
       bite: mv.attack('푸른 이빨', 9, { then: (c, e) => corrode(c, e), desc: '부식 1 (최대 3)' }),
+      maul: mv.attack('물고 늘어지기', 5, { hits: 2, type: 'slash', then: (c, e) => corrode(c, e), desc: '피 냄새를 따라 두 번 문다. 부식 1 (최대 3)' }),
       vanish: {
         name: '각도 속으로',
         intent: 'retreat',
@@ -564,8 +852,12 @@ reg.enemies([
       },
     },
     ai: (c, e) => {
-      if (e.row === 1) return last(e) === 'lurk' || last(e) === 'vanish' ? 'pounce' : 'lurk';
-      return last(e) === 'bite' ? 'vanish' : 'bite';
+      const l = last(e);
+      if (e.row === 1) return l === 'lurk' || l === 'vanish' ? 'pounce' : 'lurk';
+      // 치고 빠진다: 물고 나면 대개 각도 속으로 숨고 (다쳤으면 반드시), 가끔은 한 번 더 문다. 피 냄새를 맡으면 물고 늘어진다
+      const strike = (c.p.st.bleed ?? 0) > 0 ? 'maul' : 'bite';
+      if (l !== 'bite' && l !== 'maul') return strike;
+      return hpPct(e) < 0.5 ? 'vanish' : pick(c, e, { vanish: 4, [strike]: 1 }, 1);
     },
     visual: { tint: 0x2a3550, glow: 0x40a0ff, fx: ['flicker'] },
   },
@@ -583,7 +875,7 @@ reg.enemies([
     dread: 5,
     eldritch: true,
     tags: ['shoggoth'],
-    traits: ['a3-split'],
+    traits: ['a3-split', 'a3-learner'],
     desc: '아직 작은 원형질 덩어리. 눈과 입이 생겼다 사라진다. 쓰러뜨려도 갈라져 다시 기어 온다.',
     moves: {
       lash: mv.attack('위족 채찍', 4, { hits: 3 }),
@@ -604,15 +896,34 @@ reg.enemies([
         desc: '원형질 조각을 최대 2개 삼켜 조각마다 체력 10 회복, 힘 +1 (조각이 없으면 방어도 8)',
         run: (c, e) => absorbBlobs(c, e, 10, 2),
       },
+      // 배운 것: 두껍게 막는 상대에게는 방어도부터 녹인다 (특성 a3-learner)
+      dissolve: {
+        name: '녹여 삼키기',
+        intent: 'attack',
+        dmg: 9,
+        melee: true,
+        desc: '내 방어도의 절반을 녹인 뒤 덮친다',
+        run(c, e) {
+          const melt = Math.floor(c.p.block / 2);
+          if (melt > 0) {
+            c.p.block -= melt;
+            c.emit({ t: 'text', uid: 'p', text: `방어도가 녹아내린다 (-${melt})`, tone: 'bad' });
+          }
+          c.enemyAttack(e);
+        },
+      },
     },
     ai: (c, e) => {
       const blobs = c.alive.filter((x) => x.def === 'shoggoth-blob').length;
+      // 지난 내 턴을 두껍게 막았으면 방어도를 녹이는 법을 쓴다
+      const guarded = (c.s.vars[END_BLOCK] ?? 0) >= DISSOLVE_AT;
       return pick(c, e, {
-        lash: 3,
+        lash: guarded ? 1 : 3,
         engulf: 2,
         reform: hpPct(e) < 0.6 && last(e) !== 'reform' ? 2 : 0,
         tekeli: 1,
         absorb: blobs > 0 && last(e) !== 'absorb' ? 3 : 0,
+        dissolve: guarded ? 4 : 0,
       });
     },
     visual: { tint: 0x1d2e24, glow: 0x70ff9a, fx: ['drip'] },
@@ -630,6 +941,7 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['leng'],
+    traits: ['a3-web-sense'],
     desc: '렝 고원에서 얼음을 건너온 보랏빛 거미. 얼음 틈 사이에 실을 걸어 두고 걸린 것을 천천히 녹여 먹는다.',
     moves: {
       spit: mv.attack('독액 뱉기', 6, { melee: false, type: 'pierce', then: (c, e) => void c.apply(c.p, 'poison', 3, e), desc: '독 3' }),
@@ -637,10 +949,13 @@ reg.enemies([
         '서릿실 거미줄',
         (c, e) => {
           c.apply(c.p, 'weak', 1, e);
-          c.apply(c.p, 'frail', 2, e);
+          c.apply(c.p, 'frail', 1, e);
+          frost(c, c.p, 1, e);
         },
-        { desc: '약화 1, 허약 2' },
+        { desc: '약화 1, 허약 1, 동상 1' },
       ),
+      // 새끼를 잃은 어미 (특성 a3-web-sense)
+      venom: mv.attack('분노한 독액', 4, { melee: false, type: 'pierce', then: (c, e) => void c.apply(c.p, 'poison', VENOM_POISON, e), desc: `새끼를 잃은 어미가 독을 뿜는다. 독 ${VENOM_POISON}` }),
       brood: mv.summon(
         '알주머니',
         (c, e) => {
@@ -653,9 +968,13 @@ reg.enemies([
       fang: mv.attack('독니', 9, { type: 'pierce', then: (c, e) => void c.apply(c.p, 'poison', 2, e), desc: '독 2' }),
     },
     ai: (c, e) => {
-      if (e.row === 0) return pick(c, e, { fang: 3, spit: 1, web: 1 });
-      const canBrood = (e.mem.brood ?? 0) < 2 && countDef(c, 'leng-spiderling') < 2;
-      return opener(c, e, ['web']) ?? pick(c, e, { spit: 3, web: 1, brood: canBrood && last(e) !== 'brood' ? 2 : 0 });
+      // 독이 깊이 오른 먹이에게는 독을 더하지 않고 실을 감는다
+      const soaked = (c.p.st.poison ?? 0) >= 6;
+      if (e.row === 0) return pick(c, e, { fang: 3, spit: soaked ? 0 : 1, web: soaked ? 2 : 1 });
+      return (
+        opener(c, e, ['web']) ??
+        pick(c, e, { spit: soaked ? 1 : 3, web: soaked ? 3 : 1, brood: canBrood(c, e) && last(e) !== 'brood' ? 2 : 0 })
+      );
     },
     visual: { tint: 0x4a2a5a, glow: 0xc070ff },
   },
@@ -671,7 +990,7 @@ reg.enemies([
     row: 0,
     dread: 2,
     tags: ['ice', 'beast'],
-    traits: ['a3-blind'],
+    traits: ['a3-blind', 'a3-flock'],
     desc: '사람 키만 한 흰 펭귄. 눈이 있어야 할 자리가 매끈하다. 소리 나는 쪽으로 일제히 고개를 돌리고 뒤뚱거리며 몰려온다.',
     moves: {
       peck: {
@@ -697,8 +1016,24 @@ reg.enemies([
         desc: '모든 눈먼 펭귄 방어도 6',
       }),
       cry: mv.horror('떼 울음', 6, { desc: '사람 목소리를 닮은 울음' }),
+      // 무리가 함께 얼음판을 구른다 (특성 a3-flock)
+      stomp: mv.debuff('얼음판 발 구르기', (c, e) => frost(c, c.p, Math.min(STOMP_MAX, countDef(c, 'blind-penguin')), e), {
+        desc: `살아 있는 눈먼 펭귄 수만큼 동상 (최대 ${STOMP_MAX})`,
+      }),
     },
-    ai: (c, e) => pick(c, e, { peck: 5, huddle: countDef(c, 'blind-penguin') > 1 && last(e) !== 'huddle' ? 2 : 0, cry: 1 }),
+    ai: (c, e) => {
+      const flock = countDef(c, 'blind-penguin');
+      // 지난 내 턴이 시끄러웠으면(기술 4개 이상) 소리를 쫓아 더 자주 쫀다
+      const loud = c.s.used >= 4;
+      // 발 구르기는 무리에서 한 번에 하나만
+      const stomping = c.alive.some((x) => x !== e && x.def === 'blind-penguin' && x.intent?.move === 'stomp');
+      return pick(c, e, {
+        peck: loud ? 8 : 6,
+        huddle: flock > 1 && last(e) !== 'huddle' ? 2 : 0,
+        cry: 1,
+        stomp: flock > 1 && !stomping && !e.hist.slice(-2).includes('stomp') ? 1 : 0,
+      });
+    },
     visual: { tint: 0xd8e4ea, glow: 0x9fd8ff },
   },
   {
@@ -713,14 +1048,43 @@ reg.enemies([
     row: 0,
     dread: 3,
     tags: ['ice', 'undead', 'expedition'],
-    traits: ['a3-refreeze'],
+    traits: ['a3-refreeze', 'a3-whistle'],
     desc: '미스캐토닉 탐사대의 방한복을 입은 시신. 서리 앉은 눈썹 아래 눈동자가 하얗게 얼었다. 얼어붙은 손에 아직 도끼를 쥐고 있다.',
     moves: {
       axe: mv.attack('얼음도끼', 11, { type: 'slash' }),
       flare: mv.attack('조명탄 권총', 6, { melee: false, type: 'fire', then: (c, e) => void c.apply(c.p, 'burn', 2, e), desc: '화상 2 (불꽃이 동상을 녹인다)' }),
       journal: mv.horror('마지막 일지', 8, { desc: '얼어붙은 입술로 일지의 마지막 장을 읽는다' }),
+      // 탐사대의 썰매개를 부른다 (특성 a3-whistle). 휘파람은 겹치지 않는다
+      whistle: mv.attack('휘파람과 도끼질', 6, {
+        type: 'slash',
+        extra: ['buff'],
+        then: (c, e) => {
+          for (const d of c.alive) {
+            const add = d.def === 'sled-dog' ? CALL_DMG - (d.st[CALLED] ?? 0) : 0;
+            if (add > 0) c.apply(d, CALLED, add, e);
+          }
+        },
+        desc: `휘파람을 불며 도끼를 휘두른다. 썰매개 모두 다음 공격 피해 +${CALL_DMG}`,
+      }),
+      // 다시 일어선 몸 (특성 a3-refreeze)
+      grip: mv.attack('얼어붙은 손아귀', 9, { then: (c, e) => frost(c, c.p, 2, e), desc: '얼어붙은 손으로 붙잡는다. 동상 2' }),
     },
-    ai: (c, e) => opener(c, e, ['axe']) ?? pick(c, e, { axe: 3, flare: 2, journal: 1 }),
+    ai: (c, e) => {
+      // 다시 일어선 몸: 조명탄 권총은 얼어붙었다
+      if (e.mem.revived) return pick(c, e, { grip: 3, axe: 1, journal: 1 });
+      const dogs = countDef(c, 'sled-dog');
+      // 다른 대원이 이미 휘파람을 불려 하면 겹쳐 불지 않는다
+      const calling = c.alive.some((x) => x !== e && x.intent?.move === 'whistle');
+      return (
+        opener(c, e, ['axe']) ??
+        pick(c, e, {
+          axe: 3,
+          flare: (c.p.st.burn ?? 0) > 0 ? 1 : 2,
+          journal: 1,
+          whistle: dogs > 0 && !calling && !e.hist.slice(-2).includes('whistle') ? 2 : 0,
+        })
+      );
+    },
     visual: { tint: 0x8aa0b0, glow: 0xd0f0ff },
   },
   {
@@ -736,7 +1100,7 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['ice', 'spirit'],
-    traits: ['incorporeal'],
+    traits: ['incorporeal', 'a3-rime'],
     desc: '얼어 죽은 자의 마지막 숨이 서리가 되어 떠돈다. 지나간 자리마다 온기가 사라진다.',
     moves: {
       breath: mv.attack('서리 숨결', 7, { melee: false, type: 'arcane', then: (c, e) => frost(c, c.p, 2, e), desc: '동상 2' }),
@@ -746,11 +1110,41 @@ reg.enemies([
         intent: 'heal',
         desc: '내 동상 1당 체력 4 회복 (최소 8)',
         run(c, e) {
-          c.heal(e, Math.max(8, (c.p.st['a3-frostbite'] ?? 0) * 4));
+          c.heal(e, Math.max(8, (c.p.st[FROST] ?? 0) * 4));
         },
       },
+      // 꽁꽁 언 상대 앞에서 숨을 들이쉰다 (특성 a3-rime)
+      inhale: {
+        ...mv.charge('숨을 들이쉰다', FREEZE_DMG),
+        follow: '얼려 버리는 숨',
+        desc: `다음 차례에 「얼려 버리는 숨」(피해 ${FREEZE_DMG}, 동상 ${FREEZE_FROST}). 그 사이 붕괴시키면 끊긴다`,
+      },
+      freeze: release(
+        mv.attack('얼려 버리는 숨', FREEZE_DMG, { melee: false, type: 'arcane', then: (c, e) => frost(c, c.p, FREEZE_FROST, e), desc: `동상 ${FREEZE_FROST}` }),
+      ),
+      rime: mv.buff(
+        '얼음 껍질',
+        (c, e) => {
+          const t = frontAlly(c, e);
+          if (!t) return;
+          c.gainBlock(t, RIME_BLOCK);
+          c.emit({ t: 'text', uid: t.uid, text: '서리가 껍질처럼 굳는다', tone: 'info' });
+        },
+        { desc: `앞에 선 동료 하나에게 방어도 ${RIME_BLOCK}`, extra: ['block'] },
+      ),
     },
-    ai: (c, e) => pick(c, e, { breath: 3, whisper: 2, drain: hpPct(e) < 0.6 && !e.hist.includes('drain') ? 3 : 0 }),
+    ai: (c, e) => {
+      if (e.mem.charge) return 'freeze';
+      // 꽁꽁 언 상대 앞에서는 숨을 크게 들이쉬고, 앞에 선 동료에게는 얼음 껍질을 입힌다
+      const chilled = (c.p.st[FROST] ?? 0) >= INHALE_AT;
+      return pick(c, e, {
+        breath: chilled ? 1 : 3,
+        whisper: 3,
+        drain: hpPct(e) < 0.6 && !e.hist.includes('drain') ? 3 : 0,
+        inhale: chilled && !e.hist.slice(-3).includes('freeze') ? 4 : 0,
+        rime: covered(c, e) && !e.hist.slice(-2).includes('rime') ? 1 : 0,
+      });
+    },
     visual: { tint: 0xc8e0f0, glow: 0x80d0ff, fx: ['float', 'flicker'] },
   },
   {
@@ -766,7 +1160,7 @@ reg.enemies([
     dread: 5,
     eldritch: true,
     tags: ['elder'],
-    traits: ['flying', 'a3-specimen'],
+    traits: ['flying', 'a3-specimen', 'a3-collector'],
     desc: '통 같은 몸통에 별 모양의 머리, 접었다 펴는 막날개. 얼음 위를 낮게 날며 표본을 모은다. 이번 표본은 당신이다.',
     moves: {
       collect: {
@@ -777,19 +1171,38 @@ reg.enemies([
         melee: false,
         desc: '장착한 기술 하나를 빼앗아 간다 (장착한 기술이 둘 이상일 때). 쓰러뜨리면 되찾는다',
         run(c, e) {
+          e.mem.collects = (e.mem.collects ?? 0) + 1;
           c.enemyAttack(e, { type: 'pierce' });
           if (!c.over && !e.dead) seizeSkill(c, e);
         },
       },
       tentacles: mv.attack('다섯 갈래 촉수', 4, { hits: 2, melee: false, type: 'slash' }),
       dive: mv.attack('막날개 급습', 12, { melee: false, type: 'pierce' }),
+      // 표본을 쥔 채 크게 다치면 (특성 a3-collector)
+      escape: {
+        name: '표본을 품고 날아오른다',
+        intent: 'flee',
+        desc: '빼앗은 기술을 품은 채 이번 차례에 날아가 버린다. 그 기술은 이 전투가 끝나야 돌아온다. 그 전에 쓰러뜨리거나 붕괴시키면 막는다',
+        run(c, e) {
+          if (!e.mem.specimen) {
+            c.emit({ t: 'text', uid: e.uid, text: '품을 표본이 없다', tone: 'info' });
+            return;
+          }
+          c.emit({ t: 'text', uid: e.uid, text: '표본을 품고 얼음 너머로 날아갔다', tone: 'bad' });
+          c.flee(e);
+        },
+      },
     },
     ai: (c, e) => {
       if (!e.mem.tried) {
         e.mem.tried = 1;
         return 'collect';
       }
-      return pick(c, e, { dive: 3, tentacles: 2 });
+      // 표본을 쥔 채 크게 다치면 날아가 버린다 (한 차례 앞서 보인다)
+      if (e.mem.specimen && hpPct(e) < 1 / 3) return 'escape';
+      // 붕괴해 표본을 떨어뜨렸으면 한 번 더 노린다
+      const regrab = !e.mem.specimen && (e.mem.collects ?? 1) < 2 && hpPct(e) >= 0.4 && last(e) !== 'collect';
+      return pick(c, e, { dive: 3, tentacles: 2, collect: regrab ? 2 : 0 });
     },
     visual: { tint: 0x5a6a50, glow: 0xb0ffd0, fx: ['float'] },
   },
@@ -807,7 +1220,7 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['ice', 'beast'],
-    traits: ['a3-cold-bringer'],
+    traits: ['a3-cold-bringer', 'a3-snow-horn'],
     desc: '긴 털에 덮인 여섯 다리의 짐승. 이마에 돋은 뿔 하나로 얼음을 가른다. 지나간 자리에는 눈보라가 뒤따른다.',
     moves: {
       horn: mv.attack('뿔 들이받기', 13, { type: 'pierce' }),
@@ -820,8 +1233,29 @@ reg.enemies([
         },
         { desc: '동상 2, 자신 회피 1', extra: ['buff'] },
       ),
+      // 다치거나 상대가 꽁꽁 얼어 가면 (특성 a3-snow-horn)
+      lower: {
+        ...mv.charge('뿔을 낮춘다', GORE_DMG),
+        follow: '얼음을 가르는 돌진',
+        desc: `다음 차례에 「얼음을 가르는 돌진」(피해 ${GORE_DMG}). 그 사이 붕괴시키면 끊긴다`,
+      },
+      gore: release(mv.attack('얼음을 가르는 돌진', GORE_DMG, { type: 'pierce', desc: '얼음을 가르며 뿔로 들이받는다' })),
     },
-    ai: (c, e) => opener(c, e, ['claws']) ?? pick(c, e, { horn: 3, claws: 2, blizzard: e.hist.slice(-2).includes('blizzard') ? 0 : 2 }),
+    ai: (c, e) => {
+      if (e.mem.charge) return 'gore';
+      // 다치거나 상대가 꽁꽁 얼어 가면 뿔을 낮추고 돌진한다 (세 차례 안에 다시 낮추지 않는다)
+      const fierce = hpPct(e) < 0.5 || (c.p.st[FROST] ?? 0) >= 3;
+      const recent = e.hist.slice(-3).some((h) => h === 'lower' || h === 'gore');
+      return (
+        opener(c, e, ['claws']) ??
+        pick(c, e, {
+          horn: 3,
+          claws: 2,
+          blizzard: e.hist.slice(-2).includes('blizzard') ? 0 : 2,
+          lower: fierce && !recent ? 4 : 0,
+        })
+      );
+    },
     visual: { tint: 0xd0d0c8, glow: 0x9ad8ff, scale: 1.2 },
   },
   {
@@ -836,14 +1270,30 @@ reg.enemies([
     row: 0,
     dread: 3,
     tags: ['beast', 'expedition'],
-    traits: ['a3-dissected'],
+    traits: ['a3-dissected', 'a3-stitches'],
     desc: '탐사대의 썰매개. 배가 정교하게 갈렸다가 다시 꿰매어졌다. 사람의 솜씨가 아니다.',
     moves: {
       bite: mv.attack('물어뜯기', 9),
       nape: mv.attack('목덜미 물기', 4, { hits: 2, type: 'slash', then: (c, e) => void c.apply(c.p, 'bleed', 2, e), desc: '출혈 2' }),
       howl: mv.horror('꿰맨 목의 울부짖음', 5),
+      // 무리 사냥 (특성 a3-stitches): 횟수는 쓰는 순간의 무리 수 — 다른 개가 쓰러지면 의도도 다시 센다
+      harry: {
+        name: '무리 지어 몰아붙이기',
+        intent: 'attack',
+        dmg: 6,
+        hits: (c, e) => packHits(c, e),
+        melee: true,
+        desc: '다른 썰매개 하나마다 한 번 더 문다 (최대 3번)',
+        run(c, e) {
+          c.enemyAttack(e, { type: 'slash', hits: packHits(c, e) });
+        },
+      },
     },
-    ai: (c, e) => pick(c, e, { bite: 3, nape: 2, howl: 1 }),
+    ai: (c, e) => {
+      const pack = packHits(c, e) - 1;
+      // 실밥이 터진 개는 울부짖지 않고 물어뜯는다. 무리가 있으면 함께 몰아붙인다
+      return pick(c, e, { bite: 3, nape: 2, howl: e.mem.torn ? 0 : 1, harry: pack > 0 ? 2 : 0 });
+    },
     onSpawn: (_c, e) => {
       e.known = [...e.weak];
     },

@@ -2,6 +2,7 @@
 import '../act4/common';
 import './dream';
 import './fetus';
+import './patterns';
 import './enemies';
 import './essences';
 import './encounters';

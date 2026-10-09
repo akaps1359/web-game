@@ -80,10 +80,10 @@ afterEach(() => {
 });
 
 describe('성장 속도', () => {
-  it('경험치 곡선이 가팔라졌다 (20 + 30(L-1)) — 스킬 칸이 열리는 레벨이 늦어진다', () => {
-    expect(XP_STEP).toEqual({ base: 20, per: 30 });
+  it('경험치 곡선이 가팔라졌다 (20 + 35(L-1)) — 스킬 칸이 열리는 레벨이 늦어진다', () => {
+    expect(XP_STEP).toEqual({ base: 20, per: 35 });
     expect(xpToNext(1)).toBe(20);
-    expect(xpToNext(3)).toBe(80);
+    expect(xpToNext(3)).toBe(90);
   });
 
   it('깊은 층일수록 흔한 것은 덜, 귀한 것은 더 (RARITY_ACT) — 1·2층은 그대로', () => {
@@ -99,9 +99,8 @@ describe('성장 속도', () => {
 
   it('일반 전투의 고르는 보상은 층이 깊을수록 드물다. 정예·수호자는 늘 준다', () => {
     for (let a = 2; a <= 5; a++) expect(CHOICE_RATE[a]).toBeLessThanOrEqual(CHOICE_RATE[a - 1]);
-    // 1층은 늘 (판의 뼈대), 2층부터 드물어진다
-    expect(CHOICE_RATE[1]).toBe(1);
-    expect(CHOICE_RATE[2]).toBeLessThan(1);
+    // 저층부터 드물다 (저층 성장 억제 — 착실히 돌아다녀야 쌓인다)
+    expect(CHOICE_RATE[1]).toBeLessThan(1);
     // 일반 전투 마흔 번 — 고르는 보상이 나온 비율이 CHOICE_RATE 근처
     let got = 0;
     const N = 40;

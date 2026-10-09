@@ -1,11 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '../src/content';
 import { Combat, DISGUISE_REVEAL, type CombatEvent } from '../src/engine/combat';
-import { ENEMIES, SKILLS } from '../src/engine/registry';
+import { ENCOUNTERS, ENEMIES, SKILLS } from '../src/engine/registry';
 import { finishCombat, newRun, startCombat, type RunState } from '../src/engine/run';
 import { generateFloor } from '../src/engine/dungeon';
 import { autoTurn, incoming } from '../src/sim/bot';
-import type { EnemyUnit, MoveDef } from '../src/engine/types';
+import type { DmgType, EnemyUnit, MoveDef } from '../src/engine/types';
+import { DEPTH } from '../src/content/depth';
+import { CALLED, END_BLOCK, FROST, HEIGHT, TORN, TORN_LOSS, WATCH } from '../src/content/act3/common';
+import { FROZEN_ROOM } from '../src/content/act3/anomalies';
+import {
+  BLAST_DMG,
+  CALL_DMG,
+  DISSOLVE_AT,
+  DIVE_DMG,
+  FREEZE_DMG,
+  FREEZE_FROST,
+  GORE_DMG,
+  INHALE_AT,
+  PERCH_MAX,
+  PERCH_STEP,
+  RIME_BLOCK,
+  STOMP_MAX,
+  SUTURE_HEAL,
+  TORN_N,
+  VENOM_POISON,
+} from '../src/content/act3/enemies';
 import {
   ALOFT,
   ANGLE,
@@ -1164,4 +1184,470 @@ describe('3층 기믹의 출신 간 공정성 — 시작 덱으로', () => {
     }
     expect(lost).toEqual([]);
   });
+});
+
+/*
+ * 3층 일반 적 패턴 (2026-10): 낮은 층은 위협을 늘리지 않고 갈래만 늘린다.
+ * 반응하는 의도(맞거나 누가 쓰러지면 그 자리에서 바뀌어 보인다)·상태를 읽는 AI·예고하고 끊을 수 있는 준비 동작마다 실제로 그렇게 움직이는지.
+ */
+describe('3층 일반 적 — 반응하는 패턴 (2026-10)', () => {
+  // 장면이 변이에 흐려지지 않게 (3층 일반 적은 25%로 변이한다)
+  let mutSaved: number[] = [];
+  beforeEach(() => {
+    mutSaved = DEPTH.mutNormal.slice();
+    DEPTH.mutNormal.fill(0);
+  });
+  afterEach(() => {
+    DEPTH.mutNormal.splice(0, DEPTH.mutNormal.length, ...mutSaved);
+  });
+
+  const WAIT = { move: '_wait', kind: 'unknown' as const, label: '관망' };
+  /** 내 턴에 내 손으로 때린다 */
+  const strike = (c: Combat, e: EnemyUnit, base: number, type: DmgType | 'true') => c.damage({ src: c.p, tgt: e, base, type, attack: true });
+  /** 이 적의 AI가 n번 고른 행동들 */
+  const picks = (c: Combat, e: EnemyUnit, n = 40) => {
+    const out = new Set<string>();
+    for (let i = 0; i < n; i++) {
+      c.planIntent(e);
+      out.add(e.intent!.move);
+    }
+    return out;
+  };
+  const all = (c: Combat, def: string) => c.alive.filter((x) => x.def === def);
+  /** keep 말고는 이번 차례에 쉬게 하고 턴을 넘긴다 */
+  const endWith = (c: Combat, keep: EnemyUnit[] = []) => {
+    for (const x of c.alive) if (!keep.includes(x)) x.intent = { ...WAIT };
+    c.endTurn();
+  };
+
+  it('밤의 마귀: 앞에 동료가 버티면 후열에서 탑 끝에 매달려 높이를 쌓는다 (최대 8) — 급강하는 그만큼 세지고 (의도 숫자 그대로), 덮치면 높이가 사라진다', () => {
+    const { c } = fight('a3-e-gaunts');
+    const [front, back] = all(c, 'nightgaunt');
+    c.moveRow(back, 1);
+    expect(picks(c, back).has('perch')).toBe(true);
+    act(c, back, 'perch');
+    expect(back.st.evasive).toBe(1);
+    expect(back.st[HEIGHT]).toBe(PERCH_STEP);
+    for (let i = 0; i < 3; i++) act(c, back, 'perch');
+    expect(back.st[HEIGHT]).toBe(PERCH_MAX);
+    // 높이가 다 찼으면 곧장 덮친다
+    c.planIntent(back);
+    expect(back.intent?.move).toBe('dive');
+    expect(back.intent?.dmg).toBe(DIVE_DMG + PERCH_MAX);
+    const shown = c.preview(back, c.p, back.intent!.dmg!, 'blunt');
+    c.p.block = 0;
+    const hp = c.p.hp;
+    endWith(c, [back]);
+    expect(hp - c.p.hp).toBe(shown);
+    expect(back.st[HEIGHT] ?? 0).toBe(0);
+    expect(back.row).toBe(0);
+    expect(front.dead).toBe(false);
+  });
+
+  it('밤의 마귀: 내 공격에 맞으면 탑 끝에서 미끄러져 높이를 잃는다 (회피로 흘린 공격은 빼고) — 의도의 피해도 다시 센다', () => {
+    const { c } = fight('a3-e-gaunts');
+    const back = all(c, 'nightgaunt')[1];
+    c.moveRow(back, 1);
+    act(c, back, 'perch');
+    force(c, back, 'dive');
+    expect(back.intent?.dmg).toBe(DIVE_DMG + PERCH_STEP);
+    strike(c, back, 5, 'blunt');
+    expect(back.st.evasive ?? 0).toBe(0);
+    expect(back.st[HEIGHT]).toBe(PERCH_STEP);
+    strike(c, back, 5, 'blunt');
+    expect(back.st[HEIGHT] ?? 0).toBe(0);
+    expect(back.intent?.dmg).toBe(DIVE_DMG);
+  });
+
+  it('밤의 마귀: 약점(화염·관통)에 맞으면 움찔해 숨긴 의도가 드러나고, 낚아채 오르려던 날개는 찢겨 움켜쥐기가 된다', () => {
+    const { c, e } = fight('a3-e-gaunts');
+    const g = e('nightgaunt');
+    force(c, g, 'lift');
+    expect(g.intent?.hidden).toBe(true);
+    strike(c, g, 3, 'blunt');
+    expect(g.intent?.move).toBe('lift');
+    strike(c, g, 3, 'pierce');
+    expect(g.intent?.move).toBe('clutch');
+    expect(g.intent?.hidden).toBe(false);
+    // 다음에 의도를 정하면 다시 가려진다
+    c.planIntent(g);
+    expect(g.intent?.hidden).toBe(true);
+  });
+
+  it('밤의 마귀: 앞에 버티는 동료가 없으면 매달리지 않고 곧장 덮친다', () => {
+    const { c } = fight('a3-e-gaunts');
+    const [front, back] = all(c, 'nightgaunt');
+    c.moveRow(back, 1);
+    c.kill(front);
+    expect([...picks(c, back)]).toEqual(['dive']);
+  });
+
+  it('유고스의 균류: 냉기 분사는 동상 1을 남기고, 발파 장치를 박으면 다음 차례에 광맥 발파 (예고한 피해 그대로, 동상 2)', () => {
+    const { c, e } = fight('a3-e-migo');
+    const m = e('migo');
+    act(c, m, 'mist');
+    expect(c.p.st[FROST]).toBe(1);
+    act(c, m, 'rig');
+    expect(m.mem.charge).toBe(1);
+    c.planIntent(m);
+    expect(m.intent?.move).toBe('blast');
+    expect(m.intent?.dmg).toBe(BLAST_DMG);
+    const shown = c.preview(m, c.p, BLAST_DMG, 'blunt');
+    c.p.block = 0;
+    const hp = c.p.hp;
+    endWith(c, [m]);
+    expect(hp - c.p.hp).toBe(shown);
+    expect(c.p.st[FROST]).toBe(3);
+    expect(m.mem.charge).toBeUndefined();
+  });
+
+  it('유고스의 균류: 장치를 박은 사이 약점(타격·비전)으로 치면 장치가 꺼진다 — 붕괴하지 않아도. 약점이 아니면 그대로 터진다', () => {
+    const { c, e } = fight('a3-e-migo');
+    const m = e('migo');
+    act(c, m, 'rig');
+    c.planIntent(m);
+    strike(c, m, 2, 'slash');
+    expect(m.intent?.move).toBe('blast');
+    strike(c, m, 2, 'arcane');
+    expect(m.broken).toBe(0);
+    expect(m.mem.charge).toBeUndefined();
+    expect(m.intent?.move).toBe('fizzle');
+    expect(m.intent?.kind).toBe('block');
+  });
+
+  it('유고스의 균류: 쓰러질 듯한 동료를 한 번 꿰맨다 (체력 12, 출혈 제거) — 두 번은 하지 않는다', () => {
+    const { c, e } = fight('a3-e-migo');
+    const m = e('migo');
+    const g = e('nightgaunt');
+    expect(picks(c, m).has('suture')).toBe(false);
+    g.hp = Math.floor(g.maxHp * 0.3);
+    c.apply(g, 'bleed', 3, c.p);
+    expect(picks(c, m).has('suture')).toBe(true);
+    const hp = g.hp;
+    act(c, m, 'suture');
+    expect(g.hp).toBe(hp + SUTURE_HEAL);
+    expect(g.st.bleed ?? 0).toBe(0);
+    expect(picks(c, m).has('suture')).toBe(false);
+  });
+
+  it('각도의 사냥개: 후열(각도 속)에서 내 공격에 맞으면 냄새를 쫓아 그 차례에 덮친다 — 의도가 바로 바뀌어 보인다', () => {
+    const { c, e } = fight('a3-hound-spawn');
+    const h = e('tindalos');
+    expect(h.row).toBe(1);
+    force(c, h, 'lurk');
+    strike(c, h, 3, 'slash');
+    expect(h.intent?.move).toBe('pounce');
+    expect(h.intent?.kind).toBe('attack');
+  });
+
+  it('각도의 사냥개: 각도 속에서 붕괴하면 각도 밖(전열)으로 굴러떨어진다', () => {
+    const { c, e } = fight('a3-hound-spawn');
+    const h = e('tindalos');
+    h.poise = 1;
+    strike(c, h, 2, 'arcane');
+    expect(h.broken).toBe(2);
+    expect(h.row).toBe(0);
+  });
+
+  it('각도의 사냥개: 피를 흘리는 상대는 물고 늘어진다 (부식 1) — 피가 없으면 고르지 않는다', () => {
+    const { c, e } = fight('a3-hound-spawn');
+    const h = e('tindalos');
+    c.moveRow(h, 0);
+    h.hist = ['pounce'];
+    expect(picks(c, h).has('maul')).toBe(false);
+    c.apply(c.p, 'bleed', 3);
+    expect(picks(c, h).has('maul')).toBe(true);
+    act(c, h, 'maul');
+    expect(c.p.st.corrode).toBe(1);
+  });
+
+  it(`쇼고스 유충: 내가 지난 턴을 방어도 ${DISSOLVE_AT} 이상으로 마치면 녹여 삼키기를 노린다 — 방어도를 절반 녹이고 덮친다`, () => {
+    const { c, e } = fight('a3-e-spawn');
+    const s = e('shoggoth-spawn');
+    expect(c.p.st[WATCH]).toBe(1);
+    expect(picks(c, s).has('dissolve')).toBe(false);
+    // 조금 막고 마친 턴은 배우지 않는다
+    c.p.block = DISSOLVE_AT - 1;
+    endWith(c);
+    expect(picks(c, s).has('dissolve')).toBe(false);
+    c.p.block = DISSOLVE_AT + 4;
+    endWith(c);
+    expect(c.s.vars[END_BLOCK]).toBe(DISSOLVE_AT + 4);
+    expect(picks(c, s).has('dissolve')).toBe(true);
+    // 방어도 20: 절반(10)이 녹은 뒤에 맞는다
+    c.p.block = 20;
+    const amt = c.preview(s, c.p, 9, 'blunt');
+    const hp = c.p.hp;
+    act(c, s, 'dissolve');
+    expect(c.p.hp).toBe(hp - Math.max(0, amt - 10));
+    expect(c.p.block).toBe(Math.max(0, 10 - amt));
+  });
+
+  it('쇼고스 유충: 약점(화염·비전)에 맞은 턴에는 다시 빚지 못한다 — 재형성·흡수는 비명으로, 집어삼키기는 위족 채찍으로 바뀐다', () => {
+    const { c, e } = fight('a3-e-spawn');
+    const s = e('shoggoth-spawn');
+    force(c, s, 'reform');
+    strike(c, s, 3, 'slash');
+    expect(s.intent?.move).toBe('reform');
+    strike(c, s, 3, 'fire');
+    expect(s.intent?.move).toBe('tekeli');
+    expect(s.intent?.kind).toBe('horror');
+    // 다음 턴: 집어삼키려던 것도 비전에 그을리면 삼키지 못하고 채찍만 휘두른다. 채찍질은 그대로
+    endWith(c);
+    force(c, s, 'engulf');
+    strike(c, s, 3, 'arcane');
+    expect(s.intent?.move).toBe('lash');
+    expect(s.intent?.extra ?? []).not.toContain('heal');
+    endWith(c);
+    force(c, s, 'lash');
+    strike(c, s, 3, 'arcane');
+    expect(s.intent?.move).toBe('lash');
+  });
+
+  it('렝의 거미: 새끼 거미가 내 손에 쓰러지면 그 차례에 분노한 독액을 뱉는다. 서릿실 거미줄은 동상도 남긴다', () => {
+    const { c, e } = fight('a3-e-spider');
+    const sp = e('leng-spider');
+    const kid = c.spawn('leng-spiderling', 0)!;
+    force(c, sp, 'web');
+    strike(c, kid, 999, 'slash');
+    expect(kid.dead).toBe(true);
+    expect(sp.intent?.move).toBe('venom');
+    act(c, sp, 'venom');
+    expect(c.p.st.poison).toBe(VENOM_POISON);
+    act(c, sp, 'web');
+    expect(c.p.st[FROST]).toBe(1);
+    expect(c.p.st.weak).toBe(1);
+  });
+
+  it('렝의 거미: 처음 절반 아래로 떨어질 때 곁에 새끼가 없으면 알주머니를 찢는다 — 새끼가 있으면 찢지 않는다', () => {
+    const { c, e } = fight('a3-e-spider');
+    const sp = e('leng-spider');
+    sp.poise = 0;
+    force(c, sp, 'spit');
+    strike(c, sp, Math.ceil(sp.maxHp * 0.6), 'true');
+    expect(sp.intent?.move).toBe('brood');
+    const { c: c2, e: e2 } = fight('a3-e-spider');
+    const sp2 = e2('leng-spider');
+    c2.spawn('leng-spiderling', 0);
+    sp2.poise = 0;
+    force(c2, sp2, 'spit');
+    strike(c2, sp2, Math.ceil(sp2.maxHp * 0.6), 'true');
+    expect(sp2.intent?.move).toBe('spit');
+  });
+
+  it('눈먼 펭귄: 얼음판 발 구르기는 살아 있는 펭귄 수만큼 동상 (최대 3) — 무리에서 한 차례에 하나만 구르고, 혼자면 구르지 않는다', () => {
+    const { c } = fight('a3-rookery');
+    const ps = all(c, 'blind-penguin');
+    act(c, ps[0], 'stomp');
+    expect(c.p.st[FROST]).toBe(STOMP_MAX);
+    force(c, ps[0], 'stomp');
+    expect(picks(c, ps[1], 60).has('stomp')).toBe(false);
+    const { c: c2 } = fight('a3-gnoph-penguins');
+    const solo = c2.alive.find((x) => x.def === 'blind-penguin')!;
+    expect(picks(c2, solo, 60).has('stomp')).toBe(false);
+  });
+
+  it('눈먼 펭귄: 하나가 처음 내 손에 쓰러지면 남은 펭귄 하나가 놀라 울부짖는다 — 그 뒤로는 놀라지 않는다', () => {
+    const { c } = fight('a3-rookery');
+    const ps = all(c, 'blind-penguin');
+    for (const p of ps) force(c, p, 'peck');
+    strike(c, ps[0], 9999, 'true');
+    expect(ps.slice(1).filter((p) => p.intent?.move === 'cry').length).toBe(1);
+    endWith(c);
+    for (const p of c.alive) force(c, p, 'peck');
+    strike(c, c.alive[0], 9999, 'true');
+    expect(c.alive.every((p) => p.intent?.move === 'peck')).toBe(true);
+  });
+
+  it('동사한 탐사대원: 휘파람을 불면 썰매개의 다음 공격 피해 +4 (의도 숫자에도 보인다) — 겹쳐 불어도 늘지 않고, 개의 차례가 끝나면 사라진다', () => {
+    const { c, e } = fight('a3-e-explorer');
+    const ex = e('frozen-explorer');
+    const dog = e('sled-dog');
+    const boosted = c.preview(dog, c.p, 9 + CALL_DMG, 'blunt');
+    act(c, ex, 'whistle');
+    act(c, ex, 'whistle');
+    expect(dog.st[CALLED]).toBe(CALL_DMG);
+    expect(c.preview(dog, c.p, 9, 'blunt')).toBe(boosted);
+    force(c, dog, 'bite');
+    c.p.block = 0;
+    c.drain();
+    endWith(c, [dog]);
+    const bites = c.drain().filter((x): x is Extract<CombatEvent, { t: 'dmg' }> => x.t === 'dmg' && x.src === dog.uid && x.tgt === 'p');
+    expect(bites.map((x) => x.amount)).toEqual([boosted]);
+    expect(dog.st[CALLED] ?? 0).toBe(0);
+  });
+
+  it('동사한 탐사대원: 다시 일어선 몸은 조명탄을 쏘지 못하고 얼어붙은 손아귀로 동상을 건다 (일어서자마자 의도를 다시 정한다)', () => {
+    const { c, e } = fight('a3-e-explorer');
+    const ex = e('frozen-explorer');
+    force(c, ex, 'flare');
+    strike(c, ex, 9999, 'slash');
+    expect(ex.dead).toBe(false);
+    expect(ex.intent?.move).not.toBe('flare');
+    const ms = picks(c, ex, 60);
+    expect(ms.has('flare')).toBe(false);
+    expect(ms.has('grip')).toBe(true);
+    act(c, ex, 'grip');
+    expect(c.p.st[FROST]).toBe(2);
+  });
+
+  it('서리 망령: 동상이 3 이상인 상대 앞에서 숨을 들이쉬고, 다음 차례에 얼려 버리는 숨 (예고 그대로, 동상 3) — 들이쉬는 동안 붕괴시키면 끊긴다', () => {
+    const { c, e } = fight('a3-frostbitten');
+    const w = e('frost-wraith');
+    expect(picks(c, w).has('inhale')).toBe(false);
+    c.apply(c.p, FROST, INHALE_AT);
+    expect(picks(c, w).has('inhale')).toBe(true);
+    act(c, w, 'inhale');
+    c.planIntent(w);
+    expect(w.intent?.move).toBe('freeze');
+    expect(w.intent?.dmg).toBe(FREEZE_DMG);
+    act(c, w, 'freeze');
+    expect(c.p.st[FROST]).toBe(INHALE_AT + FREEZE_FROST);
+    act(c, w, 'inhale');
+    expect(w.mem.charge).toBe(1);
+    c.breakEnemy(w);
+    expect(w.mem.charge).toBeUndefined();
+  });
+
+  it('서리 망령: 앞에 선 동료에게 얼음 껍질(방어도 10)을 입힌다', () => {
+    const { c, e } = fight('a3-frostbitten');
+    const ex = e('frozen-explorer');
+    act(c, e('frost-wraith'), 'rime');
+    expect(ex.block).toBe(RIME_BLOCK);
+  });
+
+  it('고대인 사냥꾼: 붕괴하면 쥐고 있던 표본을 떨어뜨린다 (기술을 되찾는다) — 일어나면 한 번 더 노리고, 그 뒤로는 노리지 않는다', () => {
+    const { c, e } = fight('a3-hunters');
+    const h = e('elder-hunter');
+    h.mem.tried = 1;
+    act(c, h, 'collect');
+    const uid = c.run.slots[h.mem.specimen - 1]!;
+    expect(c.s.cd[uid]).toBe(99);
+    h.poise = 1;
+    strike(c, h, 2, 'pierce');
+    expect(h.broken).toBe(2);
+    expect(h.mem.specimen).toBe(0);
+    expect(c.s.cd[uid]).toBeUndefined();
+    c.restorePoise(h);
+    expect(picks(c, h).has('collect')).toBe(true);
+    act(c, h, 'collect');
+    expect(h.mem.specimen).toBeGreaterThan(0);
+    h.poise = 1;
+    strike(c, h, 2, 'pierce');
+    expect(h.mem.specimen).toBe(0);
+    c.restorePoise(h);
+    expect(picks(c, h).has('collect')).toBe(false);
+  });
+
+  it('고대인 사냥꾼: 표본을 쥔 채 3분의 1 아래로 떨어지면 날아갈 채비를 한 차례 앞서 보이고, 막지 못하면 날아가 버린다 — 기술은 이 전투가 끝날 때까지 잠긴 채', () => {
+    const { c, e } = fight('a3-hunters');
+    const h = e('elder-hunter');
+    h.mem.tried = 1;
+    act(c, h, 'collect');
+    const uid = c.run.slots[h.mem.specimen - 1]!;
+    h.hp = Math.floor(h.maxHp * 0.3);
+    c.planIntent(h);
+    expect(h.intent?.move).toBe('escape');
+    expect(h.intent?.kind).toBe('flee');
+    endWith(c, [h]);
+    expect(h.fled).toBe(true);
+    expect(c.s.cd[uid]).toBeGreaterThan(90);
+  });
+
+  it('그노프케: 화염에 맞으면 불길을 덮으려 그 차례에 눈보라를 부른다', () => {
+    const { c, e } = fight('a3-gnoph-penguins');
+    const g = e('gnoph-keh');
+    force(c, g, 'horn');
+    strike(c, g, 3, 'slash');
+    expect(g.intent?.move).toBe('horn');
+    strike(c, g, 3, 'fire');
+    expect(g.intent?.move).toBe('blizzard');
+  });
+
+  it('그노프케: 체력이 절반 아래거나 상대의 동상이 3 이상이면 뿔을 낮추고, 다음 차례에 얼음을 가르는 돌진 (예고 그대로) — 붕괴시키면 끊긴다', () => {
+    const { c, e } = fight('a3-gnoph-penguins');
+    const g = e('gnoph-keh');
+    expect(picks(c, g).has('lower')).toBe(false);
+    c.apply(c.p, FROST, 3);
+    expect(picks(c, g).has('lower')).toBe(true);
+    c.clear(c.p, FROST);
+    g.hp = Math.floor(g.maxHp * 0.4);
+    expect(picks(c, g).has('lower')).toBe(true);
+    act(c, g, 'lower');
+    c.planIntent(g);
+    expect(g.intent?.move).toBe('gore');
+    expect(g.intent?.dmg).toBe(GORE_DMG);
+    c.breakEnemy(g);
+    expect(g.mem.charge).toBeUndefined();
+  });
+
+  it('해부된 썰매개: 무리 지어 몰아붙이기는 다른 썰매개 하나마다 한 번 더 문다 — 무리가 줄면 의도의 횟수도 준다', () => {
+    const { c } = fight('a3-e-dogs');
+    const [a, b] = all(c, 'sled-dog');
+    force(c, a, 'harry');
+    expect(a.intent?.hits).toBe(2);
+    c.kill(b);
+    expect(a.intent?.hits).toBe(1);
+    expect(picks(c, a).has('harry')).toBe(false);
+  });
+
+  it(`해부된 썰매개: 체력이 처음 절반 아래로 떨어지면 실밥이 터진다 — 공격 피해 +${TORN_N} (의도 숫자에도), 자기 차례가 끝날 때마다 체력 ${TORN_LOSS}`, () => {
+    const { c } = fight('a3-e-dogs');
+    const [a] = all(c, 'sled-dog');
+    const boosted = c.preview(a, c.p, 9 + TORN_N, 'blunt');
+    a.poise = 0;
+    strike(c, a, Math.ceil(a.maxHp * 0.6), 'true');
+    expect(a.st[TORN]).toBe(TORN_N);
+    expect(c.preview(a, c.p, 9, 'blunt')).toBe(boosted);
+    const hp = a.hp;
+    endWith(c);
+    expect(a.hp).toBe(hp - TORN_LOSS);
+    expect(picks(c, a).has('howl')).toBe(false);
+  });
+
+  it('얼어붙은 방에서 얼음 속에 갇힌 적은 첫 차례에 반응하지 않는다', () => {
+    const c = startCombat(floor3(), 'a3-hound-spawn', { anomaly: FROZEN_ROOM });
+    const h = c.alive.find((x) => x.def === 'tindalos')!;
+    expect(h.intent?.kind).toBe('sleep');
+    strike(c, h, 3, 'slash');
+    expect(h.intent?.kind).toBe('sleep');
+  });
+
+  it('3층 일반 조우: 새 상태를 지닌 채 저장했다 불러와도 이어지고 (JSON), 봇이 끝까지 이긴다', () => {
+    for (const enc of ENCOUNTERS.filter((x) => x.act === 3 && x.kind === 'normal')) {
+      const run = floor3(19);
+      let c = startCombat(run, enc.id, { anomaly: null });
+      c.snapshots = false;
+      for (let i = 0; i < 2 && !c.over; i++) autoTurn(c);
+      const saved: RunState = JSON.parse(JSON.stringify(run));
+      expect(saved.combat, enc.id).toEqual(run.combat);
+      c = new Combat(saved);
+      c.snapshots = false;
+      let n = 0;
+      while (!c.over && n++ < 300) autoTurn(c);
+      expect(c.s.phase, enc.id).toBe('victory');
+    }
+  });
+
+  it('출신 셋의 시작 덱(3층 기준: 체력 148·힘 4·행동력 4)으로 3층 일반 조우를 봇이 모두 이긴다', () => {
+    const lost: string[] = [];
+    for (const enc of ENCOUNTERS.filter((x) => x.act === 3 && x.kind === 'normal')) {
+      for (const origin of ['soldier', 'hunter', 'occultist']) {
+        const run = newRun({ seed: 5, origin });
+        run.act = 3;
+        run.floor = generateFloor(run, 3);
+        run.player.level = 6;
+        run.player.maxHp = run.player.hp = 148;
+        run.player.str = 4;
+        run.player.maxAp = 4;
+        run.light = 100;
+        const c = startCombat(run, enc.id, { anomaly: null });
+        c.snapshots = false;
+        let n = 0;
+        while (!c.over && n++ < 100) autoTurn(c);
+        if (c.s.phase !== 'victory') lost.push(`${enc.id} ${origin}: ${c.s.phase} ${c.s.turn}턴`);
+      }
+    }
+    expect(lost).toEqual([]);
+  }, 120_000);
 });

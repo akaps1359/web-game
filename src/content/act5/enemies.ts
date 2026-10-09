@@ -6,8 +6,78 @@ import { DMG_TYPES, type DmgType, type EnemyUnit, type MoveDef } from '../../eng
 import { cine, setUi } from '../lib';
 import { countDef, mv, others, release } from '../moves';
 import { canDoom, dimLight, doomMove } from '../act4/common';
-import { hid, isAsleep, isIllusion, realAlive, shuffleGroup, spawnIllusion, stealLight, vanish, wake } from './dream';
+import { hid, isAsleep, isIllusion, realAlive, setIntent, setSt, shuffleGroup, spawnIllusion, stealLight, uidNum, vanish, wake } from './dream';
 import { DROWSY_MAX, lull, SLUMBER_AP } from './fetus';
+import {
+  addHeat,
+  BAKU,
+  BAKU_RETCH_DREAD,
+  BAKU_RETCH_SAN,
+  bakuRetch,
+  BEAM_DMG,
+  BLOCKER_SEEN,
+  BRACE_BLOCK,
+  BRACE_POISE,
+  COVER_BLOCK,
+  CRUSH_DMG,
+  DEAD_STAR,
+  DEVOTION,
+  DEVOTION_BLESS,
+  DEVOTION_MAX,
+  DEVOTION_SHARD,
+  DEVOUR_HEAL,
+  DEVOUR_HEAT,
+  devourStar,
+  DREAMY_TYPES,
+  EAT_HEAL,
+  EAT_HEAL_MAX,
+  eatNightmares,
+  FED,
+  FEED_DMG,
+  feedStar,
+  FURY_DMG,
+  FURY_HITS,
+  GORGE_MAX,
+  GORGED,
+  HEAT,
+  HEAT_MAX,
+  HOLD_VULN,
+  HURRY_AT,
+  HYMN_BARRIER,
+  LAST_BEAM_DMG,
+  LAST_LIGHT_AT,
+  LIGHT_FAR,
+  NEAR_CRADLE,
+  hauntOf,
+  mostHaunted,
+  POUNCE_DMG,
+  POUNCE_HITS,
+  RALLIED,
+  RELAPSE_AT,
+  RELAPSE_HEAL,
+  RELAPSE_TURNS,
+  RETCH_BURN,
+  RETCH_DMG,
+  SCENT,
+  sendLight,
+  STAR_FLARE,
+  starDmg,
+  tangleThreads,
+  THREADS,
+  tidyRally,
+  TWIST_AT,
+  TWIST_BASE,
+  TWIST_CAP,
+  TWIST_PER,
+  TANGLE_DMG,
+  YAWN_DMG,
+  YAWN_HITS,
+  UNDERFOOT,
+  ZOOG_FLEE_AT,
+  ZOOG_FLEE_LIGHT,
+  zoogFlee,
+  zoogSignal,
+} from './patterns';
 
 /*
  * 5층 — 꿈꾸는 우주의 적들. (최종 수호자 '별의 태아'와 혜성 탯줄은 fetus.ts)
@@ -24,8 +94,8 @@ const SATURN_WEAK: DmgType[][] = [
 ];
 
 /** 성운 해파리: 별을 낳기까지 (턴) / 낳는 횟수 */
-const GESTATION = 3;
-const MAX_BIRTHS = 2;
+export const GESTATION = 3;
+export const MAX_BIRTHS = 2;
 /** 별을 삼킨 것이 붕괴하며 토해 내는 별의 피해 */
 const SPIT_DMG = 40;
 /** 꿈 사냥꾼: 붙잡은 꿈 하나당 받는 피해 감소, 최대 개수, 풀려날 때 돌려받는 정신력 */
@@ -284,20 +354,33 @@ reg.traits([
   {
     id: 'a5-sleeping',
     name: '깊은 잠',
-    desc: '잠든 동안은 행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3',
+    desc: `잠든 동안은 행동하지 않는다. 피해를 받으면 놀라 깨어나 힘 +3. 비전·공허 피해에는 꿈속의 일인 줄 알아 놀라지 않고 조용히 깬다 (힘이 오르지 않는다). 체력이 ${Math.round(RELAPSE_AT * 100)}% 아래로 떨어지면 (싸워 줄 동료가 남아 있을 때) 한 번 다시 잠들어, 잠든 동안 차례마다 최대 체력의 ${Math.round(RELAPSE_HEAL * 100)}%를 회복한다`,
     hooks: {
       onDamageTaken(c, s, d) {
         const e = s.unit;
         if (!isEnemy(e) || e.dead || e.hp <= 0 || !isAsleep(e)) return;
-        if (d.attack || d.hpLoss > 0) wake(c, e, true);
+        // 꿈결의 피해(비전·공허)는 꿈속의 일인 줄 알아 놀라지 않는다 (조용히 깬다)
+        if (d.attack || d.hpLoss > 0) wake(c, e, !(d.type !== 'true' && DREAMY_TYPES.includes(d.type)));
       },
     },
   },
   {
     id: 'a5-pilgrim',
     name: '순례자',
-    desc: '행동할 때마다 우주 한가운데의 요람에 한 걸음 다가간다. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료를 축복한다',
-    hooks: {},
+    desc: `행동할 때마다 우주 한가운데의 요람에 한 걸음 다가간다. 아무도 막지 않은 걸음마다 기도가 깊어진다 (최대 ${DEVOTION_MAX}, 깊이 1마다 별 부스러기 피해 +${DEVOTION_SHARD}, 별빛의 축복 보호막 +${DEVOTION_BLESS}). 피해를 받으면 기도가 흐트러진다. 앞줄에 서면 길이 막혀 걷지 못하고 지팡이를 든다. 요람이 ${NEAR_CRADLE}걸음 안으로 가까워지면 노래가 바뀐다. 다 걸으면 별빛이 되어 사라지고(보상 없음) 남은 동료를 축복한다`,
+    hooks: {
+      // 순례를 방해받았다: 깊어지던 기도가 흐트러진다 (스스로 치른 고행은 빼고). 준비하던 공격도 곧바로 약해진다
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || d.tgt !== e || d.tags.includes('cost')) return;
+        if (!(d.attack || d.hpLoss + d.blocked > 0)) return;
+        e.mem.hit = 1;
+        if (!((e.st[DEVOTION] ?? 0) > 0)) return;
+        setSt(c, e, DEVOTION, 0);
+        c.emit({ t: 'text', uid: e.uid, text: '기도가 흐트러졌다', tone: 'good' });
+        if (c.s.phase === 'player' && e.broken !== 2 && (e.intent?.move === 'shard' || e.intent?.move === 'bless')) setIntent(c, e, e.intent.move);
+      },
+    },
   },
   {
     id: 'a5-illusionist',
@@ -390,26 +473,47 @@ reg.traits([
   {
     id: 'a5-cradle',
     name: '별의 요람',
-    desc: `몸속에서 별을 키운다. 잉태가 끝나면 다음 차례에 갓 태어난 별을 낳는다 (잉태 ${GESTATION}턴, ${MAX_BIRTHS}번까지)`,
+    desc: `몸속에서 별을 키운다. 잉태가 끝나면 다음 차례에 갓 태어난 별을 낳는다 (잉태 ${GESTATION}턴, ${MAX_BIRTHS}번까지). 붕괴시키면 품고 있던 별이 흩어져 처음부터 다시 품는다. 체력이 ${Math.round(HURRY_AT * 100)}% 아래로 떨어지면 서둘러 낳는다 (잉태가 차례마다 2씩 줄어든다)`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
         if (!isEnemy(e) || e.dead || isIllusion(e) || (e.mem.births ?? 0) >= MAX_BIRTHS) return;
         if ((e.mem.gest ?? 0) <= 0) return;
-        e.mem.gest -= 1;
-        if (e.st['a5-gestation']) c.apply(e, 'a5-gestation', -1);
+        // 위기에 몰리면 서둘러 낳는다
+        const k = Math.min(e.mem.gest, hpPct(e) < HURRY_AT ? 2 : 1);
+        e.mem.gest -= k;
+        if (e.st['a5-gestation']) c.apply(e, 'a5-gestation', -k);
+      },
+      // 조산: 붕괴하면 품고 있던 별이 흩어진다 (낳으려던 차례도 끊긴다)
+      onDamageTaken(c, s, d) {
+        const e = s.unit;
+        if (!isEnemy(e) || e.dead || !d.broke || isIllusion(e) || (e.mem.births ?? 0) >= MAX_BIRTHS) return;
+        if ((e.mem.gest ?? 0) >= GESTATION) return;
+        e.mem.gest = GESTATION;
+        setSt(c, e, 'a5-gestation', GESTATION);
+        c.emit({ t: 'text', uid: e.uid, text: '무너지며 품고 있던 별이 흩어졌다. 처음부터 다시 품는다', tone: 'good' });
       },
     },
   },
   {
     id: 'a5-swallowed-star',
     name: '삼킨 별',
-    desc: `붕괴하면 삼킨 별을 토해 낸다. 다른 모든 적에게 화염 피해 ${SPIT_DMG} (한 번만)`,
+    desc: `삼킨 별은 하나뿐이다. 붕괴하면 그 별을 다른 모든 적에게 토해 낸다 (화염 피해 ${SPIT_DMG}). 그대로 두면 별이 달아올라 (자기 차례마다 +1, 방어도를 빨아들이거나 갓 태어난 별을 삼키면 더) ${HEAT_MAX}이 차면 다음 차례에 나에게 게워 낸다 (화염 피해, 화상 ${RETCH_BURN}). 방어도를 쌓고 턴을 마치는 상대에게선 빛을 더 자주 빨아들인다`,
     hooks: {
+      // 내가 방어도를 얼마나 쌓고 턴을 마쳤는지 본다 (빛을 빨아들일지 정할 때)
+      onUnitTurnStart(c, s) {
+        const e = s.unit;
+        if (isEnemy(e) && !isIllusion(e)) e.mem.seenBlk = c.p.block;
+      },
+      onUnitTurnEnd(c, s) {
+        const e = s.unit;
+        if (isEnemy(e) && !e.dead) addHeat(c, e, 1);
+      },
       onDamageTaken(c, s, d) {
         const e = s.unit;
         if (!isEnemy(e) || e.dead || !d.broke || e.mem.spat || isIllusion(e)) return;
         e.mem.spat = 1;
+        setSt(c, e, HEAT, 0);
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
         c.emit({ t: 'text', uid: e.uid, text: '삼킨 별을 토해 냈다!', tone: 'good' });
         for (const a of c.alive) {
@@ -442,9 +546,42 @@ function weaveIllusion(c: Combat, e: EnemyUnit) {
   if (isIllusion(e)) return;
   const cands = realAlive(c).filter((x) => x !== e && COPYABLE.includes(x.def) && !isAsleep(x));
   const src = cands.length ? c.rng.pick(cands) : e;
-  const copy = spawnIllusion(c, src, 3);
+  // 직조자가 짠 환영: 내가 깨뜨리면 실이 끊어져 직조자가 비틀거린다 (dream.ts)
+  const copy = spawnIllusion(c, src, 3, e);
   if (copy) shuffleGroup(c, [src, copy]);
 }
+
+/** 앞줄로 끌려 나온 직조자가 제 환영 둘을 짜 그 사이로 숨는다 */
+function hideSelf(c: Combat, e: EnemyUnit) {
+  if (isIllusion(e)) return;
+  for (let i = 0; i < 2; i++) {
+    if (c.alive.filter(isIllusion).length >= 3) break;
+    spawnIllusion(c, e, 2, e);
+  }
+  shuffleGroup(c, c.alive.filter((x) => x === e || (isIllusion(x) && x.def === e.def && x.mem.maker === uidNum(e))));
+  c.emit({ t: 'text', uid: e.uid, text: '장막이 펄럭이고 같은 가면이 나란히 섰다. 어느 쪽이 진짜인가', tone: 'eldritch' });
+}
+
+/** 달짐승이 부릴 수 있는 노예 (붕괴·기절하지 않았고 아직 명령을 받지 않은) */
+const freeSlaves = (c: Combat): EnemyUnit[] =>
+  c.alive.filter((x) => x.def === 'leng-slave' && !isIllusion(x) && x.broken !== 2 && !((x.st.stun ?? 0) > 0) && !x.mem.ordered);
+
+/** 붙잡아라!: 노예 하나가 곧바로 달려들어 붙잡는다 (이번 차례에 이미 움직였으면 다음 차례에) */
+function orderSlave(c: Combat, e: EnemyUnit) {
+  if (isIllusion(e)) return;
+  const s = freeSlaves(c)[0];
+  if (!s) {
+    c.emit({ t: 'text', uid: e.uid, text: '부릴 노예가 없다', tone: 'info' });
+    return;
+  }
+  s.mem.ordered = 1;
+  c.emit({ t: 'text', uid: e.uid, text: '붙잡아라!', tone: 'bad' });
+  const order = [...c.row(0), ...c.row(1)];
+  if (order.indexOf(s) > order.indexOf(e)) setIntent(c, s, 'grab');
+}
+
+/** 상처 비틀기: 내 출혈이 깊을수록 아프다 (의도를 정할 때 계산) */
+const twistDmg = (c: Combat): number => TWIST_BASE + TWIST_PER * Math.min(TWIST_CAP, c.p.st.bleed ?? 0);
 
 function mirrorSelf(c: Combat, e: EnemyUnit) {
   if (isIllusion(e)) return;
@@ -480,8 +617,24 @@ function devour(c: Combat, e: EnemyUnit) {
 
 function pilgrimStep(c: Combat, e: EnemyUnit) {
   if (isIllusion(e) || e.dead) return;
+  const hit = !!e.mem.hit;
+  e.mem.hit = 0;
+  // 앞줄에 서면 길이 막혀 걷지 못한다
+  if (e.row === 0) {
+    if (!e.mem.stuck) {
+      e.mem.stuck = 1;
+      c.emit({ t: 'text', uid: e.uid, text: '앞이 막혀 순례를 멈췄다', tone: 'info' });
+    }
+    return;
+  }
   e.mem.steps = Math.max(0, (e.mem.steps ?? 5) - 1);
   if (e.st['a5-pilgrimage']) c.apply(e, 'a5-pilgrimage', -1);
+  // 아무도 막지 않은 걸음: 기도가 깊어진다
+  const dev = e.st[DEVOTION] ?? 0;
+  if (!hit && dev < DEVOTION_MAX) {
+    setSt(c, e, DEVOTION, dev + 1);
+    c.emit({ t: 'text', uid: e.uid, text: '아무도 막지 않은 걸음에 기도가 깊어진다', tone: 'bad' });
+  }
 }
 
 /** 순례자의 행동: 실행할 때마다 한 걸음 */
@@ -525,6 +678,8 @@ function pullLight(c: Combat, e: EnemyUnit) {
   c.p.block = 0;
   c.emit({ t: 'text', uid: 'p', text: `방어도 ${n}${josa(n, '을')} 빨아들였다`, tone: 'bad' });
   c.gainBlock(e, n);
+  // 빨아들인 빛에 삼킨 별이 달아오른다
+  addHeat(c, e, 1);
 }
 
 /** 꿈 사냥꾼이 꿈 하나를 더 붙잡는다 */
@@ -663,6 +818,7 @@ function crossThreshold(c: Combat, e: EnemyUnit) {
 const PRAYER = doomMove('끝나지 않는 꿈의 기도', 3, 40, 12);
 
 // ───────────── 일반 적 ─────────────
+// 2026-10 패턴 확장: 일반 적도 상황을 보고 다르게 움직인다 (상태·특성·도구는 patterns.ts). 무작위는 남기되 무게를 상황에 맞춘다.
 
 reg.enemies([
   {
@@ -692,9 +848,10 @@ reg.enemies([
         mv.buff(
           '별빛의 축복',
           (c, e) => {
-            for (const a of c.alive) if (!isIllusion(a)) c.apply(a, 'barrier', 8, e);
+            const n = 8 + DEVOTION_BLESS * (e.st[DEVOTION] ?? 0);
+            for (const a of c.alive) if (!isIllusion(a)) c.apply(a, 'barrier', n, e);
           },
-          { desc: '모든 적 보호막 8' },
+          { desc: `모든 적 보호막 8 (깊어진 기도 1마다 +${DEVOTION_BLESS})` },
         ),
       ),
       penance: walk(
@@ -708,7 +865,26 @@ reg.enemies([
           { desc: '체력 8을 바쳐 다른 모든 적 힘 +1' },
         ),
       ),
-      shard: walk(mv.attack('별 부스러기', 13, { melee: false, type: 'arcane' })),
+      // 깊어진 기도만큼 세진다 (맞으면 흐트러져 곧바로 약해진다)
+      shard: walk(
+        mv.attack('별 부스러기', (_c, e) => 13 + DEVOTION_SHARD * (e.st[DEVOTION] ?? 0), {
+          melee: false,
+          type: 'arcane',
+          desc: `깊어진 기도 1마다 피해 +${DEVOTION_SHARD}`,
+        }),
+      ),
+      // 요람이 가깝다: 노래가 바뀐다
+      hymn: walk(
+        mv.horror('요람의 노래', 12, {
+          then: (c, e) => {
+            for (const a of c.alive) if (a !== e && !isIllusion(a)) c.apply(a, 'barrier', HYMN_BARRIER, e);
+          },
+          desc: `요람이 가깝다. 정신 피해, 다른 모든 적 보호막 ${HYMN_BARRIER}`,
+        }),
+      ),
+      // 앞줄로 밀려나 길이 막혔다: 지팡이를 든다
+      staff: walk(mv.attack('순례 지팡이', 12, { desc: '앞이 막힌 순례자가 지팡이를 휘두른다' })),
+      kneel: walk(mv.block('길을 비는 기도', 16, { desc: '무릎 꿇고 길이 다시 열리기를 빈다. 방어도 16' })),
       depart: {
         name: '요람으로',
         intent: 'flee',
@@ -724,8 +900,12 @@ reg.enemies([
       },
     },
     ai: (c, e) => {
-      if (!isIllusion(e) && (e.mem.steps ?? 5) <= 0) return 'depart';
+      const real = !isIllusion(e);
+      if (real && (e.mem.steps ?? 5) <= 0) return 'depart';
       const allies = others(c, e).length;
+      // 앞줄에서는 걷지 못한다: 지팡이를 들고 버틴다
+      if (e.row === 0) return pick(c, e, { staff: 3, kneel: allies ? 1 : 0, chant: 1 });
+      if (real && (e.mem.steps ?? 5) <= NEAR_CRADLE) return pick(c, e, { hymn: 3, shard: 2, bless: allies ? 1 : 0 });
       return pick(c, e, { chant: 2, bless: allies ? 2 : 1, penance: allies && e.hp > 20 ? 1 : 0, shard: 2 });
     },
     visual: { tint: 0x4a4868, glow: 0xffe6a0, fx: ['flicker'] },
@@ -761,10 +941,16 @@ reg.enemies([
         { desc: '모든 적 보호막 8' },
       ),
       birth: mv.summon('별을 낳는다', birthStar, '갓 태어난 별 하나를 낳는다'),
+      feed: mv.buff('별에게 빛을 먹인다', feedStar, {
+        desc: `갓 태어난 별 하나에게 성운의 빛을 먹인다. 그 별이 터뜨릴 빛의 피해 +${FEED_DMG} (별마다 한 번)`,
+      }),
     },
     ai: (c, e) => {
-      if (!isIllusion(e) && (e.mem.gest ?? 1) <= 0 && (e.mem.births ?? 0) < MAX_BIRTHS) return 'birth';
-      return pick(c, e, { sting: 3, pulse: others(c, e).length && last(e) !== 'pulse' ? 1 : 0 });
+      const real = !isIllusion(e);
+      if (real && (e.mem.gest ?? 1) <= 0 && (e.mem.births ?? 0) < MAX_BIRTHS) return 'birth';
+      // 낳은 별이 아직 배고프다
+      const hungry = real && c.alive.some((x) => x.def === 'newborn-star' && !isIllusion(x) && !((x.st[FED] ?? 0) > 0));
+      return pick(c, e, { sting: 3, pulse: others(c, e).length && last(e) !== 'pulse' ? 1 : 0, feed: hungry && last(e) !== 'feed' ? 3 : 0 });
     },
     visual: { tint: 0x3a2a5a, glow: 0xff9ad8, fx: ['float', 'flicker'] },
   },
@@ -790,19 +976,51 @@ reg.enemies([
         name: '빛을 빨아들인다',
         intent: 'debuff',
         extra: ['block'],
-        desc: '내 방어도를 모두 빨아들여 제 방어도로 삼는다',
+        desc: '내 방어도를 모두 빨아들여 제 방어도로 삼는다. 빨아들인 빛에 삼킨 별이 달아오른다 (+1)',
         run: pullLight,
       },
       hunger: mv.horror('굶주린 공허', 11, { then: (c, e) => void c.apply(c.p, 'dread', 1, e), desc: '정신 피해, 공포 1' }),
       gape: mv.charge('아가리를 벌린다', 40),
       swallow: release(mv.attack('통째로 삼킨다', 40, { type: 'void' })),
+      // 달아오른 별을 게워 낸다 (별은 하나뿐 — 그 뒤로는 붕괴해도 토할 별이 없다)
+      retch: {
+        name: '삼킨 별을 게워 낸다',
+        intent: 'attack',
+        extra: ['debuff'],
+        dmg: RETCH_DMG,
+        melee: false,
+        desc: `하얗게 달아오른 별을 나에게 게워 낸다. 화염 피해, 화상 ${RETCH_BURN}. 별은 하나뿐이라 그 뒤로는 붕괴해도 토할 별이 없다`,
+        run(c, e) {
+          e.mem.spat = 1;
+          setSt(c, e, HEAT, 0);
+          c.enemyAttack(e, { type: 'fire' });
+          if (!c.over && !e.dead) c.apply(c.p, 'burn', RETCH_BURN, e);
+        },
+      },
+      devour: {
+        name: '갓 태어난 별을 삼킨다',
+        intent: 'heal',
+        extra: ['buff'],
+        desc: `곁의 갓 태어난 별 하나를 삼킨다. 그 별은 빛을 터뜨리지 못하고 사라진다. 체력 ${DEVOUR_HEAL} 회복, 삼킨 별이 더 달아오른다 (+${DEVOUR_HEAT})`,
+        run: devourStar,
+      },
     },
     ai: (c, e) => {
       if (e.mem.charge) return 'swallow';
-      return (
-        opener(c, e, ['gulp']) ??
-        pick(c, e, { gulp: 3, pull: e.hist.slice(-2).includes('pull') ? 0 : 2, hunger: 1, gape: e.hist.slice(-2).includes('swallow') ? 0 : 1 })
-      );
+      const real = !isIllusion(e);
+      if (real && !e.mem.spat && (e.st[HEAT] ?? 0) >= HEAT_MAX) return 'retch';
+      const o = opener(c, e, ['gulp']);
+      if (o) return o;
+      const star = real && !e.mem.spat && c.alive.some((x) => x.def === 'newborn-star' && !isIllusion(x));
+      const recent = e.hist.slice(-2);
+      return pick(c, e, {
+        gulp: 3,
+        // 방어도를 쌓고 턴을 마치는 상대에게선 빛을 더 자주 빨아들인다
+        pull: recent.includes('pull') ? 0 : (e.mem.seenBlk ?? 0) >= BLOCKER_SEEN ? 4 : 2,
+        hunger: 1,
+        gape: recent.includes('swallow') ? 0 : 1,
+        devour: star && last(e) !== 'devour' ? 3 : 0,
+      });
     },
     visual: { tint: 0x0a0812, glow: 0xffc070, scale: 1.25, fx: ['float'] },
   },
@@ -820,6 +1038,7 @@ reg.enemies([
     dread: 5,
     eldritch: true,
     tags: ['dream', 'moon'],
+    traits: ['a5-slaver'],
     desc: '달의 뒷면에서 온, 눈 없는 두꺼비 같은 회백색 몸뚱이. 주둥이 끝에서 분홍빛 촉수가 꿈틀댄다. 노예를 부리고 고문을 즐긴다.',
     moves: {
       snout: mv.attack('촉수 주둥이', 7, { hits: 3 }),
@@ -834,14 +1053,33 @@ reg.enemies([
         },
         '렝의 노예 소환',
       ),
+      order: {
+        name: '붙잡아라!',
+        intent: 'special',
+        desc: `렝의 노예에게 명령한다. 노예가 곧바로 달려들어 나를 붙잡는다 (취약 ${HOLD_VULN}). 그 전에 노예를 쓰러뜨리면 명령도 끝난다`,
+        run: orderSlave,
+      },
+      twist: mv.attack('상처 비틀기', twistDmg, {
+        type: 'pierce',
+        desc: `벌어진 상처에 촉수를 넣어 비튼다. 내 출혈 1마다 피해 +${TWIST_PER} (출혈 ${TWIST_CAP}까지)`,
+      }),
     },
     ai: (c, e) => {
       if (e.mem.illu) return pick(c, e, { snout: 1, hook: 1 });
       const slaves = countDef(c, 'leng-slave');
-      return (
-        opener(c, e, ['hook']) ??
-        pick(c, e, { snout: 3, hook: 2, whip: slaves ? 2 : 1, call: slaves === 0 && (e.mem.called ?? 0) < 2 && last(e) !== 'call' ? 2 : 0 })
-      );
+      const bleed = c.p.st.bleed ?? 0;
+      const o = opener(c, e, ['hook']);
+      if (o) return o;
+      return pick(c, e, {
+        snout: 3,
+        hook: bleed >= TWIST_AT ? 1 : 2,
+        // 피 냄새: 벌어진 상처를 비튼다
+        twist: bleed >= TWIST_AT ? 4 : 0,
+        whip: slaves ? 2 : 1,
+        call: slaves === 0 && (e.mem.called ?? 0) < 2 && last(e) !== 'call' ? 2 : 0,
+        // 노예가 있고 아직 붙잡히지 않았으면 명령한다
+        order: freeSlaves(c).length && !((c.p.st.vuln ?? 0) > 0) && !e.hist.slice(-2).includes('order') ? 3 : 0,
+      });
     },
     visual: { tint: 0x9a9a8a, glow: 0xff90b0, scale: 1.1, fx: ['drip'] },
   },
@@ -858,14 +1096,60 @@ reg.enemies([
     dread: 2,
     eldritch: true,
     tags: ['dream', 'zoog'],
-    traits: ['a5-lamp-eater'],
+    traits: ['a5-lamp-eater', 'a5-zoog-pack'],
     desc: '떠도는 꿈의 숲에 사는, 갈색 털이 난 작은 것들. 파닥이는 소리로 속삭인다. 호기심이 많아 무엇이든 갉아먹는다. 특히 등불을 노린다.',
     moves: {
       nibble: mv.attack('등불 갉아먹기', 5, { hits: 2, type: 'slash', then: (c, e) => stealLight(c, e, 6), desc: '등불 6을 갉아먹는다' }),
       chitter: mv.horror('파닥이는 속삭임', 6, { then: (c, e) => void c.apply(e, 'evasive', 1, e), desc: '정신 피해, 자신에게 회피 1' }),
       swarm: mv.attack('떼 지어 물기', 3, { hits: (c) => 1 + countDef(c, 'zoog'), type: 'slash', desc: '주그 수만큼 더 문다' }),
+      signal: mv.buff('파닥이는 신호', zoogSignal, {
+        desc: '다른 주그들에게 신호를 보낸다. 신호를 받은 주그는 다음 차례에 일제히 덤빈다. 신호를 보낸 주그를 쓰러뜨리거나 붕괴시키면 머뭇거린다',
+      }),
+      pounce: {
+        name: '일제히 덤빈다',
+        intent: 'attack',
+        dmg: POUNCE_DMG,
+        hits: POUNCE_HITS,
+        melee: true,
+        desc: '우두머리의 신호를 받고 한꺼번에 달려들어 문다',
+        run(c, e) {
+          setSt(c, e, RALLIED, 0);
+          delete e.mem.rallyBy;
+          tidyRally(c);
+          c.enemyAttack(e, { type: 'slash' });
+        },
+      },
+      scatter: {
+        name: '머뭇거린다',
+        intent: 'special',
+        desc: '신호를 보낸 우두머리를 잃고 머뭇거린다. 아무것도 하지 않는다',
+        run(c, e) {
+          c.emit({ t: 'text', uid: e.uid, text: '파닥거리며 머뭇거린다', tone: 'info' });
+        },
+      },
+      flee: {
+        name: '등불을 물고 달아난다',
+        intent: 'flee',
+        desc: '갉아먹은 등불을 물고 달아난다. 달아나면 등불을 되찾지 못하고 보상도 없다. 그 전에 쓰러뜨리면 되찾는다',
+        run: zoogFlee,
+      },
     },
-    ai: (c, e) => pick(c, e, { nibble: c.run.light > 0 ? 3 : 0, chitter: 2, swarm: countDef(c, 'zoog') > 1 ? 2 : 1 }),
+    ai: (c, e) => {
+      if (isIllusion(e)) return pick(c, e, { nibble: 1, chitter: 1 });
+      // 신호를 받았다: 일제히 덤빈다
+      if ((e.st[RALLIED] ?? 0) > 0) return 'pounce';
+      // 겁에 질린 도둑: 갉아먹은 등불을 물고 달아난다
+      if (hpPct(e) < ZOOG_FLEE_AT && (e.mem.light ?? 0) >= ZOOG_FLEE_LIGHT) return 'flee';
+      const kin = c.alive.filter((x) => x !== e && x.def === 'zoog' && !isIllusion(x) && x.broken !== 2);
+      // 떼에 이미 걸린 신호가 있으면 기다린다 (한 번에 하나)
+      const pending = c.alive.some((x) => x.def === 'zoog' && (x.mem.leader || (x.st[RALLIED] ?? 0) > 0 || x.intent?.move === 'signal'));
+      return pick(c, e, {
+        nibble: c.run.light > 0 ? 3 : 0,
+        chitter: (e.st.evasive ?? 0) > 0 ? 1 : 2,
+        swarm: kin.length ? 2 : 1,
+        signal: kin.length && !pending && !e.hist.includes('signal') ? 3 : 0,
+      });
+    },
     visual: { tint: 0x5a4630, glow: 0xffe070, scale: 0.7 },
   },
   {
@@ -882,16 +1166,65 @@ reg.enemies([
     dread: 5,
     eldritch: true,
     tags: ['dream', 'giant'],
-    desc: '저주받아 꿈의 섬 밑바닥으로 쫓겨난 거인. 팔목마다 두 개씩 갈라진 앞발, 머리를 세로로 가르는 아가리.',
+    traits: ['a5-gug-glare'],
+    desc: '저주받아 꿈의 섬 밑바닥으로 쫓겨난 거인. 팔목마다 두 개씩 갈라진 앞발, 머리를 세로로 가르는 아가리. 밑바닥의 어둠에 익은 눈은 불빛을 견디지 못한다.',
     moves: {
       paws: mv.attack('네 개의 앞발', 7, { hits: 3 }),
       stomp: mv.attack('짓밟기', 19, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '약화 1' }),
       gape: mv.charge('세로 아가리를 벌린다', 38),
       maw: release(mv.attack('세로 아가리', 38)),
+      // 거대한 발: 방어도로 받아 내면 피해 절반·버팀 -BRACE_POISE (붕괴시키면 끊긴다)
+      lift: {
+        ...mv.charge('거대한 발을 들어 올린다', CRUSH_DMG, {
+          then: (c, e) => {
+            if (isIllusion(e)) return;
+            e.mem.lifted = 1;
+            delete e.mem.braced;
+            setSt(c, c.p, UNDERFOOT, BRACE_BLOCK);
+          },
+        }),
+        follow: '내리찍기',
+        desc: `다음 차례에 내리찍는다. 내 턴을 방어도 ${BRACE_BLOCK} 이상으로 마치면 받아 낸다: 내리찍기 피해 절반, 구그 버팀 -${BRACE_POISE}`,
+      },
+      crush: release({
+        name: '내리찍기',
+        intent: 'attack',
+        dmg: (_c, e) => (e.mem.braced ? Math.ceil(CRUSH_DMG / 2) : CRUSH_DMG),
+        melee: true,
+        desc: '들어 올린 발로 내리찍는다. 받아 냈다면 피해 절반',
+        run(c, e) {
+          delete e.mem.lifted;
+          delete e.mem.braced;
+          if (!c.alive.some((g) => g !== e && g.def === 'gug' && g.mem.lifted)) setSt(c, c.p, UNDERFOOT, 0);
+          c.enemyAttack(e, { type: 'blunt' });
+        },
+      }),
+      // 불빛에 움찔했다 (특성이 내 턴 중에 의도를 바꾼다)
+      cover: mv.block('앞발로 얼굴을 가린다', COVER_BLOCK, {
+        then: (_c, e) => {
+          e.mem.angry = 1;
+        },
+        desc: `불빛에 움찔해 앞발로 얼굴을 가린다. 방어도 ${COVER_BLOCK}. 다음 차례엔 성이 나 네 앞발을 모두 휘두른다`,
+      }),
+      fury: mv.attack('성난 네 앞발', FURY_DMG, { hits: FURY_HITS, desc: '불에 덴 분노로 네 앞발을 모두 휘두른다' }),
     },
     ai: (c, e) => {
-      if (e.mem.charge) return 'maw';
-      return opener(c, e, ['paws']) ?? pick(c, e, { paws: 2, stomp: 2, gape: e.hist.slice(-2).includes('maw') ? 0 : 1 });
+      if (e.mem.charge) return e.intent?.move === 'lift' || last(e) === 'lift' ? 'crush' : 'maw';
+      // 붕괴로 끊긴 발: 내려놓는다
+      if (e.mem.lifted) {
+        delete e.mem.lifted;
+        delete e.mem.braced;
+        if (!c.alive.some((g) => g !== e && g.def === 'gug' && g.mem.lifted)) setSt(c, c.p, UNDERFOOT, 0);
+      }
+      if (e.mem.angry) {
+        delete e.mem.angry;
+        return 'fury';
+      }
+      const o = opener(c, e, ['paws']);
+      if (o) return o;
+      const big = e.hist.slice(-2).some((h) => h === 'gape' || h === 'maw' || h === 'lift' || h === 'crush');
+      // 체력이 절반 아래면 발을 더 자주 든다
+      return pick(c, e, { paws: 2, stomp: 2, gape: big ? 0 : 1, lift: big ? 0 : hpPct(e) < 0.5 ? 2.5 : 1.5 });
     },
     visual: { tint: 0x4a3a38, glow: 0xff5040, scale: 1.3 },
   },
@@ -918,8 +1251,10 @@ reg.enemies([
       doze: {
         name: '잠들어 있다',
         intent: 'sleep',
-        desc: '아무것도 하지 않는다',
+        desc: '아무것도 하지 않는다. 다시 잠든 몽유병자는 잠든 동안 상처가 아문다',
         run(c, e) {
+          // 다시 잠든 몸은 꿈속에서 상처가 아문다
+          if (e.mem.rest) c.heal(e, Math.ceil(e.maxHp * RELAPSE_HEAL));
           // 꿈을 먹는 자의 곁에서는 스스로 깨어나지 못한다
           if (c.alive.some((x) => x.def === 'dream-eater')) return;
           e.mem.asleep = (e.mem.asleep ?? 1) - 1;
@@ -932,8 +1267,35 @@ reg.enemies([
       flail: mv.attack('허우적거림', 5, { hits: 3 }),
       claw: mv.attack('잠결의 손톱', 16, { type: 'slash' }),
       scream: mv.horror('악몽의 비명', 9, { then: (c, e) => void c.apply(c.p, 'dread', 2, e), desc: '정신 피해, 공포 2' }),
+      // 하품하며 허우적거린다: 졸음이 옮는다
+      yawn: mv.attack('하품', YAWN_DMG, {
+        hits: YAWN_HITS,
+        extra: ['debuff'],
+        then: (c, e) => lull(c, e, 1),
+        desc: `하품하며 허우적거린다. 길고 느린 하품이 옮아 졸음 +1 (${DROWSY_MAX}이 되면 잠에 빠져 다음 턴 행동력 -${SLUMBER_AP}). 적을 붕괴시키거나 쓰러뜨리면 깬다`,
+      }),
+      relapse: {
+        name: '다시 잠든다',
+        intent: 'sleep',
+        desc: `상처를 안고 다시 잠든다 (${RELAPSE_TURNS}번의 차례). 잠든 동안 차례마다 최대 체력의 ${Math.round(RELAPSE_HEAL * 100)}%를 회복한다. 피해를 받으면 놀라 깨어난다 (비전·공허 피해에는 조용히 깬다)`,
+        run(c, e) {
+          if (isIllusion(e)) return;
+          e.mem.relapsed = 1;
+          e.mem.rest = 1;
+          e.mem.asleep = RELAPSE_TURNS;
+          setSt(c, e, 'a5-asleep', RELAPSE_TURNS);
+          c.emit({ t: 'text', uid: e.uid, text: '비틀거리다 다시 잠들었다', tone: 'eldritch' });
+        },
+      },
     },
-    ai: (c, e) => (isAsleep(e) ? 'doze' : pick(c, e, { flail: 2, claw: 3, scream: 2 })),
+    ai: (c, e) => {
+      if (isAsleep(e)) return 'doze';
+      // 다친 몸이 버거우면 한 번 다시 잠든다 (싸워 줄 동료가 남아 있을 때만 — 혼자 남으면 잠들 틈이 없다)
+      const company = c.alive.some((x) => x !== e && !isIllusion(x) && !isAsleep(x));
+      if (!isIllusion(e) && !e.mem.relapsed && company && hpPct(e) < RELAPSE_AT) return 'relapse';
+      const slumbering = (c.p.st['a5-slumber'] ?? 0) > 0;
+      return pick(c, e, { flail: 2, claw: 3, scream: 2, yawn: slumbering || last(e) === 'yawn' ? 0 : 1.5 });
+    },
     visual: { tint: 0x8a8aa0, glow: 0xc0d0ff },
   },
   {
@@ -949,19 +1311,137 @@ reg.enemies([
     dread: 4,
     eldritch: true,
     tags: ['dream', 'illusion'],
-    traits: ['a5-illusionist'],
-    desc: '가면 뒤에 얼굴이 몇 개인지 아무도 모른다. 꿈의 실로 동료의 그림자를 짜낸다.',
+    traits: ['a5-illusionist', 'a5-weaver'],
+    desc: '가면 뒤에 얼굴이 몇 개인지 아무도 모른다. 꿈의 실로 동료의 그림자를 짜낸다. 당신이 손을 놀릴 때마다 그 손끝에도 실이 감긴다.',
+    // 손끝의 꿈실을 지켜본다 (마지막으로 쓴 두 기술 — 숨은 상태)
+    onSpawn: (c) => {
+      if (!c.s.vars.a5Illu) c.p.st[THREADS] = 1;
+    },
     moves: {
-      weave: mv.summon('환영 짜기', weaveIllusion, '동료 하나의 환영을 만든다'),
+      weave: mv.summon('환영 짜기', weaveIllusion, '동료 하나의 환영을 만든다. 그 환영을 깨뜨리면 실이 끊어져 직조자가 비틀거린다'),
       needle: mv.attack('꿈바늘', 14, { melee: false, type: 'pierce' }),
       lull: mv.horror('자장가', 9, { then: (c, e) => void c.apply(c.p, 'weak', 1, e), desc: '정신 피해, 약화 1' }),
+      // 꿈바늘로 꿰며 손끝의 실을 엉킨다
+      tangle: mv.attack('꿈실 엉키기', TANGLE_DMG, {
+        melee: false,
+        type: 'pierce',
+        extra: ['debuff'],
+        then: tangleThreads,
+        desc: '꿈바늘로 꿰며 이번 턴에 내가 마지막으로 쓴 두 기술(기본 공격·방어 제외)의 꿈실을 엉킨다. 두 기술의 재사용 대기가 둘 중 더 긴 쪽에 맞춰진다',
+      }),
+      veilself: mv.summon('장막 뒤로 숨는다', hideSelf, '앞줄로 끌려 나오자 제 환영 둘을 짜 그 사이로 숨는다. 환영을 깨뜨리면 실이 끊어져 직조자가 비틀거린다'),
     },
     ai: (c, e) => {
       if (e.mem.illu) return pick(c, e, { needle: 2, lull: 1 });
+      // 앞줄로 끌려 나왔다: 제 환영 사이로 숨는다
+      const mine = c.alive.filter((x) => isIllusion(x) && x.mem.maker === uidNum(e)).length;
+      if (e.row === 0 && mine === 0 && last(e) !== 'veilself') return 'veilself';
       const illus = c.alive.filter(isIllusion).length;
-      return opener(c, e, ['weave']) ?? pick(c, e, { weave: illus < 2 && last(e) !== 'weave' ? 2 : 0, needle: 3, lull: 2 });
+      return (
+        opener(c, e, ['weave']) ??
+        pick(c, e, { weave: illus < 2 && last(e) !== 'weave' ? 2 : 0, needle: 3, lull: 2, tangle: last(e) === 'tangle' ? 0 : 1.5 })
+      );
     },
     visual: { tint: 0x3a3050, glow: 0xe0b0ff, fx: ['flicker', 'float'] },
+  },
+
+  // ── 2026-10 새 일반 적 ──
+  {
+    id: DEAD_STAR,
+    name: '꺼진 별',
+    icon: 'gi:star-skull',
+    act: 5,
+    tier: 'normal',
+    hp: [118, 126],
+    poise: 5,
+    weak: ['blunt', 'arcane'],
+    resist: { fire: 0.5 },
+    row: 1,
+    dread: 4,
+    eldritch: true,
+    tags: ['star', 'dead'],
+    traits: ['a5-late-light'],
+    desc: '수억 년 전에 꺼진 별의 식은 껍데기. 별은 이미 죽었지만, 마지막으로 쏘아 보낸 빛은 아직 우주를 건너오는 중이다. 그 빛이 닿는 곳에서는 이미 늦었다.',
+    moves: {
+      send: {
+        name: '빛을 쏘아 보낸다',
+        intent: 'special',
+        desc: '빛줄기 하나를 쏘아 보낸다. 내 턴이 두 번 끝날 때 닿는다 (방어도가 먼저 막는다). 닿을 피해는 내 상태 칸의 「다가오는 별빛」에 보인다',
+        run: (c, e) => sendLight(c, e, BEAM_DMG),
+      },
+      lastlight: {
+        name: '마지막 빛',
+        intent: 'special',
+        desc: '식어 가는 별이 남은 빛을 한꺼번에 쏘아 보낸다. 내 턴이 두 번 끝날 때 큰 빛이 닿는다 (방어도가 먼저 막는다). 전투마다 한 번',
+        run(c, e) {
+          if (isIllusion(e)) return;
+          e.mem.lastDone = 1;
+          sendLight(c, e, LAST_BEAM_DMG);
+        },
+      },
+      ember: mv.attack('식은 불티', 6, { hits: 2, melee: false, type: 'fire' }),
+      glimmer: mv.horror('희미한 잔광', 10),
+    },
+    ai: (c, e) => {
+      if (e.mem.illu) return pick(c, e, { ember: 1, glimmer: 1 });
+      // 식어 간다: 남은 빛을 한꺼번에
+      if (!e.mem.lastDone && hpPct(e) < LAST_LIGHT_AT) return 'lastlight';
+      const o = opener(c, e, ['send']);
+      if (o) return o;
+      // 이미 다가오는 빛이 있으면 덜 쏜다 (빛이 한꺼번에 쌓이지 않게)
+      const flying = (c.p.st[LIGHT_FAR] ?? 0) > 0;
+      return pick(c, e, { send: flying ? 1 : 3, ember: 2, glimmer: 2 });
+    },
+    visual: { tint: 0x2a2620, glow: 0xffb070, scale: 0.95, fx: ['float', 'flicker'] },
+  },
+  {
+    id: BAKU,
+    name: '악몽 먹는 맥',
+    icon: 'gi:tapir',
+    act: 5,
+    tier: 'normal',
+    hp: [150, 160],
+    poise: 6,
+    weak: ['fire', 'arcane'],
+    resist: { void: 0.5 },
+    row: 0,
+    dread: 3,
+    eldritch: true,
+    tags: ['dream', 'beast'],
+    traits: ['a5-nightmare-eater'],
+    desc: '코끼리의 코, 코뿔소의 눈, 범의 다리를 가졌다는 짐승. 악몽을 먹고 산다. 이 꿈에는 악몽이 너무 많아, 배가 터질 듯 부풀어도 먹기를 멈추지 못한다.',
+    // 내가 거는 해로운 상태의 냄새를 맡는다 (숨은 상태)
+    onSpawn: (c) => {
+      if (!c.s.vars.a5Illu) c.p.st[SCENT] = 1;
+    },
+    moves: {
+      eat: {
+        name: '악몽을 먹는다',
+        intent: 'heal',
+        extra: ['buff'],
+        desc: `악몽(출혈·독·화상·인장·약화·취약·부식·파멸)이 가장 깊은 적 하나(자신 포함)의 악몽을 모두 먹어 치운다. 한 겹마다 체력 ${EAT_HEAL} 회복 (최대 ${EAT_HEAL_MAX}), 배부름 +1`,
+        run: eatNightmares,
+      },
+      retch: {
+        name: '악몽을 게워 낸다',
+        intent: 'horror',
+        sanity: BAKU_RETCH_SAN,
+        desc: `배 속에 쌓인 악몽을 나에게 게워 낸다. 정신 피해, 공포 ${BAKU_RETCH_DREAD}, 약화 1`,
+        run: bakuRetch,
+      },
+      trample: mv.attack('범의 발', 16),
+      trunk: mv.attack('코로 휘감기', 7, { hits: 2, then: (c, e) => void c.apply(c.p, 'frail', 1, e), desc: '허약 1' }),
+    },
+    ai: (c, e) => {
+      if ((e.st[GORGED] ?? 0) >= GORGE_MAX) return 'retch';
+      const o = opener(c, e, ['trample']);
+      if (o) return o;
+      // 악몽이 깊은 적이 있을수록 먹으러 간다 (연달아 먹지는 않는다)
+      const prey = mostHaunted(c);
+      const stacks = prey ? hauntOf(prey) : 0;
+      return pick(c, e, { eat: stacks >= 3 && last(e) !== 'eat' ? 2 + Math.min(4, stacks / 2) : 0, trample: 3, trunk: 2 });
+    },
+    visual: { tint: 0x3a3048, glow: 0xd8a0ff, scale: 1.15 },
   },
 
   // ───────────── 하수인 ─────────────
@@ -979,8 +1459,17 @@ reg.enemies([
     moves: {
       spear: mv.attack('녹슨 창', 8, { type: 'pierce' }),
       horn: mv.attack('뿔 들이받기', 11),
+      // 달짐승의 「붙잡아라!」
+      grab: mv.debuff(
+        '붙잡기',
+        (c, e) => {
+          delete e.mem.ordered;
+          c.apply(c.p, 'vuln', HOLD_VULN, e);
+        },
+        { desc: `달짐승의 명령에 달려들어 붙잡는다. 취약 ${HOLD_VULN}` },
+      ),
     },
-    ai: (c, e) => pick(c, e, { spear: 2, horn: 1 }),
+    ai: (c, e) => (e.mem.ordered ? 'grab' : pick(c, e, { spear: 2, horn: 1 })),
     visual: { tint: 0x5a4a3a, glow: 0xd0a060, scale: 0.8 },
   },
   {
@@ -997,9 +1486,10 @@ reg.enemies([
     tags: ['star'],
     desc: '성운이 낳은 아기 별. 첫 빛을 터뜨리고 나면 꺼져 버린다.',
     moves: {
-      swell: mv.charge('빛이 부푼다', 22),
+      // 성운 해파리가 빛을 먹이면 더 크게 터진다 (부푼 빛)
+      swell: { ...mv.charge('빛이 부푼다', STAR_FLARE), dmg: starDmg },
       flare: release(
-        mv.attack('터지는 첫 빛', 22, {
+        mv.attack('터지는 첫 빛', starDmg, {
           melee: false,
           type: 'fire',
           then: (c, e) => vanish(c, e, '빛을 다 쏟고 꺼졌다'),

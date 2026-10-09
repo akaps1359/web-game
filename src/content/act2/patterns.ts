@@ -1,6 +1,6 @@
 import { reg, STATUSES } from '../../engine/registry';
-import { isEnemy, type Combat } from '../../engine/combat';
-import type { EnemyUnit, Unit } from '../../engine/types';
+import { isEnemy, MAX_ROW, type Combat } from '../../engine/combat';
+import type { DamageCtx, EnemyUnit, Intent, Unit } from '../../engine/types';
 import { cine, setObjective, setUi } from '../lib';
 
 /**
@@ -97,6 +97,55 @@ export function once(c: Combat, key: string): boolean {
   if (c.s.vars[key]) return false;
   c.s.vars[key] = 1;
   return true;
+}
+
+// ───────────── 반응하는 의도 (2026-10 일반 적 패턴) ─────────────
+// 적의 특성 훅은 내 기술을 직접 보지 못한다. 대신 맞을 때·누가 쓰러질 때 의도를 바꿔 그 자리에서 보여 준다
+// (바뀐 의도는 내 턴 안에 보이므로 남은 행동력으로 대응할 수 있다). 3층 act3/common.ts의 react와 같은 규칙
+
+/** 이 행동을 지금 의도로 정할 때의 모습 (planIntent와 같은 계산: 근접 행동인데 후열이면 전진·관망) */
+export function intentNow(c: Combat, e: EnemyUnit, id: string): Intent {
+  let move = id;
+  let m = c.moveDef(e, id);
+  if (m.melee && e.row !== 0) {
+    move = c.row(0).length < MAX_ROW ? '_advance' : '_wait';
+    m = c.moveDef(e, move);
+  }
+  return {
+    move,
+    kind: m.intent,
+    extra: m.extra,
+    dmg: typeof m.dmg === 'function' ? m.dmg(c, e) : m.dmg,
+    hits: typeof m.hits === 'function' ? m.hits(c, e) : m.hits,
+    sanity: m.sanity,
+    label: m.name,
+    hidden: m.hidden,
+    charging: m.charging,
+    disguise: m.disguise,
+  };
+}
+
+/** 내 턴에 내 손으로 준 피해 (지속 피해·적끼리 준 피해·적의 차례에 되돌려 준 피해는 빼고) */
+export function myHit(c: Combat, d: DamageCtx): boolean {
+  return d.src === c.p && c.s.phase === 'player';
+}
+
+/** 반응: 내 턴 도중 의도를 이 행동으로 바꿔 보인다 (key마다 한 턴에 한 번). 붕괴·기절 중이거나 모아 둔 힘을 쏟아낼 차례면 바꾸지 않는다 */
+export function react(c: Combat, e: EnemyUnit, id: string, text?: string, tone: 'good' | 'bad' | 'eldritch' = 'eldritch', key = 'rx'): boolean {
+  if (e.dead || e.hp <= 0 || c.over || c.s.phase !== 'player' || e.broken === 2 || e.mem.charge || (e.st.stun ?? 0) > 0) return false;
+  if (e.mem[key] === c.s.turn) return false;
+  e.mem[key] = c.s.turn;
+  e.intent = intentNow(c, e, id);
+  if (text) c.emit({ t: 'text', uid: e.uid, text, tone });
+  return true;
+}
+
+/** 지금 의도의 피해·횟수를 다시 센다 (의도를 정한 뒤 손·죄처럼 수치가 바뀌었을 때) */
+export function refreshIntent(c: Combat, e: EnemyUnit) {
+  const it = e.intent;
+  if (!it || e.dead || it.move.startsWith('_')) return;
+  const m = c.moveDef(e, it.move);
+  e.intent = { ...it, dmg: typeof m.dmg === 'function' ? m.dmg(c, e) : m.dmg, hits: typeof m.hits === 'function' ? m.hits(c, e) : m.hits };
 }
 
 // ───────────── 침묵의 서약 ─────────────
