@@ -50,10 +50,13 @@ export const DREAM_MAX = 3;
 export const FLOOD_SAN = 15;
 export const AWAKE_AT = 0.5;
 
-/** 무형의 피리꾼: 고조되는 선율 (n = 끊는 데 더 필요한 피해) · 광기의 절정 · 끊는 피해(최대 체력 비율) */
+/**
+ * 무형의 피리꾼: 고조되는 선율 (n = 끊는 데 더 필요한 피해) · 광기의 절정 · 끊는 피해(최대 체력 비율).
+ * 끊는 피해는 시작 덱으로 한 턴에 닿는 크기 — 2026-10-10 일반전 몹 체력 ×1.55(MOB_HP_MULT) 뒤로 비율을 12 → 8%로 (피해량은 그대로)
+ */
 export const CRESCENDO = 'a4-crescendo';
 export const CLIMAX_SAN = 16;
-export const CRESCENDO_BREAK = 0.12;
+export const CRESCENDO_BREAK = 0.08;
 /** 장송곡: 되풀이하는 공격의 타격당 피해·횟수 상한 / 되풀이할 공격이 없을 때 정신 피해 */
 export const DIRGE_CAP = 12;
 export const DIRGE_HITS = 3;
@@ -98,9 +101,9 @@ export const TINT = 'a4-tint';
 /** 비야키: 내려앉음 */
 export const LANDED = 'a4-landed';
 
-/** 차원 방랑자: 붙잡힘 (n = 풀려나는 데 더 필요한 피해) · 풀려나는 피해(최대 체력 비율) · 끌고 가기 정신 피해 · 간격 */
+/** 차원 방랑자: 붙잡힘 (n = 풀려나는 데 더 필요한 피해) · 풀려나는 피해(최대 체력 비율 — 일반전 몹 체력 ×1.55 뒤 10 → 7%) · 끌고 가기 정신 피해 · 간격 */
 export const GRABBED = 'a4-grabbed';
-export const GRAB_BREAK = 0.1;
+export const GRAB_BREAK = 0.07;
 export const DRAG_SAN = 12;
 export const GRAB_GAP = 4;
 

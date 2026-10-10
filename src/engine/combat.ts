@@ -290,8 +290,15 @@ export const MAX_ROW = 3;
  * 2026-10-09 급소(engine/weakpoint.ts)를 넣으며 [1, 1, 1.25, 1.65, 2.2, 2.0]에서 올렸다 — 밝힌 급소는 깊이 가는 쪽에 더 걸려 4·5층에 더 (GDD 10.6)
  * 2026-10-09 "여전히 너무 쉽다 — 초반은 엄청 어렵게, 나중에도 긴장감 있게" ([1, 1, 1.27, 1.7, 2.37, 2.16] → 아래, GDD 10.8):
  * 강한 쪽(2.5배)이 1~3층 일반전에서 2~3밖에 잃지 않고 1·2층에서 죽지 않았다. 1층부터 크게 올리고, 플레이어가 부쩍 크는 2·3층도 따라 올린다
+ * 2026-10-10 "4·5층은 몹 체력 엄청 많이, 특히 5층": 4·5층 2.85·2.5 → 3.3·3.25 (정예·수호자 ×1.15·×1.3), 일반전 몹은 MOB_HP_MULT가 더 (GDD 10.9)
  */
-export const ACT_HP_MULT = [1, 1.5, 2.0, 2.4, 2.85, 2.5];
+export const ACT_HP_MULT = [1, 1.5, 2.0, 2.4, 3.3, 3.25];
+/**
+ * 일반전(조우 kind 'normal')의 적에게만 더 곱하는 층 체력 배율 — 2026-10-10 "4·5층은 몹 체력 엄청 많이, 특히 5층" (GDD 10.9).
+ * 정예·수호자는 가호(한 턴 피해 상한)로 이미 몇 턴을 버티는데, 일반전의 몹은 강한 덱(2.5배)에 4층 3.3턴·5층 2.9턴 만에 녹았다.
+ * 모든 적의 체력을 올리면(4층 ×1.4·5층 ×1.8) 일반전은 한 턴 남짓 느는 사이 정예전 사망만 두 배가 됐다 — 그래서 몹을 따로 올린다
+ */
+export const MOB_HP_MULT = [1, 1, 1, 1, 1.55, 2.0];
 /**
  * 깨야 풀리는 기믹 물건(EnemyDef.reachable — 등명기·낚싯줄·닻사슬·대종·얼음 감옥·탯줄 …)의 층 체력 배율.
  * 퍼즐(세 출신의 시작 덱으로 몇 턴 안에 깬다)에 맞춘 체력이라 '어렵게'(2026-10-09)에서 올린 ACT_HP_MULT를 따르지 않는다
@@ -1140,6 +1147,8 @@ export class Combat {
       abyssHpMult(this.run, def.tier) *
       (1 + 0.08 * tide) *
       ((def.reachable ? OBJECT_HP_MULT : ACT_HP_MULT)[Math.min(5, def.act)] ?? 1) *
+      // 일반전의 몹은 깊은 층에서 더 질기다 (깨야 풀리는 기믹 물건은 빼고)
+      (this.s.kind === 'normal' && !def.reachable ? (MOB_HP_MULT[Math.min(5, def.act)] ?? 1) : 1) *
       (def.tier === 'boss' ? BOSS_HP_MULT.value : 1);
     const hp = Math.round(this.rng.int(def.hp[0], def.hp[1]) * hpMul);
     const e: EnemyUnit = {

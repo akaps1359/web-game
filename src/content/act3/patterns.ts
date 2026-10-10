@@ -315,7 +315,7 @@ export const ICE = 'a3-iced';
 export const SHATTERED = 'a3-shattered';
 /** 깨뜨려야 하는 내 턴 수 */
 export const ICE_TURNS = 3;
-/** 얼음 감옥 체력 (층 배율 전 — 실제로는 × ACT_HP_MULT[3]). 어느 출신이든 시작 덱 무기 기본 공격으로 기한 안에 깬다 */
+/** 얼음 감옥 체력 (층 배율 전 — 실제로는 × OBJECT_HP_MULT[3]). 어느 출신이든 시작 덱 무기 기본 공격으로 기한 안에 깬다 */
 export const ICE_HP = 22;
 /** 내 화염 피해(화상 포함)가 얼음 감옥에 주는 피해 배율 */
 export const ICE_FIRE_MULT = 2;

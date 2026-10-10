@@ -1,12 +1,14 @@
 import { DEPTH } from '../src/content/depth';
-import { ACT_DMG_MULT, ACT_HP_MULT, BOSS_DMG_MULT, ELITE_DMG_MULT } from '../src/engine/combat';
+import { ACT_DMG_MULT, ACT_HP_MULT, BOSS_DMG_MULT, ELITE_DMG_MULT, MOB_HP_MULT } from '../src/engine/combat';
 
 /*
- * '어렵게'(2026-10-09, GDD 10.8) 전의 층 배율. 시작 덱으로 끝까지 이기는지 보는 기믹 공정성 테스트(1~3층)는 이 수치로 돌린다 —
+ * '어렵게'(2026-10-09, GDD 10.8·10.9) 전의 층 배율. 시작 덱으로 끝까지 이기는지 보는 기믹 공정성 테스트는 이 수치로 돌린다 —
  * 어렵게 올린 체력·공격·가호·변이를 시작 덱이 이기길 바라지 않는다 (그건 밸런스 시뮬레이션이 잰다). 기믹이 어느 출신을 막지 않는지만 본다
  */
 const BEFORE: [number[], number[]][] = [
   [ACT_HP_MULT, [1, 1, 1.27, 1.7, 2.37, 2.16]],
+  // 2026-10-10 일반전 몹 체력 (4·5층) — 그 전엔 없었다
+  [MOB_HP_MULT, [1, 1, 1, 1, 1, 1]],
   [ACT_DMG_MULT, [1, 1, 1.1, 1.3, 1.75, 1.65]],
   [ELITE_DMG_MULT, [1, 1, 1, 1.25, 1.35, 1.35]],
   [BOSS_DMG_MULT, [1, 1, 1.15, 1.3, 1.35, 1.2]],

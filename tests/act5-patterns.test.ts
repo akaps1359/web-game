@@ -94,6 +94,7 @@ import {
 } from '../src/content/act5/patterns';
 import { isAsleep, isIllusion, SNAP_POISE, uidNum } from '../src/content/act5/dream';
 import { DEPTH } from '../src/content/depth';
+import { preHard } from './prehard';
 
 /**
  * 5층 정예·수호자 패턴 확장 (2026-10): 새 메커니즘마다 동작을 확인하고, 5층의 모든 조우를 봇이 이기는지 본다.
@@ -618,12 +619,15 @@ describe('5층 정예 — 새 패턴', () => {
 });
 
 describe('봇 — 5층의 모든 조우', () => {
-  it('봇이 5층의 모든 조우를 이긴다 (새 패턴 포함)', () => {
+  it("봇이 5층의 모든 조우를 이긴다 (새 패턴 포함) — '어렵게' 전의 층 배율로", () => {
     const lost: string[] = [];
-    for (const enc of ENCOUNTERS.filter((e) => e.act === 5)) {
-      const c = fightToEnd(startCombat(floor5(77), enc.id, { anomaly: null }));
-      if (c.s.phase !== 'victory') lost.push(`${enc.id}: ${c.s.phase} (턴 ${c.s.turn})`);
-    }
+    // 막히는 패턴이 없는지 본다 — 시작 덱(힘 16)으로 군주(체력 ×3.25)를 깎다 정신력이 먼저 바닥나는 건 볼 것이 아니다 (GDD 10.9)
+    preHard(() => {
+      for (const enc of ENCOUNTERS.filter((e) => e.act === 5)) {
+        const c = fightToEnd(startCombat(floor5(77), enc.id, { anomaly: null }));
+        if (c.s.phase !== 'victory') lost.push(`${enc.id}: ${c.s.phase} (턴 ${c.s.turn})`);
+      }
+    });
     expect(lost).toEqual([]);
   });
 
