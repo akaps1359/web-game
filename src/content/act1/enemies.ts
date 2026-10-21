@@ -219,7 +219,6 @@ reg.traits([
         cine(c, 'shatter', { uid: e.uid });
         cine(c, 'water', { n: 3 });
         c.emit({ t: 'text', uid: e.uid, text: '껍데기가 찢어지고 비늘이 드러난다', tone: 'eldritch' });
-        cine(c, 'whisper', { text: '{origin}. 너도 미끼였다. 아래의 것이 너를 기다린다.' });
         c.heal(e, 30);
         c.loseSanity(8, true);
         if (e.broken !== 2) c.planIntent(e);
@@ -249,7 +248,7 @@ reg.traits([
         if (c.s.phase === 'player' && d.src === c.p && e.intent?.move === 'parley') e.mem.parleyHit = 1;
         if (!e.mem.taunted && e.hp > 0 && hpPct(e) <= 0.5) {
           e.mem.taunted = 1;
-          cine(c, 'whisper', { text: '{origin}, 네 목에 걸린 현상금이 얼마인지 알아?' });
+          c.emit({ t: 'text', uid: e.uid, text: '네 목에 걸린 현상금이 얼마인지 알아?', tone: 'eldritch' });
         }
       },
     },
@@ -434,7 +433,6 @@ function wreck(c: Combat, e: EnemyUnit) {
   c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
   cine(c, 'shatter', { uid: e.uid });
   c.emit({ t: 'text', uid: e.uid, text: '배가 두 동강 났다. 선장이 물속에서 다시 일어선다', tone: 'eldritch' });
-  cine(c, 'whisper', { uid: e.uid, text: '배가 부러졌다. 선원이 모자라.\n{origin}, 너도 물 밑으로 내려와라.' });
   if (waterLevel(c) < WRECK_WATER) setWater(c, WRECK_WATER);
   c.s.vars['a1-waterPeak'] = Math.max(c.s.vars['a1-waterPeak'] ?? 0, waterLevel(c));
   cine(c, 'water', { n: waterLevel(c) });
@@ -834,7 +832,6 @@ reg.enemies([
           c.apply(e, 'str', 3, e);
           c.emit({ t: 'text', uid: e.uid, text: '빛이… 모든 것을 태운다…', tone: 'eldritch' });
           cine(c, 'eye', { uid: e.uid });
-          cine(c, 'whisper', { uid: e.uid, text: '{time}. 아직도 화면을 켜 두었구나. 그 빛을 따라 여기까지 왔지.' });
           // 꺼져 있던 등명기도 다시 타오른다 (다시 밝히는 횟수와 별개)
           if (countDef(c, 'lamp') === 0 && c.spawn('lamp', 1)) setUi(c, 'ui:dark', 0);
         },
@@ -881,7 +878,7 @@ reg.enemies([
           type: 'fire',
           then: (c, e) => {
             e.mem.spins = 0;
-            dazzle(c, e);
+            dazzle(c);
           },
           desc: '화염 피해, 정신 피해, 눈부심. 다음 내 턴 동안 적의 의도가 보이지 않는다 (힘을 모은 큰 공격만 보인다). 등명기를 깨면 걷힌다. 등명기는 후열에 있어도 근접으로 닿는다',
         }),
@@ -936,9 +933,9 @@ reg.enemies([
         melee: false,
         ultimate: true,
         disguise: PARLEY_FACE,
+        cine: 'impact',
         desc: '휴전은 거짓말이었다. 조직원마다 한 발씩 더',
         run(c, e) {
-          cine(c, 'sysmsg', { uid: e.uid, text: '거래가 취소되었습니다.' });
           // 그 사이 쓰러진 조직원의 몫은 빠진다
           c.enemyAttack(e, { type: 'pierce', hits: 2 + countDef(c, 'crew') });
         },

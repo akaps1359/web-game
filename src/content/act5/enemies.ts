@@ -204,8 +204,6 @@ export const FALSE_DOOR_SIGHT = 5;
 const COMMUNION_DROWSY = 2;
 /** 문턱의 존재: 내 한 턴에 최대 체력의 이만큼 피해를 받으면 즉시 반대편 세계로 넘어간다 */
 export const FLIP_AT = 0.25;
-/** 꿈을 먹는 자가 깨어난 악몽이 될 때 화면 너머로 건네는 말 ({time}은 화면이 지금 시각으로 바꾼다) */
-const EATER_LINE = '{time}. 졸리지? 눈 감아도 돼. 꿈은 내가 먹어 줄게.';
 
 // ───────────── 상태 ─────────────
 
@@ -548,7 +546,6 @@ reg.traits([
         cine(c, 'eye', { uid: e.uid });
         setUi(c, 'ui:eye', 1);
         c.emit({ t: 'text', uid: e.uid, text: '꿈이 찢어지고 악몽이 눈을 뜬다', tone: 'eldritch' });
-        cine(c, 'whisper', { uid: e.uid, text: EATER_LINE });
         c.apply(e, 'ritual', 1, e);
         c.loseSanity(6, true);
         // 악몽 속에서 내가 걸어 나온다 (내가 마지막으로 휘두른 기술을 흉내 낸다)
@@ -1022,7 +1019,7 @@ function hungerDue(c: Combat, e: EnemyUnit): boolean {
   return !isIllusion(e) && c.s.phase === 'enemy' && e.mem.actT === c.s.turn && next >= 3 && next >= (e.mem.hgAt ?? HUNGER_FIRST);
 }
 
-/** 식사 시간을 알린다 (의도를 정할 때). 처음엔 화면 너머로 */
+/** 식사 시간을 알린다 (의도를 정할 때). 처음엔 화면 모서리마다 아가리가 벌어진다 */
 export function callHunger(c: Combat, e: EnemyUnit) {
   e.mem.hunger = 1;
   e.mem.hgNeed = hungerNeed(c);
@@ -1031,7 +1028,7 @@ export function callHunger(c: Combat, e: EnemyUnit) {
   c.emit({ t: 'text', uid: e.uid, text: '식사 시간이다. 입맛을 다신다', tone: 'eldritch' });
   if (!c.s.vars.a5Supper) {
     c.s.vars.a5Supper = 1;
-    cine(c, 'sysmsg', { uid: e.uid, text: '식사 시간입니다.\n남은 행동력을 확인하십시오.' });
+    cine(c, 'corners', { uid: e.uid });
   }
 }
 

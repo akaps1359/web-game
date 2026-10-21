@@ -303,15 +303,14 @@ describe('종지기 — 종탑의 광란 (2막)', () => {
     expect(san - c.p.sanity).toBe(loss);
     const evs = c.drain();
     expect(evs.some((x) => x.t === 'fx' && x.name === 'transform')).toBe(true);
-    expect(cinesOf(evs).some((x) => x.name === 'shatter')).toBe(true);
-    expect(cinesOf(evs).filter((x) => x.name === 'whisper').length).toBe(1);
+    expect(cinesOf(evs).filter((x) => x.name === 'shatter').length).toBe(1);
     expect(c.s.vars['ui:tilt']).toBe(BELFRY_TILT);
     // 대종은 남는다 (2막에는 타종하지 않는다)
     expect(bell.dead).toBe(false);
     // 한 번뿐
     c.damage({ src: null, tgt: keeper, base: 10, type: 'true' });
     expect(c.p.sanity).toBe(san - loss);
-    expect(cinesOf(c.drain()).some((x) => x.name === 'whisper')).toBe(false);
+    expect(cinesOf(c.drain()).some((x) => x.name === 'shatter')).toBe(false);
     // 새 모습의 그림이 있다
     expect(ENEMIES.get('bellkeeper')!.forms?.[0]?.name).toBe(BELFRY_NAME);
   });

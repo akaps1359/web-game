@@ -167,8 +167,8 @@ describe('깨어난 원로 — 얼음 감옥', () => {
     expect(c.s.obj?.hit).toEqual({ uid: prison.uid, need: prison.hp });
     expect(c.s.obj?.text).toContain(`${ICE_TURNS}턴 남음`);
     expect(c.s.obj?.lethal).toBeFalsy();
-    // 처음 가둘 때 한 번, 가짜 시스템 창
-    expect(cines(c.drain(), 'sysmsg').length).toBe(1);
+    // 처음 가둘 때는 화면이 크게 일그러진다
+    expect(cines(c.drain(), 'glitch').map((x) => (x.t === 'cine' ? x.n : 0))).toEqual([2]);
   });
 
   it('얼음 감옥을 깨뜨리면 곧바로 돌아온다 (목표·상태도 지운다)', () => {
@@ -368,7 +368,6 @@ describe('깨어난 원로 — 다섯 갈래의 몸 (2막)', () => {
     expect(ENEMIES.get('awakened-elder')!.forms?.[0].name).toBe('펼쳐진 원로');
     expect(el.st[ARMS]).toBe(ARM_MAX);
     const evs = c.drain();
-    expect(cines(evs, 'whisper').length).toBe(1);
     expect(cines(evs, 'shatter').length).toBe(1);
     // 노예의 반란은 따로 — 원로의 체력이 절반 아래로 떨어질 때 (펼침과 반란이 두 박자로 온다)
     const thrall = () => c.alive.find((x) => x.def === 'shoggoth-thrall');

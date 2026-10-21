@@ -155,13 +155,13 @@ describe('대사제 — 침묵의 서약', () => {
     expect(c.blockReason('armor')).not.toBeNull();
     const evs = c.drain();
     expect(texts(evs).some((t) => t.startsWith('파문'))).toBe(true);
-    expect(cinesOf(evs).filter((x) => x.name === 'sysmsg').length).toBe(1);
-    // 가짜 시스템 창은 처음 한 번만
+    expect(cinesOf(evs).filter((x) => x.name === 'glitch').length).toBe(1);
+    // 화면이 끊기는 연출은 처음 한 번만
     c.endTurn();
     c.p.st[VOW] = 1;
     c.s.ap = 3;
     expect(c.useSkill('armor')).toBeNull();
-    expect(cinesOf(c.drain()).filter((x) => x.name === 'sysmsg').length).toBe(0);
+    expect(cinesOf(c.drain()).filter((x) => x.name === 'glitch').length).toBe(0);
   });
 
   it('행동력을 다 쓰는 말로 끝맺으면 무사하다', () => {
@@ -311,7 +311,6 @@ describe('재에 묻힌 것 — 잿바람과 반격', () => {
     expect(e.row).toBe(1);
     expect(c.s.vars['ui:dark']).toBe(ASH_DARK);
     expect(c.alive.filter((x) => x.def === 'ash-larva').length).toBe(2);
-    expect(cinesOf(c.drain()).some((x) => x.name === 'whisper' && x.text?.includes('{deaths}'))).toBe(true);
     c.planIntent(e);
     expect(['spew', 'song']).toContain(e.intent?.move);
     expect(e.intent?.hidden).toBe(true);
@@ -368,8 +367,8 @@ describe('종지기 — 종소리에 맞춰라', () => {
     expect(c.preview(c.p, bell, 20, 'blunt')).toBe(Math.floor(20 * RING_MULT));
     const cines = cinesOf(c.drain()).map((x) => x.name);
     expect(cines).toContain('bell');
-    expect(cines).toContain('sysmsg');
-    // 두 번째 타종엔 가짜 시스템 창이 없다
+    // 처음 울릴 때만 종소리에 화면 유리가 갈라진다
+    expect(cines).toContain('crack');
     act(c, keeper, 'toll2');
     expect(cinesOf(c.drain()).map((x) => x.name)).toEqual(['bell']);
   });
@@ -468,8 +467,6 @@ describe('종지기 — 마지막 종 (위협 퍼즐: 못 막으면 정신이 �
     expect(c.p.st[KNELL]).toBe(2);
     // 세 번째 종도 대종을 공명시킨다
     expect(bell.st[RESONANCE]).toBe(1);
-    const evs = c.drain();
-    expect(cinesOf(evs).some((x) => x.name === 'whisper')).toBe(true);
   });
 
   it('종을 당기면 1턴 남음 — 이제는 귀를 막아도 되고, 대종은 다시 공명한다', () => {
@@ -642,7 +639,6 @@ describe('성가대장 — 레퀴엠 (즉사 퍼즐)', () => {
     expect(c.s.obj?.break).toBe(cm.uid);
     expect(c.s.obj?.kill).toEqual(choir.map((x) => x.uid));
     expect(c.p.st[REQUIEM]).toBe(2);
-    expect(cinesOf(c.drain()).some((x) => x.name === 'whisper')).toBe(true);
   });
 
   it('첫 소절 다음엔 1턴 남음, 그다음 차례에 못 막으면 사경 없이 죽는다', () => {
@@ -1151,7 +1147,7 @@ describe('연출', () => {
         let n = 0;
         while (!c.over && n++ < 300) {
           autoTurn(c);
-          for (const x of cinesOf(c.drain())) if (['whisper', 'sysmsg', 'scrawl', 'fakeover'].includes(x.name)) wall.push(x.name);
+          for (const x of cinesOf(c.drain())) if (['scrawl', 'handprints', 'fakeover'].includes(x.name)) wall.push(x.name);
         }
         expect(wall.length, `${enc} #${seed}: ${wall.join(',')}`).toBeLessThanOrEqual(4);
         expect(wall, enc).not.toContain('fakeover');

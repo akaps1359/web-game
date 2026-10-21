@@ -258,9 +258,6 @@ reg.traits([
     name: '각도의 주인',
     desc: `「유리를 긋는다」로 화면에 날카로운 각을 연다 (최대 ${MAX_ANGLES}). 열린 각은 내 턴이 끝날 때마다 문다. 방어도 ${PLASTER} 이상으로 턴을 끝내면 하나가 메워진다. 붕괴시키면 모두 닫힌다. 세 각이 모두 열리면 다음 차례에 「${HUNT}」이 온다. 그때까지 사냥을 끊지 못하면 ${HUNT_FAIL}. 끊는 법: 왕에게 피해 ${HUNT_DMG}, 방어도 ${PLASTER} 이상으로 턴을 마쳐 각 하나를 메우기, 왕을 붕괴. 한 번 끝난 사냥은 ${HUNT_GAP}턴 뒤에야 다시 온다. 체력이 절반 아래로 떨어지면 남은 모서리를 한꺼번에 연다. 후열로 숨으면 각도가 비틀려 화면이 기운다`,
     hooks: {
-      onCombatStart(c) {
-        cine(c, 'whisper', { text: '당신의 화면은 모서리가 둥글다.\n그래서 아직 들어오지 못했다.' });
-      },
       onUnitTurnStart(c) {
         syncTilt(c);
       },
@@ -1954,11 +1951,6 @@ reg.enemies([
         run(c, e) {
           e.mem.charge = 1;
           c.emit({ t: 'text', uid: e.uid, text: '증기가 걷히기 시작한다…', tone: 'eldritch' });
-          // 처음 한 번은 화면 너머의 당신에게 경고한다
-          if (!e.mem.warned) {
-            e.mem.warned = 1;
-            cine(c, 'sysmsg', { text: '화면 밝기를 낮추십시오.' });
-          }
           setUi(c, 'ui:dark', DIM_UNVEIL);
         },
       },
@@ -2029,10 +2021,10 @@ reg.enemies([
       memory: mv.horror('수억 년의 기억', MEMORY_SAN, {
         then: (c, e) => {
           c.apply(c.p, 'dread', MEMORY_DREAD, e);
-          // 처음 기억을 쏟아낼 때 한 번, 화면 너머의 당신에게
+          // 처음 기억을 쏟아낼 때 한 번
           if (!e.mem.spoke) {
             e.mem.spoke = 1;
-            cine(c, 'whisper', { text: '우리가 너희를 빚었다.\n실수로.' });
+            c.emit({ t: 'text', uid: e.uid, text: '우리가 너희를 빚었다. 실수로.', tone: 'eldritch' });
           }
         },
         desc: `정신 피해, 공포 ${MEMORY_DREAD}`,
@@ -2223,10 +2215,7 @@ reg.enemies([
         cine: 'timestop',
         desc: `시간을 멈춘다. 적의 공격 피해가 들어오지 않고 쌓였다가 내 턴이 ${STOP_TURNS}번 끝나면 한꺼번에 터진다 (방어도가 먼저 막는다). 그 전에 탐사대장을 붕괴시키면 멈춘 시계가 부서져 쌓인 상처가 사라진다`,
         run(c, e) {
-          if (!stopTime(c, e) || e.mem.told) return;
-          // 처음 멈출 때 한 번: 그의 손목시계는 화면 너머 당신의 시각에 멈춰 있다
-          e.mem.told = 1;
-          cine(c, 'whisper', { text: '손목시계의 바늘은\n{time}에 멈춰 있다.' });
+          stopTime(c, e);
         },
       },
       wind: mv.charge('멈춘 시계가 움직인다', 36),

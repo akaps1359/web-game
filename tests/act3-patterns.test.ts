@@ -140,15 +140,12 @@ describe('쇼고스 — 흉내 (테켈리-리)', () => {
     expect(back.length).toBe(1);
     expect(back[0].amount).toBe(Math.ceil(dealt / 2));
     expect(back[0].dtype).toBe('pierce');
-    const sys = cines(evs, 'sysmsg');
-    expect(sys.length).toBe(1);
-    expect(sys[0].text).toContain('리볼버 사격');
-    // 두 번째 흉내부터는 가짜 시스템 창 없이 화면만 일그러진다
+    expect(evs.some((ev) => ev.t === 'text' && ev.text.includes('리볼버 사격'))).toBe(true);
+    // 처음 흉내 낼 때 화면이 크게 일그러지고, 그다음부터는 덜 일그러진다
+    expect(cines(evs, 'glitch').map((x) => x.n)).toEqual([3]);
     c.useSkill('weapon', s.uid);
     act(c, s, 'copy');
-    const evs2 = c.drain();
-    expect(cines(evs2, 'sysmsg').length).toBe(0);
-    expect(cines(evs2, 'glitch').length).toBe(1);
+    expect(cines(c.drain(), 'glitch').map((x) => x.n)).toEqual([2]);
   });
 
   it('마지막으로 쓴 기술이 방어면 그만큼 방어도를 얻는다 (순서가 중요하다)', () => {
@@ -204,7 +201,6 @@ describe('각도의 왕 — 열린 각', () => {
   it('유리를 그을 때마다 각이 열리고(최대 3) 화면에 금이 간다', () => {
     const { c, e } = fight('a3-boss-king');
     const k = e('angle-king');
-    expect(cines(c.events, 'whisper').length).toBe(1);
     for (let i = 0; i < MAX_ANGLES + 1; i++) act(c, k, 'carve');
     expect(c.p.st[ANGLE]).toBe(MAX_ANGLES);
     expect(c.s.vars['ui:cracks']).toBe(MAX_ANGLES);
@@ -294,7 +290,8 @@ describe('각도의 왕 — 틴달로스의 사냥 (막아야 하는 큰 위협)
     expect(c.s.obj?.fail).toContain('30%');
     expect(c.s.obj?.text).toContain('1턴 남음');
     expect(c.s.obj?.text).not.toContain('즉사');
-    expect(cines(c.drain(), 'sysmsg').length).toBe(1);
+    // 처음 사냥이 오면 화면 모서리마다 아가리가 튀어나온다
+    expect(cines(c.drain(), 'corners').length).toBe(1);
   });
 
   it('끊지 못하면 모서리마다 사냥개가 문다 — 최대 체력의 30%(방어도 무시)와 출혈, 체력이 충분하면 살아남고 모서리는 닫힌다', () => {
@@ -431,14 +428,11 @@ describe('각도의 왕 — 틴달로스의 사냥 (막아야 하는 큰 위협)
 });
 
 describe('산맥 너머의 것 — 보는 것과 보지 않는 것', () => {
-  it('증기가 걷히면 경고(처음 한 번)와 함께 화면이 어두워지고, 드러나면 눈이 지켜본다', () => {
+  it('증기가 걷히면 화면이 어두워지고, 드러나면 눈이 지켜본다', () => {
     const { c, e } = fight('a3-boss-peaks');
     const b = e('beyond-peaks');
     act(c, b, 'unveil');
-    expect(cines(c.drain(), 'sysmsg').map((x) => x.text)).toEqual(['화면 밝기를 낮추십시오.']);
     expect(c.s.vars['ui:dark']).toBe(DIM_UNVEIL);
-    act(c, b, 'unveil');
-    expect(cines(c.drain(), 'sysmsg').length).toBe(0);
     act(c, b, 'truth');
     expect(b.st[REVEALED]).toBe(REVEAL_TURNS);
     expect(c.s.vars['ui:eye']).toBe(1);
@@ -475,10 +469,8 @@ describe('산맥 너머의 것 — 보는 것과 보지 않는 것', () => {
     expect(b.st[REVEALED] ?? 0).toBe(0);
     expect(c.s.vars['ui:eye'] ?? 0).toBe(0);
     expect(c.s.vars['ui:dark'] ?? 0).toBe(0);
-    const w = cines(c.drain(), 'whisper');
-    expect(w.length).toBe(1);
-    expect(w[0].text).toContain('{time}');
-    expect(w[0].text).toContain('보지 않았다');
+    const said = c.drain().flatMap((ev) => (ev.t === 'text' && ev.uid === 'p' ? [ev.text] : []));
+    expect(said).toContain('끝내 눈을 돌렸다');
   });
 
   it('증기가 걷히는 중에 붕괴시키면 다시 가려진다 (어두워진 화면도 돌아온다)', () => {
@@ -528,13 +520,13 @@ describe('깨어난 원로 — 멈춘 칼날, 끊긴 피리', () => {
     expect(cines(c.drain(), 'scrawl').length).toBe(1);
   });
 
-  it('처음 수억 년의 기억을 쏟아낼 때 한 번, 화면 너머로 말을 건다', () => {
+  it('처음 수억 년의 기억을 쏟아낼 때 한 번, 그것이 입을 연다', () => {
     const { c, e } = fight('lord-a3');
     const el = e('awakened-elder');
     c.drain();
     act(c, el, 'memory');
     act(c, el, 'memory');
-    expect(cines(c.drain(), 'whisper').length).toBe(1);
+    expect(c.drain().filter((ev) => ev.t === 'text' && ev.uid === el.uid && ev.text.includes('빚었다')).length).toBe(1);
     const def = ENEMIES.get('awakened-elder')!;
     expect(def.moves.stillness.cine).toBe('timestop');
     expect(def.moves.starfall.ultimate).toBe(true);
@@ -681,7 +673,7 @@ describe('고대인 해부학자 — 완전 해부 (즉사 퍼즐)', () => {
     return { c, v };
   }
 
-  it('절개선이 다 그어진 채로 해부대를 펼치려 하면 완전 해부를 건다 — 내 턴이 시작될 때 이미 해골과 붉은 띠 (처음엔 속삭임), 내 턴 두 번', () => {
+  it('절개선이 다 그어진 채로 해부대를 펼치려 하면 완전 해부를 건다 — 내 턴이 시작될 때 이미 해골과 붉은 띠, 내 턴 두 번', () => {
     const { c, v } = dissected();
     expect(c.s.turn).toBe(3);
     expect(v.intent?.kind).toBe('death');
@@ -691,7 +683,7 @@ describe('고대인 해부학자 — 완전 해부 (즉사 퍼즐)', () => {
     expect(c.s.obj?.block).toBe(FULL_BLOCK);
     expect(c.s.obj?.break).toBe(v.uid);
     expect(c.s.obj?.text).toContain('2턴 남음');
-    expect(cines(c.drain(), 'whisper').length).toBe(1);
+    c.drain();
     c.endTurn();
     expect(v.intent?.move).toBe('fullcut');
     expect(v.intent?.kind).toBe('death');
@@ -875,7 +867,7 @@ describe('시간에 얼어붙은 탐사대장 — 멈춘 시간', () => {
     c.drain();
     act(c, l, 'stop');
     expect(c.p.st[STOPPED]).toBe(STOP_TURNS);
-    expect(cines(c.drain(), 'whisper').length).toBe(1);
+    c.drain();
     // 의도 미리보기도 0 (지금은 들어오지 않는다)
     expect(c.preview(l, c.p, 10, 'slash')).toBe(0);
     const hp = c.p.hp;
@@ -918,8 +910,13 @@ describe('시간에 얼어붙은 탐사대장 — 멈춘 시간', () => {
 describe('3층 정예·수호자 — 연출과 봇', () => {
   const BOSSES = ['a3-boss-shoggoth', 'a3-boss-king', 'a3-boss-peaks', 'lord-a3'];
   const ELITES = ['a3-broodmother', 'a3-shantak', 'a3-vivisector', 'stalker-a3', 'rift-a3'];
-  /** 화면 너머의 플레이어에게 말을 거는 연출 */
-  const FOURTH_WALL = ['whisper', 'sysmsg', 'scrawl', 'handprints', 'fakeover'];
+  /** 화면 자체에 일어나는 일 (제4의 벽) — 말은 걸지 않는다 */
+  const FOURTH_WALL = ['crack', 'glitch', 'ink', 'eye', 'corners', 'handprints', 'scrawl', 'fakeover'];
+  /** 그중 화면 유리에 무언가를 남기는 것 — 남발하지 않는다 */
+  const ON_GLASS = ['scrawl', 'handprints', 'fakeover'];
+  /** 연출 이름들 (연출 이벤트 + 행동에 붙은 연출) */
+  const screenFx = (evs: CombatEvent[]): string[] =>
+    evs.flatMap((ev) => (ev.t === 'cine' ? [ev.name] : ev.t === 'move' && ev.cine ? [typeof ev.cine === 'string' ? ev.cine : ev.cine.name] : []));
 
   function play(enc: string, seed: number) {
     const run = floor3(seed);
@@ -933,14 +930,15 @@ describe('3층 정예·수호자 — 연출과 봇', () => {
     return { run, c, evs };
   }
 
-  it('수호자마다 필살기가 있고, 제4의 벽 연출은 한 전투에 1~4번 (가짜 게임오버는 없다)', () => {
+  it('수호자마다 필살기가 있고 제4의 벽 연출이 한 번은 나온다. 화면 유리에 남기는 연출은 한 전투에 4번까지 (가짜 게임오버는 없다)', () => {
     for (const enc of BOSSES) {
       const { c, evs } = play(enc, 303);
       expect(c.s.phase, enc).toBe('victory');
-      const fw = cines(evs).filter((x) => FOURTH_WALL.includes(x.name));
-      expect(fw.length, `${enc}: ${fw.map((x) => x.name).join(',')}`).toBeGreaterThanOrEqual(1);
-      expect(fw.length, `${enc}: ${fw.map((x) => x.name).join(',')}`).toBeLessThanOrEqual(4);
-      expect(fw.some((x) => x.name === 'fakeover'), enc).toBe(false);
+      const fx = screenFx(evs);
+      expect(fx.filter((x) => FOURTH_WALL.includes(x)).length, `${enc}: ${fx.join(',')}`).toBeGreaterThanOrEqual(1);
+      const glass = fx.filter((x) => ON_GLASS.includes(x));
+      expect(glass.length, `${enc}: ${glass.join(',')}`).toBeLessThanOrEqual(4);
+      expect(glass, enc).not.toContain('fakeover');
     }
     for (const id of ['shoggoth', 'angle-king', 'beyond-peaks', 'awakened-elder', 'leng-broodmother', 'shantak', 'elder-vivisector', 'dhole', 'frozen-leader']) {
       const moves = Object.values(ENEMIES.get(id)!.moves);

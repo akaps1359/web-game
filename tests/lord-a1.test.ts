@@ -210,7 +210,7 @@ describe('익사한 선장 — 닻사슬', () => {
 });
 
 describe('익사한 선장 — 두 동강 난 배 (체력 절반)', () => {
-  it('체력이 절반 이하가 되면 망령 선장이 된다 — 물이 차오르고 익사체 하나가 떠오르며, 화면이 부서지고 속삭인다 (한 번뿐)', () => {
+  it('체력이 절반 이하가 되면 망령 선장이 된다 — 물이 차오르고 익사체 하나가 떠오르며, 화면이 부서진다 (한 번뿐)', () => {
     const c = fight();
     const drowned = count(c, 'drowned');
     const e = wreckNow(c);
@@ -221,7 +221,6 @@ describe('익사한 선장 — 두 동강 난 배 (체력 절반)', () => {
     expect(c.p.st[HANDS]).toBe(HANDS_WATER);
     const ev = c.drain();
     expect(cines(ev, 'shatter').length).toBe(1);
-    expect(cines(ev, 'whisper').length).toBe(1);
     expect(cines(ev, 'water').length).toBe(1);
     // 새 모습의 순서로 곧바로 행동을 다시 정한다
     expect(e.intent?.move).toBe('sword');

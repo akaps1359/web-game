@@ -156,6 +156,7 @@ function breakIt(c: Combat, e: EnemyUnit) {
 }
 
 const cines = (ev: CombatEvent[], name: CineName) => ev.filter((x): x is Extract<CombatEvent, { t: 'cine' }> => x.t === 'cine' && x.name === name);
+const texts = (ev: CombatEvent[]) => ev.flatMap((x) => (x.t === 'text' ? [x.text] : []));
 
 /** 행동에 붙은 연출 이름 (문자열 또는 { name, n, text }) */
 const cineOf = (m: MoveDef | undefined): string | undefined => (typeof m?.cine === 'string' ? m.cine : m?.cine?.name);
@@ -170,13 +171,11 @@ function fightToEnd(c: Combat) {
 }
 
 describe('최종 수호자 별의 태아 — 꿈속의 죽음 (가짜 게임 오버)', () => {
-  it('처음 마주치면 화면 너머의 당신에게 말을 건다 (지금 시각·출신)', () => {
+  it('처음 마주치면 태아가 꿈을 꾸기 시작한다 (화면 밖에 말을 걸지 않는다)', () => {
     const c = startCombat(floor5(), 'a5-boss-fetus');
-    const w = cines(c.drain(), 'whisper');
-    expect(w.length).toBe(1);
-    expect(w[0].text).toBe(FETUS_LINES.wake);
-    expect(w[0].text).toContain('{time}');
-    expect(w[0].text).toContain('{origin}');
+    const ev = c.drain();
+    expect(texts(ev).some((t) => t.startsWith('태아가 꿈을 꾼다'))).toBe(true);
+    expect(ev.filter((x) => x.t === 'cine' && x.text).length).toBe(0);
   });
 
   it('꿈을 꾸는 동안 적의 일격에 처음 쓰러지면 꿈이었다 — 체력 30%로 깨어나고, 태아의 지금 모습과 꿈이 처음부터 다시 시작된다', () => {
@@ -197,11 +196,10 @@ describe('최종 수호자 별의 태아 — 꿈속의 죽음 (가짜 게임 오
     expect(f.hp).toBe(f.maxHp);
     expect(c.s.anomaly).toBe(DREAMS[0]);
     const ev = c.drain();
-    // 가짜 게임 오버 — 화면이 깨지며 돌아온 뒤 태아가 속삭인다 (죽은 횟수)
+    // 진짜와 똑같은 가짜 게임 오버 — 화면이 깨지며 돌아온다 (말은 걸지 않는다)
     const over = cines(ev, 'fakeover');
     expect(over.length).toBe(1);
-    expect(over[0].text).toBe(FETUS_LINES.redream);
-    expect(FETUS_LINES.redream).toContain('{deaths}');
+    expect(over[0].text).toBeUndefined();
     // 가짜 게임 오버가 뜨는 순간 화면의 체력은 0이다 (그 뒤에 깨어난다)
     expect(over[0].snap?.p.hp ?? 1).toBeLessThanOrEqual(0);
     // 한 번뿐: 두 번째는 진짜 — 사경
@@ -309,10 +307,7 @@ describe('최종 수호자 별의 태아 — 쥐기 반사와 깨지는 화면',
     slay(c, f);
     let ev = c.drain();
     expect(c.s.vars['ui:cracks']).toBe(1);
-    expect(cines(ev, 'glitch').length).toBe(1);
-    const sys = cines(ev, 'sysmsg');
-    expect(sys.length).toBe(1);
-    expect(sys[0].text).toContain('{runs}');
+    expect(cines(ev, 'glitch').map((x) => x.n)).toEqual([3]);
     breakIt(c, f);
     ev = c.drain();
     expect(c.s.vars['ui:cracks']).toBe(2);
@@ -322,11 +317,10 @@ describe('최종 수호자 별의 태아 — 쥐기 반사와 깨지는 화면',
     expect(c.s.vars['ui:cracks']).toBe(3);
     expect(c.s.vars['ui:eye']).toBe(1);
     expect(cines(ev, 'shatter').length).toBe(1);
-    expect(cines(ev, 'whisper').map((x) => x.text)).toContain(FETUS_LINES.born);
-    // 끝: 다음 꿈에서 봐
+    // 끝: 태어나지 못한 것이 흩어진다
     slay(c, f);
     ev = c.drain();
-    expect(cines(ev, 'whisper').map((x) => x.text)).toContain(FETUS_LINES.end);
+    expect(texts(ev)).toContain(FETUS_LINES.end);
     expect(c.s.vars['ui:cracks'] ?? 0).toBe(0);
     expect(c.s.vars['ui:eye'] ?? 0).toBe(0);
   });
@@ -408,7 +402,7 @@ describe('계층군주 꿈을 먹는 자 — 삼켜진 기억', () => {
     expect(c.s.vars['ui:scramble'] ?? 0).toBe(0);
   });
 
-  it('깨어난 악몽: 눈을 뜨고(화면 가득한 눈 → 배경의 눈) 지금 시각으로 말을 건다', () => {
+  it('깨어난 악몽: 눈을 뜬다 (화면 가득한 눈 → 배경의 눈)', () => {
     const c = startCombat(floor5(), 'lord-a5');
     const eater = find(c, 'dream-eater');
     c.drain();
@@ -419,7 +413,6 @@ describe('계층군주 꿈을 먹는 자 — 삼켜진 기억', () => {
     const ev = c.drain();
     expect(cines(ev, 'eye').length).toBe(1);
     expect(c.s.vars['ui:eye']).toBe(1);
-    expect(cines(ev, 'whisper')[0]?.text).toContain('{time}');
   });
 });
 
@@ -669,8 +662,8 @@ function toChoice(c: Combat): EnemyUnit {
 
 const cordsIn = (c: Combat) => c.alive.filter((e) => e.def === CORD);
 
-describe('최종 수호자 별의 태아 — 탄생의 선택 (시스템 창)', () => {
-  it('태어난 것이 첫 차례를 마치면 시스템 창이 뜬다 — 고르기 전엔 기술·소모품·턴 종료가 막힌다', () => {
+describe('최종 수호자 별의 태아 — 탄생의 선택 (선택 창)', () => {
+  it('태어난 것이 첫 차례를 마치면 선택 창이 뜬다 — 고르기 전엔 기술·소모품·턴 종료가 막힌다', () => {
     const c = startCombat(floor5(), 'a5-boss-fetus');
     const f = toBorn(c);
     // 태어나는 순간엔 아직 묻지 않는다: 먼저 첫 울음을 머금는다
@@ -682,7 +675,8 @@ describe('최종 수호자 별의 태아 — 탄생의 선택 (시스템 창)', 
     expect(ch.id).toBe(BIRTH_CHOICE);
     expect(ch.by).toBe(f.uid);
     expect(ch.options.map((o) => o.id)).toEqual([...BIRTH_OPTIONS]);
-    expect(ch.text).toContain('{time}');
+    expect(ch.title).toBe(FETUS_LINES.choiceTitle);
+    expect(ch.text).toBe(FETUS_LINES.choiceText);
     for (const o of ch.options) expect(o.desc.length).toBeGreaterThan(10);
     expect(c.blockReason('weapon')).toBe('선택지부터 골라야 한다');
     expect(c.endTurn()).toBe('선택지부터 골라야 한다');
@@ -788,7 +782,7 @@ describe('최종 수호자 별의 태아 — 탄생의 선택 (시스템 창)', 
     expect(d.s.enemies.find((e) => e.uid === f.uid)!.mem.birth).toBe(2);
   });
 
-  it('마지막 속삭임이 고른 것에 따라 달라진다', () => {
+  it('끝에 남는 글이 고른 것에 따라 달라진다', () => {
     const lines: Record<string, string> = { lullaby: FETUS_LINES.endLullaby, sever: FETUS_LINES.endSever, gaze: FETUS_LINES.endGaze };
     for (const opt of BIRTH_OPTIONS) {
       const c = startCombat(floor5(), 'a5-boss-fetus');
@@ -796,7 +790,7 @@ describe('최종 수호자 별의 태아 — 탄생의 선택 (시스템 창)', 
       c.choose(opt);
       c.drain();
       slay(c, f);
-      expect(cines(c.drain(), 'whisper').map((x) => x.text)).toContain(lines[opt]);
+      expect(texts(c.drain())).toContain(lines[opt]);
     }
   });
 

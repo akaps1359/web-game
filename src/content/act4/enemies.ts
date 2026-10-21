@@ -381,8 +381,6 @@ reg.traits([
         setWeak(c, e, ['void', 'arcane']);
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
         cine(c, 'shatter', { uid: e.uid });
-        // 제4의 벽: 지금까지의 죽음을 세고 있었다
-        cine(c, 'whisper', { uid: e.uid, text: '너는 {deaths}번 죽었다.\n이번이 몇 번째일지\n세어 볼까.' });
         c.emit({ t: 'text', uid: e.uid, text: '황금 가면이 떨어진다. 그 아래엔 아무것도 없다', tone: 'eldritch' });
         c.loseSanity(10, true);
         c.apply(e, 'str', 2, e);
@@ -1830,8 +1828,6 @@ reg.enemies([
         cine: 'beam',
         desc: `구체들의 빛이 하나로 모인다. 문과 살아 있는 구체마다 한 줄기씩 비전 피해 ${UNISON_DMG}, 마지막에 정신 피해. 구체를 부수면 빛줄기가 바로 줄어든다`,
         run(c, e) {
-          // 제4의 벽: 모든 시간이 하나인 문은 화면 너머의 지금도 안다
-          if (once(c, 'a4-unison')) cine(c, 'whisper', { uid: e.uid, text: '모든 것이 하나다.\n{hour}의 너도,\n문 앞에 설 모든 너도.' });
           c.enemyAttack(e, { type: 'arcane' });
           if (!c.over && !e.dead) c.horror(e, UNISON_SAN);
         },
@@ -1919,7 +1915,6 @@ reg.enemies([
         disguise: { kind: 'buff', label: '자비를 베푼다', reveal: LIAR_REVEAL },
         desc: '자비를 베푸는 척하다가 등을 찌른다 (거짓 의도)',
         run(c, e) {
-          if (once(c, 'a4-lie')) cine(c, 'scrawl', { uid: e.uid, text: '믿었어?' });
           c.enemyAttack(e, { type: 'void' });
         },
       },
@@ -2042,8 +2037,8 @@ reg.enemies([
           e.mem.awoken = 1;
           c.apply(e, 'str', 3, e);
           c.emit({ t: 'text', uid: e.uid, text: '별빛이 눈을 뜬다', tone: 'eldritch' });
-          // 제4의 벽: 꿈꾸는 것은 누구인가 (5층 별의 태아의 복선)
-          cine(c, 'whisper', { uid: e.uid, text: '{time}.\n너는 아직 깨어 있다고\n믿는구나.' });
+          // 화면을 덮는 눈이 떠서 손끝을 따라본다 (5층 별의 태아의 복선)
+          cine(c, 'eye', { uid: e.uid });
         },
         { desc: '힘 +3' },
       ),

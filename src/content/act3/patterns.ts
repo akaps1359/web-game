@@ -60,9 +60,8 @@ export function throwBack(c: Combat, e: EnemyUnit) {
   if (kind === 1 || kind === 2) {
     const name = mimicName(c);
     e.mem.copies = (e.mem.copies ?? 0) + 1;
-    // 처음 흉내 낼 때만 가짜 시스템 창 — 그 뒤로는 화면이 일그러지기만 한다
-    if (e.mem.copies === 1) cine(c, 'sysmsg', { text: `「${name}」의 복제가 완료되었습니다.` });
-    else cine(c, 'glitch', { n: 2, uid: e.uid });
+    // 흉내 낼 때마다 화면이 일그러진다 (처음엔 더 크게)
+    cine(c, 'glitch', { n: e.mem.copies === 1 ? 3 : 2, uid: e.uid });
     c.emit({ t: 'text', uid: e.uid, text: `「${name}」… 테켈리-리!`, tone: 'eldritch' });
     if (kind === 1) {
       const dmg = Math.ceil((v[MIM.val] ?? 0) * MIMIC_RATE);
@@ -173,7 +172,7 @@ function huntObjective(c: Combat, king: EnemyUnit) {
   });
 }
 
-/** 사냥을 부른다 (의도를 정할 때). 처음엔 화면 너머로 경고한다 */
+/** 사냥을 부른다 (의도를 정할 때). 처음엔 화면 모서리마다 아가리가 튀어나온다 */
 export function callHunt(c: Combat, king: EnemyUnit) {
   king.mem.hunt = 1;
   king.mem.huntDmg = 0;
@@ -181,7 +180,7 @@ export function callHunt(c: Combat, king: EnemyUnit) {
   c.emit({ t: 'text', uid: king.uid, text: '모든 모서리가 열리자 사냥개들이 냄새를 맡았다', tone: 'eldritch' });
   if (!c.s.vars['a3-huntSeen']) {
     c.s.vars['a3-huntSeen'] = 1;
-    cine(c, 'sysmsg', { text: '경고: 화면의 모서리 세 곳이 모두 열려 있습니다.' });
+    cine(c, 'corners');
   }
 }
 
@@ -259,11 +258,11 @@ export function veilAgain(c: Combat, e: EnemyUnit) {
   setUi(c, 'ui:dark', 0);
   if (!was) return;
   c.emit({ t: 'text', uid: e.uid, text: '다시 보랏빛 증기에 가려진다', tone: 'info' });
-  // 처음 드러났던 모습이 가려질 때 한 번만, 당신이 무엇을 골랐는지 화면 너머로 말을 건다
+  // 처음 드러났던 모습이 가려질 때 한 번만, 무엇을 골랐는지 남긴다
   if (!e.mem.judged && !e.dead) {
     e.mem.judged = 1;
-    const text = (e.mem.looks ?? 0) > 0 ? '{time}.\n당신은 그것을 보았다.\n이제 잊지 못한다.' : '{time}.\n당신은 끝내 보지 않았다.\n현명하다.';
-    cine(c, 'whisper', { text });
+    const text = (e.mem.looks ?? 0) > 0 ? '본 것이 눈꺼풀 안쪽에 남았다' : '끝내 눈을 돌렸다';
+    c.emit({ t: 'text', uid: 'p', text, tone: 'eldritch' });
   }
 }
 
@@ -406,7 +405,7 @@ function keepShard(c: Combat) {
   if (uid) c.s.cd[uid] = 99;
 }
 
-/** 「얼음 속에 가둔다」: 기술 하나를 얼음 감옥에 가둔다. 가뒀으면 true. 처음엔 화면 너머로 가짜 시스템 창 */
+/** 「얼음 속에 가둔다」: 기술 하나를 얼음 감옥에 가둔다. 가뒀으면 true */
 export function imprison(c: Combat, e: EnemyUnit): boolean {
   const pick = canImprison(c, e) ? pickMemory(c) : null;
   const prison = pick ? c.spawn(ICE_PRISON, 0) : null;
@@ -425,9 +424,10 @@ export function imprison(c: Combat, e: EnemyUnit): boolean {
   iceObjective(c, prison);
   const name = memName(c, pick.uid);
   c.emit({ t: 'text', uid: 'p', text: `「${name}」${josa(name, '이')} 얼음 속에 갇혔다`, tone: 'bad' });
+  // 처음엔 크게, 그다음부터는 짧게 화면이 일그러진다
   if (!c.s.vars['a3-iceSeen']) {
     c.s.vars['a3-iceSeen'] = 1;
-    cine(c, 'sysmsg', { uid: e.uid, text: `「${name}」의 기억이 얼음 속에 보관되었습니다.` });
+    cine(c, 'glitch', { n: 2, uid: prison.uid });
   } else cine(c, 'glitch', { n: 1, uid: prison.uid });
   return true;
 }
@@ -548,7 +548,6 @@ export function unfurl(c: Combat, e: EnemyUnit) {
   c.apply(e, ARMS, ARM_MAX - armsOf(e), e);
   c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
   cine(c, 'shatter', { uid: e.uid });
-  cine(c, 'whisper', { uid: e.uid, text: '다섯 팔, 다섯 눈, 다섯 날개.\n너희는 고작 둘씩 지녔구나.' });
   c.emit({ t: 'text', uid: e.uid, text: '막날개와 다섯 갈래의 팔이 활짝 펼쳐진다', tone: 'eldritch' });
   if (c.s.phase === 'player' && e.broken !== 2 && !e.mem.charge) c.planIntent(e);
 }
@@ -732,7 +731,7 @@ function fullObjective(c: Combat, e: EnemyUnit) {
   });
 }
 
-/** 완전 해부를 건다 (해부대를 펼치려는데 절개선이 다 그어져 있다 — 의도를 정할 때). 처음엔 화면 너머로 */
+/** 완전 해부를 건다 (해부대를 펼치려는데 절개선이 다 그어져 있다 — 의도를 정할 때) */
 export function declareFull(c: Combat, e: EnemyUnit) {
   e.mem.full = 1;
   e.mem.fullStage = 1;
@@ -740,10 +739,6 @@ export function declareFull(c: Combat, e: EnemyUnit) {
   e.mem.fulls = (e.mem.fulls ?? 0) + 1;
   fullObjective(c, e);
   c.emit({ t: 'text', uid: e.uid, text: '절개선이 모두 그어졌다. 완전 해부를 준비한다', tone: 'eldritch' });
-  if (!c.s.vars['a3-fullSeen']) {
-    c.s.vars['a3-fullSeen'] = 1;
-    cine(c, 'whisper', { text: '움직이지 마라.\n전부 열어 보고 싶다.' });
-  }
 }
 
 /** 해부대에 눕혔다 (준비 차례): 다음 차례에 완전 해부 */

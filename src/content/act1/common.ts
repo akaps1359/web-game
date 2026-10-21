@@ -110,15 +110,11 @@ export function chipPoise(c: Combat, e: EnemyUnit, n: number) {
 
 // ───────────── 등대지기: 눈부심 ─────────────
 
-/** 섬광에 눈이 먼다: 다음 내 턴 동안 적의 의도가 가려진다. 처음 한 번은 화면 밖의 당신에게 */
-export function dazzle(c: Combat, src: EnemyUnit) {
+/** 섬광에 눈이 먼다: 다음 내 턴 동안 적의 의도가 가려진다 */
+export function dazzle(c: Combat) {
   if (c.over) return;
   setPlayerSt(c, DAZZLE, 1);
   c.emit({ t: 'text', uid: 'p', text: '눈이 멀었다', tone: 'bad' });
-  if (!c.s.vars['a1-flashed']) {
-    c.s.vars['a1-flashed'] = 1;
-    cine(c, 'sysmsg', { uid: src.uid, text: '화면을 너무 오래 보고 있습니다. 잠시 눈을 감으십시오.' });
-  }
 }
 
 /** 의도를 가린다 — 힘을 모은 큰 공격(차지와 그 뒤의 일격)은 눈이 멀어도 보인다 */
@@ -227,7 +223,7 @@ export function reelIn(c: Combat, line: EnemyUnit) {
   c.apply(e, 'str', CATCH_STR, e);
   c.emit({ t: 'text', uid: e.uid, text: '월척이다', tone: 'eldritch' });
   cine(c, 'glitch', { n: 2 });
-  cine(c, 'sysmsg', { uid: e.uid, text: `「${name}」을(를) 잃었습니다.` });
+  c.emit({ t: 'text', uid: 'p', text: `「${name}」${josa(name, '을')} 낚아 갔다`, tone: 'bad' });
 }
 
 /** 쥔 기술의 잠금을 다시 건다 (대기가 매 턴 줄어 숫자로 보이지 않게 — 버튼엔 ✕) */
@@ -303,16 +299,12 @@ export function tideObjective(c: Combat, cap: EnemyUnit) {
   });
 }
 
-/** 만조를 부른다 (의도를 정할 때). 처음엔 화면 밖의 당신에게 */
+/** 만조를 부른다 (의도를 정할 때) */
 export function callTide(c: Combat, cap: EnemyUnit) {
   cap.mem.tide = 1;
   c.s.vars[TIDE] = 1;
   tideObjective(c, cap);
   c.emit({ t: 'text', uid: cap.uid, text: '만조가 몰려온다. 물을 빼지 못하면 잠긴다', tone: 'eldritch' });
-  if (!c.s.vars['a1-tideSeen']) {
-    c.s.vars['a1-tideSeen'] = 1;
-    cine(c, 'whisper', { text: '숨을 참아라. 지금은 {time}. 다음 물결이 오면 너는 잠긴다.' });
-  }
 }
 
 /** 만조가 물러간다 (물이 빠졌다·선장이 쓰러졌다). 내 턴이면 선장은 곧바로 다른 행동을 고른다 */

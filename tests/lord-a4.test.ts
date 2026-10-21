@@ -292,7 +292,6 @@ describe('4층 계층군주 — 검은 별: 2막 「블랙홀」', () => {
     expect(star.st.str).toBe(str + BLACKHOLE_STR);
     expect(star.st[LENS]).toBeUndefined();
     expect(c.p.st[DARK]).toBe(dark);
-    expect(cines(evs, 'whisper').length).toBe(1);
     // 내 처치가 아니다 (처치 효과 없음 — 삼켜졌다)
     expect(evs.filter((ev) => ev.t === 'death').length).toBe(3);
   });

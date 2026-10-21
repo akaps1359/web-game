@@ -165,14 +165,18 @@ class Stage {
       }
       pts.push(row);
     }
-    type Shard = { m: MeshSimple; x0: number; y0: number; vx: number; vy: number; vr: number; ex: number; ey: number; er: number };
+    type Shard = { m: Container; x0: number; y0: number; vx: number; vy: number; vr: number; ex: number; ey: number; er: number };
     const shards: Shard[] = [];
     const addTri = (tri: [number, number][]) => {
       const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3;
       const cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
       const vertices = new Float32Array(tri.flatMap(([x, y]) => [x - cx, y - cy]));
       const uvs = new Float32Array(tri.flatMap(([x, y]) => [x / W, y / H]));
-      const m = new MeshSimple({ texture: tex, vertices, uvs, indices: new Uint32Array([0, 1, 2]) });
+      // 조각 = 화면 그림 + 유리 단면처럼 빛나는 가장자리
+      const m = new Container();
+      m.addChild(new MeshSimple({ texture: tex, vertices, uvs, indices: new Uint32Array([0, 1, 2]) }));
+      const pts = tri.flatMap(([x, y]) => [x - cx, y - cy]);
+      m.addChild(new Graphics().poly(pts).stroke({ width: 1.2, color: 0xe8f4ff, alpha: 0.55 }));
       m.position.set(cx, cy);
       layer.addChild(m);
       const dx = cx - at.x;

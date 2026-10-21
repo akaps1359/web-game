@@ -93,17 +93,17 @@ id는 게임 전체에서 유일해야 한다 (적·스킬·특성·이벤트). 
 
 화면 연출은 규칙과 무관하다 (봇·시뮬레이션에선 아무 일도 없다). 그리는 쪽은 `src/ui/cinema.ts`.
 
-- `cine(c, name, { uid?, text?, n? })` (`src/content/lib.ts`) — 이름은 `CineName` (`src/engine/types.ts`): `crack`(유리 금) `shatter`(전장이 산산조각) `glitch` `whisper`(화면 너머의 플레이어에게 말 걸기) `sysmsg`(가짜 시스템 창) `fakeover`(가짜 게임 오버 — 최종 보스 전용) `eye` `ink` `scrawl`(붉은 손글씨) `handprints` `flip` `timestop` `blackhole` `corners` `water` `bell` `beam` `swarm` `impact`.
-  `text`에는 `{time}` `{hour}` `{deaths}` `{runs}` `{wins}` `{best}` `{origin}`을 쓸 수 있다 (진짜 시각·기록으로 바뀜). 줄바꿈은 `\n`.
+- `cine(c, name, { uid?, text?, n? })` (`src/content/lib.ts`) — 이름은 `CineName` (`src/engine/types.ts`): `crack`(유리 금) `shatter`(전장이 산산조각) `glitch`(데이터가 깨진다) `fakeover`(진짜와 똑같은 가짜 게임 오버 — 최종 보스 전용) `eye`(화면을 덮는 눈) `ink`(먹물) `scrawl`(유리에 붉은 손글씨) `handprints`(유리를 치는 손바닥) `flip` `timestop` `blackhole` `corners`(모서리의 아가리) `water`(밀려드는 물결) `bell` `beam` `swarm` `impact`.
+- **제4의 벽은 화면이 겪는 일로만 깬다 (2026-10-21)**: 유리에 금이 가고, 데이터가 뒤섞이고, 먹물·물·손자국·눈이 화면을 덮는다. 화면 밖의 사람에게 **말을 걸지 않는다** — 진짜 시각·죽은 횟수·출신 같은 실제 기록, 기기(밝기·음량·회전·도움말)를 흉내 내는 가짜 시스템 창, '화면 너머의 너' 같은 말은 쓰지 않는다 (`tests/fourth-wall.test.ts`가 콘텐츠 글을 검사한다). `scrawl`의 글은 그 자리의 짧은 외침·판결·주문만 (`유죄` `침묵하라` `테켈리-리`). 적의 대사가 꼭 필요하면 `c.emit({ t: 'text', uid, text, tone: 'eldritch' })`로 적 머리 위에 짧게.
 - `setUi(c, 'ui:…', n)` — 전투 내내 남는 화면 상태: `ui:water`(0~3) `ui:cracks`(0~3) `ui:tilt`(°) `ui:dark`(0~100) `ui:scramble` `ui:eye` `ui:swap`. 화면에만 영향, 규칙은 훅으로 따로.
 - `MoveDef.ultimate: true` — 필살기 컷인. `MoveDef.cine` — 그 행동과 함께 트는 연출 (`'crack'` 또는 `{ name, n, text }`).
 - `MoveDef.disguise: { kind, label, dmg?, hits?, reveal?, desc? }` — 거짓 의도. 통찰이 `reveal`(기본 `DISGUISE_REVEAL` = 3) 미만이면 이 모습으로 보인다 (봇도 속는다). 숨겨진 의도(`hidden`)는 `HIDDEN_REVEAL`(3)부터 보인다. 통찰은 귀하다(보통 판 2~4) — 더 높은 문턱은 수호자급 속임수에만 (4: 4층 어둠·5층 환영, 5: 파라오의 자비·꿈의 문지기의 문). 특성 설명 등으로 속임수가 있다는 걸 알려 줄 것.
-- 제4의 벽 연출(whisper·sysmsg·scrawl 등)은 수호자당 2~4번. 매 턴 쓰지 말 것. 모든 위협은 의도 문구·설명으로 미리 알리고 대응법이 있어야 한다.
+- 화면 유리에 무언가를 남기는 연출(`scrawl`·`handprints`·`fakeover`)은 수호자당 4번까지. 매 턴 쓰지 말 것. 모든 위협은 의도 문구·설명으로 미리 알리고 대응법이 있어야 한다.
 - 수호자 체력은 `BOSS_HP_MULT`(`src/engine/combat.ts`, 기본 1.1)가 더 곱해진다.
 - **퍼즐형 위협**: `setObjective(c, { text, hit/break/block/types/quiet/kill, fail })` — 화면 위 호박색 띠에 막는 법을, 누르면 `fail`(못 막으면 일어나는 일)을 보여 준다. 봇도 이 목표를 보고 움직인다. 풀리는 순간 `setObjective(c, null)`로 지우고 대가를 취소한다.
 - **즉사기**: `execute(c, e, '기술 이름')` — 사경 없이 패배 (결계가 하나 막는다). 목표에 `lethal: true`를 붙이면 붉은 해골 띠가 된다. 실행 전에 플레이어 턴이 최소 한 번 온전히 있어야 한다. 의도 종류는 `'death'`.
   - **남발 금지**: 즉사기는 엘리트 1~2종과 수호자 1종에만 (지금: 2층 성가대장, 3층 고대인 해부학자, 4층 검은 파라오). 최종 보스엔 넣지 않는다. 나머지 퍼즐형 패턴은 못 막으면 큰 대가(방어도 무시 최대 체력 25~35% 정도, 사경 직행·체력 1 금지).
-- **전투 중 선택지**: `c.offerChoice({ id, title, text?, options: [{ id, label, desc, icon?, bot? }] })` — 시스템 창처럼 뜨고, 고르기 전엔 기술·턴 종료가 막힌다. 고르면 모든 훅의 `onChoice(c, s, id, option)`. `title`·`text`에 `{time}` 같은 실제 세계 토큰을 쓸 수 있다. 봇은 `bot`이 큰 것을 고른다 (예: 별의 태아 「탄생의 선택」).
+- **전투 중 선택지**: `c.offerChoice({ id, title, text?, options: [{ id, label, desc, icon?, bot? }] })` — 화면 가운데 선택 창이 뜨고, 고르기 전엔 기술·턴 종료가 막힌다. 고르면 모든 훅의 `onChoice(c, s, id, option)`. 봇은 `bot`이 큰 것을 고른다 (예: 별의 태아 「탄생의 선택」).
 - **일반 몹도 반응한다 (2026-10)**: 3층부터 일반 몹은 내 행동이나 전황에 반응하는 패턴을 하나 이상 갖는다 (약점·붕괴에 반응, 체력 절반 아래의 다른 몸짓, 방어도·스킬 수를 읽는 공격, 동료와의 짝, 끊을 수 있는 몇 턴짜리 준비). 4·5층은 둘 이상. 순수한 `cycle`/평평한 `pick`만으로 움직이는 일반 몹을 새로 만들지 말 것. 저층(1·2층)은 변화만 — 위협을 키우지 않는다.
   - 내 턴에 의도를 바꾸는 반응은 `act5/dream.ts`의 `setIntent`처럼 엔진의 `planIntent`와 같은 방식으로 의도를 다시 그린다 (엔진의 의도 계산이 바뀌면 함께 고친다).
 - **턴마다 바뀌는 효과는 지금 모습을 보인다 (2026-10)**: 'N턴마다'·'홀수/짝수 턴'·턴마다 속성이 바뀌는 정수·장비·광기·유물은 훅에 `turnNote`를 단다 (N턴마다는 `cycleNote(c, { n, on, icon, title, what })` — `src/content/lib.ts`). 피해 속성이 턴마다 바뀌는 스킬은 `typeNow`. `tests/turn-notes.test.ts`가 설명에 그런 말이 있는데 칩이 없으면 잡는다.

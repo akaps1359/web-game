@@ -24,12 +24,12 @@ import { vanish } from './dream';
  * 2026-10 패턴 확장 (최종장 — 제4의 벽):
  *  - 꿈속의 죽음: 태아가 꿈을 꾸는 동안(1·2단계) 적의 일격에 처음 쓰러지면 가짜 게임 오버가 뜨고 '꿈이었다' — 체력 30%로 깨어나지만
  *    꿈이 처음부터 다시 시작된다 (지금 모습의 체력이 모두 차오르고 첫 꿈부터). 한 번뿐이고, 태어난 뒤의 죽음은 진짜다.
- *  - 탄생의 선택 (3단계): 태어난 것이 첫 차례를 마치면 화면에 시스템 창이 뜬다 (c.offerChoice) — 3단계의 규칙을 바꾸는 셋 중 하나.
+ *  - 탄생의 선택 (3단계): 태어난 것이 첫 차례를 마치면 선택 창이 뜬다 (c.offerChoice) — 3단계의 규칙을 바꾸는 셋 중 하나.
  *    자장가를 부른다(다시 재운다: 폭딜 창) · 탯줄을 끊는다(탯줄을 없앤다: 내가 베인다) · 그것의 눈을 본다(이어진 꿈: 어떤 속성으로도 붕괴).
- *    봇은 그때의 체력·정신력·탯줄 수·붕괴 수단을 보고 고른다 (option.bot). 마지막 속삭임이 고른 것에 따라 달라진다.
+ *    봇은 그때의 체력·정신력·탯줄 수·붕괴 수단을 보고 고른다 (option.bot). 끝에 남는 글이 고른 것에 따라 달라진다.
  *  - 쥐기 반사 (3단계): '작은 손' 의도 — 쥐어짜고, 그 턴 당신이 마지막으로 쓴 기술을 쥔다 (붕괴시키거나 2턴이 지나면 놓는다).
- *  - 연출: 화면 너머의 당신에게 말을 건다 (지금 시각·죽은 횟수·지난 판 수·출신). 알의 껍질이 깨질수록 화면 유리가 갈라지고(ui:cracks),
- *    태어나는 순간 화면이 산산조각 나며 거대한 눈이 뒤에서 지켜본다(ui:eye).
+ *  - 연출: 말을 걸지 않고 화면이 겪게 한다. 알의 껍질이 깨질수록 화면 유리가 갈라지고(ui:cracks),
+ *    태어나는 순간 화면이 산산조각 나며 거대한 눈이 뒤에서 지켜본다(ui:eye). 꿈속의 죽음은 진짜와 똑같은 게임 오버 화면이 깨지며 돌아온다.
  *  - 출신 공정성: 탯줄은 기믹 물건이라(reachable) 뒷열에 있어도 근접으로 닿고, 탯줄이 끊길 때마다 알의 껍질이 한 겹씩 갈라진다.
  *    졸음은 적을 쓰러뜨려도 깨고, 작은 손은 2턴이 지나면 놓는다. 5층에는 즉사(execute)가 없다.
  */
@@ -97,23 +97,14 @@ export const SEVER_TEAR = 0.15;
 export const GAZE_SAN = 15;
 export const LINK_MULT = 1.25;
 
-/**
- * 화면 너머의 당신에게 건네는 말. {time}(지금 시각)·{deaths}(죽은 횟수)·{runs}(지난 판 수)·{origin}(지금 출신)은
- * 화면이 진짜 값으로 바꿔 넣는다. 꺼내는 때: 처음 마주침 · 꿈이 깨짐(가짜 시스템 창) · 꿈속의 죽음 · 탄생 · 탄생의 선택 · 끝
- */
+/** 탄생의 선택 창의 글과, 끝에 남는 글 (고른 것에 따라 달라진다) */
 export const FETUS_LINES = {
-  wake: '{time}. 화면을 쥔 손이 차갑네, {origin}.',
-  broken: '꿈이 손상되었습니다. 저장된 꿈 {runs}개 중 어느 것으로도 되돌릴 수 없습니다.',
-  redream: '지금까지 {deaths}번 죽었지. 이번 건 세지 않을게.',
-  born: '이제 화면 밖으로 나갈게. 거기는 따뜻해?',
-  /** 탄생의 선택 — 시스템 창 */
   choiceTitle: '그것이 태어나려 한다',
-  choiceText: '이 우주는 그것이 꾸는 꿈이다. 첫 울음이 다 터지면 꿈은 끝난다. 지금은 {time}. 화면 밖의 당신은…',
-  end: '괜찮아. 너는 또 시작할 거잖아. 다음 꿈에서 봐.',
-  /** 끝 — 고른 것에 따라 */
-  endLullaby: '…자장가, 따뜻했어. 조금만 더 잘게. 다음 꿈에서 봐.',
-  endSever: '…끊어 냈구나. 그래도 너는 또 시작할 거잖아. 다음 꿈에서 봐.',
-  endGaze: '…봤구나. 이제 너도 알지, 화면 밖도 꿈이라는 걸. 다음 꿈에서 봐.',
+  choiceText: '이 우주는 그것이 꾸는 꿈이다. 첫 울음이 다 터지면 꿈은 끝난다. 당신은…',
+  end: '태어나지 못한 것이 별빛 사이로 흩어졌다',
+  endLullaby: '자장가가 끝나기 전에 그것은 다시 잠들었다',
+  endSever: '끊어진 탯줄 끝에서 별빛이 식어 갔다',
+  endGaze: '그것의 눈이 감겼다. 그 눈 속에서 본 것은 잊히지 않는다',
 };
 
 const phaseOf = (e: EnemyUnit): number => e.mem.phase ?? 0;
@@ -173,8 +164,8 @@ function redream(c: Combat, d: DamageCtx): boolean {
   const f = fetusOf(c);
   if (!f || phaseOf(f) >= 2) return false;
   c.s.vars.a5Redream = 1;
-  // 가짜 게임 오버 → 화면이 깨지며 돌아오고, 태아가 속삭인다 (text는 깨진 뒤의 속삭임)
-  cine(c, 'fakeover', { uid: f.uid, text: FETUS_LINES.redream });
+  // 진짜와 똑같은 게임 오버 화면이 뜨고, 그 화면이 깨지며 돌아온다
+  cine(c, 'fakeover', { uid: f.uid });
   c.p.hp = Math.max(1, Math.ceil(c.p.maxHp * REDREAM_HP));
   c.emit({ t: 'heal', uid: 'p', amount: c.p.hp });
   c.emit({ t: 'text', uid: 'p', text: '…꿈이었다. 식은땀 속에서 눈을 떴다', tone: 'eldritch' });
@@ -499,7 +490,7 @@ reg.statuses([
     name: '지켜보는 눈',
     icon: 'gi:eyeball',
     kind: 'debuff',
-    desc: `태어난 것이 화면 너머의 손끝을 지켜본다. 「작은 손」이 오면 그 턴에 내가 마지막으로 쓴 기술을 꼭 쥔다 (붕괴시키거나 ${GRASP_TURNS}턴이 지나면 놓는다). 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
+    desc: `태어난 것이 손끝을 지켜본다. 「작은 손」이 오면 그 턴에 내가 마지막으로 쓴 기술을 꼭 쥔다 (붕괴시키거나 ${GRASP_TURNS}턴이 지나면 놓는다). 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
     tickStart(c, u) {
       if (!isEnemy(u)) c.s.vars.a5Finger = 0;
     },
@@ -568,7 +559,7 @@ reg.traits([
           setUi(c, 'ui:eye', 0);
           setUi(c, 'ui:cracks', 0);
           const ends = [FETUS_LINES.end, FETUS_LINES.endLullaby, FETUS_LINES.endSever, FETUS_LINES.endGaze];
-          cine(c, 'whisper', { text: ends[e.mem.birth ?? 0] ?? FETUS_LINES.end });
+          c.emit({ t: 'text', uid: e.uid, text: ends[e.mem.birth ?? 0] ?? FETUS_LINES.end, tone: 'eldritch' });
           return;
         }
         const next = phase + 1;
@@ -593,9 +584,8 @@ reg.traits([
         c.emit({ t: 'spawn', uid: e.uid });
         c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
         if (next === 1) {
-          // 꿈이 깨진다: 데이터가 뒤섞이고 가짜 시스템 창, 화면 유리에 첫 금
-          cine(c, 'glitch', { n: 2 });
-          cine(c, 'sysmsg', { text: FETUS_LINES.broken });
+          // 꿈이 깨진다: 화면이 데이터처럼 뒤섞이고, 화면 유리에 첫 금
+          cine(c, 'glitch', { n: 3 });
           setUi(c, 'ui:cracks', 1);
         } else {
           // 태어난다: 화면이 산산조각 나고, 거대한 눈이 뒤에서 지켜본다
@@ -610,9 +600,8 @@ reg.traits([
         } else {
           if (e.st['a5-shell']) delete e.st['a5-shell'];
           endDream(c);
-          cine(c, 'whisper', { text: FETUS_LINES.born });
           c.emit({ t: 'text', uid: 'p', text: '이제 꿈이 아니다. 쓰러지면 다시 깨어나지 못한다', tone: 'bad' });
-          // 태어난 것은 화면 너머의 손끝을 지켜본다 (쥐기 반사)
+          // 태어난 것은 손끝을 지켜본다 (쥐기 반사)
           setPlayerSt(c, 'a5-finger', 1);
           c.s.vars.a5Finger = 0;
         }
@@ -632,7 +621,7 @@ reg.traits([
   {
     id: 'a5-grasp',
     name: '쥐기 반사',
-    desc: `태어난 것은 화면 너머의 손끝을 지켜본다. 「작은 손」을 쓰면 그 턴에 내가 마지막으로 쓴 기술을 꼭 쥔다. 붕괴시키거나 ${GRASP_TURNS}턴이 지나야 놓는다. 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
+    desc: `태어난 것은 손끝을 지켜본다. 「작은 손」을 쓰면 그 턴에 내가 마지막으로 쓴 기술을 꼭 쥔다. 붕괴시키거나 ${GRASP_TURNS}턴이 지나야 놓는다. 기본 공격·방어로 턴을 마치면 빈손을 쥔다`,
     hooks: {
       // 붕괴하면 쥔 기술을 놓는다 (내 쪽 '지켜보는 눈'이 없어져도 풀리게 태아 쪽에도 둔다)
       onDamageTaken(c, s, d) {
@@ -648,7 +637,7 @@ reg.traits([
   {
     id: 'a5-birth',
     name: '탄생의 선택',
-    desc: `태어난 것이 첫 차례를 마치면 화면 너머의 당신에게 셋 중 하나를 묻는다\n「자장가를 부른다」 정신력 -${LULL_SAN}. 태어난 것이 ${LULL_TURNS}번의 차례 동안 잠든다. 그동안 받는 피해 +${Math.round((LULL_MULT - 1) * 100)}%, 첫 울음도 멈췄다가 깨어나면 곧바로 이어진다\n「탯줄을 끊는다」 최대 체력 ${Math.round(SEVER_HP * 100)}%만큼 베이고 출혈 ${SEVER_BLEED}. 탯줄이 모두 끊겨 다시 자라지 않는다. 끊긴 탯줄마다 태어난 것이 체력 ${Math.round(SEVER_TEAR * 100)}%를 쏟는다. 태어난 것 힘 +${SEVER_STR}\n「그것의 눈을 본다」 정신력 -${GAZE_SAN}, 통찰 +1. 주고받는 공격 피해 +${Math.round((LINK_MULT - 1) * 100)}%, 어떤 속성으로도 버팀이 깎인다`,
+    desc: `태어난 것이 첫 차례를 마치면 셋 중 하나를 고르게 한다\n「자장가를 부른다」 정신력 -${LULL_SAN}. 태어난 것이 ${LULL_TURNS}번의 차례 동안 잠든다. 그동안 받는 피해 +${Math.round((LULL_MULT - 1) * 100)}%, 첫 울음도 멈췄다가 깨어나면 곧바로 이어진다\n「탯줄을 끊는다」 최대 체력 ${Math.round(SEVER_HP * 100)}%만큼 베이고 출혈 ${SEVER_BLEED}. 탯줄이 모두 끊겨 다시 자라지 않는다. 끊긴 탯줄마다 태어난 것이 체력 ${Math.round(SEVER_TEAR * 100)}%를 쏟는다. 태어난 것 힘 +${SEVER_STR}\n「그것의 눈을 본다」 정신력 -${GAZE_SAN}, 통찰 +1. 주고받는 공격 피해 +${Math.round((LINK_MULT - 1) * 100)}%, 어떤 속성으로도 버팀이 깎인다`,
     hooks: {
       onUnitTurnEnd(c, s) {
         const e = s.unit;
@@ -794,8 +783,6 @@ reg.enemies([
         e.mem.dreamTurn = c.s.turn + 1;
         c.emit({ t: 'text', uid: e.uid, text: `태아가 꿈을 꾼다: 「${dreamName(DREAMS[0])}」`, tone: 'eldritch' });
       }
-      // 화면 너머의 당신을 알아본다
-      cine(c, 'whisper', { uid: e.uid, text: FETUS_LINES.wake });
     },
     ai: (c, e) => {
       const ph = phaseOf(e);

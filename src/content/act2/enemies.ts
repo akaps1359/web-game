@@ -225,7 +225,8 @@ function toll(step: number): MoveDef {
         return;
       }
       cine(c, 'bell', { uid: e.uid });
-      if (once(c, 'a2-toll')) cine(c, 'sysmsg', { uid: e.uid, text: '음량: 최대. 이 소리는 끌 수 없습니다.' });
+      // 처음 울릴 때 한 번, 종소리에 화면 유리가 갈라진다
+      if (once(c, 'a2-toll')) cine(c, 'crack', { uid: e.uid, n: 1 });
       c.horror(e, TOLL_SAN);
       if (c.over) return;
       e.mem.tolls = (e.mem.tolls ?? 0) + 1;
@@ -1755,7 +1756,6 @@ reg.enemies([
         '신도 소집',
         (c, e) => {
           c.spawn('censer-priest', 1);
-          if (once(c, 'a2-priest-call')) cine(c, 'whisper', { uid: e.uid, text: '{time}. 이 시각에 깨어 있는 자의 기도는 아래까지 잘 들린다.' });
         },
         '향로 사제 소환',
       ),
@@ -1851,10 +1851,7 @@ reg.enemies([
             return;
           }
           c.emit({ t: 'text', uid: e.uid, text: '제 새끼를 산 채로 삼킨다', tone: 'eldritch' });
-          if (once(c, 'a2-swallow')) {
-            cine(c, 'ink', { uid: e.uid });
-            cine(c, 'sysmsg', { uid: e.uid, text: '일부 장면이 가려졌습니다.' });
-          }
+          if (once(c, 'a2-swallow')) cine(c, 'ink', { uid: e.uid });
           consume(c, pup);
           c.heal(e, 24);
           c.apply(e, 'str', 1, e);
@@ -1873,7 +1870,6 @@ reg.enemies([
         desc: '식탁이 비었다. 달려들어 입힌 피해만큼 회복한다 (만찬으로 위장한다)',
         run(c, e) {
           e.mem.lunges = (e.mem.lunges ?? 0) + 1;
-          if (once(c, 'a2-lunge')) cine(c, 'whisper', { uid: e.uid, text: '{time}. 식탁이 비었다. 그러니 너다.' });
           const ds = c.enemyAttack(e, { type: 'slash' });
           if (c.over || e.dead) return;
           const n = ds.reduce((s, d) => s + d.hpLoss, 0);
@@ -1966,7 +1962,6 @@ reg.enemies([
             e.mem.sub = 1;
             setUi(c, 'ui:dark', ASH_DARK);
             c.emit({ t: 'text', uid: e.uid, text: '잿더미 속으로 파고든다', tone: 'eldritch' });
-            if (once(c, 'a2-bury')) cine(c, 'whisper', { uid: e.uid, text: '재 밑에 묻힌 네 시체: {deaths}구. 곧 하나 더.' });
           }
         },
       },
@@ -1995,7 +1990,7 @@ reg.enemies([
           e.mem.upT = 0;
           e.mem.prov = 0;
           setUi(c, 'ui:dark', 0);
-          if (once(c, 'a2-rise')) cine(c, 'scrawl', { uid: e.uid, text: '보고 있었다' });
+          if (once(c, 'a2-rise')) cine(c, 'impact', { uid: e.uid });
         },
       },
       gasp: {

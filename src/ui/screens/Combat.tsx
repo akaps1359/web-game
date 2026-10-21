@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { garbleStable, mountWatcher, realWorld, staticCracks } from '../cinema';
+import { garbleStable, mountWatcher, staticCracks } from '../cinema';
+import { mountWater } from '../water';
 import type { Snap } from '../../engine/combat';
 import { ANOMALIES, CONSUMABLES, ENEMIES, ORIGINS, RUNES, STATUSES, TRAITS } from '../../engine/registry';
 import { BUILTIN_MOVES, DISGUISE_REVEAL, GUARD, HIDDEN_REVEAL, breakProfile, lvlVal, shownIntentOf, toleranceGain } from '../../engine/combat';
@@ -134,7 +135,7 @@ export function CombatScreen() {
   return (
     <>
       <div ref={screenRef} class={`screen combat ${tilt ? 'tilted' : ''}`} style={{ animation: 'none', transform: tilt ? `rotate(${tilt}deg)` : undefined }}>
-        <UiVarsLayer water={ui('ui:water')} cracks={ui('ui:cracks')} dark={ui('ui:dark')} eye={!!ui('ui:eye')} />
+        <UiVarsLayer water={ui('ui:water')} tilt={tilt} cracks={ui('ui:cracks')} dark={ui('ui:dark')} eye={!!ui('ui:eye')} />
         <div class="battle-top">
           <span class="chip">
             <Icon name="gi:sands-of-time" size={13} />
@@ -307,7 +308,7 @@ ${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
       </div>
       {/* 피해 숫자는 기울어진 화면 밖에서 — 똑바로 선 그림 위에 뜬다 */}
       <Floaters />
-      {/* 전투 중 선택지 (연출이 끝난 내 턴에) — 화면 밖의 시스템 창처럼 */}
+      {/* 전투 중 선택지 (연출이 끝난 내 턴에) */}
       {c.s.choice && !s.busy && c.s.phase === 'player' && <ChoiceDialog ch={c.s.choice} />}
       {peek && <IntentPeek uid={peek} onClose={() => setPeek(null)} />}
       {gapPeek && <GapPeek uid={gapPeek} onClose={() => setGapPeek(null)} />}
@@ -334,14 +335,14 @@ function fitKit(kit: HTMLElement | null, area: HTMLElement | null) {
 function ChoiceDialog({ ch }: { ch: CombatChoice }) {
   return (
     <div class="choice-veil">
-      <div class="choice-box">
-        <div class="choice-title">{realWorld(ch.title)}</div>
-        {ch.text && <div class="choice-msg">{realWorld(ch.text)}</div>}
+      <div class="panel choice-box">
+        <div class="choice-title">{ch.title}</div>
+        {ch.text && <div class="choice-msg">{ch.text}</div>}
         <div class="choice-opts">
           {ch.options.map((o) => (
             <button key={o.id} class="choice-opt" onClick={() => void pickChoice(o.id)}>
               <span class="choice-label">
-                {o.icon && <Icon name={o.icon} size={16} />}
+                {o.icon && <Icon name={o.icon} size={18} />}
                 {o.label}
               </span>
               <span class="choice-desc">{o.desc}</span>
@@ -1350,20 +1351,41 @@ export function Floaters() {
 }
 
 /** 전투 내내 남는 화면 상태: 차오른 물, 금 간 유리, 어둠, 지켜보는 눈 (누르기는 통과) */
-function UiVarsLayer({ water, cracks, dark, eye }: { water: number; cracks: number; dark: number; eye: boolean }) {
+function UiVarsLayer({ water, tilt, cracks, dark, eye }: { water: number; tilt: number; cracks: number; dark: number; eye: boolean }) {
   const eyeRef = useRef<HTMLDivElement>(null);
+  // 한 번 차오른 물은 빠져도 붙여 둔다 (빠지는 모습까지 그린다)
+  const wet = useRef(false);
+  if (water > 0) wet.current = true;
   useEffect(() => {
     if (!eye || !eyeRef.current) return;
     return mountWatcher(eyeRef.current);
   }, [eye]);
   const crackSvg = useMemo(() => (cracks > 0 ? staticCracks(cracks) : ''), [cracks]);
-  if (!water && !cracks && !dark && !eye) return null;
+  if (!wet.current && !cracks && !dark && !eye) return null;
   return (
     <div class="ui-layer">
       {eye && <div class="ui-eye" ref={eyeRef} />}
       {dark > 0 && <div class="ui-dark" style={{ opacity: Math.min(1, dark / 100) }} />}
       {cracks > 0 && <div class="ui-cracks" dangerouslySetInnerHTML={{ __html: crackSvg }} />}
-      <div class="ui-water" style={{ height: `${Math.max(0, Math.min(3, water)) * 13}vh`, opacity: water > 0 ? 1 : 0 }} />
+      {wet.current && <WaterLayer level={water} tilt={tilt} />}
     </div>
   );
+}
+
+/** 차오른 물: 캔버스로 그리는 수면 (src/ui/water.ts). 화면이 기울어도 수면은 땅과 나란하다 */
+function WaterLayer({ level, tilt }: { level: number; tilt: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const ctl = useRef<ReturnType<typeof mountWater> | null>(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    ctl.current = mountWater(ref.current);
+    return () => {
+      ctl.current?.stop();
+      ctl.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    ctl.current?.set(level, tilt);
+  }, [level, tilt]);
+  return <div class="ui-water" ref={ref} />;
 }

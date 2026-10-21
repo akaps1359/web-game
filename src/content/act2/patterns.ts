@@ -242,7 +242,8 @@ function excommunicate(c: Combat, priest: EnemyUnit) {
   }
   c.emit({ t: 'fx', name: 'horror', src: priest.uid, tgt: 'p' });
   c.emit({ t: 'text', uid: 'p', text: `파문: 말을 끊겼다 (행동력 -${lost})`, tone: 'bad' });
-  if (once(c, 'a2-cut')) cine(c, 'sysmsg', { uid: priest.uid, text: '입력이 거부되었습니다. 침묵하십시오.' });
+  // 처음 끊길 때 한 번, 화면이 지지직 끊긴다
+  if (once(c, 'a2-cut')) cine(c, 'glitch', { uid: priest.uid, n: 1 });
 }
 
 // ───────────── 고해 ─────────────
@@ -289,7 +290,6 @@ export function startKnell(c: Combat, keeper: EnemyUnit) {
   setSt(c, c.p, KNELL, 2);
   setObjective(c, { text: KNELL_TEXT_1, hit: { uid: bell.uid, need: bell.hp }, break: keeper.uid, fail: KNELL_FAIL });
   c.emit({ t: 'text', uid: keeper.uid, text: '종이 세 번 울렸다. 네 번째 종소리를 듣는 자는 무너진다', tone: 'eldritch' });
-  if (once(c, 'a2-knell')) cine(c, 'whisper', { uid: keeper.uid, text: '{time}. 세 번 울렸다. 네 번째를 들으면 너는 무너진다.' });
 }
 
 /** 마지막 종을 당긴다: 1턴 남음 — 이제는 귀를 막아도 산다 */
@@ -348,7 +348,6 @@ export function startRequiem(c: Combat, cm: EnemyUnit): boolean {
   setSt(c, c.p, REQUIEM, 2);
   requiemObjective(c, cm, 2, REQUIEM_HIT);
   c.emit({ t: 'text', uid: cm.uid, text: '성가대가 레퀴엠을 부르기 시작한다. 끝까지 들은 자는 죽는다', tone: 'eldritch' });
-  if (once(c, 'a2-requiem')) cine(c, 'whisper', { uid: cm.uid, text: '레퀴엠.\n{origin}, 너를 위해 부른다.' });
   return true;
 }
 
@@ -436,7 +435,6 @@ export function belfry(c: Combat, e: EnemyUnit) {
   // 종탑이 기운다 (종지기가 쓰러지면 바로 선다)
   setUi(c, 'ui:tilt', BELFRY_TILT);
   c.emit({ t: 'text', uid: e.uid, text: '종탑이 울부짖는다. 종지기가 종탑의 망령이 되었다', tone: 'eldritch' });
-  if (once(c, 'a2-belfry')) cine(c, 'whisper', { uid: e.uid, text: '{time}. 종탑의 밧줄이 하나씩 끊어진다.\n위를 봐.' });
   c.loseSanity(BELFRY_SAN, true);
   if (c.over || e.dead) return;
   if (e.broken !== 2) c.planIntent(e);

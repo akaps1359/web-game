@@ -141,6 +141,7 @@ const TRIM: Partial<Record<Sfx, number>> = {
   glitch: 2.2,
   thud: 1.2,
   swoosh: 2.4,
+  wave: 1.3,
   flatline: 1.6,
   click: 1.8,
   select: 4.8,
@@ -288,6 +289,13 @@ const RECIPES: Record<Sfx, (x: Kit) => void> = {
   },
   swoosh(x) {
     x.noise({ filter: 'bandpass', f0: 600, f1: 4500, glide: 0.25, q: 1.2, attack: 0.05, release: 0.25, vel: 0.55, verb: 0.3 });
+  },
+  wave(x) {
+    // 물: 낮게 밀려드는 파도 → 마루에서 부서지는 물보라 → 떠오르는 물방울 몇 개
+    x.noise({ filter: 'lowpass', f0: 240, f1: 2000, glide: 0.45, q: 0.8, attack: 0.28, hold: 0.12, release: 1, vel: 0.75, verb: 0.35 });
+    x.drum({ f: 46, pitchDecay: 0.35, octaves: 1.4, release: 1, vel: 0.5, cutoff: 260, verb: 0.3 });
+    x.noise({ filter: 'bandpass', f0: 1600, f1: 5200, glide: 0.3, q: 0.7, attack: 0.06, hold: 0.06, release: 0.6, vel: 0.38, verb: 0.45 }, 0.34);
+    for (let i = 0; i < 4; i++) x.tone('sine', { f0: rand(380, 620), f1: rand(950, 1500), glide: 0.05, release: 0.06, vel: 0.1, verb: 0.25 }, 0.5 + i * rand(0.07, 0.15));
   },
   break(x) {
     x.noise({ filter: 'highpass', f0: 3500, attack: 0.001, release: 0.35, vel: 0.7, verb: 0.3 });

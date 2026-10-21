@@ -99,8 +99,6 @@ describe('1층 — 등대지기: 도는 등명기와 섬광', () => {
     // 이번 내 턴엔 의도가 가려진다 (통찰이 모자라면 ???)
     expect(lk.intent?.hidden).toBe(true);
     expect(lamp.intent?.hidden).toBe(true);
-    // 첫 섬광은 화면 밖의 당신에게 (가짜 시스템 창)
-    expect(cines(ev, 'sysmsg').length).toBe(1);
     // 턴이 끝나면 걷힌다
     c.endTurn();
     expect(c.p.st[DAZZLE]).toBeUndefined();
@@ -169,7 +167,7 @@ describe('1층 — 등대지기: 도는 등명기와 섬광', () => {
     expect(lk.mem.relit ?? 0).toBe(0);
   });
 
-  it('2단계로 넘어가며 거대한 눈이 뜨고 화면 너머로 속삭인다', () => {
+  it('2단계로 넘어가며 거대한 눈이 뜬다', () => {
     const c = fight('a1-boss-lightkeeper');
     const lk = find(c, 'lightkeeper');
     lk.hp = Math.floor(lk.maxHp * 0.4);
@@ -177,7 +175,6 @@ describe('1층 — 등대지기: 도는 등명기와 섬광', () => {
     c.endTurn();
     const ev = c.drain();
     expect(cines(ev, 'eye').length).toBe(1);
-    expect(cines(ev, 'whisper').length).toBe(1);
   });
 });
 
@@ -250,19 +247,20 @@ describe('1층 — 밀수조직 두목: 휴전 제안과 배신', () => {
     c.endTurn();
     const ev = c.drain();
     expect(moveEv(ev, q.uid)?.ult).toBe(true);
-    expect(cines(ev, 'sysmsg').length).toBe(1);
+    expect(moveEv(ev, q.uid)?.cine).toBe('impact');
     const hits = hitsOn(ev, q.uid);
     expect(hits.length).toBe(2 + (n - 1));
     expect(hits[0].amount).toBe(c.preview(q, c.p, BETRAY_DMG, 'pierce'));
   });
 
-  it('체력이 절반 아래로 떨어지면 화면 너머로 속삭인다 (한 번)', () => {
+  it('체력이 절반 아래로 떨어지면 한 번 비웃는다', () => {
     const c = fight('a1-boss-queen');
     const q = find(c, 'queen');
     q.poise = 0; // 버팀을 걷어 피해가 그대로 들어가게 (버팀이 남은 적은 절반만 받는다)
     c.damage({ src: c.p, tgt: q, base: Math.ceil(q.maxHp * 0.55), type: 'true', attack: true });
     c.damage({ src: c.p, tgt: q, base: 5, type: 'true', attack: true });
-    expect(cines(c.drain(), 'whisper').length).toBe(1);
+    const said = c.drain().filter((x) => x.t === 'text' && x.uid === q.uid && x.text.includes('현상금'));
+    expect(said.length).toBe(1);
   });
 });
 
@@ -312,7 +310,8 @@ describe('1층 — 늙은 어부: 낚싯줄', () => {
     expect(c.p.st[CAUGHT]).toBe(1);
     expect(f.st.str).toBe(CATCH_STR);
     expect(c.s.cd[uid]).toBeGreaterThan(90);
-    expect(cines(ev, 'sysmsg').length).toBe(1);
+    expect(cines(ev, 'glitch').length).toBe(1);
+    expect(ev.some((x) => x.t === 'text' && x.uid === 'p' && x.text.includes('낚아 갔다'))).toBe(true);
     // 쥔 기술이 있는 동안은 다시 던지지 않는다
     for (let i = 0; i < 5; i++) {
       c.endTurn();
@@ -325,7 +324,7 @@ describe('1층 — 늙은 어부: 낚싯줄', () => {
     expect(f.form).toBe(1);
     expect(c.p.st[CAUGHT]).toBeUndefined();
     expect(c.s.cd[uid] ?? 0).toBeLessThan(90);
-    for (const name of ['shatter', 'water', 'whisper']) expect(cines(ev2, name).length, name).toBe(1);
+    for (const name of ['shatter', 'water']) expect(cines(ev2, name).length, name).toBe(1);
   });
 
   it('어부를 붕괴시켜도 줄이 끊어지고, 쓰러뜨리면 낚인 기술을 되찾는다', () => {
@@ -481,21 +480,20 @@ describe('1층 — 익사한 선장: 차오르는 물', () => {
 });
 
 /** 만조를 부르기 직전까지 (물 3, 닻을 내려친 뒤 선장이 만조를 부른다 — 내 턴이 시작되는 순간) */
-function untilTide(run: RunState = hero()): { c: Combat; cap: EnemyUnit; ev: CombatEvent[] } {
+function untilTide(run: RunState = hero()): { c: Combat; cap: EnemyUnit } {
   const c = fight('lord-a1', run);
   const cap = find(c, 'captain');
-  let ev: CombatEvent[] = [];
   for (let i = 0; i < 8 && cap.intent?.move !== 'hightide'; i++) {
     c.drain();
     c.endTurn();
-    ev = c.drain();
+    c.drain();
   }
-  return { c, cap, ev };
+  return { c, cap };
 }
 
 describe('1층 — 익사한 선장: 만조 (퍼즐 · 큰 대가)', () => {
-  it('물이 끝까지 차면 만조를 부른다 — 내 턴이 시작될 때 이미 큰 공격 의도와 경고 띠(못 막으면 치를 대가)가 보이고, 처음엔 화면 너머로 속삭인다', () => {
-    const { c, cap, ev } = untilTide();
+  it('물이 끝까지 차면 만조를 부른다 — 내 턴이 시작될 때 이미 큰 공격 의도와 경고 띠(못 막으면 치를 대가)가 보인다', () => {
+    const { c, cap } = untilTide();
     // 전투 초반 두 턴 안에는 오지 않는다
     expect(c.s.turn).toBeGreaterThan(2);
     expect(c.s.phase).toBe('player');
@@ -508,7 +506,6 @@ describe('1층 — 익사한 선장: 만조 (퍼즐 · 큰 대가)', () => {
     expect(c.s.obj?.fail).toContain(`${tideDamage(c)}`);
     expect(c.s.obj?.hit).toEqual({ uid: cap.uid, need: BAIL_DMG });
     expect(c.s.obj?.kill).toEqual(c.alive.filter((e) => e.def === 'drowned').map((e) => e.uid));
-    expect(cines(ev, 'whisper').length).toBe(1);
     // 만조가 몰려오는 턴엔 숨을 참는다 — 막을 행동력은 남겨 둔다
     expect(c.p.st[FLOOD]).toBe(WATER_MAX);
     expect(c.s.ap).toBe(c.p.maxAp);
@@ -833,7 +830,7 @@ describe('1층 — 출신마다 공정한 기믹 (시작 덱)', () => {
     expect(lamp.dead).toBe(true);
     // 섬광은 한 번도 터지지 않았다
     expect(c.p.st[DAZZLE]).toBeUndefined();
-    expect(c.s.vars['a1-flashed']).toBeUndefined();
+    expect(c.events.some((x) => x.t === 'move' && x.uid === lamp.uid && x.move === 'flash')).toBe(false);
   });
 
   it('낚싯줄은 전열이 차 후열로 밀려나도 근접으로 닿고, 세 출신 모두 무기 기본 공격만으로 한 턴에 끊는다', () => {

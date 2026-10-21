@@ -165,10 +165,6 @@ describe('4층 수호자 — 문 너머의 존재', () => {
     const evs = c.drain();
     expect(hitsOn(evs, 'p', gate.uid).length).toBe(3);
     expect(c.p.sanity).toBeLessThan(san);
-    // 제4의 벽은 처음 한 번만
-    expect(cines(evs, 'whisper').length).toBe(1);
-    act(c, gate, 'oneness');
-    expect(cines(c.drain(), 'whisper').length).toBe(0);
   });
 
   it('차원을 접는 동안 문이 전열로 끌려 나와 근접 공격이 닿고(화면이 기운다), 접힌 차원이 펴지면 물러난다', () => {
@@ -241,10 +237,12 @@ describe('4층 수호자 — 검은 파라오', () => {
     act(c, ph, 'mercy');
     const evs = c.drain();
     expect(hitsOn(evs, 'p', ph.uid).length).toBe(2);
-    expect(cines(evs, 'scrawl').length).toBe(1);
+    // 배신의 순간 화면이 지지직 일그러진다 (말은 걸지 않는다)
+    expect(ENEMIES.get('black-pharaoh')!.moves.mercy.cine).toBe('glitch');
+    expect(cines(evs, 'scrawl').length).toBe(0);
   });
 
-  it('가면이 벗겨지면 화면이 산산조각 나고, 지금까지의 죽음을 속삭인다', () => {
+  it('가면이 벗겨지면 화면이 산산조각 난다', () => {
     const c = startCombat(floor4(), 'a4-boss-pharaoh', { anomaly: null });
     const ph = find(c, 'black-pharaoh');
     c.drain();
@@ -254,8 +252,6 @@ describe('4층 수호자 — 검은 파라오', () => {
     expect(ph.form).toBe(1);
     const evs = c.drain();
     expect(cines(evs, 'shatter').length).toBe(1);
-    const w = cines(evs, 'whisper')[0];
-    expect(w && w.t === 'cine' && w.text).toContain('{deaths}');
   });
 
   it('「왕의 명령」: 지목한 기술을 쓰면 흡족해하고, 쓰지 않으면 정신 피해·공포·힘으로 벌한다', () => {
@@ -277,8 +273,7 @@ describe('4층 수호자 — 검은 파라오', () => {
     expect(n).toBeGreaterThan(0);
     const uid = run.slots[n - 1]!;
     const name = SKILLS.get(run.skills.find((s) => s.uid === uid)!.id)!.name;
-    // 처음 명령은 게임의 도움말인 척한다
-    expect(cines(c.drain(), 'sysmsg').length).toBe(1);
+    c.drain();
     c.fire(c.p, 'onTurnStart');
     expect(ph.intent!.label).toBe(`명령: 「${name}」`);
 
@@ -529,8 +524,7 @@ describe('4층 계층군주 — 검은 별', () => {
     act(c, star, 'devour');
     expect(c.p.st[DARK]).toBe(1);
     expect(c.s.vars['ui:dark']).toBe(25);
-    // 처음 어두워질 때 가짜 시스템 창 — 정말로 화면 밝기가 내려간다
-    expect(cines(c.drain(), 'sysmsg').length).toBe(1);
+    c.drain();
     act(c, eye, 'feed');
     expect(c.p.st[DARK]).toBe(2);
     expect(c.s.vars['ui:dark']).toBe(50);
@@ -591,7 +585,6 @@ describe('4층 계층군주 — 검은 별', () => {
     expect(c2.p.sanity).toBeLessThan(san);
     expect(star2.st.str).toBe(str + ECLIPSE_STR);
     expect(c2.p.st[DARK]).toBe(1);
-    expect(cines(c2.drain(), 'whisper').length).toBe(1);
   });
 });
 
@@ -728,17 +721,21 @@ describe('4층 정예', () => {
 
 describe('4층 — 연출과 봇', () => {
   // 아래 셋은 시작 덱(힘 8)으로 끝까지 치르는 봇 시험이라 '어렵게' 전의 층 배율로 돈다 — 막히는 패턴이 없는지 본다 (GDD 10.10)
-  it("수호자의 제4의 벽 연출은 남발하지 않는다 (전투당 4번 이하, 가짜 게임오버 없음) — '어렵게' 전의 층 배율로", () => {
+  it("수호자의 제4의 벽 연출은 한 번은 나오고, 화면 유리에 남기는 연출은 남발하지 않는다 (전투당 4번 이하, 가짜 게임오버 없음) — '어렵게' 전의 층 배율로", () => {
+    // 화면 자체에 일어나는 일 (말은 걸지 않는다) / 그중 화면 유리에 무언가를 남기는 것
+    const FOURTH_WALL = ['crack', 'glitch', 'ink', 'eye', 'corners', 'handprints', 'scrawl', 'blackhole', 'fakeover'];
+    const ON_GLASS = ['scrawl', 'handprints', 'fakeover'];
     preHard(() => {
       for (const id of ['a4-boss-gate', 'a4-boss-pharaoh', 'a4-boss-starlord', 'lord-a4']) {
         const run = floor4(91);
         run.player.insight = 0;
         const c = fightToEnd(startCombat(run, id, { anomaly: null }));
         expect(c.s.phase, id).toBe('victory');
-        const fourth = c.events.filter((ev) => ev.t === 'cine' && ['whisper', 'sysmsg', 'scrawl', 'fakeover'].includes(ev.name));
-        expect(fourth.length, id).toBeGreaterThanOrEqual(1);
-        expect(fourth.length, id).toBeLessThanOrEqual(4);
-        expect(fourth.some((ev) => ev.t === 'cine' && ev.name === 'fakeover'), id).toBe(false);
+        const fx = c.events.flatMap((ev) => (ev.t === 'cine' ? [ev.name] : ev.t === 'move' && ev.cine ? [typeof ev.cine === 'string' ? ev.cine : ev.cine.name] : []));
+        expect(fx.filter((x) => FOURTH_WALL.includes(x)).length, `${id}: ${fx.join(',')}`).toBeGreaterThanOrEqual(1);
+        const glass = fx.filter((x) => ON_GLASS.includes(x));
+        expect(glass.length, `${id}: ${glass.join(',')}`).toBeLessThanOrEqual(4);
+        expect(glass, id).not.toContain('fakeover');
       }
     });
   });

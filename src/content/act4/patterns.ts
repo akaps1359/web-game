@@ -97,8 +97,6 @@ export function foldForward(c: Combat, e: EnemyUnit) {
   if (!c.moveRow(e, 0)) return;
   setUi(c, 'ui:tilt', FOLD_TILT);
   c.emit({ t: 'text', uid: e.uid, text: '차원이 접혀 문이 코앞으로 쏟아진다. 근접 공격이 닿는다', tone: 'eldritch' });
-  // 제4의 벽: 기울어진 화면을 기기 탓으로 돌린다 (처음 한 번)
-  if (once(c, 'a4-fold')) cine(c, 'sysmsg', { uid: e.uid, text: '화면 회전 잠금이 해제되었습니다.' });
 }
 
 /** 접힌 차원이 펴진다 (차지가 끝났거나 붕괴로 끊긴 뒤): 문이 다시 뒤로 물러난다. 앞에 구체가 없으면 그대로 앞에 선다 */
@@ -144,8 +142,6 @@ export function issueCommand(c: Combat, e: EnemyUnit): boolean {
   if (c.apply(c.p, COMMAND, i + 1, e) <= 0) return false;
   const name = skillName(c, c.run.slots[i]!);
   c.emit({ t: 'text', uid: e.uid, text: `왕의 명령: 「${name}」${eul(name)} 써라`, tone: 'eldritch' });
-  // 제4의 벽: 게임의 도움말이 파라오의 명령을 대신 전한다 (처음 한 번)
-  if (once(c, 'a4-cmd-tip')) cine(c, 'sysmsg', { uid: e.uid, text: `도움말: 지금은 「${name}」${eul(name)} 쓰는 것이 좋습니다.` });
   return true;
 }
 
@@ -448,8 +444,6 @@ export function addDark(c: Combat, src: EnemyUnit, n: number) {
   if (c.apply(c.p, DARK, add, src) <= 0) return;
   const now = c.p.st[DARK] ?? 0;
   syncDark(c);
-  // 제4의 벽: 정말로 화면이 어두워진다
-  if (once(c, 'a4-dark-msg')) cine(c, 'sysmsg', { uid: src.uid, text: '주변이 어두워 화면 밝기를 자동으로 낮췄습니다.' });
   c.emit({
     t: 'text',
     uid: 'p',
@@ -480,8 +474,6 @@ export function lighten(c: Combat, n: number) {
 
 /** 일식: 정신 피해·공포·힘, 그 뒤 배를 채운 별이 어둠을 1까지 물린다 */
 export function eclipse(c: Combat, e: EnemyUnit) {
-  // 제4의 벽: 지금 화면 너머의 시각을 안다
-  if (once(c, 'a4-eclipse')) cine(c, 'whisper', { uid: e.uid, text: '{time}.\n네 방의 불도 꺼 주마.' });
   c.horror(e, ECLIPSE_SAN);
   if (c.over || e.dead) return;
   c.apply(c.p, 'dread', 2, e);
@@ -537,8 +529,7 @@ export function collapseStar(c: Combat, e: EnemyUnit) {
   // 무너진 모습 (그림이 따로 없으면 기본 그림 그대로 — 크기와 화면의 금으로 달라진 것을 보인다)
   e.scale = c.defOf(e).forms?.[0]?.visual.scale ?? e.scale;
   c.emit({ t: 'fx', name: 'transform', tgt: e.uid });
-  // 제4의 벽: 화면 너머까지 끌어당긴다 (처음 한 번). 화면 유리에는 금이 남는다
-  if (once(c, 'a4-blackhole')) cine(c, 'whisper', { uid: e.uid, text: '빛도 빠져나가지 못한다.\n화면 너머의 너도.' });
+  // 화면 유리에는 금이 남는다
   setUi(c, 'ui:cracks', 1);
   c.emit({ t: 'text', uid: e.uid, text: '별이 스스로 무너져 블랙홀이 되었다', tone: 'eldritch' });
   const eyes = c.alive.filter((x) => x.def === VOID_EYE);
@@ -659,8 +650,8 @@ export function horizonTurn(c: Combat, e: EnemyUnit, pull: boolean) {
     const name = skillName(c, t.uid);
     c.emit({ t: 'fx', name: 'horror', src: e.uid, tgt: 'p' });
     c.emit({ t: 'text', uid: 'p', text: `「${name}」${josa(name, '이')} 사건의 지평선 너머로 끌려갔다`, tone: 'bad' });
-    // 제4의 벽: 기술을 불러올 수 없다는 시스템 창 (처음 한 번)
-    if (once(c, 'a4-horizon-msg')) cine(c, 'sysmsg', { uid: e.uid, text: `「${name}」 데이터를 불러올 수 없습니다.` });
+    // 처음 끌려갈 때 한 번, 화면이 지지직 끊긴다
+    if (once(c, 'a4-horizon-msg')) cine(c, 'glitch', { uid: e.uid, n: 1 });
   }
   syncHorizon(c);
 }
