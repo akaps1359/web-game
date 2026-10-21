@@ -1,7 +1,8 @@
 import { Application, Container, Graphics, MeshSimple, Rectangle, type Filter } from 'pixi.js';
 import { RGBSplitFilter, ShockwaveFilter } from 'pixi-filters';
 import { Backdrop } from './backdrop';
-import { Battle, type Rect } from './battle';
+import { Battle } from './battle';
+import type { Rect } from './layout';
 import { clearVignettes, jolt, vignettePulse } from './vfxScreen';
 import type { VignetteKind } from './vfxTextures';
 

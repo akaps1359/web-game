@@ -8,15 +8,17 @@ import { DEPTH, MUTATION, aegisCap, aegisLeft, aegisPoiseCap, canAwaken } from '
 import { WEAKPOINT, weakPointKnown, weakPointOf, wpOpen } from '../../engine/weakpoint';
 import type { CombatChoice, EnemyUnit, Intent, IntentKind, Objective, SkillDef, TurnNote } from '../../engine/types';
 import { fx, syncBattle } from '../../director';
-import { layoutEnemies, type Anchor } from '../../render/battle';
+import { layoutEnemies, leadOf, type Anchor } from '../../render/layout';
 import { stage } from '../../render/stage';
 import { endTurn, pickChoice, useItem, useSkill } from '../../state/actions';
 import { store } from '../../state/store';
+import { sound } from '../../sound';
 import { saveMeta } from '../../state/meta';
 import { Bar, Icon, press, Segs, Sheet, showTip } from '../components';
 import { keywordsIn } from '../glossary';
 import { CHIP_RULE, GUARD_RULE, breakGlossary, breakSay, guardWord, timesWord } from '../guard';
 import { schoolLabel } from '../cards';
+import { kitHidden, kitSeed, shuffleKit } from '../shuffle';
 import { GAP_ICON, GapLegend, GapMark, GapPeek, gapLine, gapView, harvestHint, harvestSay, type HarvestHint } from '../gap';
 import {
   DMG_COLOR,
@@ -55,6 +57,8 @@ export function CombatScreen() {
   const [peek, setPeek] = useState<string | null>(null);
   /** 자세히 보는 틈 (적 uid) */
   const [gapPeek, setGapPeek] = useState<string | null>(null);
+  /** 기술 칸을 뒤섞은 턴 (가려지지 않았으면 null) — 연출이 도는 동안에는 바꾸지 않는다 */
+  const shuffledAt = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const el = areaRef.current;
@@ -91,8 +95,16 @@ export function CombatScreen() {
   if (!c) return <div class="screen" />;
   const snap: Snap = s.snap ?? c.snap();
   const rect = stage.battle.rect;
-  const list = snap.e.map((e) => ({ uid: e.uid, row: e.row, dead: e.dead, scale: c.s.enemies.find((x) => x.uid === e.uid)?.scale ?? 1 }));
-  const anchors = layoutEnemies(rect, list);
+  const list = snap.e.map((e) => {
+    const real = c.s.enemies.find((x) => x.uid === e.uid);
+    return { uid: e.uid, row: e.row, dead: e.dead, scale: real?.scale ?? 1, def: real?.def ?? '' };
+  });
+  // 수호자(없으면 하나뿐인 정예)는 한가운데 — Pixi 무대(battle.sync)와 같은 배치
+  const lead = leadOf(list, (id) => ENEMIES.get(id)?.tier);
+  const anchors = layoutEnemies(
+    rect,
+    list.map((e) => ({ ...e, lead: e.uid === lead })),
+  );
 
   const selInfo = s.sel && !s.sel.startsWith('c') ? c.skillInfo(s.sel) : null;
   const selItem = s.sel?.startsWith('c') ? run.consumables[Number(s.sel.slice(1))] : null;
@@ -126,9 +138,20 @@ export function CombatScreen() {
   const ui = (k: string) => uiNow[k] ?? 0;
   const tilt = Math.max(-15, Math.min(15, ui('ui:tilt')));
   const swap = !!ui('ui:swap');
+  // 기술 칸이 가려진 동안에는 자리를 외워 쓰지 못하게 내 턴마다 칸 순서도 뒤섞는다 (연출이 끝나고 내 턴이 열릴 때 바뀐다)
+  if (!s.busy) shuffledAt.current = kitHidden(ui) ? c.s.turn : null;
+  const shuffle = shuffledAt.current === null ? null : kitSeed(`${run.seed}:${c.s.enc}:${shuffledAt.current}`);
   // 기울어진 화면 안의 적 표시를 똑바로 선 그림 위로 (기울면 화면이 고정 위치 요소의 기준이 된다)
   const place = tiltPlace(screenRef.current, tilt);
-  const areaTop = tilt && screenRef.current ? rect.y - layoutBox(screenRef.current).y : rect.y;
+  const box = tilt && screenRef.current ? layoutBox(screenRef.current) : null;
+  const areaTop = box ? rect.y - box.y : rect.y;
+  const areaX = box ? rect.x - box.x : rect.x;
+  // 살아 있는 적과 그 자리
+  const shown = snap.e.flatMap((e) => {
+    const a = anchors.get(e.uid);
+    const real = c.s.enemies.find((x) => x.uid === e.uid);
+    return !e.dead && a && real ? [{ e, a, real }] : [];
+  });
   const hpBar = <Bar kind="hp" value={p.hp} max={p.maxHp} block={p.block} label={(p.st.dying ? '사경 ' : '') + `${p.hp}/${p.maxHp}`} />;
   const sanBar = <Bar kind="san" value={p.sanity} max={run.player.maxSanity} label={`정신 ${p.sanity}`} />;
 
@@ -208,28 +231,26 @@ ${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
           )}
         </div>
 
-        {snap.e
-          .filter((e) => !e.dead)
-          .map((e) => {
-            const a = anchors.get(e.uid);
-            const real = c.s.enemies.find((x) => x.uid === e.uid);
-            if (!a || !real) return null;
-            return (
-              <EnemyOverlay
-                key={e.uid}
-                e={e}
-                real={real}
-                a={a}
-                place={place}
-                areaTop={areaTop}
-                focus={s.focus === e.uid}
-                valid={!!(validTargets?.has(e.uid) || itemSingle)}
-                onTap={() => tapEnemy(e.uid)}
-                onIntent={() => setPeek(e.uid)}
-                onGap={() => setGapPeek(e.uid)}
-              />
-            );
-          })}
+        {/* 누르는 자리는 Pixi처럼 뒷줄부터 깐다 — 그림이 겹친 곳(가운데 수호자의 양옆)은 앞에 그려진 적이 차지한다 */}
+        {[...shown]
+          .sort((p, q) => p.a.y - q.a.y)
+          .map(({ e, a, real }) => (
+            <EnemyHit key={e.uid} real={real} a={a} place={place} focus={s.focus === e.uid} valid={!!(validTargets?.has(e.uid) || itemSingle)} onTap={() => tapEnemy(e.uid)} />
+          ))}
+        {/* 이름표·의도 표시는 모든 누르는 자리 위에 */}
+        {shown.map(({ e, a, real }) => (
+          <EnemyOverlay
+            key={e.uid}
+            e={e}
+            real={real}
+            a={a}
+            place={place}
+            areaTop={areaTop}
+            span={[areaX, areaX + rect.w]}
+            onIntent={() => setPeek(e.uid)}
+            onGap={() => setGapPeek(e.uid)}
+          />
+        ))}
 
         {/* 아래쪽: 탐험가의 가죽 수첩과 장비 띠 (내 상태 · 설명 쪽지 · 스킬 카드 · 주머니와 도장) */}
         <div class="kit" ref={kitRef}>
@@ -268,10 +289,7 @@ ${objective.fail ?? '막지 못하면 큰 대가를 치른다.'}`,
 
           <InfoBox onIntent={setPeek} />
 
-          {/* 줄 수: 화면이 모자라면 카드가 낮아지는데, 그 최소 높이를 CSS가 줄 수로 정한다 (combat-ui.css) */}
-          <div class={`skills ${refs.length > 9 ? 'many' : ''}`} style={{ '--rows': Math.ceil(refs.length / (refs.length > 9 ? 4 : 3)) } as Record<string, number>}>
-            {refs.map((ref, i) => (ref ? <SkillButton key={ref} r={ref} /> : <EmptySlot key={`e${i}`} />))}
-          </div>
+          <SkillGrid refs={refs} shuffle={shuffle} />
 
           <div class="footer">
             {run.consumables.map((id, i) => {
@@ -919,15 +937,26 @@ function IntentLegend({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** 적을 누르는 자리 (그림 위) — 누르면 고르기·대상 지정, 길게 누르면 자세히 */
+function EnemyHit({ real, a, place, focus, valid, onTap }: { real: EnemyUnit; a: Anchor; place: Place; focus: boolean; valid: boolean; onTap: () => void }) {
+  const feet = place(a.x, a.y);
+  return (
+    <div
+      class={`enemy-hit ${focus ? 'focus' : ''} ${valid ? 'valid' : ''}`}
+      style={{ left: feet.x, top: feet.y, width: a.size * 0.95, height: a.size * 1.1 }}
+      {...press(onTap, () => enemyTip(real))}
+    />
+  );
+}
+
+/** 적 머리 위 의도 표시와 발밑 이름표 */
 function EnemyOverlay({
   e,
   real,
   a,
   place,
   areaTop,
-  focus,
-  valid,
-  onTap,
+  span,
   onIntent,
   onGap,
 }: {
@@ -936,9 +965,8 @@ function EnemyOverlay({
   a: Anchor;
   place: Place;
   areaTop: number;
-  focus: boolean;
-  valid: boolean;
-  onTap: () => void;
+  /** 전투 화면의 왼쪽·오른쪽 끝 (의도 표시를 이 안에 둔다) */
+  span: [number, number];
   onIntent: () => void;
   onGap: () => void;
 }) {
@@ -946,18 +974,22 @@ function EnemyOverlay({
   const iv = readIntent(real, e.intent);
   // 틈: 체력 막대 끝에 계열 색의 갈라진 표시 (연출 중이면 그 시점의 모습)
   const gap = gapView(e.uid);
-  const w = a.size * 0.95;
-  const h = a.size * 1.1;
-  const tip = () => enemyTip(real);
-  const feet = place(a.x, a.y);
   // 의도 표시는 두 줄(아이콘 아래 이름) — 머리와 겹치지 않게 조금 더 위에
   const head = place(a.x, a.y - a.size * stage.battle.headroom(e.uid) - 36);
   const plate = place(a.x, a.y + 4);
+  // 가장자리 적의 긴 의도 표시가 화면 밖으로 잘리지 않게 안쪽으로 민다
+  const ib = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ib.current;
+    if (!el) return;
+    const half = el.offsetWidth / 2;
+    const x = Math.max(span[0] + 4 + half, Math.min(span[1] - 4 - half, head.x));
+    el.style.setProperty('--nudge', `${Math.round(x - head.x)}px`);
+  });
   return (
     <>
-      <div class={`enemy-hit ${focus ? 'focus' : ''} ${valid ? 'valid' : ''}`} style={{ left: feet.x, top: feet.y, width: w, height: h }} {...press(onTap, tip)} />
       {iv && (
-        <div class="enemy-ui ib-wrap" style={{ left: head.x, top: Math.max(areaTop - 4, head.y) }}>
+        <div class="enemy-ui ib-wrap" ref={ib} style={{ left: head.x, top: Math.max(areaTop - 4, head.y) }}>
           <IntentBadge r={iv} onPress={onIntent} />
         </div>
       )}
@@ -1141,12 +1173,55 @@ function tiltOf(key: string): number {
   return (((h >>> 0) % 11) - 5) / 10;
 }
 
+/**
+ * 기술 칸 (3열, 많으면 4열). shuffle이 있으면 그 씨앗으로 칸 순서를 뒤섞는다 — 순서가 바뀌면 카드가 새 자리로 미끄러져 가고,
+ * 뒤섞인 동안에는 판 위에 표시가 붙는다. 줄 수: 화면이 모자라면 카드가 낮아지는데, 그 최소 높이를 CSS가 줄 수로 정한다 (combat-ui.css)
+ */
+function SkillGrid({ refs, shuffle }: { refs: (string | null)[]; shuffle: number | null }) {
+  const box = useRef<HTMLDivElement>(null);
+  /** 지금 그려진 칸 순서 */
+  const drawn = useRef('');
+  /** 순서가 바뀌기 직전 칸들의 자리 */
+  const from = useRef<Map<string, DOMRect> | null>(null);
+  const items = refs.map((r, i) => ({ k: r ?? `empty${i}`, r }));
+  const order = shuffle === null ? items : shuffleKit(items, shuffle);
+  const sig = order.map((x) => x.k).join(',');
+  // 순서가 바뀌는 그리기: DOM이 아직 이전 순서일 때 자리를 재 둔다
+  if (drawn.current && sig !== drawn.current && box.current)
+    from.current = new Map((Array.from(box.current.children) as HTMLElement[]).map((el) => [el.dataset.k ?? '', el.getBoundingClientRect()]));
+  useLayoutEffect(() => {
+    drawn.current = sig;
+    const prev = from.current;
+    from.current = null;
+    if (!prev || !box.current) return;
+    // 새 자리로 미끄러져 간다 (자리를 옮긴 카드만)
+    let moved = false;
+    for (const el of Array.from(box.current.children) as HTMLElement[]) {
+      const was = prev.get(el.dataset.k ?? '');
+      if (!was) continue;
+      const r = el.getBoundingClientRect();
+      const dx = was.left - r.left;
+      const dy = was.top - r.top;
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
+      moved = true;
+      el.animate([{ transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` }, { transform: 'none' }], { duration: 480, easing: 'cubic-bezier(.3,1.25,.5,1)' });
+    }
+    if (moved) sound.sfx('swoosh', { volume: 0.45, pitch: 0.8 });
+  }, [sig]);
+  const many = refs.length > 9;
+  return (
+    <div ref={box} class={`skills ${many ? 'many' : ''} ${shuffle !== null ? 'shuffled' : ''}`} style={{ '--rows': Math.ceil(refs.length / (many ? 4 : 3)) } as Record<string, number>}>
+      {order.map((it) => (it.r ? <SkillButton key={it.k} r={it.r} k={it.k} /> : <EmptySlot key={it.k} k={it.k} />))}
+    </div>
+  );
+}
+
 /** 스킬 카드: 잉크로 그린 수첩 낱장. 왼쪽 위 밀랍 인장 = 계열 색과 행동력 */
-function SkillButton({ r }: { r: string }) {
+function SkillButton({ r, k = r }: { r: string; k?: string }) {
   const s = store;
   const c = s.combat!;
   const info = c.skillInfo(r);
-  if (!info) return <EmptySlot />;
+  if (!info) return <EmptySlot k={k} />;
   const { def, owned } = info;
   const cd = (s.snap?.cd ?? c.s.cd)[owned.uid] ?? 0;
   const why = c.blockReason(r);
@@ -1185,7 +1260,8 @@ function SkillButton({ r }: { r: string }) {
   const gapWax = gh ? `--g:${gh.color};--gw-hi:${mix(gh.color, '#1a0d08', 0.18)};--gw:${mix(gh.color, '#1a0d08', 0.45)};--gw-lo:${mix(gh.color, '#080402', 0.72)}` : '';
   return (
     <button
-      class={`skill ${sel ? 'sel' : ''} ${why && !cd ? 'off' : ''} ${cd > 0 ? 'cooling' : ''} ${info.basic ? 'basic' : ''} ${gh ? 'gap' : ''} ${wpMark ? 'wp' : ''}`}
+      data-k={k}
+      class={`skill ${sel ? 'sel' : ''} ${why && !cd ? 'off' : ''} ${cd > 0 ? 'cooling' : ''} ${info.basic ? 'basic' : ''} ${gh ? 'gap' : ''} ${wpMark ? 'wp' : ''} ${scrambled ? 'blurred' : ''}`}
       style={wax}
       {...press(tap, () => skillTip(def, owned.lvl, owned.runes, c.makeUse(info), cost, c.cdOf(info), gh))}
     >
@@ -1204,7 +1280,7 @@ function SkillButton({ r }: { r: string }) {
           {DMG_NAME[now]}
         </span>
       )}
-      <Icon name={def.icon} size={24} color={mix(hue, '#eadcbc', 0.28)} />
+      <Icon name={def.icon} size={24} color={mix(hue, '#eadcbc', 0.28)} class="sk-ic" />
       <span class={`sn ${scrambled ? 'scrambled' : ''} ${!scrambled && def.rarity === 'genesis' ? 'genesis-name' : ''}`} style={{ color: def.rarity === 'basic' ? '#e9e3d6' : RARITY_COLOR[def.rarity] === '#cfc8b8' ? '#e9e3d6' : RARITY_COLOR[def.rarity] }}>
         {scrambled ? garbleStable(def.name) : def.name}
         {owned.lvl > 0 ? '+' : ''}
@@ -1225,9 +1301,9 @@ function SkillButton({ r }: { r: string }) {
   );
 }
 
-function EmptySlot() {
+function EmptySlot({ k }: { k?: string }) {
   return (
-    <div class="skill empty">
+    <div class="skill empty" data-k={k}>
       <span class="sn">빈 슬롯</span>
     </div>
   );

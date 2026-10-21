@@ -49,67 +49,12 @@ import { blurredSilhouette, silhouetteCells, VT } from './vfxTextures';
 import { castSkill, enemyUltimate, type CastTarget } from './vfxSkills';
 import { gapHarvestFx, gapOpenFx } from './vfxGap';
 import { PlayerWard } from './vfxWard';
-
-export interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-export interface Anchor {
-  x: number;
-  /** 발 위치 */
-  y: number;
-  size: number;
-  /** 이 적이 차지한 가로 칸 너비 (이름표 폭) */
-  slot?: number;
-}
+import { layoutEnemies, leadOf, type Anchor, type Rect } from './layout';
 
 /** 적 그림이 바뀌었을 때 (화면의 의도 표시 위치를 다시 잡도록) */
 let onLook: (() => void) | undefined;
 export function setOnLook(fn: () => void) {
   onLook = fn;
-}
-
-/**
- * 적 배치 — 한 줄에 칸을 나눠 겹치지 않게 (DOM 오버레이와 공유).
- * 후열은 전열 사이사이에 끼워 넣고, 조금 위로 올리고 작게 그려 뒤에 있는 느낌만 준다.
- * 세로로 두 줄을 쌓으면 폰(사파리 주소창·툴바가 있는 화면)에서 이름표·의도가 서로 겹친다.
- */
-export function layoutEnemies(rect: Rect, list: { uid: string; row: 0 | 1; scale: number; dead: boolean }[]): Map<string, Anchor> {
-  const out = new Map<string, Anchor>();
-  const alive = list.filter((e) => !e.dead);
-  if (!alive.length) return out;
-  const front = alive.filter((e) => e.row === 0);
-  const back = alive.filter((e) => e.row === 1);
-  // 왼쪽부터: 전열·후열을 번갈아, 남는 쪽은 뒤에 (가운데가 비지 않게 바깥 → 안쪽 순서는 그대로)
-  const order: typeof alive = [];
-  for (let i = 0; i < Math.max(front.length, back.length); i++) {
-    if (back[i] && i % 2 === 1) order.push(back[i]);
-    if (front[i]) order.push(front[i]);
-    if (back[i] && i % 2 === 0) order.push(back[i]);
-  }
-  const PLATE = 78; // 발밑 이름표·체력·버팀·상태 한 줄 높이 (4 + 이름 16 + 체력 11 + 버팀 16 + 상태 20 + 틈) — 모자라면 상태 아이콘이 아래 내 정보 칸을 덮는다
-  const INTENT = 34; // 머리 위 의도 표시
-  const HEAD = 1.25; // 형체 높이 ÷ 크기 (그림 기준)
-  const feet = rect.y + rect.h - PLATE;
-  const lift = Math.min(rect.h * 0.13, 46);
-  const weights = order.map((e) => Math.max(0.6, e.scale) * (e.row === 1 ? 0.82 : 1));
-  const W = weights.reduce((a, b) => a + b, 0);
-  const usable = rect.w * 0.96;
-  const left = rect.x + (rect.w - usable) / 2;
-  let acc = 0;
-  order.forEach((e, i) => {
-    const slot = (usable / W) * weights[i];
-    const x = left + ((acc + weights[i] / 2) / W) * usable;
-    acc += weights[i];
-    const y = feet - (e.row === 1 ? lift : 0);
-    const room = (y - rect.y - INTENT) / HEAD; // 의도 표시가 화면 위로 넘치지 않을 만큼
-    const base = Math.min(rect.h * 0.5, rect.w * 0.42) * Math.max(0.6, e.scale) * (e.row === 1 ? 0.84 : 1);
-    const size = Math.max(36, Math.min(base, slot * 1.02, room));
-    out.set(e.uid, { x, y, size, slot });
-  });
-  return out;
 }
 
 const TYPE_COLOR: Record<DmgType | 'true', number> = {
@@ -796,7 +741,11 @@ export class Battle extends Container {
 
   /** 엔진 상태(또는 스냅샷)와 동기화 */
   sync(enemies: (Pick<EnemyUnit, 'uid' | 'row' | 'scale' | 'dead' | 'broken' | 'form' | 'def'> & { block?: number })[], defs: (id: string) => EnemyDef | undefined) {
-    this.anchors = layoutEnemies(this.rect, enemies);
+    const lead = leadOf(enemies, (id) => defs(id)?.tier);
+    this.anchors = layoutEnemies(
+      this.rect,
+      enemies.map((e) => ({ ...e, lead: e.uid === lead })),
+    );
     const seen = new Set<string>();
     for (const e of enemies) {
       seen.add(e.uid);

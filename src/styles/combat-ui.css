@@ -380,6 +380,32 @@
 .kit .skills.many {
   grid-template-columns: repeat(4, 1fr);
 }
+/* 기술 칸이 가려진 동안(이름이 뒤섞임·물에 잠김)에는 칸 순서가 내 턴마다 뒤섞인다 (Combat.tsx SkillGrid, ui/shuffle.ts) */
+.kit .skills.shuffled {
+  position: relative;
+}
+.kit .skills.shuffled::before {
+  content: '칸 뒤섞임';
+  position: absolute;
+  right: 14px;
+  top: -5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #dcc6ff;
+  background: rgba(30, 14, 44, 0.92);
+  border: 1px solid rgba(185, 140, 255, 0.5);
+  box-shadow: 0 0 10px rgba(150, 90, 255, 0.35);
+  z-index: 3;
+  pointer-events: none;
+}
+/* 이름이 뒤섞인 기술은 그림도 흐릿하다 */
+.kit .skill.blurred .sk-ic {
+  filter: blur(2.6px) saturate(0.5);
+  opacity: 0.7;
+}
 .kit .skill {
   --edge: var(--cu-edge-a);
   /* 높이는 줄(.skills)이 정한다. 안의 그림·글자는 카드 높이에 맞춘다 (아래 @container) */
@@ -688,6 +714,9 @@
 /* ───────── 적의 의도 표시 ───────── */
 .ib-wrap {
   z-index: 2;
+}
+.enemy-ui.ib-wrap {
+  transform: translateX(calc(-50% + var(--nudge, 0px)));
 }
 .ibadge {
   position: relative;

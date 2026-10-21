@@ -95,7 +95,8 @@ id는 게임 전체에서 유일해야 한다 (적·스킬·특성·이벤트). 
 
 - `cine(c, name, { uid?, text?, n? })` (`src/content/lib.ts`) — 이름은 `CineName` (`src/engine/types.ts`): `crack`(유리 금) `shatter`(전장이 산산조각) `glitch`(데이터가 깨진다) `fakeover`(진짜와 똑같은 가짜 게임 오버 — 최종 보스 전용) `eye`(화면을 덮는 눈) `ink`(먹물) `scrawl`(유리에 붉은 손글씨) `handprints`(유리를 치는 손바닥) `flip` `timestop` `blackhole` `corners`(모서리의 아가리) `water`(밀려드는 물결) `bell` `beam` `swarm` `impact`.
 - **제4의 벽은 화면이 겪는 일로만 깬다 (2026-10-21)**: 유리에 금이 가고, 데이터가 뒤섞이고, 먹물·물·손자국·눈이 화면을 덮는다. 화면 밖의 사람에게 **말을 걸지 않는다** — 진짜 시각·죽은 횟수·출신 같은 실제 기록, 기기(밝기·음량·회전·도움말)를 흉내 내는 가짜 시스템 창, '화면 너머의 너' 같은 말은 쓰지 않는다 (`tests/fourth-wall.test.ts`가 콘텐츠 글을 검사한다). `scrawl`의 글은 그 자리의 짧은 외침·판결·주문만 (`유죄` `침묵하라` `테켈리-리`). 적의 대사가 꼭 필요하면 `c.emit({ t: 'text', uid, text, tone: 'eldritch' })`로 적 머리 위에 짧게.
-- `setUi(c, 'ui:…', n)` — 전투 내내 남는 화면 상태: `ui:water`(0~3) `ui:cracks`(0~3) `ui:tilt`(°) `ui:dark`(0~100) `ui:scramble` `ui:eye` `ui:swap`. 화면에만 영향, 규칙은 훅으로 따로.
+- `setUi(c, 'ui:…', n)` — 전투 내내 남는 화면 상태: `ui:water`(0~3) `ui:cracks`(0~3) `ui:tilt`(°) `ui:dark`(0~100) `ui:scramble` `ui:eye` `ui:swap`. 화면에만 영향, 규칙은 훅으로 따로. `ui:scramble`이나 `ui:water` 2 이상이면 기술 칸이 가려진 것으로 보고 UI가 내 턴마다 칸 순서도 섞는다 (`src/ui/shuffle.ts`) — 콘텐츠는 값만 정한다.
+- 배치는 UI가 정한다: 수호자(없으면 하나뿐인 정예)는 무대 한가운데, 하수인은 양옆 (`src/render/layout.ts`). 콘텐츠의 `row`는 전열·후열 규칙만 정한다.
 - `MoveDef.ultimate: true` — 필살기 컷인. `MoveDef.cine` — 그 행동과 함께 트는 연출 (`'crack'` 또는 `{ name, n, text }`).
 - `MoveDef.disguise: { kind, label, dmg?, hits?, reveal?, desc? }` — 거짓 의도. 통찰이 `reveal`(기본 `DISGUISE_REVEAL` = 3) 미만이면 이 모습으로 보인다 (봇도 속는다). 숨겨진 의도(`hidden`)는 `HIDDEN_REVEAL`(3)부터 보인다. 통찰은 귀하다(보통 판 2~4) — 더 높은 문턱은 수호자급 속임수에만 (4: 4층 어둠·5층 환영, 5: 파라오의 자비·꿈의 문지기의 문). 특성 설명 등으로 속임수가 있다는 걸 알려 줄 것.
 - 화면 유리에 무언가를 남기는 연출(`scrawl`·`handprints`·`fakeover`)은 수호자당 4번까지. 매 턴 쓰지 말 것. 모든 위협은 의도 문구·설명으로 미리 알리고 대응법이 있어야 한다.

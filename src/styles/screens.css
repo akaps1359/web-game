@@ -555,6 +555,8 @@
 .enemy-ui {
   position: fixed;
   z-index: 2;
+  /* 화면 오른쪽 끝에서도 줄어들지 않게 (줄어든 폭으로 가운데를 잡으면 표시가 밀려난다) */
+  width: max-content;
   transform: translateX(-50%);
   pointer-events: none;
 }
