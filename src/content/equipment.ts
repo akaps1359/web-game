@@ -171,11 +171,12 @@ reg.equips([
     icon: 'gi:ammo-box',
     slot: 'trinket',
     rarity: 'common',
-    desc: '최대 탄약 +2 (강화마다 +1)',
+    desc: '최대 탄약 +1 (강화마다 +1)',
     // 2026-10 최종 밸런스: '전투 시작 시 조준 1'을 뺐다. 군인이 전투마다 첫 사격을 치명(2배)으로 열어 출신 가운데 혼자 높았다 (봇 승률 군인 69 → 62%)
+    // 2026-10-21 군인 트레이드오프: +2 → +1 — 탄창이 넉넉해 재장전이 묶지 못했다 (GDD 10.10)
     hooks: {
       onCombatStart(c, s) {
-        c.s.maxAmmo += 2 + s.n;
+        c.s.maxAmmo += 1 + s.n;
         c.s.ammo = c.s.maxAmmo;
       },
     },

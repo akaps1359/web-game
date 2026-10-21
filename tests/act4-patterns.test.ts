@@ -79,6 +79,7 @@ import {
   endBlock,
   grabNeed,
 } from '../src/content/act4/court';
+import { preHard } from './prehard';
 
 /** 4층에 서 있는 튼튼한 주인공 */
 function floor4(seed = 404, origin = 'soldier'): RunState {
@@ -726,39 +727,46 @@ describe('4층 정예', () => {
 });
 
 describe('4층 — 연출과 봇', () => {
-  it('수호자의 제4의 벽 연출은 남발하지 않는다 (전투당 4번 이하, 가짜 게임오버 없음)', () => {
-    for (const id of ['a4-boss-gate', 'a4-boss-pharaoh', 'a4-boss-starlord', 'lord-a4']) {
-      const run = floor4(91);
-      run.player.insight = 0;
-      const c = fightToEnd(startCombat(run, id, { anomaly: null }));
-      expect(c.s.phase, id).toBe('victory');
-      const fourth = c.events.filter((ev) => ev.t === 'cine' && ['whisper', 'sysmsg', 'scrawl', 'fakeover'].includes(ev.name));
-      expect(fourth.length, id).toBeGreaterThanOrEqual(1);
-      expect(fourth.length, id).toBeLessThanOrEqual(4);
-      expect(fourth.some((ev) => ev.t === 'cine' && ev.name === 'fakeover'), id).toBe(false);
-    }
+  // 아래 셋은 시작 덱(힘 8)으로 끝까지 치르는 봇 시험이라 '어렵게' 전의 층 배율로 돈다 — 막히는 패턴이 없는지 본다 (GDD 10.10)
+  it("수호자의 제4의 벽 연출은 남발하지 않는다 (전투당 4번 이하, 가짜 게임오버 없음) — '어렵게' 전의 층 배율로", () => {
+    preHard(() => {
+      for (const id of ['a4-boss-gate', 'a4-boss-pharaoh', 'a4-boss-starlord', 'lord-a4']) {
+        const run = floor4(91);
+        run.player.insight = 0;
+        const c = fightToEnd(startCombat(run, id, { anomaly: null }));
+        expect(c.s.phase, id).toBe('victory');
+        const fourth = c.events.filter((ev) => ev.t === 'cine' && ['whisper', 'sysmsg', 'scrawl', 'fakeover'].includes(ev.name));
+        expect(fourth.length, id).toBeGreaterThanOrEqual(1);
+        expect(fourth.length, id).toBeLessThanOrEqual(4);
+        expect(fourth.some((ev) => ev.t === 'cine' && ev.name === 'fakeover'), id).toBe(false);
+      }
+    });
   });
 
-  it('4층의 모든 조우를 봇이 이기고, 보상까지 받는다', () => {
-    for (const enc of ENCOUNTERS.filter((e) => e.act === 4)) {
-      const run = floor4(77);
-      const c = fightToEnd(startCombat(run, enc.id, { anomaly: null }));
-      expect(c.s.phase, enc.id).toBe('victory');
-      expect(finishCombat(run), enc.id).not.toBeNull();
-    }
+  it("4층의 모든 조우를 봇이 이기고, 보상까지 받는다 — '어렵게' 전의 층 배율로", () => {
+    preHard(() => {
+      for (const enc of ENCOUNTERS.filter((e) => e.act === 4)) {
+        const run = floor4(77);
+        const c = fightToEnd(startCombat(run, enc.id, { anomaly: null }));
+        expect(c.s.phase, enc.id).toBe('victory');
+        expect(finishCombat(run), enc.id).not.toBeNull();
+      }
+    });
   });
 
-  it('세 출신 모두 4층 정예·수호자를 이긴다 (시작 덱 그대로, 즉사는 체력과 무관하다)', () => {
+  it("세 출신 모두 4층 정예·수호자를 이긴다 (시작 덱 그대로, 즉사는 체력과 무관하다) — '어렵게' 전의 층 배율로", () => {
     const special = ENCOUNTERS.filter((e) => e.act === 4 && e.kind !== 'normal');
-    for (const origin of ORIGINS3) {
-      for (const seed of [55, 56]) {
-        for (const enc of special) {
-          const run = floor4(seed, origin);
-          const c = fightToEnd(startCombat(run, enc.id, { anomaly: null }));
-          expect(c.s.phase, `${origin} ${seed} ${enc.id}`).toBe('victory');
+    preHard(() => {
+      for (const origin of ORIGINS3) {
+        for (const seed of [55, 56]) {
+          for (const enc of special) {
+            const run = floor4(seed, origin);
+            const c = fightToEnd(startCombat(run, enc.id, { anomaly: null }));
+            expect(c.s.phase, `${origin} ${seed} ${enc.id}`).toBe('victory');
+          }
         }
       }
-    }
+    });
   }, 120_000);
 });
 

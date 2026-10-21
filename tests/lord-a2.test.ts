@@ -199,18 +199,22 @@ describe('종지기 — 침묵령', () => {
     expect(paid[2]).toBeGreaterThan(paid[1]);
   });
 
-  it('행동력 0인 기술(재장전)은 세지 않고, 메아리로 한 번 더 울린 기술은 하나로 센다', () => {
+  it('행동력 0인 기술(속사)은 세지 않고, 메아리로 한 번 더 울린 기술은 하나로 센다', () => {
+    // 2026-10-21부터 재장전은 행동력 1이라 센다 — 행동력 0인 속사로 본다
     const c = fight();
     c.p.st[HUSH] = 1;
     c.s.ap = 9;
-    c.s.ammo = 0;
+    c.s.ammo = 6;
+    c.run.skills.push({ uid: 'qd', id: 'x-quick-draw', lvl: 0, runes: [] });
+    const free = c.run.slots.indexOf(null);
+    if (free >= 0) c.run.slots[free] = 'qd';
+    else c.run.slots.push('qd');
     const reload = c.run.skills.find((s) => s.id === 'reload')!;
-    expect(c.run.slots).toContain(reload.uid);
     const san = c.p.sanity;
-    expect(c.useSkill(reload.uid)).toBeNull();
+    expect(c.useSkill('qd', keeperOf(c).uid)).toBeNull();
     expect(c.p.st[HUSH]).toBe(1);
     expect(c.p.sanity).toBe(san);
-    const uid = c.run.slots.find((u) => !!u && u !== reload.uid && !c.blockReason(u) && c.costOf(c.skillInfo(u)!) > 0)!;
+    const uid = c.run.slots.find((u) => !!u && u !== 'qd' && u !== reload.uid && !c.blockReason(u) && c.costOf(c.skillInfo(u)!) > 0)!;
     c.run.skills.find((s) => s.uid === uid)!.runes = ['echo'];
     expect(c.useSkill(uid, keeperOf(c).uid)).toBeNull();
     expect(c.p.st[HUSH]).toBe(2);

@@ -24,11 +24,12 @@ reg.relics([
     name: 'No.46 탄피 주머니',
     icon: 'gi:shotgun-rounds',
     rarity: 'common',
-    desc: '적을 처치하면 탄약을 가득 채운다',
+    // 2026-10-21 군인 트레이드오프: 가득 → +2 (처치마다 가득 차면 재장전이 묶지 못한다, GDD 10.10)
+    desc: '적을 처치하면 탄약 +2',
     hooks: {
       onKill(c) {
         if (c.s.ammo >= c.s.maxAmmo) return;
-        c.s.ammo = c.s.maxAmmo;
+        c.s.ammo = Math.min(c.s.maxAmmo, c.s.ammo + 2);
         c.emit({ t: 'text', uid: 'p', text: '탄약 보충', tone: 'good' });
       },
     },
@@ -303,10 +304,12 @@ reg.relics([
     name: 'No.27 끝없는 탄띠',
     icon: 'gi:heavy-bullets',
     rarity: 'rare',
-    desc: '스킬을 쓴 뒤 탄약이 0이면 즉시 가득 채우고 조준 1',
+    // 2026-10-21 군인 트레이드오프: 턴에 한 번 (빈 탄창마다 공짜로 가득 차면 재장전이 묶지 못한다, GDD 10.10)
+    desc: '스킬을 쓴 뒤 탄약이 0이면 즉시 가득 채우고 조준 1 (턴에 한 번)',
     hooks: {
       afterSkill(c) {
-        if (c.s.ammo > 0 || c.over) return;
+        if (c.s.ammo > 0 || c.over || c.s.vars['x-endless-belt'] === c.s.turn) return;
+        c.s.vars['x-endless-belt'] = c.s.turn;
         c.s.ammo = c.s.maxAmmo;
         c.emit({ t: 'text', uid: 'p', text: '끝없는 탄띠 (재장전)', tone: 'good' });
         c.apply(c.p, 'aim', 1, c.p);

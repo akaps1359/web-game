@@ -885,7 +885,7 @@ describe('출신 공정성 — 시작 덱 (2층 수준: Lv5, 체력 95)', () => 
     for (const origin of ORIGINS) expect(solved[`${origin}:quiet`] ?? 0, origin).toBeGreaterThanOrEqual(3);
   });
 
-  it('침묵의 서약: 어느 출신이든 행동력을 다 쓰는 말로 끝맺으면 무사하다 — 행동력 0인 기술(재장전)은 말이 아니다', () => {
+  it('침묵의 서약: 어느 출신이든 행동력을 다 쓰는 말로 끝맺으면 무사하다 — 행동력 0인 기술(속사)은 말이 아니다', () => {
     for (const origin of ORIGINS) {
       const c = open(origin, 'a2-boss-priest');
       const priest = one(c, 'high-priest');
@@ -901,13 +901,16 @@ describe('출신 공정성 — 시작 덱 (2층 수준: Lv5, 체력 95)', () => 
       expect(priest.st.str ?? 0, origin).toBe(str);
       expect(c.p.st[VOW], origin).toBe(VOW_WORDS);
     }
+    // 2026-10-21부터 재장전은 행동력 1이라 말이다 — 행동력 0인 속사로 본다
     const c = open('soldier', 'a2-boss-priest');
     c.p.st[VOW] = 1;
     c.s.ap = 3;
-    c.s.ammo = 0;
-    const reload = c.run.skills.find((s) => s.id === 'reload')!;
-    expect(c.run.slots).toContain(reload.uid);
-    expect(c.useSkill(reload.uid)).toBeNull();
+    c.s.ammo = 6;
+    c.run.skills.push({ uid: 'qd', id: 'x-quick-draw', lvl: 0, runes: [] });
+    const free = c.run.slots.indexOf(null);
+    if (free >= 0) c.run.slots[free] = 'qd';
+    else c.run.slots.push('qd');
+    expect(c.useSkill('qd', one(c, 'high-priest').uid)).toBeNull();
     expect(c.p.st[VOW]).toBe(1);
     expect(c.s.ap).toBe(3);
   });

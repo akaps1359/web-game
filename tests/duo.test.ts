@@ -97,14 +97,14 @@ describe('예전 합기: 효과', () => {
     c.s.used = 2;
     c.p.st.aim = 1;
     expect(c.useSkill('sk', front(c).uid)).toBeNull();
-    expect(total(c)).toBe(7 + 5 * 2 + 5);
+    expect(total(c)).toBe(7 + 7 * 2 + 7);
     expect(c.s.ammo).toBe(4);
     expect(c.p.st.aim ?? 0).toBe(0);
     // 최대 3발, 탄약이 없으면 베기만
     const d = arena('duo-bayonet');
     d.s.used = 6;
     expect(d.useSkill('sk', front(d).uid)).toBeNull();
-    expect(total(d)).toBe(7 + 5 * 3);
+    expect(total(d)).toBe(7 + 7 * 3);
     const e = arena('duo-bayonet');
     e.s.used = 3;
     e.s.ammo = 0;
@@ -171,14 +171,14 @@ describe('예전 합기: 효과', () => {
     t.st.mark = 3;
     expect(c.useSkill('sk', t.uid)).toBeNull();
     const hs = hits(c);
-    expect(hs.filter((h) => h.dtype === 'pierce').map((h) => h.amount)).toEqual([5, 5, 5]);
+    expect(hs.filter((h) => h.dtype === 'pierce').map((h) => h.amount)).toEqual([7, 7, 7]);
     expect(hs.filter((h) => h.dtype === 'arcane').map((h) => h.amount)).toEqual([9]);
     expect(t.st.mark ?? 0).toBe(0);
     expect(c.s.ammo).toBe(3);
     // 인장이 없어도 한 발, 탄약이 없으면 못 쓴다
     const d = arena('duo-sigil-round');
     expect(d.useSkill('sk', front(d).uid)).toBeNull();
-    expect(total(d)).toBe(5);
+    expect(total(d)).toBe(7);
     const e = arena('duo-sigil-round');
     e.s.ammo = 0;
     expect(e.blockReason('sk')).toBe('탄약 부족');
@@ -190,8 +190,8 @@ describe('예전 합기: 효과', () => {
     t.st.poison = 6;
     t.poise = t.maxPoise = 10;
     expect(c.useSkill('sk', t.uid)).toBeNull();
-    // 버팀이 남은 적이라 피해 7이 절반으로 (GUARD.mult)
-    expect(total(c)).toBe(3);
+    // 버팀이 남은 적이라 피해 10이 절반으로 (GUARD.mult)
+    expect(total(c)).toBe(5);
     expect(t.st.poison).toBe(9);
     expect(t.poise).toBe(7);
     expect(c.s.ammo).toBe(5);
@@ -208,14 +208,14 @@ describe('예전 합기: 효과', () => {
     c.p.block = 15;
     expect(c.useSkill('sk', front(c).uid)).toBeNull();
     expect(c.p.block).toBe(20);
-    expect(total(c)).toBe(5 + 12);
+    expect(total(c)).toBe(7 + 12);
     expect(c.s.ammo).toBe(5);
     // 조준이 실리면 두 배
     const d = arena('duo-cover-snipe');
     d.p.block = 15;
     d.p.st.aim = 1;
     expect(d.useSkill('sk', front(d).uid)).toBeNull();
-    expect(total(d)).toBe((5 + 12) * 2);
+    expect(total(d)).toBe((7 + 12) * 2);
   });
 
   it('광인의 조준 (사격×금기): 행동력 없이 재장전하고, 잃은 정신력 20마다 조준 +1 (최대 3)', () => {
@@ -307,7 +307,7 @@ describe('예전 합기: 효과', () => {
     c.p.block = 14;
     expect(c.useSkill('sk', front(c).uid)).toBeNull();
     expect(c.p.block).toBe(20);
-    expect(total(c)).toBe(6 + 16);
+    expect(total(c)).toBe(8 + 16);
   });
 });
 
@@ -436,6 +436,8 @@ describe('예전 합기: 무한 고리 없음', () => {
       const def = c.skillInfo(ref)!.def;
       if (c.useSkill(ref, def.target === 'single' ? (c.validTargets(def)[0]?.uid ?? null) : null)) break;
       n++;
+      // 장전 중(광인의 조준 뒤 총이 막힌다)은 이 시험과 상관없다 — 끝없이 쓰는지만 센다
+      delete c.p.st.reloading;
     }
     return n;
   }

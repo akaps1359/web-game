@@ -27,6 +27,7 @@ import { RARITY_NAME, plain, skillDesc } from '../src/ui/text';
 import type { DmgType, EquipSlot, SkillDef } from '../src/engine/types';
 import { DIAL } from '../src/content/genesis';
 import { plainHits } from './prehard';
+import { EMPTY_LOAD } from '../src/content/lib';
 
 /**
  * 창세 등급 (content/genesis.ts): 9개 아이템의 효과가 설명대로인지, 한 턴에 끝없이 쓰는 고리가 없는지,
@@ -165,11 +166,11 @@ describe('창세: 스킬 효과', () => {
     c.endTurn();
     expect(c.p.st['g-sunset']).toBeUndefined();
     expect(c.s.ammo).toBe(0);
-    // 다음 턴의 관통 공격은 평소대로 (탄약이 없어 리볼버는 재장전만)
+    // 다음 턴의 관통 공격은 평소대로 (탄약이 없어 리볼버는 쏘지 않고 두 발만 밀어 넣는다)
     hp = t.hp;
     expect(c.useSkill('weapon', t.uid)).toBeNull();
     expect(hp - t.hp).toBe(0);
-    expect(c.s.ammo).toBe(c.s.maxAmmo);
+    expect(c.s.ammo).toBe(EMPTY_LOAD);
     c.useSkill('weapon', t.uid);
     expect(hp - t.hp).toBe(v('w-revolver', 'dmg'));
   });

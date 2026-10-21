@@ -101,7 +101,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun'],
     makes: [],
     reads: ['ammo'],
-    vals: { dmg: [8, 10], poise: 1, bonus: [2, 3] },
+    vals: { dmg: [11, 14], poise: 1, bonus: [2, 3] },
     desc: '탄약 1: {D:dmg} 관통 피해, 버팀 추가 -{poise}. 대상이 힘을 모으는 중이면 버팀 추가 -{bonus} 더',
     canUse: needAmmo(1),
     run: (c, u, t) => {

@@ -1,7 +1,7 @@
 import { reg } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import type { EnemyUnit } from '../../engine/types';
-import { combo, detonate, guard, hit, needAmmo, reload, skill, spendAmmo } from '../lib';
+import { combo, detonate, guard, hit, lockGuns, needAmmo, reload, skill, spendAmmo } from '../lib';
 
 /**
  * 예전의 합기(合技) 15종. 이제 조건 없이 각자 계열 풀(고급·희귀, 금기 계열은 금기의 길)로 내려간 '계열을 잇는 기술'이다.
@@ -78,7 +78,7 @@ reg.skills([
     tags: ['attack', 'combo', 'ammo', 'gun', 'multi'],
     makes: [],
     reads: ['combo', 'ammo'],
-    vals: { dmg: [7, 9], dmgshot: [5, 6], max: [3, 4] },
+    vals: { dmg: [7, 9], dmgshot: [7, 8], max: [3, 4] },
     desc: '{D:dmg} 참격 피해. 이번 턴 앞서 쓴 스킬 1개당 탄약 1로 {dmgshot} 관통 피해 1회 추가 (최대 {max}회)',
     run: (c, u, t) => {
       const shots = Math.min(u.v('max'), combo(c));
@@ -211,7 +211,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'mark', 'detonate', 'multi'],
     makes: [],
     reads: ['mark', 'ammo'],
-    vals: { dmg: [5, 6], max: [5, 6], per: [3, 4] },
+    vals: { dmg: [7, 8], max: [5, 6], per: [3, 4] },
     desc: '대상의 인장 1개당 탄약 1을 써 {D:dmg} 관통 피해 (최소 1발, 최대 {max}발). 그 뒤 인장을 모두 터뜨려 인장당 {per} 비전 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -243,7 +243,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'poison'],
     makes: ['poison'],
     reads: ['poison', 'ammo'],
-    vals: { dmg: [7, 9], poison: [3, 4], div: 3, max: 4 },
+    vals: { dmg: [10, 13], poison: [3, 4], div: 3, max: 4 },
     desc: '탄약 1: 대상에게 독 {poison}을 묻힌 뒤 {D:dmg} 관통 피해. 대상의 독 {div}당 버팀 추가 -1 (최대 {max})',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -271,7 +271,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'block'],
     makes: ['block'],
     reads: ['block', 'ammo'],
-    vals: { blk: [5, 6], dmg: [5, 6], pct: [60, 80] },
+    vals: { blk: [5, 6], dmg: [7, 8], pct: [60, 80] },
     desc: '방어도 {B:blk}. 이어서 탄약 1: {D:dmg} + 내 방어도의 {pct}% 관통 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -298,11 +298,12 @@ reg.skills([
     makes: ['ammo', 'aim', 'sanity'],
     reads: ['sanity'],
     vals: { san: 5, aim: 1, per: [20, 15], max: 3 },
-    desc: '정신력 {san} 소모. 탄약을 가득 채우고 조준 {aim} + 잃은 정신력 {per}마다 1 (최대 {max})',
+    desc: '정신력 {san} 소모. 탄약을 가득 채우고 조준 {aim} + 잃은 정신력 {per}마다 1 (최대 {max}). 장전 중 — 이번 턴에는 더 쏠 수 없다',
     run: (c, u) => {
       c.loseSanity(u.v('san'));
       if (c.over) return;
       if (c.s.ammo < c.s.maxAmmo) reload(c);
+      lockGuns(c);
       const lost = Math.max(0, c.p.maxSanity - c.p.sanity);
       const n = scale(Math.min(u.v('max'), u.v('aim') + Math.floor(lost / Math.max(1, u.v('per')))), u.power);
       if (n > 0) c.apply(c.p, 'aim', n, c.p);

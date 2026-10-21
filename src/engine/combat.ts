@@ -1276,6 +1276,8 @@ export class Combat {
     if ((this.s.cd[info.owned.uid] ?? 0) > 0) return `재사용 대기 ${this.s.cd[info.owned.uid]}턴`;
     if (this.costOf(info) > this.s.ap) return '행동력 부족';
     if ((this.p.st.silence ?? 0) > 0 && !info.basic) return '침묵 상태';
+    // 장전 중: 재장전 기술을 쓴 턴에는 총을 쏘지 못한다 (content/lib.ts lockGuns — 군인 트레이드오프, GDD 10.10)
+    if ((this.p.st.reloading ?? 0) > 0 && info.def.tags.includes('gun')) return '장전 중';
     const u = this.makeUse(info);
     return info.def.canUse?.(this, u) ?? null;
   }

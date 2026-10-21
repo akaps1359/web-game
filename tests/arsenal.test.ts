@@ -26,6 +26,7 @@ import {
 } from '../src/content/extra/arsenal';
 import { VOW, gathering } from '../src/content/extra/arts';
 import { plainHits } from './prehard';
+import { EMPTY_LOAD, RELOADING } from '../src/content/lib';
 
 /**
  * 무기고·계열 기술 보강 (content/extra/arsenal.ts · arts.ts): 장비 여섯과 계열 기술 여섯이 설명대로 움직이는지,
@@ -311,13 +312,14 @@ describe('조명탄 권총', () => {
     expect(c.p.st.aim).toBe(1);
   });
 
-  it('탄약이 없으면 쏘지 않고 재장전한다 (취약도 없다)', () => {
+  it(`탄약이 없으면 쏘지 않고 ${EMPTY_LOAD}발을 밀어 넣는다 (취약도 없다, 장전 중도 아니다)`, () => {
     const c = arena([], { equip: { weapon: { id: 'ar-flare-pistol' } } });
     const e = front(c);
     c.s.ammo = 0;
     use(c, 'weapon', e);
     expect(hits(c).length).toBe(0);
-    expect(c.s.ammo).toBe(c.s.maxAmmo);
+    expect(c.s.ammo).toBe(EMPTY_LOAD);
+    expect(c.p.st[RELOADING] ?? 0).toBe(0);
     expect(e.st.vuln ?? 0).toBe(0);
   });
 });

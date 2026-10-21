@@ -1,7 +1,7 @@
 import { reg, STATUSES } from '../../engine/registry';
 import { lvlVal, type Combat } from '../../engine/combat';
 import type { EnemyUnit, SkillUse } from '../../engine/types';
-import { combo, dealt, detonate, guard, hit, needAmmo, reload, seized, skill, spendAmmo } from '../lib';
+import { combo, dealt, detonate, guard, hit, lockGuns, needAmmo, reload, seized, skill, spendAmmo } from '../lib';
 import { weakPointKnown, weakPointOf } from '../../engine/weakpoint';
 
 /**
@@ -176,7 +176,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun'],
     makes: ['combo'],
     reads: ['ammo'],
-    vals: { dmg: [4, 6] },
+    vals: { dmg: [6, 8] },
     desc: '탄약 1: {D:dmg} 관통 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -198,11 +198,12 @@ reg.skills([
     makes: ['block', 'ammo'],
     reads: ['ammo'],
     vals: { blk: [3, 4], per: 2 },
-    desc: '방어도 {B:blk}. 탄약을 가득 채운다. 채운 탄약 1발당 방어도 +{per}',
+    desc: '방어도 {B:blk}. 탄약을 가득 채운다. 채운 탄약 1발당 방어도 +{per}. 장전 중 — 이번 턴에는 더 쏠 수 없다',
     run: (c, u) => {
       const before = c.s.ammo;
       reload(c);
       guard(c, u, u.v('blk') + Math.floor(Math.max(0, c.s.ammo - before) * u.v('per') * u.power));
+      lockGuns(c);
     },
   }),
   skill({
@@ -219,7 +220,7 @@ reg.skills([
     tags: ['block', 'ammo', 'gun', 'counter'],
     makes: ['block'],
     reads: ['ammo'],
-    vals: { blk: [4, 6], dmg: [5, 6], max: [3, 4] },
+    vals: { blk: [4, 6], dmg: [7, 8], max: [3, 4] },
     desc: '방어도 {B:blk}. 다음 내 턴까지 공격받을 때마다(최대 {max}회) 탄약 1을 써서 공격자에게 {D:dmg} 관통 피해',
     run: (c, u) => {
       guard(c, u);
@@ -243,7 +244,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'aim'],
     makes: ['aim', 'ammo'],
     reads: ['ammo'],
-    vals: { dmg: [8, 10], poise: [1, 2] },
+    vals: { dmg: [11, 14], poise: [1, 2] },
     desc: '탄약 1: {D:dmg} 관통 피해, 버팀 추가 -{poise}. 이 공격으로 붕괴시키면 조준 +1, 탄약 +2',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -270,7 +271,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'multi'],
     makes: [],
     reads: ['ammo'],
-    vals: { dmg: [5, 6], bounce: [1, 2] },
+    vals: { dmg: [7, 8], bounce: [1, 2] },
     desc: '탄약 1: {D:dmg} 관통 피해. 이후 다른 무작위 적에게 {bounce}번 튕겨 {D:dmg} 피해',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -300,7 +301,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun'],
     makes: [],
     reads: ['ammo'],
-    vals: { dmg: [8, 10] },
+    vals: { dmg: [11, 14] },
     desc: '탄약 1: {D:dmg} 관통 피해. 붕괴된 적에게는 3배',
     canUse: needAmmo(1),
     run: (c, u, t) => {

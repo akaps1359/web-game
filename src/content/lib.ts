@@ -59,6 +59,27 @@ export function reload(c: Combat) {
   c.emit({ t: 'text', uid: 'p', text: '재장전', tone: 'info' });
 }
 
+/*
+ * 군인 트레이드오프 (2026-10-21, GDD 10.10): 총은 다른 출신의 공격보다 세게 치는 대신 재장전에 묶인다.
+ * 탄창을 가득 채우는 재장전 기술(재장전·엄폐 재장전·광인의 조준)을 쓰면 '장전 중' — 그 턴에는 더 쏘지 못한다 (엔진 blockReason이 'gun' 기술을 막는다).
+ * 빈 총으로 방아쇠를 당기면 쏘지 않고 EMPTY_LOAD발만 밀어 넣는다 (재장전 기술처럼 가득 채우지 않는다)
+ */
+export const RELOADING = 'reloading';
+export const EMPTY_LOAD = 2;
+
+/** 장전 중: 이번 턴에는 더 쏘지 못한다 (결계에 막히지 않게 apply를 거치지 않는다 — 내 턴이 끝나면 풀린다) */
+export function lockGuns(c: Combat) {
+  if ((c.p.st[RELOADING] ?? 0) > 0) return;
+  c.p.st[RELOADING] = 1;
+  c.emit({ t: 'status', uid: 'p', id: RELOADING, n: 1 });
+}
+
+/** 빈 총: 쏘지 않고 한 발씩 밀어 넣는다 */
+export function slowLoad(c: Combat) {
+  c.s.ammo = Math.min(c.s.maxAmmo, c.s.ammo + EMPTY_LOAD);
+  c.emit({ t: 'text', uid: 'p', text: `탄약 ${EMPTY_LOAD}발을 밀어 넣는다`, tone: 'info' });
+}
+
 /** 이번 턴 이 스킬 이전에 사용한 스킬 수 */
 export function combo(c: Combat): number {
   return c.s.used;

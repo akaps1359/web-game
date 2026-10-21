@@ -153,7 +153,7 @@ describe('틈: 거두기', () => {
     const ev = use(c, 's0', e.uid);
     expect(gapInfo(c, e.uid)?.school).toBe('firearm');
     expect(evs(ev, 'gap-harvest').length).toBe(0);
-    expect(dmgTo(ev, e.uid)[0].amount).toBe(10);
+    expect(dmgTo(ev, e.uid)[0].amount).toBe(14);
     expect(e.poise).toBe(98); // 정조준 사격 자체의 버팀 -1만
     expect(gapStats(c.s)).toMatchObject({ harvest: 0, same: 1 });
   });
@@ -186,15 +186,15 @@ describe('틈: 거두기', () => {
     const e = front(c);
     setGap(c, e, 'resolve');
     c.p.st.aim = 1;
-    expect(dmgTo(use(c, 's0', e.uid), e.uid)[0]).toMatchObject({ amount: 20, crit: true });
+    expect(dmgTo(use(c, 's0', e.uid), e.uid)[0]).toMatchObject({ amount: 28, crit: true });
     expect(c.p.st.aim).toBe(1);
     delete c.p.st.aim;
     setGap(c, e, 'occult');
-    expect(dmgTo(use(c, 's0', e.uid), e.uid)[0]).toMatchObject({ amount: 15, crit: true });
+    expect(dmgTo(use(c, 's0', e.uid), e.uid)[0]).toMatchObject({ amount: 21, crit: true });
     c.endTurn(); // 거두기 횟수(턴당 2회)를 새로
     c.drain();
     setGap(c, e, 'occult', true);
-    expect(dmgTo(use(c, 's0', e.uid), e.uid)[0].amount).toBe(20);
+    expect(dmgTo(use(c, 's0', e.uid), e.uid)[0].amount).toBe(28);
   });
 
   it('큰 틈은 보너스 2배', () => {

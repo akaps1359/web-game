@@ -1,6 +1,6 @@
 import { reg } from '../../engine/registry';
 import { isEnemy } from '../../engine/combat';
-import { combo, guard, hit, reload, skill, spendAmmo } from '../lib';
+import { EMPTY_LOAD, combo, guard, hit, skill, slowLoad, spendAmmo } from '../lib';
 
 /**
  * extra 장비. 무기/방어구의 기본기 수치 배열은 장비 강화 단계(0~2)별.
@@ -45,10 +45,10 @@ reg.skills([
     tags: ['attack', 'basic', 'ammo', 'gun'],
     makes: ['ammo'],
     reads: ['ammo'],
-    vals: { dmg: [6, 8, 10], bonus: [3, 4, 5] },
-    desc: '탄약 1 소모, 적 하나에게 {D:dmg} 관통 피해. 후열의 적을 쏘면 피해 +{bonus}. 탄약이 없으면 쏘지 않고 재장전',
+    vals: { dmg: [8, 11, 14], bonus: [4, 6, 7] },
+    desc: `탄약 1 소모, 적 하나에게 {D:dmg} 관통 피해. 후열의 적을 쏘면 피해 +{bonus}. 탄약이 없으면 쏘지 않고 ${EMPTY_LOAD}발을 밀어 넣는다`,
     run: (c, u, t) => {
-      if (c.s.ammo <= 0) return reload(c);
+      if (c.s.ammo <= 0) return slowLoad(c);
       spendAmmo(c, 1);
       hit(c, u, t, { dmg: u.v('dmg') + (t && t.row === 1 ? u.v('bonus') : 0) });
     },

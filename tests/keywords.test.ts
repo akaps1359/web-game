@@ -181,13 +181,13 @@ describe('계열을 잇는 스킬: 대표 동작', () => {
     t.st.bleed = 2;
     c.p.st.aim = 1;
     expect(c.useSkill('sk', t.uid)).toBeNull();
-    expect(total(c)).toBe(18);
+    expect(total(c)).toBe(26);
     expect(c.p.st.aim).toBe(1);
     expect(c.s.ammo).toBe(5);
     // 출혈이 없으면 보통 사격 (가진 조준은 평소처럼 실리고 쓰인다)
     const d = arena('br-wound-sight');
     expect(d.useSkill('sk', front(d).uid)).toBeNull();
-    expect(total(d)).toBe(9);
+    expect(total(d)).toBe(13);
   });
 
   it('방패 인장: 내 방어도 3당 인장 1 (최대 4), 방어도는 그대로', () => {

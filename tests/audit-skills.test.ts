@@ -100,8 +100,8 @@ describe('스킬 감사 — 각인의 위력 배율', () => {
     const t = front(c);
     expect(c.useSkill('sk', t.uid)).toBeNull();
     const hs = hits(c);
-    expect(hs.find((h) => h.tgt === t.uid)?.amount).toBe(p75(15));
-    expect(hs.find((h) => h.tgt !== t.uid)?.amount).toBe(p75(8));
+    expect(hs.find((h) => h.tgt === t.uid)?.amount).toBe(p75(21));
+    expect(hs.find((h) => h.tgt !== t.uid)?.amount).toBe(p75(11));
   });
 
   it('최후의 저항: 방어도가 위력을 따른다', () => {

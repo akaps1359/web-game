@@ -36,6 +36,7 @@ import {
   sealedSkills,
   spagDmg,
 } from '../src/content/act4/patterns';
+import { preHard } from './prehard';
 
 /*
  * 4층 계층군주 「검은 별」 (2026-10 계층군주 강화): 중력 렌즈 · 블랙홀(2막) · 사건의 지평선 · 호킹 복사 · 스파게티화.
@@ -344,12 +345,27 @@ describe('4층 계층군주 — 검은 별: 2막 「블랙홀」', () => {
 });
 
 describe('4층 계층군주 — 검은 별: 사건의 지평선', () => {
+  /** 재장전을 뺀 군인의 시작 덱 (재장전은 행동력 1·대기 3이라 가장 무겁다 — 아래 따로 본다) */
+  const noReload = (run = floor4()) => {
+    run.slots = run.slots.map((u) => (run.skills.find((s) => s.uid === u)?.id === 'reload' ? null : u));
+    return run;
+  };
+
+  it('군인은 재장전부터 끌려간다 — 행동력 1에 재사용 대기 3, 시작 덱에서 가장 무겁다 (2026-10-21)', () => {
+    const { c } = collapsed();
+    const reload = slotOf(c, 'reload');
+    expect(nextPull(c)!.uid).toBe(reload);
+    pass(c);
+    expect(sealedSkills(c).map((s) => s.uid)).toEqual([reload]);
+    expect(c.blockReason(reload)).not.toBeNull();
+  });
+
   it('차례마다 가장 무거운 기술 하나, 한꺼번에 둘까지 — 무너진 별의 차례가 셋 지나면 돌아온다. 기본기는 끌려가지 않는다', () => {
-    const { c, star } = collapsed();
+    const { c, star } = collapsed(noReload());
     const steady = slotOf(c, 'steady');
     const aimed = slotOf(c, 'aimed-shot');
     const bash = slotOf(c, 'shield-bash');
-    // 군인의 시작 덱: 재장전 말고는 모두 행동력 1 — 재사용 대기가 긴 마음 다잡기(2)가 가장 무겁고, 다음은 앞 칸의 정조준 사격
+    // 재장전을 뺀 군인의 시작 덱: 모두 행동력 1 — 재사용 대기가 긴 마음 다잡기(2)가 가장 무겁고, 다음은 앞 칸의 정조준 사격
     expect(nextPull(c)!.uid).toBe(steady);
     expect(horizonNote(c)!.desc).toContain('「마음 다잡기」');
     expect(horizonNote(c)!.text).toBe('마음 다잡기');
@@ -403,7 +419,7 @@ describe('4층 계층군주 — 검은 별: 사건의 지평선', () => {
   });
 
   it('이번 턴에 쓴 기술(재사용 대기 중)은 끌려가지 않는다 — 다음으로 무거운 것이 대신 끌려간다', () => {
-    const { c } = collapsed();
+    const { c } = collapsed(noReload());
     const steady = slotOf(c, 'steady');
     const aimed = slotOf(c, 'aimed-shot');
     expect(c.useSkill(steady)).toBeNull();
@@ -554,19 +570,22 @@ describe('4층 계층군주 — 검은 별: 글과 봇', () => {
     for (const m of Object.values(moves)) expect((m.desc ?? '').includes('—'), m.name).toBe(false);
   });
 
-  it('봇이 끝까지 이긴다 — 렌즈·블랙홀·지평선을 모두 지나며 (세 출신, 튼튼한 몸)', () => {
-    for (const origin of ORIGINS3) {
-      const c = startCombat(floor4(23, origin), 'lord-a4', { anomaly: null });
-      let n = 0;
-      let sealed = 0;
-      while (!c.over && n++ < 300) {
-        autoTurn(c);
-        sealed = Math.max(sealed, sealedSkills(c).length);
+  it("봇이 끝까지 이긴다 — 렌즈·블랙홀·지평선을 모두 지나며 (세 출신, 튼튼한 몸, '어렵게' 전의 층 배율로)", () => {
+    // 막히는 패턴이 없는지 본다 — 시작 덱(힘 8)으로 렌즈 아래 체력 ×3.3을 깎다 정신력이 먼저 바닥나는 건 볼 것이 아니다 (GDD 10.10)
+    preHard(() => {
+      for (const origin of ORIGINS3) {
+        const c = startCombat(floor4(23, origin), 'lord-a4', { anomaly: null });
+        let n = 0;
+        let sealed = 0;
+        while (!c.over && n++ < 300) {
+          autoTurn(c);
+          sealed = Math.max(sealed, sealedSkills(c).length);
+        }
+        expect(c.s.phase, origin).toBe('victory');
+        expect(find(c, 'black-star'), origin).toBeUndefined();
+        expect(c.s.enemies.find((x) => x.def === 'black-star')!.form, origin).toBe(1);
+        expect(sealed, origin).toBeGreaterThan(0);
       }
-      expect(c.s.phase, origin).toBe('victory');
-      expect(find(c, 'black-star'), origin).toBeUndefined();
-      expect(c.s.enemies.find((x) => x.def === 'black-star')!.form, origin).toBe(1);
-      expect(sealed, origin).toBeGreaterThan(0);
-    }
+    });
   });
 });

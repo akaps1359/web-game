@@ -208,7 +208,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'aim'],
     makes: ['ammo'],
     reads: [],
-    vals: { dmg: [12, 15] },
+    vals: { dmg: [17, 21] },
     desc: '하늘에 둘씩 뜬 해를 쏘아 떨군다: 탄약을 가득 채우고 {D:dmg} 관통 피해. 그 뒤 이번 턴이 끝날 때까지 탄약이 줄지 않고 모든 관통 공격이 치명타(피해 2배). 턴이 끝나면 탄약이 모두 떨어진다',
     run: (c, u, t) => {
       reload(c);

@@ -547,7 +547,7 @@ reg.statuses([
     hooks: {
       afterSkill(c, s, u) {
         if (u.echo || s.unit !== c.p) return;
-        // 행동력 0인 기술(재장전 등)은 말로 치지 않는다 — 탄약을 채워야 하는 출신만 손해 보지 않게
+        // 행동력 0인 기술(속사 등)은 말로 치지 않는다 — 말 수가 행동력과 어긋나지 않게 (2026-10-21부터 재장전은 행동력 1이라 말이다)
         if (c.costOf({ def: u.def, owned: u.owned }) <= 0) return;
         const priest = c.alive.find((x) => x.def === 'high-priest');
         if (!priest) {
@@ -698,7 +698,7 @@ reg.statuses([
       },
       afterSkill(c, s, u) {
         if (u.echo || s.unit !== c.p) return;
-        // 행동력 0인 기술(재장전 등)은 세지 않는다
+        // 행동력 0인 기술(속사 등)은 세지 않는다 (2026-10-21부터 재장전은 행동력 1이라 센다)
         if (c.costOf({ def: u.def, owned: u.owned }) <= 0) return;
         const cost = hushCost(s.n);
         setSt(c, c.p, HUSH, s.n + 1);

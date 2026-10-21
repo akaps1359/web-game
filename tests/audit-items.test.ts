@@ -148,12 +148,12 @@ describe('설명과 다르게 동작하던 것들', () => {
       expect(c.s.turn).toBe(3);
       expect(c.s.ap, `+${lvl} 3턴`).toBe(run.player.maxAp + 1);
     }
-    // 탄띠: 최대 탄약 +2, 강화마다 +1
+    // 탄띠: 최대 탄약 +1, 강화마다 +1 (2026-10-21 군인 트레이드오프 — +2였다)
     for (const lvl of [0, 1, 2]) {
       const run = sturdyRun();
       equip(run, 'trinket1', 'bandolier', lvl);
       const c = startCombat(run, 'a1-thug');
-      expect(c.s.maxAmmo).toBe(6 + 2 + lvl);
+      expect(c.s.maxAmmo).toBe(6 + 1 + lvl);
       expect(c.s.ammo).toBe(c.s.maxAmmo);
     }
     // 눈의 부적: 약점 1개, 강화마다 1개 더

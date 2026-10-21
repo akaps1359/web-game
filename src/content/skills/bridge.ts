@@ -212,7 +212,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'bleed'],
     makes: [],
     reads: ['bleed', 'ammo'],
-    vals: { dmg: [9, 11] },
+    vals: { dmg: [13, 15] },
     desc: '탄약 1: {D:dmg} 관통 피해. 대상이 출혈 중이면 피해 2배',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -241,7 +241,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'aim', 'combo'],
     makes: ['aim'],
     reads: ['combo', 'ammo'],
-    vals: { dmg: [8, 10], need: 2, aim: 1 },
+    vals: { dmg: [11, 14], need: 2, aim: 1 },
     desc: '탄약 1: {D:dmg} 관통 피해. 이번 턴 앞서 스킬을 {need}개 이상 썼으면 조준 {aim}',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -266,7 +266,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'doom'],
     makes: [],
     reads: ['doom', 'ammo'],
-    vals: { dmg: [10, 12], pct: [50, 75] },
+    vals: { dmg: [14, 17], pct: [50, 75] },
     desc: '탄약 1: {D:dmg} 관통 피해. 대상에게 걸린 파멸의 {pct}%만큼 피해 추가',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -289,7 +289,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'burn'],
     makes: ['burn'],
     reads: ['ammo'],
-    vals: { dmg: [7, 9], burn: [3, 4] },
+    vals: { dmg: [10, 13], burn: [3, 4] },
     desc: '탄약 1: {D:dmg} 관통 피해, 화상 {burn}',
     canUse: needAmmo(1),
     run: (c, u, t) => {
@@ -432,7 +432,7 @@ reg.skills([
     tags: ['attack', 'ammo', 'gun', 'burn', 'aim'],
     makes: ['burn'],
     reads: ['ammo', 'aim'],
-    vals: { dmg: [6, 8], burn: [3, 4] },
+    vals: { dmg: [8, 11], burn: [3, 4] },
     desc: '탄약 1: {D:dmg} 화염 피해, 화상 {burn}. 조준이 있으면 화상 2배',
     canUse: needAmmo(1),
     run: (c, u, t) => {

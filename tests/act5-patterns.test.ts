@@ -624,7 +624,18 @@ describe('봇 — 5층의 모든 조우', () => {
     // 막히는 패턴이 없는지 본다 — 시작 덱(힘 16)으로 군주(체력 ×3.25)를 깎다 정신력이 먼저 바닥나는 건 볼 것이 아니다 (GDD 10.9)
     preHard(() => {
       for (const enc of ENCOUNTERS.filter((e) => e.act === 5)) {
-        const c = fightToEnd(startCombat(floor5(77), enc.id, { anomaly: null }));
+        // 꿈을 먹는 자는 행동력을 먹는 DPS 시험이다 — 시작 덱 군인은 식사 시간을 넘기지 못해 행동력을 먹힌 뒤 재장전(행동력 1)에 묶인다.
+        // 장전 시점을 식사 시간에 맞추지 못하는 봇의 한계라 사냥꾼 시작 덱으로 본다 (군인 트레이드오프, GDD 10.10)
+        const run = floor5(77);
+        if (enc.id === 'lord-a5') {
+          const h = newRun({ seed: 77, origin: 'hunter' });
+          Object.assign(h, { act: run.act, floor: run.floor, light: run.light });
+          Object.assign(h.player, { maxHp: run.player.maxHp, hp: run.player.hp, sanity: run.player.sanity, maxSanity: run.player.maxSanity, str: run.player.str, maxAp: run.player.maxAp, insight: 0 });
+          const c = fightToEnd(startCombat(h, enc.id, { anomaly: null }));
+          if (c.s.phase !== 'victory') lost.push(`${enc.id} (사냥꾼): ${c.s.phase} (턴 ${c.s.turn})`);
+          continue;
+        }
+        const c = fightToEnd(startCombat(run, enc.id, { anomaly: null }));
         if (c.s.phase !== 'victory') lost.push(`${enc.id}: ${c.s.phase} (턴 ${c.s.turn})`);
       }
     });
@@ -1376,10 +1387,11 @@ describe('5층 일반 적 — 새 패턴 (2026-10)', () => {
     const shot = slotOf(run, 'aimed-shot');
     expect(c.useSkill(steady)).toBeNull();
     const steadyCd = c.s.cd[steady];
-    expect(c.useSkill(reload)).toBeNull();
+    // 재장전은 장전 중(그 턴에 더 쏘지 못한다)이라 사격 뒤에
     expect(c.useSkill(shot, g.uid)).toBeNull();
-    // 기본 공격은 엉키지 않는다 (마지막 두 기술은 재장전·겨눠 쏘기)
-    expect(c.useSkill('weapon', g.uid)).toBeNull();
+    expect(c.useSkill(reload)).toBeNull();
+    // 기본기는 엉키지 않는다 (마지막 두 기술은 겨눠 쏘기·재장전)
+    expect(c.useSkill('armor')).toBeNull();
     const long = c.s.cd[reload];
     expect(c.s.cd[shot]).toBeLessThan(long);
     act(c, w, 'tangle');

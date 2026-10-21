@@ -3,6 +3,7 @@ import { INSIGHT_WEAK, MAX_MADNESS, WEAK_BONUS } from '../engine/combat';
 import { INSIGHT_SOURCES, INTENT_COLOR, INTENT_ICON, INTENT_MEANING, SCHOOL_NAME, insightBrief } from './text';
 import { GAP_RULE, GAP_RULE_MORE, gapBonusText } from '../content/gap';
 import { DEPTH } from '../content/depth';
+import { EMPTY_LOAD } from '../content/lib';
 import { GROWTH } from '../engine/growth';
 import { HUMAN_SCHOOLS } from '../engine/schools';
 import { GUARD } from '../engine/combat';
@@ -39,7 +40,12 @@ const TERMS: Keyword[] = [
   { name: '통찰', icon: 'gi:third-eye', color: '#4fffc4', desc: `이계의 지식. ${insightBrief()} ${INSIGHT_SOURCES}` },
   { name: '전열', icon: 'gi:crossed-swords', color: '#cfc8b8', desc: '앞줄. 근접 스킬은 전열에 적이 있으면 전열만 노릴 수 있다.' },
   { name: '후열', icon: 'gi:crossed-swords', color: '#cfc8b8', desc: '뒷줄. 근접 스킬은 전열이 모두 쓰러져야 닿는다. 원거리 스킬은 어디든 닿는다.' },
-  { name: '탄약', icon: 'gi:bullets', color: '#ffe08a', desc: '총기 스킬이 쓰는 탄. 다 쓰면 재장전해야 한다.' },
+  {
+    name: '탄약',
+    icon: 'gi:bullets',
+    color: '#ffe08a',
+    desc: `총기 스킬이 쓰는 탄 (최대 6, 탄띠로 는다). 총은 다른 공격보다 세게 치는 대신 탄약에 묶인다 — 다 쓰면 재장전(행동력 1, 그 턴에는 더 쏘지 못한다)하거나, 빈 총으로 방아쇠를 당겨 ${EMPTY_LOAD}발씩 밀어 넣는다.`,
+  },
   { name: '창세', icon: 'gi:sparkles', color: '#ffe3fa', desc: '희귀보다 귀한 가장 높은 등급. 세계가 처음 지어질 때 남은 것. 계층군주를 쓰러뜨리면 셋 중 하나를 고를 수 있고, 5층의 강적이 아주 드물게 떨군다. 한 판에 하나만 가질 수 있다.' },
   { name: '실마리', icon: 'gi:sewing-string', color: '#e7b49a', desc: '장착한 스킬·무기·각인이 남기는 것을 읽거나 그것들이 읽을 것을 만드는 다른 계열의 스킬. 보상과 상점에 더 자주 나온다.' },
   { name: '정수', icon: 'gi:heart-beats', color: '#ff9ab0', desc: '쓰러뜨린 존재가 남긴 힘. 흡수하면 스탯·패시브와 최대 체력을 얻는다 (수호자 정수는 여기에 그 존재의 기술 하나를 골라 함께 배운다). 정수 자리는 4개에서 시작해 층 수호자를 쓰러뜨릴 때마다 하나씩 는다. 꽉 차면 가진 정수 하나를 깨뜨리고 바꾸거나, 병에 담아 두었다가 신전에서 골드를 내고 새긴다. 계층정수는 자리를 차지하지 않는다. 이계의 정수는 흡수할 때 최대 정신력 -5를 치른다.' },

@@ -2,7 +2,7 @@ import { reg } from '../../engine/registry';
 import { isEnemy, type Combat } from '../../engine/combat';
 import { josa } from '../../engine/josa';
 import type { DmgType, EnemyUnit } from '../../engine/types';
-import { guard, hit, reload, skill, spendAmmo } from '../lib';
+import { EMPTY_LOAD, guard, hit, skill, slowLoad, spendAmmo } from '../lib';
 
 /**
  * 무기고 (2026-10 장비 보강): 판짜기를 정하는 장비 여섯. 수치만 올리는 것이 아니라 쓰는 법이 달라지는 것.
@@ -186,10 +186,10 @@ reg.skills([
     tags: ['attack', 'basic', 'ammo', 'gun', 'debuff'],
     makes: ['ammo', 'expose'],
     reads: ['ammo'],
-    vals: { dmg: [4, 5, 6], vuln: 1 },
-    desc: '탄약 1 소모, {D:dmg} 화염 피해, 취약 {vuln}. 탄약이 없으면 쏘지 않고 재장전',
+    vals: { dmg: [6, 7, 8], vuln: 1 },
+    desc: `탄약 1 소모, {D:dmg} 화염 피해, 취약 {vuln}. 탄약이 없으면 쏘지 않고 ${EMPTY_LOAD}발을 밀어 넣는다`,
     run: (c, u, t) => {
-      if (c.s.ammo <= 0) return reload(c);
+      if (c.s.ammo <= 0) return slowLoad(c);
       spendAmmo(c, 1);
       hit(c, u, t);
       // 화염이라 조준(관통 치명)을 쓰지 않는다 — 밝혀 둔 적에게 큰 관통 기술이 조준을 실어 들어간다

@@ -1,5 +1,5 @@
 import { reg } from '../../engine/registry';
-import { guard, hit, reload, skill, spendAmmo } from '../lib';
+import { EMPTY_LOAD, guard, hit, skill, slowLoad, spendAmmo } from '../lib';
 
 /**
  * 장비가 주는 기본기. 수치 배열은 장비 강화 단계(0~2)별.
@@ -121,10 +121,11 @@ reg.skills([
     makes: ['ammo'],
     reads: ['ammo'],
     // 2026-10 최종 밸런스: 7/9/11 → 6/8/10 (원거리라 전열·후열을 가리지 않고 쏘는 값. 군인이 혼자 높던 것을 내렸다)
-    vals: { dmg: [6, 8, 10] },
-    desc: '탄약 1 소모, {D:dmg} 관통 피해. 탄약이 없으면 쏘지 않고 재장전',
+    // 2026-10-21 군인 트레이드오프: 총 피해 ×1.4 → 8/11/14 (재장전이 무거워진 값, GDD 10.10)
+    vals: { dmg: [8, 11, 14] },
+    desc: `탄약 1 소모, {D:dmg} 관통 피해. 탄약이 없으면 쏘지 않고 ${EMPTY_LOAD}발을 밀어 넣는다`,
     run: (c, u, t) => {
-      if (c.s.ammo <= 0) return reload(c);
+      if (c.s.ammo <= 0) return slowLoad(c);
       spendAmmo(c, 1);
       hit(c, u, t);
     },
@@ -144,10 +145,10 @@ reg.skills([
     tags: ['attack', 'basic', 'ammo', 'gun', 'multi'],
     makes: ['ammo'],
     reads: ['ammo'],
-    vals: { dmg: [3, 4, 5], hits: 2 },
-    desc: '탄약 1 소모, 전열의 모든 적에게 {D:dmg} 관통 피해 {hits}회. 탄약이 없으면 쏘지 않고 재장전',
+    vals: { dmg: [4, 6, 7], hits: 2 },
+    desc: `탄약 1 소모, 전열의 모든 적에게 {D:dmg} 관통 피해 {hits}회. 탄약이 없으면 쏘지 않고 ${EMPTY_LOAD}발을 밀어 넣는다`,
     run: (c, u, t) => {
-      if (c.s.ammo <= 0) return reload(c);
+      if (c.s.ammo <= 0) return slowLoad(c);
       spendAmmo(c, 1);
       hit(c, u, t);
     },

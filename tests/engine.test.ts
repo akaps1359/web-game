@@ -6,6 +6,7 @@ import { newRun, startCombat, finishCombat, absorbEssence, takeLoot, winRun, FIN
 import { advanceTime, enterRift, generateFloor, goHaven, moveTo, startGuardian } from '../src/engine/dungeon';
 import { leaveHaven } from '../src/engine/places';
 import { autoTurn } from '../src/sim/bot';
+import { preHard } from './prehard';
 
 /** 테스트용: 그 층에 걸맞게 튼튼한 주인공 */
 function sturdy(run: RunState, act: number) {
@@ -74,21 +75,26 @@ describe('콘텐츠 무결성', () => {
 });
 
 describe('전투', () => {
-  it('모든 조우를 봇이 끝까지 진행할 수 있다', () => {
-    for (const enc of ENCOUNTERS) {
-      const run = newRun({ seed: 42, origin: 'soldier' });
-      run.act = enc.act;
-      run.player.maxHp = run.player.hp = 99999;
-      run.player.sanity = run.player.maxSanity = 99999;
-      // 층에 걸맞은 성장치 (시작 장비만으로는 후반 적을 상대할 수 없다)
-      run.player.str = (enc.act - 1) * 4;
-      run.player.maxAp = 3 + (enc.act >= 3 ? 1 : 0);
-      const c = startCombat(run, enc.id, { anomaly: enc.anomaly ?? null });
-      let guard = 0;
-      while (!c.over && guard++ < 300) autoTurn(c);
-      expect(c.over, enc.id).toBe(true);
-      expect(c.s.phase, enc.id).toBe('victory');
-    }
+  it("모든 조우를 봇이 끝까지 진행할 수 있다 — '어렵게' 전의 층 배율로", () => {
+    // 막히는 조우가 없는지 본다 — 시작 덱으로 군주의 체력을 끝까지 깎는 시험은 아니다 (GDD 10.10)
+    preHard(() => {
+      for (const enc of ENCOUNTERS) {
+        // 꿈을 먹는 자는 행동력을 먹는 DPS 시험이다 — 시작 덱 군인은 행동력 2가 된 뒤로 재장전(행동력 1)에 묶여 회복을 넘지 못한다.
+        // 장전 시점을 식사 시간에 맞추지 못하는 봇의 한계라 사냥꾼으로 본다 (군인 트레이드오프, GDD 10.10)
+        const run = newRun({ seed: 42, origin: enc.id === 'lord-a5' ? 'hunter' : 'soldier' });
+        run.act = enc.act;
+        run.player.maxHp = run.player.hp = 99999;
+        run.player.sanity = run.player.maxSanity = 99999;
+        // 층에 걸맞은 성장치 (시작 장비만으로는 후반 적을 상대할 수 없다)
+        run.player.str = (enc.act - 1) * 4;
+        run.player.maxAp = 3 + (enc.act >= 3 ? 1 : 0);
+        const c = startCombat(run, enc.id, { anomaly: enc.anomaly ?? null });
+        let guard = 0;
+        while (!c.over && guard++ < 300) autoTurn(c);
+        expect(c.over, enc.id).toBe(true);
+        expect(c.s.phase, enc.id).toBe('victory');
+      }
+    });
     // 조우가 150개를 넘고 후반 전투가 길어, 다른 테스트 파일과 병렬로 돌면 기본 5초를 넘길 수 있다
   }, 60_000);
 

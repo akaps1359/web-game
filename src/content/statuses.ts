@@ -124,6 +124,17 @@ reg.statuses([
       },
     },
   },
+  // 군인 트레이드오프 (2026-10-21): 재장전 기술을 쓴 턴에는 더 쏘지 못한다 — content/lib.ts lockGuns, engine blockReason
+  {
+    id: 'reloading',
+    name: '장전 중',
+    icon: 'gi:reload-gun-barrel',
+    kind: 'debuff',
+    desc: '탄창을 갈아 끼우는 중 — 이번 턴에는 총을 쏠 수 없다 (내 턴이 끝나면 풀린다)',
+    tickEnd(c, u) {
+      c.clear(u, 'reloading');
+    },
+  },
   {
     id: 'frenzy',
     name: '격앙',

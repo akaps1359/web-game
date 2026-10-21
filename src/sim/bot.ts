@@ -22,6 +22,8 @@ export const BOT_DOT: { turns: Record<'normal' | 'elite' | 'boss', number> } = {
  * 예전 봇은 후열의 재 속을 원거리로 계속 쏴 반격을 키웠다 (2026-10 최종 밸런스: 시작 덱 군인이 재에 묻힌 것에게 30번 중 2번 지던 것이 0번)
  */
 export const BOT_INC = { k: 1 };
+/** 장전 중이 되는 재장전: 그 뒤 남은 행동력 1당 손해 (2026-10-21 군인 트레이드오프) */
+export const BOT_RELOAD = { ap: 6 };
 
 /**
  * 버팀 (2026-10 붕괴 개편): 버팀 1의 값. 약점이 아닌 타격은 GUARD.chip분의 1씩 센다.
@@ -107,9 +109,14 @@ function score(before: RunState, after: RunState, need: number, cost = 0): numbe
   s += Math.max(0, (pa.st.barrier ?? 0) - (pb.st.barrier ?? 0)) * 0.7;
   s += (pa.hp - pb.hp) * 1.0;
   s += (pa.sanity - pb.sanity) * 0.35;
+  // 조준: 첫 발 4, 둘째 발부터 2 — 가호가 남은 적이 있으면 치명이 상한에 걸려 버려지니 0.4배 (재장전이 조준 2를 준 뒤 가호 앞에서 행동력을 들여 장전하던 것)
+  const capped = b.enemies.some((e) => !e.dead && (e.st.aegis ?? 0) > 0);
+  const aimVal = (n: number) => (n <= 0 ? 0 : 4 + (n - 1) * 2) * (capped ? 0.4 : 1);
   const buff = (st: Record<string, number>) =>
-    (st.str ?? 0) * 6 + (st.dex ?? 0) * 4 + (st.ritual ?? 0) * 12 + (st.tentacle ?? 0) * 8 + (st.aim ?? 0) * 4 + (st.energized ?? 0) * 6 + (st.evasive ?? 0) * 5 + (st.counter ?? 0) * 1 + (st.retain ?? 0) * 2 + (st.ward ?? 0) * 3 + (st.frenzy ?? 0) * 0.1;
+    (st.str ?? 0) * 6 + (st.dex ?? 0) * 4 + (st.ritual ?? 0) * 12 + (st.tentacle ?? 0) * 8 + aimVal(st.aim ?? 0) + (st.energized ?? 0) * 6 + (st.evasive ?? 0) * 5 + (st.counter ?? 0) * 1 + (st.retain ?? 0) * 2 + (st.ward ?? 0) * 3 + (st.frenzy ?? 0) * 0.1;
   s += buff(pa.st) - buff(pb.st);
+  // 장전 중 (군인 트레이드오프, GDD 10.10): 재장전하면 이번 턴 사격이 막힌다 — 남은 행동력만큼 손해 (쏠 만큼 쏘고 턴 끝에 장전한다)
+  if ((pa.st.reloading ?? 0) > 0 && !(pb.st.reloading ?? 0)) s -= a.ap * BOT_RELOAD.ap;
   s += (pa.insight - pb.insight) * 6;
   s += (a.ap - b.ap + cost) * 4;
   if (b.ammo !== a.ammo && a.ammo > b.ammo) s += (a.ammo - b.ammo) * 0.8;
